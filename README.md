@@ -28,6 +28,7 @@
         - Using a string declaration char (' or ") within a comment will cause it to find the next matching char, creating a long and wrong string, messing everything up
         - Fixed by changing the comment pattern to `#[regex = "//[^\n]+\n"]`. This makes the Comment everything from `//` to a newline, mitigating any breakout
     - [ ] Documentation Comments
+        - Doc comments exist, but do nothing special (Yet)
 - [X] Char support
     - Some strange chars will cause the program to panic
     - Was strange interaction with the old method of parsing comments

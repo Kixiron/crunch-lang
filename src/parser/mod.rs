@@ -89,11 +89,11 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
 
     #[inline]
     fn remove_comments(self) -> Self {
-        use crunch_token::Token::{Comment, MultilineComment};
+        use crunch_token::Token::{Comment, MultilineComment, DocComment};
 
         let mut token_stream = self.token_stream.collect::<Vec<TokenData<'source>>>();
         token_stream
-            .retain(|token| !(*token.kind() == Comment || *token.kind() == MultilineComment));
+            .retain(|token| !(*token.kind() == Comment || *token.kind() == MultilineComment || *token.kind() == DocComment));
 
         Self {
             token_stream: Box::new(token_stream.into_iter()),
