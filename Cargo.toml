@@ -1,0 +1,63 @@
+[package]
+name = "crunch"
+version = "0.0.0"
+description = "A small language"
+authors = ["Kixiron <contact.kixiron@gmail.com>"]
+edition = "2018"
+license = "MIT"
+readme = "README.md"
+
+[[bin]]
+name = "crunch"
+path = "./src/main.rs"
+
+[dependencies]
+logos = "0.10.0-rc2"
+crunch-token = { path = "./lib/crunch-token" }
+structopt = "0.2.17"
+no-panic = "0.1.10"
+
+[dev-dependencies]
+criterion = "0.2.11"
+
+[profile.dev]
+opt-level = 0
+debug = true
+rpath = false
+lto = false
+debug-assertions = true
+codegen-units = 16
+panic = 'unwind'
+incremental = true
+overflow-checks = true
+
+[profile.release]
+opt-level = 3
+debug = false
+rpath = false
+lto = false
+debug-assertions = false
+codegen-units = 1
+panic = 'unwind'
+incremental = false
+overflow-checks = false
+
+[profile.test]
+opt-level = 3
+debug = false
+rpath = false
+lto = false
+debug-assertions = false
+codegen-units = 1
+incremental = false
+overflow-checks = false
+
+[profile.bench]
+opt-level = 3
+debug = false
+rpath = false
+lto = false
+debug-assertions = false
+codegen-units = 1
+incremental = false
+overflow-checks = false
