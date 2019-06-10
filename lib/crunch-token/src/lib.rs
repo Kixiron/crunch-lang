@@ -74,6 +74,7 @@ pub enum Token {
     LeftParentheses,
 
     #[token = "and"]
+    #[token = "&&"]
     And,
     #[token = "or"]
     #[token = "||"]

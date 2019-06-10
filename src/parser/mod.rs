@@ -89,11 +89,14 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
 
     #[inline]
     fn remove_comments(self) -> Self {
-        use crunch_token::Token::{Comment, MultilineComment, DocComment};
+        use crunch_token::Token::{Comment, DocComment, MultilineComment};
 
         let mut token_stream = self.token_stream.collect::<Vec<TokenData<'source>>>();
-        token_stream
-            .retain(|token| !(*token.kind() == Comment || *token.kind() == MultilineComment || *token.kind() == DocComment));
+        token_stream.retain(|token| {
+            !(*token.kind() == Comment
+                || *token.kind() == MultilineComment
+                || *token.kind() == DocComment)
+        });
 
         Self {
             token_stream: Box::new(token_stream.into_iter()),
@@ -176,6 +179,32 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
             Token::Minus => {
                 if let Some(next) = self.next().clone() {
                     Expression::Subtraction(
+                        Box::new(tree.pop().unwrap()),
+                        Box::new(self.eval_expr(next, &mut tree)),
+                    )
+                } else {
+                    self.end_of_file = true;
+                    Expression::None
+                }
+            }
+
+            Token::True => Expression::True,
+            Token::False => Expression::False,
+
+            Token::And => {
+                if let Some(next) = self.next().clone() {
+                    Expression::And(
+                        Box::new(tree.pop().unwrap()),
+                        Box::new(self.eval_expr(next, &mut tree)),
+                    )
+                } else {
+                    self.end_of_file = true;
+                    Expression::None
+                }
+            }
+            Token::Or => {
+                if let Some(next) = self.next().clone() {
+                    Expression::Or(
                         Box::new(tree.pop().unwrap()),
                         Box::new(self.eval_expr(next, &mut tree)),
                     )
@@ -278,6 +307,25 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
                 self.end_of_file = true;
                 Expression::None
             }
+            Token::While => {
+                if let Some(next) = self.next().clone() {
+                    Expression::While(
+                        Box::new(tree.pop().unwrap()),
+                        Box::new(self.eval_expr(next, &mut tree)),
+                    )
+                } else {
+                    self.end_of_file = true;
+                    Expression::None
+                }
+            }
+            Token::Loop => {
+                if let Some(next) = self.next().clone() {
+                    Expression::Loop(Box::new(self.eval_expr(next, &mut tree)))
+                } else {
+                    self.end_of_file = true;
+                    Expression::None
+                }
+            }
 
             Token::Indent => {
                 if let Some(next) = self.next().clone() {
@@ -288,6 +336,7 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
                 }
             }
 
+            // TODO: Add redundancy removal of Comments/MultilineComments/DocComments
             Token::Newline | Token::WhiteSpace => {
                 if let Some(next) = self.next().clone() {
                     self.eval_expr(next, &mut tree)

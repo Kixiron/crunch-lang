@@ -4,6 +4,11 @@ pub enum Expression {
     FloatLiteral(f32),
     StringLiteral(String),
     Vector(Box<Vec<Expression>>),
+    True,
+    False,
+
+    And(Box<Expression>, Box<Expression>),
+    Or(Box<Expression>, Box<Expression>),
 
     Multiplication(Box<Expression>, Box<Expression>),
     Division(Box<Expression>, Box<Expression>),
@@ -26,6 +31,8 @@ pub enum Expression {
         collection: Box<Expression>,
         body: Box<Expression>,
     },
+    While(Box<Expression>, Box<Expression>),
+    Loop(Box<Expression>),
 
     None,
 }

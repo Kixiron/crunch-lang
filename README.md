@@ -18,16 +18,17 @@
             - [ ] Indexing
             - [ ] Iteration
                 - [ ] For loop integration
-        - [ ] Booleans
+        - [X] Booleans
     - [ ] Semi-static typing
-- [ ] Comments
+    - [ ] Manipulation (Adding, indexing, removing, type info, etc.)
+- [X] Comments
     - [X] Single Line
     - [X] Multiline
         - Also applied the regex logic in order to capture everything from `/*` to `*/` as a comment.
     - [X] Fix string breakout
         - Using a string declaration char (' or ") within a comment will cause it to find the next matching char, creating a long and wrong string, messing everything up
         - Fixed by changing the comment pattern to `#[regex = "//[^\n]+\n"]`. This makes the Comment everything from `//` to a newline, mitigating any breakout
-    - [ ] Documentation Comments
+    - [X] Documentation Comments
         - Doc comments exist, but do nothing special (Yet)
 - [X] Char support
     - Some strange chars will cause the program to panic
@@ -43,15 +44,15 @@
     - [ ] Parameters
     - [ ] Method Calls
 - [ ] Loops
-    - [ ] For
-    - [ ] While
-    - [ ] Loops
+    - [X] For
+    - [X] While
+    - [X] Loops
 - [ ] Logic
     - [ ] If
     - [ ] Else
     - [ ] Else If
-    - [ ] And
-    - [ ] Or
+    - [X] And
+    - [X] Or
     - [ ] Not
 - [ ] Errors
     - [ ] Ergonomic Error Messages
