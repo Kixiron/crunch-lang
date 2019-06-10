@@ -1,3 +1,4 @@
+pub use crate::syntax_error::SyntaxError;
 use std::path::Path;
 
 pub struct Crunch {
@@ -118,17 +119,38 @@ impl Crunch {
     }
 
     #[inline]
-    pub fn syntax_error<'a>(&mut self, token: &crunch_token::TokenData) {
+    pub fn syntax_error<'a>(
+        &mut self,
+        reason: SyntaxError,
+        token: Option<&crunch_token::TokenData>,
+        extra_data: Option<&str>,
+    ) {
         if !self.error_occured {
             self.error_occured = true;
         }
 
-        println!(
-            "[Crunch Syntax Error] {:?} is not a valid token! (Range: {:?}; Value: {:?})",
-            token.kind(),
-            token.range(),
-            token.source(),
-        );
+        if let Some(token) = token {
+            if let Some(extra_data) = extra_data {
+                println!(
+                    "[Crunch Syntax Error] Reason: {}. Data: {}. Token: {:?}",
+                    reason, extra_data, token
+                );
+            } else {
+                println!(
+                    "[Crunch Syntax Error] Reason: {}. Token: {:?}",
+                    reason, token
+                );
+            }
+        } else {
+            if let Some(extra_data) = extra_data {
+                println!(
+                    "[Crunch Syntax Error] Reason: {}. Data: {}",
+                    reason, extra_data
+                );
+            } else {
+                println!("[Crunch Syntax Error] Reason: {}", reason);
+            }
+        }
     }
 }
 

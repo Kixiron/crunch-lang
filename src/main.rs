@@ -1,6 +1,7 @@
 mod cli;
 mod crunch;
 mod parser;
+mod syntax_error;
 
 #[doc(hidden)]
 const fn email() -> &'static str {

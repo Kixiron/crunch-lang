@@ -83,6 +83,8 @@ pub enum Token {
     Not,
     #[token = "if"]
     If,
+    #[token = "else if"]
+    ElseIf,
     #[token = "else"]
     Else,
     #[token = "for"]
@@ -162,6 +164,7 @@ pub enum Token {
     #[token = "|="]
     BitwiseOrEquals,
 
+    #[token = "\t"]
     #[token = "    "]
     Indent,
 
@@ -169,7 +172,6 @@ pub enum Token {
     Newline,
 
     #[token = "\r"]
-    #[token = "\t"]
     #[token = " "]
     WhiteSpace,
 }

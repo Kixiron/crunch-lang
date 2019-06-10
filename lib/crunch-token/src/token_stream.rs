@@ -1,6 +1,6 @@
 use crate::Token;
-use std::{iter::Iterator, ops::Range};
 use logos::Logos;
+use std::{iter::Iterator, ops::Range};
 
 #[derive(Clone)]
 pub struct TokenStream<'source>(Lexer<'source>, bool);

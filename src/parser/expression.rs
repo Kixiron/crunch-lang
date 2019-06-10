@@ -34,5 +34,21 @@ pub enum Expression {
     While(Box<Expression>, Box<Expression>),
     Loop(Box<Expression>),
 
+    If {
+        condition: Box<Expression>,
+        body: Box<Expression>,
+        continuation: Option<Box<Expression>>,
+    },
+    ElseIf {
+        condition: Box<Expression>,
+        body: Box<Expression>,
+        continuation: Option<Box<Expression>>,
+    },
+    Else {
+        condition: Box<Expression>,
+        body: Box<Expression>,
+    },
+
+    EndOfFile,
     None,
 }

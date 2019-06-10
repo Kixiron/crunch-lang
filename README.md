@@ -19,6 +19,7 @@
             - [ ] Iteration
                 - [ ] For loop integration
         - [X] Booleans
+        - [ ] Uninitialized variables
     - [ ] Semi-static typing
     - [ ] Manipulation (Adding, indexing, removing, type info, etc.)
 - [X] Comments
@@ -40,6 +41,7 @@
         - [ ] Valid encoding
 - [ ] Methods
     - [ ] Scoping
+        - Spaces and tabs supported
     - [ ] Naming
     - [ ] Parameters
     - [ ] Method Calls
@@ -48,9 +50,9 @@
     - [X] While
     - [X] Loops
 - [ ] Logic
-    - [ ] If
-    - [ ] Else
-    - [ ] Else If
+    - [X] If
+    - [X] Else
+    - [X] Else If
     - [X] And
     - [X] Or
     - [ ] Not
@@ -75,10 +77,13 @@
 - [ ] Garbage Collector
 - [ ] Tooling
     - [ ] All commandline-friendly tools
-    - [ ] Package Manager (Cruncher?)
+    - [ ] Package Manager
     - [ ] Build Manager
     - [ ] Formatter
     - [ ] Documenter
+    - Names
+        - Cruncher
+        - Compacter
 - [ ] Comprehensive Testing
 - [ ] Comprehensive Benchmarking
     - Improve off of benchmark results to increase speed

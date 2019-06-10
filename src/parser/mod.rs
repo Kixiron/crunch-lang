@@ -3,9 +3,10 @@ pub mod expression;
 use crate::crunch::Crunch;
 use crunch_token::{TokenData, TokenStream};
 pub use expression::*;
+use std::iter::Peekable;
 
 pub struct Parser<'crunch, 'source> {
-    token_stream: Box<dyn Iterator<Item = TokenData<'source>> + 'source>,
+    token_stream: Peekable<Box<dyn Iterator<Item = TokenData<'source>> + 'source>>,
     crunch: &'crunch mut Crunch,
     current: TokenData<'source>,
     end_of_file: bool,
@@ -14,8 +15,10 @@ pub struct Parser<'crunch, 'source> {
 /// The public interfaces of the Parser
 impl<'crunch, 'source> Parser<'crunch, 'source> {
     pub fn new(token_stream: TokenStream<'source>, crunch: &'crunch mut Crunch) -> Self {
+        // Workaround to appease type inference
+        let iter: Box<Iterator<Item = TokenData<'source>>> = Box::new(token_stream.into_iter());
         Self {
-            token_stream: Box::new(token_stream.into_iter()),
+            token_stream: iter.peekable(),
             crunch,
             // Kinda hacky, the token loop operates off of each token_stream.next(),
             // so it will skip the token loaded into `current` here
@@ -43,7 +46,7 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
             }
         }
 
-        tree.retain(|node| node != &Expression::None); // Remove any `None` from the tree
+        // tree.retain(|node| node != &Expression::None); // Remove any `None` from the tree
         tree
     }
 }
@@ -51,36 +54,17 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
 /// The internal methods of the parser class
 impl<'crunch, 'source> Parser<'crunch, 'source> {
     #[inline]
-    fn skip_error(self, token: TokenData) -> Self {
-        use crunch_token::Token::Newline;
-
-        // Throw a syntax error
-        self.crunch.syntax_error(&token);
-
-        // Skip the remainder of the line to avoid excessive errors
-        Self {
-            token_stream: Box::new(
-                self.token_stream
-                    .skip_while(|token| token.kind() != &Newline)
-                    .skip(1)
-                    .into_iter(),
-            ),
-            crunch: self.crunch,
-            current: self.current,
-            end_of_file: self.end_of_file,
-        }
-    }
-
-    #[inline]
     fn remove_whitespace(self) -> Self {
         use crunch_token::Token::WhiteSpace;
 
+        let iter: Box<Iterator<Item = TokenData<'source>>> = Box::new(
+            self.token_stream
+                .filter(|token| token.kind() != &WhiteSpace)
+                .into_iter(),
+        );
+
         Self {
-            token_stream: Box::new(
-                self.token_stream
-                    .filter(|token| token.kind() != &WhiteSpace)
-                    .into_iter(),
-            ),
+            token_stream: iter.peekable(),
             crunch: self.crunch,
             current: self.current,
             end_of_file: self.end_of_file,
@@ -98,8 +82,10 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
                 || *token.kind() == DocComment)
         });
 
+        let iter: Box<Iterator<Item = TokenData<'source>>> = Box::new(token_stream.into_iter());
+
         Self {
-            token_stream: Box::new(token_stream.into_iter()),
+            token_stream: iter.peekable(),
             crunch: self.crunch,
             current: self.current,
             end_of_file: self.end_of_file,
@@ -107,13 +93,14 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
     }
 
     #[inline]
-    fn next_token(&mut self) {
-        self.current = self.token_stream.next().unwrap();
-    }
-
-    #[inline]
     fn next(&mut self) -> Option<TokenData<'source>> {
         self.token_stream.next()
+    }
+
+    // FIXME: Ownership tussle
+    #[inline]
+    fn peek(&mut self) -> Option<&TokenData<'source>> {
+        self.token_stream.peek()
     }
 }
 
@@ -146,7 +133,17 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
             Token::Multiply => {
                 if let Some(next) = self.next().clone() {
                     Expression::Multiplication(
-                        Box::new(tree.pop().unwrap()),
+                        Box::new(match tree.pop() {
+                            Some(expr) => expr,
+                            None => {
+                                self.crunch.syntax_error(
+                                    crate::crunch::SyntaxError::MissingLeftHand,
+                                    None,
+                                    Some("You must supply a left-hand item to multiply"),
+                                );
+                                Expression::None
+                            }
+                        }),
                         Box::new(self.eval_expr(next, &mut tree)),
                     )
                 } else {
@@ -157,7 +154,17 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
             Token::Divide => {
                 if let Some(next) = self.next().clone() {
                     Expression::Division(
-                        Box::new(tree.pop().unwrap()),
+                        Box::new(match tree.pop() {
+                            Some(expr) => expr,
+                            None => {
+                                self.crunch.syntax_error(
+                                    crate::crunch::SyntaxError::MissingLeftHand,
+                                    None,
+                                    Some("You must supply a left-hand item to divide"),
+                                );
+                                Expression::None
+                            }
+                        }),
                         Box::new(self.eval_expr(next, &mut tree)),
                     )
                 } else {
@@ -168,7 +175,17 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
             Token::Plus => {
                 if let Some(next) = self.next().clone() {
                     Expression::Addition(
-                        Box::new(tree.pop().unwrap()),
+                        Box::new(match tree.pop() {
+                            Some(expr) => expr,
+                            None => {
+                                self.crunch.syntax_error(
+                                    crate::crunch::SyntaxError::MissingLeftHand,
+                                    None,
+                                    Some("You must supply a left-hand item to add"),
+                                );
+                                Expression::None
+                            }
+                        }),
                         Box::new(self.eval_expr(next, &mut tree)),
                     )
                 } else {
@@ -179,7 +196,17 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
             Token::Minus => {
                 if let Some(next) = self.next().clone() {
                     Expression::Subtraction(
-                        Box::new(tree.pop().unwrap()),
+                        Box::new(match tree.pop() {
+                            Some(expr) => expr,
+                            None => {
+                                self.crunch.syntax_error(
+                                    crate::crunch::SyntaxError::MissingLeftHand,
+                                    None,
+                                    Some("You must supply a left-hand item to subtract"),
+                                );
+                                Expression::None
+                            }
+                        }),
                         Box::new(self.eval_expr(next, &mut tree)),
                     )
                 } else {
@@ -194,7 +221,17 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
             Token::And => {
                 if let Some(next) = self.next().clone() {
                     Expression::And(
-                        Box::new(tree.pop().unwrap()),
+                        Box::new(match tree.pop() {
+                            Some(expr) => expr,
+                            None => {
+                                self.crunch.syntax_error(
+                                    crate::crunch::SyntaxError::MissingLeftHand,
+                                    None,
+                                    Some("You must supply a left-hand item to apply and to"),
+                                );
+                                Expression::None
+                            }
+                        }),
                         Box::new(self.eval_expr(next, &mut tree)),
                     )
                 } else {
@@ -205,7 +242,17 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
             Token::Or => {
                 if let Some(next) = self.next().clone() {
                     Expression::Or(
-                        Box::new(tree.pop().unwrap()),
+                        Box::new(match tree.pop() {
+                            Some(expr) => expr,
+                            None => {
+                                self.crunch.syntax_error(
+                                    crate::crunch::SyntaxError::MissingLeftHand,
+                                    None,
+                                    Some("You must supply a left-hand item to apply or to"),
+                                );
+                                Expression::None
+                            }
+                        }),
                         Box::new(self.eval_expr(next, &mut tree)),
                     )
                 } else {
@@ -229,7 +276,11 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
                     } else if *token.kind() == Token::RightBracket {
                         return Expression::Vector(Box::new(vector));
                     } else {
-                        self.crunch.syntax_error(&token);
+                        self.crunch.syntax_error(
+                            crate::crunch::SyntaxError::MissingClosingBracket,
+                            Some(&token),
+                            Some("You must close a vector when you open it with a ["),
+                        );
                         return Expression::None;
                     }
                 }
@@ -255,7 +306,7 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
                                             Box::new(self.eval_expr(next, &mut tree)),
                                         ),
                                         _ => {
-                                            self.crunch.syntax_error(&next);
+                                            self.crunch.syntax_error(crate::crunch::SyntaxError::InvalidType, Some(&next), Some("You must supply a token of a valid type for a variable"));
                                             Expression::None
                                         }
                                     }
@@ -264,7 +315,11 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
                                     Expression::None
                                 }
                             } else {
-                                self.crunch.syntax_error(&next);
+                                self.crunch.syntax_error(
+                                    crate::crunch::SyntaxError::InvalidType,
+                                    Some(&next),
+                                    Some("You must have an `=` to set a variable"),
+                                );
                                 Expression::None
                             }
                         } else {
@@ -272,7 +327,11 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
                             Expression::None
                         }
                     } else {
-                        self.crunch.syntax_error(&next);
+                        self.crunch.syntax_error(
+                            crate::crunch::SyntaxError::NoIdentifier,
+                            Some(&next),
+                            Some("You must have an identifier for a variable"),
+                        );
                         Expression::None
                     }
                 } else {
@@ -327,6 +386,159 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
                 }
             }
 
+            Token::If => {
+                if let Some(token) = self.next().clone() {
+                    let condition = Box::new(self.eval_expr(token, &mut tree));
+
+                    if let Some(token) = self.next().clone() {
+                        let body = Box::new(self.eval_expr(token, &mut tree));
+
+                        if let Some(token) = self.peek().clone() {
+                            if *token.kind() == Token::ElseIf || *token.kind() == Token::Else {
+                                let token = self
+                                    .next()
+                                    .clone()
+                                    .expect("The peeked token does not exist");
+
+                                Expression::If {
+                                    condition,
+                                    body,
+                                    continuation: Some(Box::new(self.eval_expr(token, &mut tree))),
+                                }
+                            } else if *token.kind() == Token::Newline {
+                                self.next().unwrap();
+                                if let Some(token) = self.peek() {
+                                    if *token.kind() == Token::ElseIf
+                                        || *token.kind() == Token::Else
+                                    {
+                                        let token = self
+                                            .next()
+                                            .clone()
+                                            .expect("The peeked token does not exist");
+
+                                        Expression::If {
+                                            condition,
+                                            body,
+                                            continuation: Some(Box::new(
+                                                self.eval_expr(token, &mut tree),
+                                            )),
+                                        }
+                                    } else {
+                                        Expression::If {
+                                            condition,
+                                            body,
+                                            continuation: None,
+                                        }
+                                    }
+                                } else {
+                                    Expression::If {
+                                        condition,
+                                        body,
+                                        continuation: None,
+                                    }
+                                }
+                            } else {
+                                self.end_of_file = true;
+                                Expression::None
+                            }
+                        } else {
+                            self.end_of_file = true;
+                            Expression::None
+                        }
+                    } else {
+                        self.end_of_file = true;
+                        Expression::None
+                    }
+                } else {
+                    self.end_of_file = true;
+                    Expression::None
+                }
+            }
+            Token::ElseIf => {
+                if let Some(token) = self.next().clone() {
+                    let condition = Box::new(self.eval_expr(token, &mut tree));
+
+                    if let Some(token) = self.next().clone() {
+                        let body = Box::new(self.eval_expr(token, &mut tree));
+
+                        if let Some(token) = self.peek().clone() {
+                            if *token.kind() == Token::ElseIf || *token.kind() == Token::Else {
+                                let token = self
+                                    .next()
+                                    .clone()
+                                    .expect("The peeked token does not exist");
+
+                                Expression::ElseIf {
+                                    condition,
+                                    body,
+                                    continuation: Some(Box::new(self.eval_expr(token, &mut tree))),
+                                }
+                            } else if *token.kind() == Token::Newline {
+                                self.next().unwrap();
+                                if let Some(token) = self.peek() {
+                                    if *token.kind() == Token::ElseIf
+                                        || *token.kind() == Token::Else
+                                    {
+                                        let token = self
+                                            .next()
+                                            .clone()
+                                            .expect("The peeked token does not exist");
+
+                                        Expression::ElseIf {
+                                            condition,
+                                            body,
+                                            continuation: Some(Box::new(
+                                                self.eval_expr(token, &mut tree),
+                                            )),
+                                        }
+                                    } else {
+                                        Expression::ElseIf {
+                                            condition,
+                                            body,
+                                            continuation: None,
+                                        }
+                                    }
+                                } else {
+                                    self.end_of_file = true;
+                                    Expression::None
+                                }
+                            } else {
+                                self.end_of_file = true;
+                                Expression::None
+                            }
+                        } else {
+                            self.end_of_file = true;
+                            Expression::None
+                        }
+                    } else {
+                        self.end_of_file = true;
+                        Expression::None
+                    }
+                } else {
+                    self.end_of_file = true;
+                    Expression::None
+                }
+            }
+
+            Token::Else => {
+                if let Some(token) = self.next().clone() {
+                    let condition = Box::new(self.eval_expr(token, &mut tree));
+
+                    if let Some(token) = self.next().clone() {
+                        Expression::Else {
+                            condition,
+                            body: Box::new(self.eval_expr(token, &mut tree)),
+                        }
+                    } else {
+                        self.end_of_file = true;
+                        Expression::None
+                    }
+                } else {
+                    self.end_of_file = true;
+                    Expression::None
+                }
+            }
+
             Token::Indent => {
                 if let Some(next) = self.next().clone() {
                     Expression::Scope(Box::new(self.eval_expr(next, &mut tree)))
@@ -348,11 +560,15 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
 
             Token::EndOfFile => {
                 self.end_of_file = true;
-                Expression::None
+                Expression::EndOfFile
             }
 
             _ => {
-                self.crunch.syntax_error(&token);
+                self.crunch.syntax_error(
+                    crate::crunch::SyntaxError::Unsupported,
+                    Some(&token),
+                    Some("This token is not supported yet!"),
+                );
                 Expression::None
             }
         }
