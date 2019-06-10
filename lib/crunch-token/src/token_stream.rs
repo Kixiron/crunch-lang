@@ -40,16 +40,16 @@ pub struct TokenData<'a> {
 }
 
 impl<'a> TokenData<'a> {
-    pub fn kind(&self) -> &Token {
-        &self.kind
+    pub fn kind(&self) -> Token {
+        self.kind.clone()
     }
 
     pub fn source(&self) -> <&'a str as logos::Source<'a>>::Slice {
         self.source
     }
 
-    pub fn range(&self) -> &Range<usize> {
-        &self.range
+    pub fn range(&self) -> Range<usize> {
+        self.range.clone()
     }
 }
 

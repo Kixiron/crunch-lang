@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 #[derive(Debug, PartialEq)]
 pub enum Expression {
     IntLiteral(i32),
@@ -49,6 +51,7 @@ pub enum Expression {
         body: Box<Expression>,
     },
 
+    Invalid(String, Range<usize>),
     EndOfFile,
     None,
 }
