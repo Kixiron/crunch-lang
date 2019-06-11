@@ -98,12 +98,12 @@
     - Names
         - Cruncher
         - Compacter
-        - Crunchball
 - [ ] Comprehensive Testing
 - [ ] Comprehensive Benchmarking
     - Improve off of benchmark results to increase speed
 - [ ] Stabilize and assure using `no-panic`
 - [ ] Add better user experience using `human-panic`
+    - [ ] Custom, randomized friendly error messages
 - [ ] Decide on variable mutability by default
     - `mut` for mutable like Rust
 - [ ] Standardize and comment codebase

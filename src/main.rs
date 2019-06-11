@@ -13,6 +13,15 @@ fn main() {
     use crunch::Crunch;
     use structopt::StructOpt;
 
+    human_panic::setup_panic!(human_panic::Metadata {
+        version: env!("CARGO_PKG_VERSION").into(),
+        name: "Crunch".into(),
+        authors: env!("CARGO_PKG_AUTHORS").replace(":", ", ").into(),
+        homepage: env!("CARGO_PKG_HOMEPAGE").into(),
+    });
+
+    panic!("Test");
+
     let cli = Cli::from_args();
     let mut crunch = Crunch::new();
 

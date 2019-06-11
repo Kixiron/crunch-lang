@@ -138,6 +138,24 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
             Expression::EndOfFile
         }
     }
+
+    // Current usage is broken
+    #[inline]
+    fn peek_checked<F>(&mut self, callback: F) -> Expression
+    where
+        F: FnOnce(&mut Parser<'crunch, 'source>) -> Expression,
+    {
+        // If there is a next token
+        if let Some(token) = self.peek() {
+            // Execute the callback
+            callback(self)
+
+        // If there are no more tokens, the end of the file has been reached
+        } else {
+            self.end_of_file = true;
+            Expression::EndOfFile
+        }
+    }
 }
 
 /// Evaluate an expression
@@ -157,7 +175,7 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
             // Integer Literal grammar
             // (Expression -> Integer)
             Token::IntLiteral => {
-                let source = token.source().to_owned();
+                let source = token.source().to_owned().replace("_", "");
                 let sign = if source.chars().nth(0) == Some('-') {
                     Sign::Negative
                 } else {
@@ -182,7 +200,10 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
                                     Err(_) => match source.parse::<u128>() {
                                         Ok(int) => Expression::IntLiteral(IntType::_u128(int, sign)),
                                         Err(_) => Expression::Invalid(
-                                            format!("`{}` is not a valid integer. You might try removing invalid characters or making it shorter", token.source()),
+                                            format!(
+                                                "`{}` is not a valid integer. You might try removing invalid characters or making it shorter",
+                                                token.source()
+                                            ),
                                             token.range(),
                                         ),
                                     },
@@ -205,7 +226,10 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
 
                     // If all parsing attempts fail, then it is not valid
                     Err(err) => Expression::Invalid(
-                        format!("`{}` is not a valid integer. You might try removing invalid characters or making it shorter", token.source()),
+                        format!(
+                            "`{}` is not a valid integer. You might try removing invalid characters or making it shorter",
+                            token.source()
+                        ),
                         token.range(),
                     ),
                 },
@@ -408,171 +432,144 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
 
             // Let binding grammar
             // let (Identifier): (Type) = (Expression -> Value)
-            Token::Variable => {
-                self.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
-                    if parser.current.kind() == Token::Identifier {
-                        let var_name = parser.current.source().to_owned();
+            Token::Variable => self.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
+                if parser.current.kind() == Token::Identifier {
+                    let var_name = parser.current.source().to_owned();
 
-                        parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
-                            if parser.current.kind() == Token::Equals {
-                                parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
-                                    if parser.current.is_raw_var() || parser.current.kind() == Token::LeftBracket {
-                                        Expression::Variable(
-                                            var_name,
-                                            None,
-                                            Box::new(parser.eval_expr(parser.current.clone(), &mut tree)),
-                                        )
-                                    } else {
-                                        Expression::Invalid(
-                                            "An invalid variable type was supplied!".to_string(),
-                                            parser.current.range(),
-                                        )
-                                    }
-                                })
-                            } else if parser.current.kind() == Token::Colon {
-                                parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
-                                    if parser.current.is_var_type() {
-                                        let var_type = Box::new(parser.eval_expr(parser.current.clone(), &mut tree));
+                    parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
+                        if parser.current.kind() == Token::Equals {
+                            parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
+                                if parser.current.is_raw_var() || parser.current.kind() == Token::LeftBracket {
+                                    Expression::Variable(
+                                        var_name,
+                                        None,
+                                        Box::new(parser.eval_expr(parser.current.clone(), &mut tree)),
+                                    )
+                                } else {
+                                    Expression::Invalid(
+                                        "An invalid variable type was supplied!".to_string(),
+                                        parser.current.range(),
+                                    )
+                                }
+                            })
+                        } else if parser.current.kind() == Token::Colon {
+                            parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
+                                println!("{:?}", parser.current);
+                                println!("{:?}", parser.current.is_var_type());
+                                if parser.current.is_var_type() {
+                                    let var_type = Box::new(parser.eval_expr(parser.current.clone(), &mut tree));
 
-                                        parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
-                                            if parser.current.kind() == Token::Equals {
-                                                parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
-                                                    if parser.current.is_raw_var() {
-                                                        Expression::Variable(
-                                                            var_name,
-                                                            Some(var_type),
-                                                            Box::new(parser.eval_expr(parser.current.clone(), &mut tree))
-                                                        )
-                                                    } else {
-                                                        Expression::Invalid("Expected an `=` or a `:`".to_string(), token.range())
-                                                    }
-                                                })
-                                            } else {
-                                                Expression::Invalid(
-                                                    "An invalid variable type was supplied".to_string(),
-                                                    parser.current.range(),
-                                                )
-                                            }
-                                        })
-                                    } else {
-                                        Expression::Invalid("That is not a valid variable type".to_string(), parser.current.range())
-                                    }
-                                })
-                            } else {
-                                Expression::Invalid("Expected an `=` or a `:`".to_string(), parser.current.range())
-                            }
-                        })
-                    } else {
-                        Expression::Invalid("A `let` binding was used, but no identifier or variable name was given".to_string(), parser.current.range())
-                    }
-                })
-            }
+                                    parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
+                                        if parser.current.kind() == Token::Equals {
+                                            parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
+                                                if parser.current.is_raw_var() || parser.current.kind() == Token::LeftBracket {
+                                                    Expression::Variable(
+                                                        var_name,
+                                                        Some(var_type),
+                                                        Box::new(parser.eval_expr(parser.current.clone(), &mut tree))
+                                                    )
+                                                } else {
+                                                    Expression::Invalid("A variable must have a value".to_string(), token.range())
+                                                }
+                                            })
+                                        } else {
+                                            Expression::Invalid(
+                                                "Expected an `=`".to_string(),
+                                                parser.current.range(),
+                                            )
+                                        }
+                                    })
+                                } else {
+                                    Expression::Invalid("That is not a valid variable type".to_string(), parser.current.range())
+                                }
+                            })
+                        } else {
+                            Expression::Invalid("Expected an `=` or a `:`".to_string(), parser.current.range())
+                        }
+                    })
+                } else {
+                    Expression::Invalid("A `let` binding was used, but no identifier or variable name was given".to_string(), parser.current.range())
+                }
+            }),
 
             // For loop grammar:
             // for (Expression -> Item) in (Expression -> Collection)
             // ....(Expression -> Body) // Apply the body to/for each item in the collection
-            Token::For => {
-                // Get the next token
-                if let Some(token) = self.next() {
-                    // If the token is an Identifier, continue
-                    if token.kind() == Token::Identifier {
-                        // Store the item name
-                        let item = token.source().to_owned();
+            Token::For => self.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
+                if parser.current.kind() == Token::Identifier {
+                    let item = parser.current.source().to_owned();
 
-                        if let Some(token) = self.next() {
-                            if token.kind() == Token::In {
-                                if let Some(token) = self.next() {
-                                    // Evaluate the collection to be iterated over
-                                    let collection = Box::new(self.eval_expr(token, &mut tree));
+                    parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
+                        if token.kind() == Token::In {
+                            parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
+                                let collection = Box::new(parser.eval_expr(parser.current.clone(), &mut tree));
 
-                                    if let Some(token) = self.next() {
-                                        // Evaluate the body and return the complete expression
-                                        return Expression::For {
-                                            item,
-                                            collection,
-                                            body: Box::new(self.eval_expr(token, &mut tree)),
-                                        };
+                                parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
+                                    Expression::For {
+                                        item,
+                                        collection,
+                                        body: Box::new(parser.eval_expr(parser.current.clone(), &mut tree)),
                                     }
-                                }
-                            } else {
-                                // If the token is not an identifier, return an invalid expression
-                                return Expression::Invalid("A `for .. in` binding was used, but no identifer or variable name was supplied".to_string(), token.range());
-                            }
+                                })
+                            })
+                        } else {
+                            // If the token is not an identifier, return an invalid expression
+                            return Expression::Invalid("A `for .. in` binding was used, but no identifer or variable name was supplied".to_string(), token.range());
                         }
-                    } else {
-                        // If the token is not an identifier, return an invalid expression
-                        return Expression::Invalid("A `for` binding was used, but no identifer or variable name was supplied".to_string(), token.range());
-                    }
-                }
-
-                self.end_of_file = true;
-                Expression::EndOfFile
-            }
-
-            Token::While => {
-                if let Some(token) = self.next() {
-                    Expression::While(
-                        Box::new(match tree.pop() {
-                            Some(condition) => condition,
-                            None => Expression::Invalid(
-                                "No left-hand side was provided to the while loop!".to_string(),
-                                token.range(),
-                            ),
-                        }),
-                        Box::new(self.eval_expr(token, &mut tree)),
-                    )
+                    })
                 } else {
-                    self.end_of_file = true;
-                    Expression::EndOfFile
+                    // If the token is not an identifier, return an invalid expression
+                    return Expression::Invalid("A `for` binding was used, but no identifer or variable name was supplied".to_string(), token.range());
                 }
-            }
+            }),
 
-            Token::Loop => {
-                if let Some(token) = self.next() {
-                    Expression::Loop(Box::new(self.eval_expr(token, &mut tree)))
-                } else {
-                    self.end_of_file = true;
-                    Expression::EndOfFile
-                }
-            }
+            Token::While => self.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
+                Expression::While(
+                    Box::new(match tree.pop() {
+                        Some(condition) => condition,
+                        None => Expression::Invalid(
+                            "No left-hand side was provided to the while loop!".to_string(),
+                            parser.current.range(),
+                        ),
+                    }),
+                    Box::new(parser.eval_expr(parser.current.clone(), &mut tree)),
+                )
+            }),
 
-            Token::If => {
-                if let Some(token) = self.next() {
-                    let condition = Box::new(self.eval_expr(token, &mut tree));
+            Token::Loop => self.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
+                Expression::Loop(Box::new(parser.eval_expr(parser.current.clone(), &mut tree)))
+            }),
 
-                    if let Some(token) = self.next() {
-                        let body = Box::new(self.eval_expr(token, &mut tree));
+            Token::If => self.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
+                let condition = Box::new(parser.eval_expr(parser.current.clone(), &mut tree));
 
-                        if let Some(token) = self.peek() {
-                            if token.kind() == Token::ElseIf || token.kind() == Token::Else {
-                                let token = self.next().expect("The peeked token does not exist");
+                parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
+                    let body = Box::new(parser.eval_expr(parser.current.clone(), &mut tree));
 
-                                Expression::If {
-                                    condition,
-                                    body,
-                                    continuation: Some(Box::new(self.eval_expr(token, &mut tree))),
-                                }
-                            } else if token.kind() == Token::Newline {
-                                self.next().unwrap();
-                                if let Some(token) = self.peek() {
-                                    if token.kind() == Token::ElseIf || token.kind() == Token::Else
-                                    {
-                                        let token =
-                                            self.next().expect("The peeked token does not exist");
+                    parser.peek_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
+                        if parser.current.kind() == Token::ElseIf
+                            || parser.current.kind() == Token::Else
+                        {
+                            let token = parser.next().expect("The peeked token does not exist!");
+                
+                            Expression::If {
+                                condition,
+                                body,
+                                continuation: Some(Box::new(parser.eval_expr(token, &mut tree))),
+                            }
+                        } else if parser.current.kind() == Token::Newline {
+                            parser.next().expect("The peeked token does not exist!");
 
-                                        Expression::If {
-                                            condition,
-                                            body,
-                                            continuation: Some(Box::new(
-                                                self.eval_expr(token, &mut tree),
-                                            )),
-                                        }
-                                    } else {
-                                        Expression::If {
-                                            condition,
-                                            body,
-                                            continuation: None,
-                                        }
+                            parser.peek_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
+                                if parser.current.kind() == Token::ElseIf 
+                                    || parser.current.kind() == Token::Else
+                                {
+                                    let token = parser.next().expect("The peeked token does not exist!");
+                
+                                    Expression::If {
+                                        condition,
+                                        body,
+                                        continuation: Some(Box::new(parser.eval_expr(token, &mut tree))),
                                     }
                                 } else {
                                     Expression::If {
@@ -581,23 +578,17 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
                                         continuation: None,
                                     }
                                 }
-                            } else {
-                                self.end_of_file = true;
-                                Expression::None
-                            }
+                            })
                         } else {
-                            self.end_of_file = true;
-                            Expression::None
+                            Expression::If {
+                                condition,
+                                body,
+                                continuation: None,
+                            }
                         }
-                    } else {
-                        self.end_of_file = true;
-                        Expression::None
-                    }
-                } else {
-                    self.end_of_file = true;
-                    Expression::None
-                }
-            }
+                    })
+                })
+            }),
 
             Token::ElseIf => {
                 if let Some(token) = self.next() {
