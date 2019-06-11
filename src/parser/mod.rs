@@ -36,6 +36,8 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
     }
 
     /// Create an Abstract Syntax Tree from the token stream
+    // TODO: Find out if a continual yielding of nodes is possible by using generators,
+    // then feeding the generator to the evaluator in order to speed up interpretation time
     pub fn parse(mut self) -> Vec<Expression> {
         // Remove whitespace and comments from the token stream
         // TODO: Find out if parse-time removal/ignorance is faster
@@ -116,11 +118,32 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
     fn peek(&mut self) -> Option<&TokenData<'source>> {
         self.token_stream.peek()
     }
+
+    #[inline]
+    fn next_checked<F>(&mut self, callback: F) -> Expression
+    where
+        F: FnOnce(&mut Parser<'crunch, 'source>) -> Expression,
+    {
+        // If there is a next token
+        if let Some(token) = self.next() {
+            // Set the current token
+            self.current = token;
+
+            // Execute the callback
+            callback(self)
+
+        // If there are no more tokens, the end of the file has been reached
+        } else {
+            self.end_of_file = true;
+            Expression::EndOfFile
+        }
+    }
 }
 
 /// Evaluate an expression
 // TODO: This function is absolutely bogged down by the manual checking of valid `next` calls,
 // Something needs to be done to either pass that onto a separate funcion or a macro
+// TODO: Use peek() more often and consume only when needed
 impl<'crunch, 'source> Parser<'crunch, 'source> {
     fn eval_expr(
         &mut self,
@@ -133,23 +156,59 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
         match token.kind() {
             // Integer Literal grammar
             // (Expression -> Integer)
-            Token::IntLiteral => match token.source().parse::<i32>() {
-                Ok(int) => Expression::IntLiteral(int),
-                // If unable to be parsed, return an invalid expression
-                Err(_) => Expression::Invalid(
-                    format!("`{}` is not a valid integer", token.source()),
-                    token.range(),
-                ),
-            },
-            Token::FloatLiteral => match token.source().parse::<f32>() {
-                Ok(float) => Expression::FloatLiteral(float),
-                Err(_) => {
-                    // Keep same error message because floats are only compiler-side
-                    Expression::Invalid(
-                        format!("`{}` is not a valid integer", token.source()),
-                        token.range(),
-                    )
+            Token::IntLiteral => {
+                let source = token.source().to_owned();
+                let sign = if source.chars().nth(0) == Some('-') {
+                    Sign::Negative
+                } else {
+                    Sign::Positive
+                };
+
+                // This is a thing.
+                // It checks if each int type is parsable to, if not it assumes an overflow and
+                // continues to the next largest int size until it hits u128, where it reports that the integer is invalid
+                // TODO: No assumptions. Find out if the int has overflowed or is truly invalid
+                // TODO: Maybe match prospective int's length against the string length of each int type to make parsing quicker?
+                match source.parse::<i32>() {
+                    Ok(int) => Expression::IntLiteral(IntType::_i32(int)),
+                    Err(_) => match source.parse::<u32>() {
+                        Ok(int) => Expression::IntLiteral(IntType::_u32(int, sign)),
+                        Err(_) => match source.parse::<i64>() {
+                            Ok(int) => Expression::IntLiteral(IntType::_i64(int)),
+                            Err(_) => match source.parse::<u64>() {
+                                Ok(int) => Expression::IntLiteral(IntType::_u64(int, sign)),
+                                Err(_) => match source.parse::<i128>() {
+                                    Ok(int) => Expression::IntLiteral(IntType::_i128(int)),
+                                    Err(_) => match source.parse::<u128>() {
+                                        Ok(int) => Expression::IntLiteral(IntType::_u128(int, sign)),
+                                        Err(_) => Expression::Invalid(
+                                            format!("`{}` is not a valid integer. You might try removing invalid characters or making it shorter", token.source()),
+                                            token.range(),
+                                        ),
+                                    },
+                                },
+                            },
+                        },
+                    },
                 }
+            },
+
+            // Float Literal grammar
+            // (Expression -> Float)
+            // First parse the number as a 32-bit float
+            Token::FloatLiteral => match token.source().parse::<f32>() {
+                Ok(float) => Expression::FloatLiteral(FloatType::_f32(float)),
+
+                // If parsing fails, attempt to parse as a 64-bit float
+                Err(err) => match token.source().parse::<f64>() {
+                    Ok(float) => Expression::FloatLiteral(FloatType::_f64(float)),
+
+                    // If all parsing attempts fail, then it is not valid
+                    Err(err) => Expression::Invalid(
+                        format!("`{}` is not a valid integer. You might try removing invalid characters or making it shorter", token.source()),
+                        token.range(),
+                    ),
+                },
             },
 
             // String Literal grammar
@@ -159,6 +218,13 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
                 // so the indexing is to remove the leading and trailing quotes
                 Expression::StringLiteral(token.source()[1..token.source().len() - 1].to_owned())
             }
+
+            // These directly transfer
+            Token::Null => Expression::Null,
+            Token::Bool => Expression::Bool,
+            Token::Vector => Expression::Vec,
+            Token::Str => Expression::Str,
+            Token::Int => Expression::Int,
 
             // Multiplication grammar
             // (Expression -> Integer) * (Expression -> Integer) -> Value
@@ -311,16 +377,12 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
 
                     // If the token is not a closing bracket and is a variable
                     // TODO: At some point custom classes will also have to be included in this
-                    if token_kind != Token::RightBracket
-                        && (token_kind == Token::StrLiteral
-                            || token_kind == Token::IntLiteral
-                            || token_kind == Token::FloatLiteral)
-                    {
+                    if token_kind != Token::RightBracket && self.current.is_raw_var() {
                         // Evaluate and push to the Vec
                         vector.push(self.eval_expr(token, &mut tree));
 
                     // If the token is a comma, continue
-                    } else if token_kind == Token::Comma {
+                    } else if token_kind == Token::Comma || token_kind == Token::Newline || token_kind == Token::Indent {
                         continue;
 
                     // If the token is a closing bracket, package the Vec and return it as an expression
@@ -345,60 +407,65 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
             }
 
             // Let binding grammar
-            // let (Identifier) = (Expression -> Value)
+            // let (Identifier): (Type) = (Expression -> Value)
             Token::Variable => {
-                if let Some(token) = self.next() {
-                    // If the token is an identifier
-                    if token.kind() == Token::Identifier {
-                        // Save the variable's name for later
-                        let var_name = token.source().to_owned();
+                self.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
+                    if parser.current.kind() == Token::Identifier {
+                        let var_name = parser.current.source().to_owned();
 
-                        // Get the next token
-                        if let Some(token) = self.next() {
-                            // If the token is an equals sign
-                            if token.kind() == Token::Equals {
-                                // Get the next token
-                                if let Some(token) = self.next() {
-                                    // Match the type of the token
-                                    match token.kind() {
-                                        // If a variable type, return a variable expression with the next token as the value
-                                        // of the variable
-                                        // TODO: THis will have to accept custom classes in the future
-                                        Token::StrLiteral
-                                        | Token::IntLiteral
-                                        | Token::FloatLiteral
-                                        | Token::LeftBracket => Expression::Variable(
+                        parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
+                            if parser.current.kind() == Token::Equals {
+                                parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
+                                    if parser.current.is_raw_var() || parser.current.kind() == Token::LeftBracket {
+                                        Expression::Variable(
                                             var_name,
-                                            Box::new(self.eval_expr(token, &mut tree)),
-                                        ),
-
-                                        // If the token is not a variable type, return an invalid expression
-                                        _ => Expression::Invalid(
+                                            None,
+                                            Box::new(parser.eval_expr(parser.current.clone(), &mut tree)),
+                                        )
+                                    } else {
+                                        Expression::Invalid(
                                             "An invalid variable type was supplied!".to_string(),
-                                            token.range(),
-                                        ),
+                                            parser.current.range(),
+                                        )
                                     }
-                                } else {
-                                    self.end_of_file = true;
-                                    Expression::EndOfFile
-                                }
+                                })
+                            } else if parser.current.kind() == Token::Colon {
+                                parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
+                                    if parser.current.is_var_type() {
+                                        let var_type = Box::new(parser.eval_expr(parser.current.clone(), &mut tree));
+
+                                        parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
+                                            if parser.current.kind() == Token::Equals {
+                                                parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
+                                                    if parser.current.is_raw_var() {
+                                                        Expression::Variable(
+                                                            var_name,
+                                                            Some(var_type),
+                                                            Box::new(parser.eval_expr(parser.current.clone(), &mut tree))
+                                                        )
+                                                    } else {
+                                                        Expression::Invalid("Expected an `=` or a `:`".to_string(), token.range())
+                                                    }
+                                                })
+                                            } else {
+                                                Expression::Invalid(
+                                                    "An invalid variable type was supplied".to_string(),
+                                                    parser.current.range(),
+                                                )
+                                            }
+                                        })
+                                    } else {
+                                        Expression::Invalid("That is not a valid variable type".to_string(), parser.current.range())
+                                    }
+                                })
                             } else {
-                                // No equal sign was used, so return an invalid expression
-                                // TODO: This must also account for uninitialized variables
-                                Expression::Invalid("A `let` binding was used, but no `=` was used to give it a value".to_string(), token.range())
+                                Expression::Invalid("Expected an `=` or a `:`".to_string(), parser.current.range())
                             }
-                        } else {
-                            self.end_of_file = true;
-                            Expression::EndOfFile
-                        }
+                        })
                     } else {
-                        // If no identifier is supplied, return an invalid expression
-                        Expression::Invalid("A `let` binding was used, but no identifier or variable name was given".to_string(), token.range())
+                        Expression::Invalid("A `let` binding was used, but no identifier or variable name was given".to_string(), parser.current.range())
                     }
-                } else {
-                    self.end_of_file = true;
-                    Expression::EndOfFile
-                }
+                })
             }
 
             // For loop grammar:

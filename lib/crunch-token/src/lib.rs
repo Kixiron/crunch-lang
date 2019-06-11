@@ -16,6 +16,10 @@ pub enum Token {
     Variable,
     #[regex = "[a-zA-Z_]+"]
     Identifier,
+    #[token = "mut"]
+    Mutable,
+    #[token = "const"]
+    Constant,
 
     #[regex = "//[^\n]+\n"]
     Comment,
@@ -43,6 +47,7 @@ pub enum Token {
     #[regex = r#""[^"]+""#]
     // " This comment exists to spare your/my syntax highlighting
     StrLiteral,
+    // TODO: Allow underscores in integers for better readability
     #[regex = "-?[0-9]+"]
     IntLiteral,
     #[regex = r#"-?[0-9]+\.[0-9]+"#]
@@ -57,6 +62,9 @@ pub enum Token {
 
     #[token = "null"]
     Null,
+
+    #[token = "vector"]
+    Vector,
 
     #[token = "}"]
     RightBrace,

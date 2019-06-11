@@ -51,6 +51,22 @@ impl<'a> TokenData<'a> {
     pub fn range(&self) -> Range<usize> {
         self.range.clone()
     }
+
+    pub fn is_raw_var(&self) -> bool {
+        self.kind() == Token::StrLiteral
+            || self.kind() == Token::IntLiteral
+            || self.kind() == Token::FloatLiteral
+            || self.kind() == Token::Null
+            || self.kind() == Token::True
+            || self.kind() == Token::False
+    }
+
+    pub fn is_var_type(&self) -> bool {
+        self.kind() == Token::Bool
+            || self.kind() == Token::Int
+            || self.kind() == Token::Str
+            || self.kind() == Token::Vector
+    }
 }
 
 type Lexer<'source> = logos::Lexer<Token, &'source str>;
