@@ -8,14 +8,14 @@ license = "MIT"
 readme = "README.md"
 
 [[bin]]
-name = "crunch"
+name = "Crunch"
 path = "./src/main.rs"
 
 [dependencies]
 logos = "0.10.0-rc2"
-human-panic = { path = "./lib/human-panic" }
-crunch-token = { path = "./lib/crunch-token" }
-structopt = "0.2.17"
+human-panic = { path = "./crates/human-panic" }
+crunch-token = { path = "./crates/crunch-token" }
+structopt = "0.2.16"
 no-panic = "0.1.10"
 
 [dev-dependencies]

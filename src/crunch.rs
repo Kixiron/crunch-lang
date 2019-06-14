@@ -1,15 +1,14 @@
-pub use crate::syntax_error::SyntaxError;
 use std::path::Path;
 
 pub struct Crunch {
-    error_occured: bool,
+    error_occurred: bool,
 }
 
 /// All public interfaces to Crunch
 impl Crunch {
     pub fn new() -> Self {
         Self {
-            error_occured: false,
+            error_occurred: false,
         }
     }
 
@@ -64,6 +63,13 @@ impl Crunch {
             }
 
             let lexer = TokenStream::new(&input);
+            println!(
+                "{:#?}",
+                lexer
+                    .clone()
+                    .filter(|token| token.kind() != crunch_token::Token::WhiteSpace)
+                    .collect::<Vec<crunch_token::TokenData>>()
+            );
             let tree = Parser::new(lexer, self).parse();
             println!("{:#?}", tree);
         }
@@ -104,59 +110,18 @@ impl Crunch {
         }
 
         let lexer = TokenStream::new(contents.as_str());
-        println!(
-            "{:#?}",
-            lexer.clone().collect::<Vec<crunch_token::TokenData>>()
-        );
         let tree = Parser::new(lexer, self).parse();
         println!("{:#?}", tree);
     }
 
-    #[inline]
-    pub fn display_info(&mut self) {
+    pub fn display_info(&self) {
         let version = "0.0.0";
         Crunch::display_boxed(&("Crunch v".to_owned() + version));
-    }
-
-    #[inline]
-    pub fn syntax_error<'a>(
-        &mut self,
-        reason: SyntaxError,
-        token: Option<&crunch_token::TokenData>,
-        extra_data: Option<&str>,
-    ) {
-        if !self.error_occured {
-            self.error_occured = true;
-        }
-
-        if let Some(token) = token {
-            if let Some(extra_data) = extra_data {
-                println!(
-                    "[Crunch Syntax Error] Reason: {}. Data: {}. Token: {:?}",
-                    reason, extra_data, token
-                );
-            } else {
-                println!(
-                    "[Crunch Syntax Error] Reason: {}. Token: {:?}",
-                    reason, token
-                );
-            }
-        } else {
-            if let Some(extra_data) = extra_data {
-                println!(
-                    "[Crunch Syntax Error] Reason: {}. Data: {}",
-                    reason, extra_data
-                );
-            } else {
-                println!("[Crunch Syntax Error] Reason: {}", reason);
-            }
-        }
     }
 }
 
 /// Crunch's internal utility functions
 impl Crunch {
-    #[inline]
     fn log(&self, error: &str) {
         use std::{fs::File, io::Write};
 
@@ -167,7 +132,6 @@ impl Crunch {
         ).unwrap();
     }
 
-    #[inline]
     fn display_boxed(content: &str) {
         println!("┌─{}─┐", "─".repeat(content.len()));
         println!("│ {} │", content);

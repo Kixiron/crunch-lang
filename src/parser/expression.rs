@@ -23,7 +23,7 @@ pub enum Expression {
     Addition(Box<Expression>, Box<Expression>),
     Subtraction(Box<Expression>, Box<Expression>),
 
-    Variable(String, Option<Box<Expression>>, Box<Expression>),
+    Variable(String, Box<Expression>, Box<Expression>),
     Scope(Box<Expression>),
     Method {
         name: String,
@@ -32,7 +32,7 @@ pub enum Expression {
     },
     MethodParameter {
         name: String,
-        r#type: Option<String>,
+        kind: String,
     },
     For {
         item: String,
@@ -53,7 +53,6 @@ pub enum Expression {
         continuation: Option<Box<Expression>>,
     },
     Else {
-        condition: Box<Expression>,
         body: Box<Expression>,
     },
 

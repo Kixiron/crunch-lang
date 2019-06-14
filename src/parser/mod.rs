@@ -1,4 +1,5 @@
 pub mod expression;
+mod parsers;
 
 use crate::crunch::Crunch;
 use crunch_token::{TokenData, TokenStream};
@@ -7,31 +8,47 @@ use std::iter::Peekable;
 
 pub struct Parser<'crunch, 'source> {
     /// A peekable stored iterator
-    token_stream: Peekable<Box<dyn Iterator<Item = TokenData<'source>> + 'source>>,
+    // token_stream: Peekable<Box<dyn Iterator<Item = TokenData<'source>> + 'source>>,
+    token_stream: Box<Vec<TokenData<'source>>>,
     /// A mutable reference to the crunch instance that spawned the parse
     crunch: &'crunch mut Crunch,
     /// The current token
     current: TokenData<'source>,
     /// Whether or not the end of the file has been reached and the parsing should terminate
     end_of_file: bool,
+    current_index: usize,
+    allow_wrapping: bool,
 }
 
 /// The public interfaces of the Parser
 impl<'crunch, 'source> Parser<'crunch, 'source> {
     pub fn new(token_stream: TokenStream<'source>, crunch: &'crunch mut Crunch) -> Self {
-        // Workaround to appease type inference
-        let iter: Box<Iterator<Item = TokenData<'source>>> = Box::new(token_stream.into_iter());
+        // // Workaround to appease type inference
+        // let iter: Box<Iterator<Item = TokenData<'source>>> = Box::new(token_stream.into_iter());
+        // Self {
+        //     token_stream: iter.peekable(),
+        //     crunch,
+        //     // Kinda hacky, the token loop operates off of each token_stream.next(),
+        //     // so it will skip the token loaded into `current` here
+        //     current: TokenData {
+        //         kind: crunch_token::Token::WhiteSpace,
+        //         source: " ",
+        //         range: (0, 0),
+        //     },
+        //     end_of_file: false,
+        // }
+
         Self {
-            token_stream: iter.peekable(),
+            token_stream: Box::new(token_stream.collect::<Vec<TokenData>>()),
             crunch,
-            // Kinda hacky, the token loop operates off of each token_stream.next(),
-            // so it will skip the token loaded into `current` here
             current: TokenData {
                 kind: crunch_token::Token::WhiteSpace,
                 source: " ",
-                range: (0..0),
+                range: (0, 0),
             },
             end_of_file: false,
+            current_index: 18446744073709551615,
+            allow_wrapping: true,
         }
     }
 
@@ -41,7 +58,8 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
     pub fn parse(mut self) -> Vec<Expression> {
         // Remove whitespace and comments from the token stream
         // TODO: Find out if parse-time removal/ignorance is faster
-        self = self.remove_whitespace().remove_comments();
+        self.remove_whitespace();
+        self.remove_comments();
 
         // Create the parse tree's vector
         let mut tree = Vec::new();
@@ -54,7 +72,7 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
                 self.current = token.clone();
 
                 // Evaluate the current token as an expression
-                let expr = self.eval_expr(token, &mut tree);
+                let expr = self.eval_expr(&token, &mut tree);
                 // Push the expression to the tree
                 tree.push(expr);
             }
@@ -69,57 +87,71 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
 
 /// The internal methods of the parser class
 impl<'crunch, 'source> Parser<'crunch, 'source> {
-    #[inline]
-    fn remove_whitespace(self) -> Self {
+    fn remove_whitespace(&mut self) {
         use crunch_token::Token::WhiteSpace;
 
-        let iter: Box<Iterator<Item = TokenData<'source>>> = Box::new(
-            self.token_stream
-                .filter(|token| token.kind() != WhiteSpace)
-                .into_iter(),
-        );
+        self.token_stream.retain(|token| token.kind() != WhiteSpace);
 
-        Self {
-            token_stream: iter.peekable(),
-            crunch: self.crunch,
-            current: self.current,
-            end_of_file: self.end_of_file,
-        }
+        // let iter: Box<Iterator<Item = TokenData<'source>>> = Box::new(
+        //     self.token_stream
+        //         .filter(|token| token.kind() != WhiteSpace)
+        //         .into_iter(),
+        // );
+        //
+        // Self {
+        //     token_stream: iter.peekable(),
+        //     crunch: self.crunch,
+        //     current: self.current,
+        //     end_of_file: self.end_of_file,
+        // }
     }
 
-    #[inline]
-    fn remove_comments(self) -> Self {
+    fn remove_comments(&mut self) {
         use crunch_token::Token::{Comment, DocComment, MultilineComment};
 
-        let mut token_stream = self.token_stream.collect::<Vec<TokenData<'source>>>();
-        token_stream.retain(|token| {
-            !(token.kind() == Comment
-                || token.kind() == MultilineComment
-                || token.kind() == DocComment)
+        // let mut token_stream = self.token_stream.collect::<Vec<TokenData<'source>>>();
+        self.token_stream.retain(|token| {
+            token.kind() != Comment
+                && token.kind() != MultilineComment
+                && token.kind() != DocComment
         });
 
-        let iter: Box<Iterator<Item = TokenData<'source>>> = Box::new(token_stream.into_iter());
-
-        Self {
-            token_stream: iter.peekable(),
-            crunch: self.crunch,
-            current: self.current,
-            end_of_file: self.end_of_file,
-        }
+        // let iter: Box<Iterator<Item = TokenData<'source>>> = Box::new(token_stream.into_iter());
+        //
+        // Self {
+        //     token_stream: iter.peekable(),
+        //     crunch: self.crunch,
+        //     current: self.current,
+        //     end_of_file: self.end_of_file,
+        // }
     }
 
-    #[inline]
+    // This is quite possibly the stupidest thing I've ever written
     fn next(&mut self) -> Option<TokenData<'source>> {
-        self.token_stream.next()
+        if self.allow_wrapping {
+            let (current_index, allow_wrapping) = self.current_index.overflowing_add(1);
+            self.allow_wrapping = allow_wrapping;
+            self.current_index = current_index;
+        } else {
+            self.current_index += 1;
+        }
+
+        if self.current_index > self.token_stream.len() - 1 {
+            None
+        } else {
+            Some(self.token_stream[self.current_index])
+        }
     }
 
     // FIXME: Ownership tussle
-    #[inline]
     fn peek(&mut self) -> Option<&TokenData<'source>> {
-        self.token_stream.peek()
+        if self.current_index + 1 > self.token_stream.len() - 1 {
+            None
+        } else {
+            Some(&self.token_stream[self.current_index + 1])
+        }
     }
 
-    #[inline]
     fn next_checked<F>(&mut self, callback: F) -> Expression
     where
         F: FnOnce(&mut Parser<'crunch, 'source>) -> Expression,
@@ -140,15 +172,21 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
     }
 
     // Current usage is broken
-    #[inline]
     fn peek_checked<F>(&mut self, callback: F) -> Expression
     where
-        F: FnOnce(&mut Parser<'crunch, 'source>) -> Expression,
+        F: FnOnce(&mut Parser<'crunch, 'source>, TokenData<'source>) -> Expression,
     {
-        // If there is a next token
-        if let Some(token) = self.peek() {
+        // Weird workaround I had to do to dereference and clone the inner TokenData
+        // so that there were not two mutable references of the Parser active
+        let peek = if let Some(token) = self.peek() {
+            Some((*token).clone())
+        } else {
+            None
+        };
+
+        if let Some(token) = peek {
             // Execute the callback
-            callback(self)
+            callback(self, token)
 
         // If there are no more tokens, the end of the file has been reached
         } else {
@@ -162,81 +200,22 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
 // TODO: This function is absolutely bogged down by the manual checking of valid `next` calls,
 // Something needs to be done to either pass that onto a separate funcion or a macro
 // TODO: Use peek() more often and consume only when needed
+// TODO: See if manual indexing is faster than iteration
 impl<'crunch, 'source> Parser<'crunch, 'source> {
     fn eval_expr(
         &mut self,
-        token: TokenData<'source>,
+        token: &TokenData<'source>,
         mut tree: &mut Vec<Expression>,
     ) -> Expression {
         use crunch_token::Token;
+        use parsers::*;
 
         // Match the token's kind and parse recursively based on that
         match token.kind() {
-            // Integer Literal grammar
-            // (Expression -> Integer)
-            Token::IntLiteral => {
-                let source = token.source().to_owned().replace("_", "");
-                let sign = if source.chars().nth(0) == Some('-') {
-                    Sign::Negative
-                } else {
-                    Sign::Positive
-                };
+            Token::IntLiteral => parse_int_token(self, token, &mut tree),
 
-                // This is a thing.
-                // It checks if each int type is parsable to, if not it assumes an overflow and
-                // continues to the next largest int size until it hits u128, where it reports that the integer is invalid
-                // TODO: No assumptions. Find out if the int has overflowed or is truly invalid
-                // TODO: Maybe match prospective int's length against the string length of each int type to make parsing quicker?
-                match source.parse::<i32>() {
-                    Ok(int) => Expression::IntLiteral(IntType::_i32(int)),
-                    Err(_) => match source.parse::<u32>() {
-                        Ok(int) => Expression::IntLiteral(IntType::_u32(int, sign)),
-                        Err(_) => match source.parse::<i64>() {
-                            Ok(int) => Expression::IntLiteral(IntType::_i64(int)),
-                            Err(_) => match source.parse::<u64>() {
-                                Ok(int) => Expression::IntLiteral(IntType::_u64(int, sign)),
-                                Err(_) => match source.parse::<i128>() {
-                                    Ok(int) => Expression::IntLiteral(IntType::_i128(int)),
-                                    Err(_) => match source.parse::<u128>() {
-                                        Ok(int) => Expression::IntLiteral(IntType::_u128(int, sign)),
-                                        Err(_) => Expression::Invalid(
-                                            format!(
-                                                "`{}` is not a valid integer. You might try removing invalid characters or making it shorter",
-                                                token.source()
-                                            ),
-                                            token.range(),
-                                        ),
-                                    },
-                                },
-                            },
-                        },
-                    },
-                }
-            },
+            Token::FloatLiteral => parse_float_token(self, token, &mut tree),
 
-            // Float Literal grammar
-            // (Expression -> Float)
-            // First parse the number as a 32-bit float
-            Token::FloatLiteral => match token.source().parse::<f32>() {
-                Ok(float) => Expression::FloatLiteral(FloatType::_f32(float)),
-
-                // If parsing fails, attempt to parse as a 64-bit float
-                Err(err) => match token.source().parse::<f64>() {
-                    Ok(float) => Expression::FloatLiteral(FloatType::_f64(float)),
-
-                    // If all parsing attempts fail, then it is not valid
-                    Err(err) => Expression::Invalid(
-                        format!(
-                            "`{}` is not a valid integer. You might try removing invalid characters or making it shorter",
-                            token.source()
-                        ),
-                        token.range(),
-                    ),
-                },
-            },
-
-            // String Literal grammar
-            // "(String)"
             Token::StrLiteral => {
                 // The returned source string includes the quotes,
                 // so the indexing is to remove the leading and trailing quotes
@@ -269,7 +248,7 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
                             ),
                         }),
                         // Populate the right-hand side with the next expression
-                        Box::new(self.eval_expr(token, &mut tree)),
+                        Box::new(self.eval_expr(&token, &mut tree)),
                     )
                 // If there is no next token, then the end of the file has been reached
                 } else {
@@ -294,7 +273,7 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
                                 token.range(),
                             ),
                         }),
-                        Box::new(self.eval_expr(token, &mut tree)),
+                        Box::new(self.eval_expr(&token, &mut tree)),
                     )
                 } else {
                     self.end_of_file = true;
@@ -315,7 +294,7 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
                                 token.range(),
                             ),
                         }),
-                        Box::new(self.eval_expr(token, &mut tree)),
+                        Box::new(self.eval_expr(&token, &mut tree)),
                     )
                 } else {
                     self.end_of_file = true;
@@ -336,7 +315,7 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
                                 token.range(),
                             ),
                         }),
-                        Box::new(self.eval_expr(token, &mut tree)),
+                        Box::new(self.eval_expr(&token, &mut tree)),
                     )
                 } else {
                     self.end_of_file = true;
@@ -360,7 +339,7 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
                                 token.range(),
                             ),
                         }),
-                        Box::new(self.eval_expr(token, &mut tree)),
+                        Box::new(self.eval_expr(&token, &mut tree)),
                     )
                 } else {
                     self.end_of_file = true;
@@ -380,7 +359,7 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
                                 token.range(),
                             ),
                         }),
-                        Box::new(self.eval_expr(token, &mut tree)),
+                        Box::new(self.eval_expr(&token, &mut tree)),
                     )
                 } else {
                     self.end_of_file = true;
@@ -389,7 +368,7 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
             }
 
             // Vector grammar
-            // [(Expression -> Item)..]
+            // [(Item..)]
             Token::LeftBracket => {
                 // Create a Vec to hold the items of the vector
                 // TODO: Is pre-allocation possible?
@@ -403,10 +382,10 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
                     // TODO: At some point custom classes will also have to be included in this
                     if token_kind != Token::RightBracket && self.current.is_raw_var() {
                         // Evaluate and push to the Vec
-                        vector.push(self.eval_expr(token, &mut tree));
+                        vector.push(self.eval_expr(&token, &mut tree));
 
                     // If the token is a comma, continue
-                    } else if token_kind == Token::Comma || token_kind == Token::Newline || token_kind == Token::Indent {
+                    } else if token_kind == Token::Comma {
                         continue;
 
                     // If the token is a closing bracket, package the Vec and return it as an expression
@@ -432,42 +411,33 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
 
             // Let binding grammar
             // let (Identifier): (Type) = (Expression -> Value)
-            Token::Variable => self.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
+            Token::Variable => self.next_checked(|parser: _| -> Expression {
                 if parser.current.kind() == Token::Identifier {
                     let var_name = parser.current.source().to_owned();
 
-                    parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
-                        if parser.current.kind() == Token::Equals {
-                            parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
-                                if parser.current.is_raw_var() || parser.current.kind() == Token::LeftBracket {
-                                    Expression::Variable(
-                                        var_name,
-                                        None,
-                                        Box::new(parser.eval_expr(parser.current.clone(), &mut tree)),
-                                    )
-                                } else {
-                                    Expression::Invalid(
-                                        "An invalid variable type was supplied!".to_string(),
-                                        parser.current.range(),
-                                    )
-                                }
-                            })
-                        } else if parser.current.kind() == Token::Colon {
-                            parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
-                                println!("{:?}", parser.current);
-                                println!("{:?}", parser.current.is_var_type());
+                    parser.next_checked(|parser: _| -> Expression {
+                        if parser.current.kind() == Token::Colon {
+                            parser.next_checked(|parser: _| -> Expression {
                                 if parser.current.is_var_type() {
-                                    let var_type = Box::new(parser.eval_expr(parser.current.clone(), &mut tree));
+                                    let var_type = Box::new(parser.eval_expr(&parser.current.clone(), &mut tree));
 
-                                    parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
+                                    parser.next_checked(|parser: _| -> Expression {
                                         if parser.current.kind() == Token::Equals {
-                                            parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
+                                            parser.next_checked(|parser: _| -> Expression {
                                                 if parser.current.is_raw_var() || parser.current.kind() == Token::LeftBracket {
-                                                    Expression::Variable(
-                                                        var_name,
-                                                        Some(var_type),
-                                                        Box::new(parser.eval_expr(parser.current.clone(), &mut tree))
-                                                    )
+                                                    let var_value = Box::new(parser.eval_expr(&parser.current.clone(), &mut tree));
+
+                                                    parser.next_checked(|parser: _| -> Expression {
+                                                        if parser.current.kind() == Token::SemiColon {
+                                                            Expression::Variable(
+                                                                var_name,
+                                                                var_type,
+                                                                var_value,
+                                                            )
+                                                        } else {
+                                                            Expression::Invalid("Expected a `;`".to_string(), token.range())
+                                                        }
+                                                    })
                                                 } else {
                                                     Expression::Invalid("A variable must have a value".to_string(), token.range())
                                                 }
@@ -502,13 +472,13 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
                     parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
                         if token.kind() == Token::In {
                             parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
-                                let collection = Box::new(parser.eval_expr(parser.current.clone(), &mut tree));
+                                let collection = Box::new(parser.eval_expr(&parser.current.clone(), &mut tree));
 
                                 parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
                                     Expression::For {
                                         item,
                                         collection,
-                                        body: Box::new(parser.eval_expr(parser.current.clone(), &mut tree)),
+                                        body: Box::new(parser.eval_expr(&parser.current.clone(), &mut tree)),
                                     }
                                 })
                             })
@@ -532,45 +502,69 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
                             parser.current.range(),
                         ),
                     }),
-                    Box::new(parser.eval_expr(parser.current.clone(), &mut tree)),
+                    Box::new(parser.eval_expr(&parser.current.clone(), &mut tree)),
                 )
             }),
 
-            Token::Loop => self.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
-                Expression::Loop(Box::new(parser.eval_expr(parser.current.clone(), &mut tree)))
+            Token::Loop => self.next_checked(|parser: _| -> Expression {
+                Expression::Loop(Box::new(parser.eval_expr(&parser.current.clone(), &mut tree)))
             }),
 
-            Token::If => self.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
-                let condition = Box::new(parser.eval_expr(parser.current.clone(), &mut tree));
+            // FIXME: The if's are broken
+            Token::If => self.next_checked(|parser: _| -> Expression {
+                let condition = Box::new(parser.eval_expr(&parser.current.clone(), &mut tree));
 
-                parser.next_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
-                    let body = Box::new(parser.eval_expr(parser.current.clone(), &mut tree));
+                parser.next_checked(|parser: _| -> Expression {
+                    let body = if parser.current.kind() != Token::LeftBrace {
+                        // If the token after the condition is not a `{`, then consume the next token and replace it with an Invalid
+                        let previous = parser.current.range();
 
-                    parser.peek_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
-                        if parser.current.kind() == Token::ElseIf
-                            || parser.current.kind() == Token::Else
-                        {
-                            let token = parser.next().expect("The peeked token does not exist!");
-                
-                            Expression::If {
-                                condition,
-                                body,
-                                continuation: Some(Box::new(parser.eval_expr(token, &mut tree))),
-                            }
-                        } else if parser.current.kind() == Token::Newline {
-                            parser.next().expect("The peeked token does not exist!");
+                        Box::new(parser.next_checked(|_parser: _| -> Expression {
+                            Expression::Invalid("Expected a {".to_string(), previous)
+                        }))
+                    } else {
+                        // If the token is a `{`, then consume the next token and evaluate it, storing it in body
+                        Box::new(parser.next_checked(|parser: _| -> Expression {
+                           parser.eval_expr(&parser.current.clone(), &mut tree)
+                        }))
+                    };
 
-                            parser.peek_checked(|parser: &mut Parser<'crunch, 'source>| -> Expression {
-                                if parser.current.kind() == Token::ElseIf 
-                                    || parser.current.kind() == Token::Else
+                    parser.next_checked(|parser: _| -> Expression {
+                        if parser.current.kind() == Token::RightBrace {
+                            parser.peek_checked(|parser: _, peeked: _| -> Expression {
+                                // If the token is
+                                if  peeked.kind() == Token::ElseIf
+                                    ||  peeked.kind() == Token::Else
                                 {
                                     let token = parser.next().expect("The peeked token does not exist!");
-                
+
                                     Expression::If {
                                         condition,
                                         body,
-                                        continuation: Some(Box::new(parser.eval_expr(token, &mut tree))),
+                                        continuation: Some(Box::new(parser.eval_expr(&token, &mut tree))),
                                     }
+                                } else if parser.current.kind() == Token::RightBrace {
+                                    parser.next().expect("The peeked token does not exist!");
+
+                                    parser.peek_checked(|parser: _, peeked: _| -> Expression {
+                                        if peeked.kind() == Token::ElseIf
+                                            || peeked.kind() == Token::Else
+                                        {
+                                            let token = parser.next().expect("The peeked token does not exist!");
+
+                                            Expression::If {
+                                                condition,
+                                                body,
+                                                continuation: Some(Box::new(parser.eval_expr(&token, &mut tree))),
+                                            }
+                                        } else {
+                                            Expression::If {
+                                                condition,
+                                                body,
+                                                continuation: None,
+                                            }
+                                        }
+                                    })
                                 } else {
                                     Expression::If {
                                         condition,
@@ -580,11 +574,7 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
                                 }
                             })
                         } else {
-                            Expression::If {
-                                condition,
-                                body,
-                                continuation: None,
-                            }
+                            Expression::Invalid("Expected a `}`".to_string(), parser.current.range())
                         }
                     })
                 })
@@ -592,10 +582,10 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
 
             Token::ElseIf => {
                 if let Some(token) = self.next() {
-                    let condition = Box::new(self.eval_expr(token, &mut tree));
+                    let condition = Box::new(self.eval_expr(&token, &mut tree));
 
                     if let Some(token) = self.next() {
-                        let body = Box::new(self.eval_expr(token, &mut tree));
+                        let body = Box::new(self.eval_expr(&token, &mut tree));
 
                         if let Some(token) = self.peek() {
                             if token.kind() == Token::ElseIf || token.kind() == Token::Else {
@@ -604,9 +594,9 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
                                 Expression::ElseIf {
                                     condition,
                                     body,
-                                    continuation: Some(Box::new(self.eval_expr(token, &mut tree))),
+                                    continuation: Some(Box::new(self.eval_expr(&token, &mut tree))),
                                 }
-                            } else if token.kind() == Token::Newline {
+                            } else if token.kind() == Token::LeftBrace {
                                 self.next().unwrap();
                                 if let Some(token) = self.peek() {
                                     if token.kind() == Token::ElseIf || token.kind() == Token::Else
@@ -620,7 +610,7 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
                                             condition,
                                             body,
                                             continuation: Some(Box::new(
-                                                self.eval_expr(token, &mut tree),
+                                                self.eval_expr(&token, &mut tree),
                                             )),
                                         }
                                     } else {
@@ -654,12 +644,9 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
 
             Token::Else => {
                 if let Some(token) = self.next() {
-                    let condition = Box::new(self.eval_expr(token, &mut tree));
-
                     if let Some(token) = self.next() {
                         Expression::Else {
-                            condition,
-                            body: Box::new(self.eval_expr(token, &mut tree)),
+                            body: Box::new(self.eval_expr(&token, &mut tree)),
                         }
                     } else {
                         self.end_of_file = true;
@@ -671,31 +658,13 @@ impl<'crunch, 'source> Parser<'crunch, 'source> {
                 }
             }
 
-            // TODO: Currently, each indent is it's own scope, while it should be each level of indents,
-            // Eg.
-            // ....(Expression) <--------- 'a
-            // ....(Expression)             |
-            // ........(Expression) <---'b  |
-            // ........(Expression) <--- |  |
-            // ....(Expression)             |
-            // ....(Expression) <-----------
-            Token::Indent => {
-                if let Some(token) = self.next() {
-                    Expression::Scope(Box::new(self.eval_expr(token, &mut tree)))
-                } else {
-                    self.end_of_file = true;
-                    Expression::EndOfFile
-                }
-            }
-
-            Token::Newline
-            | Token::WhiteSpace
+            Token::WhiteSpace
             | Token::Comment
             | Token::MultilineComment
             | Token::DocComment => {
                 if let Some(token) = self.next() {
                     // Ignore the meaningless token and evaluate and return the next expression instead
-                    self.eval_expr(token, &mut tree)
+                    self.eval_expr(&token, &mut tree)
                 } else {
                     self.end_of_file = true;
                     Expression::EndOfFile

@@ -1,7 +1,8 @@
+#![allow(non_snake_case)]
+
 mod cli;
 mod crunch;
 mod parser;
-mod syntax_error;
 
 #[doc(hidden)]
 const fn email() -> &'static str {
@@ -19,8 +20,6 @@ fn main() {
         authors: env!("CARGO_PKG_AUTHORS").replace(":", ", ").into(),
         homepage: env!("CARGO_PKG_HOMEPAGE").into(),
     });
-
-    panic!("Test");
 
     let cli = Cli::from_args();
     let mut crunch = Crunch::new();
