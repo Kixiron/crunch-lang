@@ -2,7 +2,6 @@
 
 mod cli;
 mod crunch;
-mod parser;
 
 #[doc(hidden)]
 const fn email() -> &'static str {
@@ -14,6 +13,7 @@ fn main() {
     use crunch::Crunch;
     use structopt::StructOpt;
 
+    // Activate human_panic
     human_panic::setup_panic!(human_panic::Metadata {
         version: env!("CARGO_PKG_VERSION").into(),
         name: "Crunch".into(),

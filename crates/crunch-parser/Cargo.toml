@@ -1,5 +1,5 @@
 [package]
-name = "crunch"
+name = "crunch-parser"
 version = "0.0.0"
 description = "A small language"
 authors = ["Kixiron <contact.kixiron@gmail.com>"]
@@ -7,20 +7,9 @@ edition = "2018"
 license = "MIT"
 readme = "README.md"
 
-[[bin]]
-name = "Crunch"
-path = "./src/main.rs"
-
 [dependencies]
-logos = "0.10.0-rc2"
-human-panic = { path = "./crates/human-panic" }
-crunch-token = { path = "./crates/crunch-token" }
-crunch-parser = { path = "./crates/crunch-parser" }
-structopt = "0.2.16"
-no-panic = "0.1.10"
-
-[dev-dependencies]
-criterion = "0.2.11"
+crunch-token = { path = "../crunch-token" }
+shrinkwraprs = "0.2.1"
 
 [profile.dev]
 opt-level = 0
