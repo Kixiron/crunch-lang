@@ -14,14 +14,38 @@ pub enum Token {
     Function,
     #[token = "let"]
     Variable,
-    #[regex = "[a-zA-Z_]+"]
-    Identifier,
     #[token = "mut"]
     Mutable,
     #[token = "const"]
     Constant,
     #[token = "type"]
     Type,
+    #[token = "and"]
+    #[token = "&&"]
+    And,
+    #[token = "or"]
+    #[token = "||"]
+    Or,
+    #[token = "not"]
+    Not,
+    #[token = "if"]
+    If,
+    #[token = "else if"]
+    ElseIf,
+    #[token = "else"]
+    Else,
+    #[token = "for"]
+    For,
+    #[token = "loop"]
+    Loop,
+    #[token = "while"]
+    While,
+    #[token = "in"]
+    In,
+    #[token = "continue"]
+    Continue,
+    #[token = "return"]
+    Return,
 
     #[regex = "//[^\n]+\n"]
     Comment,
@@ -88,33 +112,6 @@ pub enum Token {
     RightParentheses,
     #[token = "("]
     LeftParentheses,
-
-    #[token = "and"]
-    #[token = "&&"]
-    And,
-    #[token = "or"]
-    #[token = "||"]
-    Or,
-    #[token = "not"]
-    Not,
-    #[token = "if"]
-    If,
-    #[token = "else if"]
-    ElseIf,
-    #[token = "else"]
-    Else,
-    #[token = "for"]
-    For,
-    #[token = "loop"]
-    Loop,
-    #[token = "while"]
-    While,
-    #[token = "in"]
-    In,
-    #[token = "continue"]
-    Continue,
-    #[token = "return"]
-    Return,
 
     #[token = "="]
     Equals,
@@ -185,6 +182,9 @@ pub enum Token {
     #[token = "\r"]
     #[token = " "]
     WhiteSpace,
+
+    #[regex = "[a-zA-Z_]+"]
+    Identifier,
 }
 
 unsafe impl Send for Token {}

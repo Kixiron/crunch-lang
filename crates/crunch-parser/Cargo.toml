@@ -10,6 +10,7 @@ readme = "README.md"
 [dependencies]
 crunch-token = { path = "../crunch-token" }
 shrinkwraprs = "0.2.1"
+codespan-reporting = "0.3.0"
 
 [profile.dev]
 opt-level = 0

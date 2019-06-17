@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum Expr {
     Variable {
         ident: String,
@@ -46,8 +46,19 @@ pub enum Expr {
     },
 
     Invalid(String, Range<usize>),
+    Error(Vec<(codespan_reporting::Diagnostic, Option<Range<usize>>)>),
     EndOfFile,
     None,
+}
+
+impl PartialEq for Expr {
+    fn eq(&self, other: &Self) -> bool {
+        std::mem::discriminant(self) == std::mem::discriminant(other)
+    }
+
+    fn ne(&self, other: &Self) -> bool {
+        std::mem::discriminant(self) != std::mem::discriminant(other)
+    }
 }
 
 #[derive(Debug, PartialEq)]

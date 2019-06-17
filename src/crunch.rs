@@ -1,21 +1,25 @@
+use codespan::{CodeMap, FileName};
 use std::path::Path;
 
 pub struct Crunch {
-    error_occurred: bool,
+    code_map: CodeMap,
 }
 
 /// All public interfaces to Crunch
 impl Crunch {
     pub fn new() -> Self {
         Self {
-            error_occurred: false,
+            code_map: CodeMap::new(),
         }
     }
 
     pub fn prompt(&mut self) {
         use crunch_parser::Parser;
         use crunch_token::TokenStream;
-        use std::io::{stdin, stdout, Write};
+        use std::{
+            borrow::Cow,
+            io::{stdin, stdout, Write},
+        };
 
         Crunch::display_boxed("Welcome to the Crunch Interpreter");
 
@@ -62,61 +66,20 @@ impl Crunch {
                 input.push_str(&new_input);
             }
 
-            let lexer = TokenStream::new(&input);
-            println!(
-                "{:#?}",
-                lexer
-                    .clone()
-                    .filter(|token| token.kind() != crunch_token::Token::WhiteSpace)
-                    .collect::<Vec<crunch_token::TokenData>>()
-            );
-            let tree = Parser::new(lexer).parse();
-            println!("{:#?}", tree);
+            self.code_map
+                .add_filemap(FileName::Virtual(Cow::from("CrunchREPL.crunch")), input);
+
+            self.run_files();
         }
     }
 
     pub fn run_file(&mut self, file_path: &Path) {
-        use crunch_parser::Parser;
-        use crunch_token::TokenStream;
-        use std::io::ErrorKind;
+        self.code_map.add_filemap_from_disk(file_path).unwrap();
 
-        if let Some(name) = file_path.file_name() {
-            if let Some(name) = name.to_str() {
-                if match name.split(".").into_iter().last() {
-                    Some(extension) => extension,
-                    None => "",
-                } != "crunch"
-                {
-                    println!("Only files ending in .crunch can be crunched!");
-                    return;
-                }
-
-                Crunch::display_boxed(&("Crunching ".to_owned() + name));
-            } else {
-                Crunch::display_boxed("Crunching");
-            }
-        } else {
-            Crunch::display_boxed("Crunching");
-        }
-
-        let contents = match Crunch::open_file(file_path) {
-            Ok(contents) => contents,
-            Err(err) => {
-                match err.kind() {
-                    ErrorKind::WriteZero => println!("The file is empty!"),
-                    _ => println!("Something went wrong with reading the file"),
-                }
-
-                return;
-            }
-        };
-
-        let lexer = TokenStream::new(contents.as_str());
-        let tree = Parser::new(lexer).parse();
-        println!("{:#?}", tree);
+        self.run_files();
     }
 
-    pub fn display_info(&self) {
+    pub(crate) fn display_info(&self) {
         let version = "0.0.0";
         Crunch::display_boxed(&("Crunch v".to_owned() + version));
     }
@@ -124,6 +87,48 @@ impl Crunch {
 
 /// Crunch's internal utility functions
 impl Crunch {
+    fn run_files(&mut self) {
+        use codespan::{ByteIndex, Span};
+        use codespan_reporting::{emit, termcolor::StandardStream, ColorArg, Label, LabelStyle};
+        use std::str::FromStr;
+
+        use crunch_parser::Parser;
+        use crunch_token::TokenStream;
+
+        for file in self.code_map.iter() {
+            let tokens = TokenStream::new(file.src());
+            let tree = Parser::new(tokens).parse();
+
+            let writer = StandardStream::stderr(ColorArg::from_str("always").unwrap().into());
+            println!("{:?}", tree);
+            for node in tree.into_inner() {
+                match node {
+                    crunch_parser::Expr::Error(errors) => {
+                        for error in errors {
+                            if let Some(range) = error.1 {
+                                emit(
+                                    &mut writer.lock(),
+                                    &self.code_map,
+                                    &error.0.with_label(Label::new(
+                                        Span::new(
+                                            ByteIndex::from(range.start as u32),
+                                            ByteIndex::from(range.end as u32),
+                                        ),
+                                        LabelStyle::Primary,
+                                    )),
+                                )
+                                .unwrap()
+                            } else {
+                                emit(&mut writer.lock(), &self.code_map, &error.0).unwrap()
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
     fn log(&self, error: &str) {
         use std::{fs::File, io::Write};
 
@@ -138,27 +143,5 @@ impl Crunch {
         println!("┌─{}─┐", "─".repeat(content.len()));
         println!("│ {} │", content);
         println!("└─{}─┘", "─".repeat(content.len()));
-    }
-
-    fn open_file(path: &Path) -> std::io::Result<String> {
-        use std::{
-            fs::File,
-            io::{BufReader, Error, ErrorKind, Read},
-        };
-
-        let file = File::open(path)?;
-        let mut reader = BufReader::new(file);
-
-        let mut contents = String::new();
-        let len = reader.read_to_string(&mut contents)?;
-
-        if len == 0 {
-            Err(Error::new(
-                ErrorKind::WriteZero,
-                "Nothing was read from the file",
-            ))
-        } else {
-            Ok(contents)
-        }
     }
 }
