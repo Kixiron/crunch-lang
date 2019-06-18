@@ -177,13 +177,15 @@ pub enum Token {
     #[token = "|="]
     BitwiseOrEquals,
 
+    #[token = "\0"]
     #[token = "\n"]
     #[token = "\t"]
     #[token = "\r"]
     #[token = " "]
     WhiteSpace,
 
-    #[regex = "[a-zA-Z_]+"]
+    // TODO: Desired Regex is [a-zA-Z_]{1}[a-zA-Z0-9_]* but it overflows the stack, so logos needs to improve before that happens
+    #[regex = "[a-zA-Z0-9_]+"]
     Identifier,
 }
 

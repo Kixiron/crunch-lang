@@ -5,3 +5,6 @@ authors = ["Kixiron <kixiron.contact@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+codespan-reporting = "0.3.0"
+codespan = "0.3.0"
+failure = "0.1.5"

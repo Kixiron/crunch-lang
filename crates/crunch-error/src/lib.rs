@@ -1,7 +1,5 @@
-struct CrunchError {}
+mod emitted;
+mod internal;
 
-impl CrunchError {
-    pub fn new() -> Self {}
-
-    pub fn with_range(self) -> Self {}
-}
+pub use emitted::*;
+pub use internal::*;

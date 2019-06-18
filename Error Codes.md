@@ -5,6 +5,7 @@ An index of all error codes in Crunch
 [Errors](##Errors)  
 [Warnings](##Warnings)  
 [Bugs](##Bugs)  
+[Internal](##Internal)
 
 ## Errors
 
@@ -22,3 +23,9 @@ Warning Code | Reason | Possible Solution
 
 Bug Code | Reason | Possible Solution
 -------- | ------ | -----------------
+
+## Internal
+
+Error Code | Reason
+---------- | ------
+E001 | IO Error

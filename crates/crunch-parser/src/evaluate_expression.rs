@@ -1,12 +1,10 @@
 use super::{expression::*, parsers::*, Parser};
-use codespan_reporting::{Diagnostic, Label, LabelStyle};
+use crunch_error::{EmittedError, ErrorCode};
 use crunch_token::*;
 
 /// Evaluate an Expr
 // TODO: This function is absolutely bogged down by the manual checking of valid `next` calls,
 // Something needs to be done to either pass that onto a separate funcion or a macro
-// TODO: Use peek() more often and consume only when needed
-// TODO: See if manual indexing is faster than iteration
 impl<'source> Parser<'source> {
     pub fn eval_expr(&mut self, token: &TokenData<'source>, mut tree: &mut Vec<Expr>) -> Expr {
         // Match the token's kind and parse recursively based on that
@@ -58,22 +56,23 @@ impl<'source> Parser<'source> {
                             })
                         } else {
                             // If the token is not an identifier, return an invalid Expr
-                            return Expr::Error(
+                            Expr::Error(
                                 vec![
-                                    (Diagnostic::new_error("Missing `in`")
-                                        .with_code("E002"), Some(parser.current.range())),
-                                    (Diagnostic::new_help("Try adding an `in` along with a collection to be iterated over in your for loop"), None)
+                                    EmittedError::new_error("Missing an `in`", Some(ErrorCode::E002), &[parser.current.range()]),
+                                    EmittedError::new_help("Try adding an `in` along with a collection to be iterated over in your for loop", None, &[]),
                                 ]
-                            );
+                            )
                         }
                     })
                 } else {
                     // If the token is not an identifier, return an invalid Expr
-                    return Expr::Invalid(
-                        "A `for` binding was used, but no identifer or variable name was supplied"
-                            .to_string(),
-                        token.range(),
-                    );
+                Expr::Error(
+                    vec![
+                        EmittedError::new_error("Missing identifier", Some(ErrorCode::E001), &[parser.current.range()]),
+                        EmittedError::new_help("Try using a valid identifier", None, &[]),
+                        EmittedError::new_note("Variable names may only have upper and lowercase A-Z, 0-9 and underscores in them, and the first character must be either a letter or an underscore", None, &[])
+                    ]
+                )
                 }
             }),
 

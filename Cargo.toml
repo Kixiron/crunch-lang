@@ -16,6 +16,7 @@ logos = "0.10.0-rc2"
 human-panic = { path = "./crates/human-panic" }
 crunch-token = { path = "./crates/crunch-token" }
 crunch-parser = { path = "./crates/crunch-parser" }
+crunch-error = { path = "./crates/crunch-error" }
 structopt = "0.2.16"
 no-panic = "0.1.10"
 codespan-reporting = "0.3.0"

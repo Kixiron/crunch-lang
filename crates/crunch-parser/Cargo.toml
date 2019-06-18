@@ -9,6 +9,7 @@ readme = "README.md"
 
 [dependencies]
 crunch-token = { path = "../crunch-token" }
+crunch-error = { path = "../crunch-error" }
 shrinkwraprs = "0.2.1"
 codespan-reporting = "0.3.0"
 

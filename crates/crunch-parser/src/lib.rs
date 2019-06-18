@@ -132,7 +132,7 @@ impl<'source> Parser<'source> {
     }
 
     // Gets the next token that is not whitespace
-    fn next_checked<F>(&mut self, callback: F) -> Expr
+    fn next_checked<'a, F>(&mut self, callback: F) -> Expr
     where
         F: FnOnce(&mut Parser<'source>) -> Expr,
     {
@@ -158,7 +158,7 @@ impl<'source> Parser<'source> {
     }
 
     // Current usage is broken
-    fn peek_checked<F>(&mut self, callback: F) -> Expr
+    fn peek_checked<'a, F>(&mut self, callback: F) -> Expr
     where
         F: FnOnce(&mut Parser<'source>, TokenData<'source>) -> Expr,
     {

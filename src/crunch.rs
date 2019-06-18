@@ -14,8 +14,6 @@ impl Crunch {
     }
 
     pub fn prompt(&mut self) {
-        use crunch_parser::Parser;
-        use crunch_token::TokenStream;
         use std::{
             borrow::Cow,
             io::{stdin, stdout, Write},
@@ -67,9 +65,13 @@ impl Crunch {
             }
 
             self.code_map
-                .add_filemap(FileName::Virtual(Cow::from("CrunchREPL.crunch")), input);
+                .add_filemap(FileName::Virtual(Cow::from("Crunch REPL")), input);
 
             self.run_files();
+
+            // TODO: Do better than this for clearing the REPL's code store, maybe store an index and only refresh like this when the
+            // CodeMap gets too large
+            self.code_map = CodeMap::new();
         }
     }
 
@@ -88,10 +90,7 @@ impl Crunch {
 /// Crunch's internal utility functions
 impl Crunch {
     fn run_files(&mut self) {
-        use codespan::{ByteIndex, Span};
-        use codespan_reporting::{emit, termcolor::StandardStream, ColorArg, Label, LabelStyle};
-        use std::str::FromStr;
-
+        use crunch_error::EmittedError;
         use crunch_parser::Parser;
         use crunch_token::TokenStream;
 
@@ -99,28 +98,13 @@ impl Crunch {
             let tokens = TokenStream::new(file.src());
             let tree = Parser::new(tokens).parse();
 
-            let writer = StandardStream::stderr(ColorArg::from_str("always").unwrap().into());
+            let mut writer = EmittedError::new_writer();
             println!("{:?}", tree);
             for node in tree.into_inner() {
                 match node {
                     crunch_parser::Expr::Error(errors) => {
                         for error in errors {
-                            if let Some(range) = error.1 {
-                                emit(
-                                    &mut writer.lock(),
-                                    &self.code_map,
-                                    &error.0.with_label(Label::new(
-                                        Span::new(
-                                            ByteIndex::from(range.start as u32),
-                                            ByteIndex::from(range.end as u32),
-                                        ),
-                                        LabelStyle::Primary,
-                                    )),
-                                )
-                                .unwrap()
-                            } else {
-                                emit(&mut writer.lock(), &self.code_map, &error.0).unwrap()
-                            }
+                            error.emit(&mut writer, &self.code_map).unwrap();
                         }
                     }
                     _ => {}

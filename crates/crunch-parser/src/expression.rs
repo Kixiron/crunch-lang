@@ -1,6 +1,7 @@
+use crunch_error::EmittedError;
 use std::ops::Range;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Variable {
         ident: String,
@@ -46,7 +47,7 @@ pub enum Expr {
     },
 
     Invalid(String, Range<usize>),
-    Error(Vec<(codespan_reporting::Diagnostic, Option<Range<usize>>)>),
+    Error(Vec<EmittedError>),
     EndOfFile,
     None,
 }
@@ -61,13 +62,13 @@ impl PartialEq for Expr {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Literal {
     pub kind: LiteralKind,
     pub value: LiteralValue,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum LiteralValue {
     String(String),
     Float(FloatType),
@@ -77,7 +78,7 @@ pub enum LiteralValue {
     Null,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum LiteralKind {
     String,
     Float,
@@ -86,7 +87,7 @@ pub enum LiteralKind {
     Bool,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Op {
     Add,
     Subtract,
@@ -98,7 +99,7 @@ pub enum Op {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum IntType {
     _i32(i32),
     _i64(i64),
@@ -109,13 +110,13 @@ pub enum IntType {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum FloatType {
     _f32(f32),
     _f64(f64),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Sign {
     Positive,
     Negative,
