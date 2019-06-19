@@ -1,3 +1,13 @@
+#![deny(
+    clippy::all,
+    clippy::correctness,
+    clippy::style,
+    clippy::complexity,
+    clippy::perf,
+    clippy::pedantic,
+    clippy::nursery,
+    clippy::cargo
+)]
 #![allow(non_snake_case)]
 
 mod cli;

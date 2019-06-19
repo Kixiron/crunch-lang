@@ -133,6 +133,9 @@ impl Into<codespan_reporting::Severity> for Severity {
 pub enum ErrorCode {
     E001,
     E002,
+    E003,
+    E004,
+    E005,
 }
 
 impl fmt::Display for ErrorCode {

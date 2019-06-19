@@ -21,6 +21,7 @@ pub fn literal<'source>(
         Token::IntLiteral => super::parse_int(&token),
         Token::FloatLiteral => super::parse_float(&token),
         Token::StrLiteral => {
+            // Trim off the `"`'s from the string
             LiteralValue::String(token.source()[1..token.source().len() - 1].to_owned())
         }
         Token::BoolLiteral => {

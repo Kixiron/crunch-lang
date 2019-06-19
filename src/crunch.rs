@@ -8,9 +8,7 @@ pub struct Crunch {
 /// All public interfaces to Crunch
 impl Crunch {
     pub fn new() -> Self {
-        Self {
-            code_map: CodeMap::new(),
-        }
+        Self { code_map: CodeMap::new() }
     }
 
     pub fn prompt(&mut self) {
@@ -64,8 +62,10 @@ impl Crunch {
                 input.push_str(&new_input);
             }
 
-            self.code_map
-                .add_filemap(FileName::Virtual(Cow::from("Crunch REPL")), input);
+            self.code_map.add_filemap(
+                FileName::Virtual(Cow::from("Crunch REPL")),
+                input,
+            );
 
             self.run_files();
 
@@ -99,7 +99,7 @@ impl Crunch {
             let tree = Parser::new(tokens).parse();
 
             let mut writer = EmittedError::new_writer();
-            println!("{:?}", tree);
+            println!("{:#?}", tree);
             for node in tree.into_inner() {
                 match node {
                     crunch_parser::Expr::Error(errors) => {

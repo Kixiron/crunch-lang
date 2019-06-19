@@ -23,19 +23,26 @@ pub fn binary_operation<'source>(
         )),
     };
 
+    let left_hand = Arena::with_capacity(1);
+    left_hand.alloc(match tree.pop() {
+        // If there is a last Expr, insert it into the
+        Some(expr) => expr,
+        // If there is no last Expr, return an invalid Expr
+        None => Expr::Invalid(
+            "No left-hand side was provided to the multiplication operation!"
+                .to_string(),
+            parser.current.range(),
+        ),
+    });
+
+    let right_hand = Arena::with_capacity(1);
+    right_hand.alloc(parser.eval_expr(&parser.current.clone(), &mut tree));
+
     Expr::BinaryOp {
         operation,
         // The left-hand side of the operation is the last Expr in the Expr tree
-        left_hand: Box::new(match tree.pop() {
-            // If there is a last Expr, insert it into the
-            Some(expr) => expr,
-            // If there is no last Expr, return an invalid Expr
-            None => Expr::Invalid(
-                "No left-hand side was provided to the multiplication operation!".to_string(),
-                parser.current.range(),
-            ),
-        }),
+        left_hand,
         // Populate the right-hand side with the next Expr
-        right_hand: Box::new(parser.eval_expr(&parser.current.clone(), &mut tree)),
+        right_hand,
     }
 }

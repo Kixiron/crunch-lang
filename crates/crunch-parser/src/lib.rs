@@ -189,4 +189,9 @@ impl<'source> Parser<'source> {
             Expr::EndOfFile
         }
     }
+
+    /// A convenience method for getting the current token's kind
+    fn kind(&self) -> crunch_token::Token {
+        self.current.kind()
+    }
 }

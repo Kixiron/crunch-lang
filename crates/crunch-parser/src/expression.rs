@@ -1,49 +1,50 @@
 use crunch_error::EmittedError;
 use std::ops::Range;
+use typed_arena::Arena;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum Expr {
     Variable {
         ident: String,
-        kind: Box<Expr>,
-        literal: Box<Expr>,
+        kind: Arena<Expr>,
+        literal: Arena<Expr>,
     },
     Literal(Literal),
     VariableType(LiteralKind),
 
     BinaryOp {
         operation: Op,
-        left_hand: Box<Expr>,
-        right_hand: Box<Expr>,
+        left_hand: Arena<Expr>,
+        right_hand: Arena<Expr>,
     },
 
-    Scope(Box<Expr>),
+    Scope(Arena<Expr>),
     Method {
         name: String,
         parameters: Vec<Expr>,
-        body: Box<Expr>,
+        body: Arena<Expr>,
     },
 
     For {
         item: String,
-        collection: Box<Expr>,
-        body: Box<Expr>,
+        collection: Arena<Expr>,
+        body: Arena<Expr>,
     },
-    While(Box<Expr>, Box<Expr>),
-    Loop(Box<Expr>),
+    While(Arena<Expr>, Arena<Expr>),
+    Loop(Arena<Expr>),
 
     If {
-        condition: Box<Expr>,
-        body: Box<Expr>,
-        continuation: Option<Box<Expr>>,
+        condition: Arena<Expr>,
+        body: Arena<Expr>,
+        continuation: Option<Arena<Expr>>,
     },
     ElseIf {
-        condition: Box<Expr>,
-        body: Box<Expr>,
-        continuation: Option<Box<Expr>>,
+        condition: Arena<Expr>,
+        body: Arena<Expr>,
+        continuation: Option<Arena<Expr>>,
     },
     Else {
-        body: Box<Expr>,
+        body: Arena<Expr>,
     },
 
     Invalid(String, Range<usize>),

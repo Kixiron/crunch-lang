@@ -150,7 +150,6 @@ fn main() {
     let syv = Syven.new("Syven", 22);
     syv.greet();
 }
-
 ```
 
 To specify information about your package, use the `Compacter.crunch` file in the root of the project
@@ -180,6 +179,7 @@ let dependency: Dependency = {
 
 // The dependencies vector, where all dependencies will be inserted in order to be included
 let dependencies: [Dependency] = [
-    { name: "dependency-name", version: "0.1.0" }
+    { name: "dependency-name", version: "0.1.0" }, // Inline dependency
+    dependency,                                    // Previously declared dependency
 ];
 ```

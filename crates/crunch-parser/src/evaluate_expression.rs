@@ -1,12 +1,17 @@
-use super::{expression::*, parsers::*, Parser};
+use super::{expression::*, parsers, Parser};
 use crunch_error::{EmittedError, ErrorCode};
 use crunch_token::*;
+use typed_arena::Arena;
 
 /// Evaluate an Expr
 // TODO: This function is absolutely bogged down by the manual checking of valid `next` calls,
-// Something needs to be done to either pass that onto a separate funcion or a macro
+// Something needs to be done to either pass that onto a separate function or a macro
 impl<'source> Parser<'source> {
-    pub fn eval_expr(&mut self, token: &TokenData<'source>, mut tree: &mut Vec<Expr>) -> Expr {
+    pub fn eval_expr(
+        &mut self,
+        token: &TokenData<'source>,
+        mut tree: &mut Vec<Expr>,
+    ) -> Expr {
         // Match the token's kind and parse recursively based on that
         match token.kind() {
             // Literals
@@ -15,7 +20,7 @@ impl<'source> Parser<'source> {
             | Token::StrLiteral
             | Token::BoolLiteral
             | Token::Null
-            | Token::VectorLiteral => Expr::Literal(literal(self, token, &mut tree)),
+            | Token::VectorLiteral => Expr::Literal(parsers::literal(self, token, &mut tree)),
 
             // Binary Operators
             Token::Multiply
@@ -24,14 +29,14 @@ impl<'source> Parser<'source> {
             | Token::Minus
             | Token::Or
             | Token::And
-            | Token::Not => binary_operation(self, token, &mut tree),
+            | Token::Not => parsers::binary_operation(self, token, &mut tree),
 
             // Variable declarations
-            Token::Variable => variable(self, token, &mut tree),
+            Token::Variable => parsers::variable(self, token, &mut tree),
 
             // Variable types
             Token::Int | Token::Str | Token::Bool | Token::Vector => {
-                variable_type(self, token, &mut tree)
+                parsers::variable_type(self, token, &mut tree)
             }
 
             Token::For => self.next_checked(|parser: &mut Parser<'source>| -> Expr {
@@ -41,16 +46,18 @@ impl<'source> Parser<'source> {
                     parser.next_checked(|parser: &mut Parser<'source>| -> Expr {
                         if parser.current.kind() == Token::In {
                             parser.next_checked(|parser: &mut Parser<'source>| -> Expr {
-                                let collection =
-                                    Box::new(parser.eval_expr(&parser.current.clone(), &mut tree));
+                                let collection = Arena::with_capacity(1);
+                                collection.alloc(parser.eval_expr(&parser.current.clone(), &mut tree));
 
                                 parser.next_checked(|parser: &mut Parser<'source>| -> Expr {
                                     Expr::For {
                                         item,
                                         collection,
-                                        body: Box::new(
-                                            parser.eval_expr(&parser.current.clone(), &mut tree),
-                                        ),
+                                        body: {
+                                            let body = Arena::with_capacity(1);
+                                            body.alloc(parser.eval_expr(&parser.current.clone(), &mut tree));
+                                            body
+                                        },
                                     }
                                 })
                             })
@@ -66,52 +73,56 @@ impl<'source> Parser<'source> {
                     })
                 } else {
                     // If the token is not an identifier, return an invalid Expr
-                Expr::Error(
-                    vec![
-                        EmittedError::new_error("Missing identifier", Some(ErrorCode::E001), &[parser.current.range()]),
-                        EmittedError::new_help("Try using a valid identifier", None, &[]),
-                        EmittedError::new_note("Variable names may only have upper and lowercase A-Z, 0-9 and underscores in them, and the first character must be either a letter or an underscore", None, &[])
-                    ]
-                )
+                    Expr::Error(
+                        vec![
+                            EmittedError::new_error("Missing identifier", Some(ErrorCode::E001), &[parser.current.range()]),
+                            EmittedError::new_help("Try using a valid identifier", None, &[]),
+                            EmittedError::new_note("Variable names may only have upper and lowercase A-Z, 0-9 and underscores in them, and the first character must be either a letter or an underscore", None, &[])
+                        ]
+                    )
                 }
             }),
 
-            Token::While => self.next_checked(|parser: &mut Parser<'source>| -> Expr {
-                Expr::While(
-                    Box::new(match tree.pop() {
-                        Some(condition) => condition,
-                        None => Expr::Invalid(
-                            "No left-hand side was provided to the while loop!".to_string(),
-                            parser.current.range(),
-                        ),
-                    }),
-                    Box::new(parser.eval_expr(&parser.current.clone(), &mut tree)),
-                )
+            Token::Loop => self.next_checked(|parser: _| -> Expr {
+                Expr::Loop({
+                    let body = Arena::with_capacity(1);
+                    body.alloc(parser.eval_expr(&parser.current.clone(), &mut tree));
+                    body
+                })
             }),
 
-            Token::Loop => self.next_checked(|parser: _| -> Expr {
-                Expr::Loop(Box::new(
-                    parser.eval_expr(&parser.current.clone(), &mut tree),
-                ))
+            Token::While => self.next_checked(|parser: &mut Parser<'source>| -> Expr {
+                let condition = Arena::with_capacity(1);
+                condition.alloc(parser.eval_expr(&parser.current.clone(), &mut tree));
+
+                let body = Arena::with_capacity(1);
+                body.alloc(parser.eval_expr(&parser.current.clone(), &mut tree));
+
+                Expr::While(
+                    condition,
+                    body,
+                )
             }),
 
             // FIXME: The if's are broken
             Token::If => self.next_checked(|parser: _| -> Expr {
-                let condition = Box::new(parser.eval_expr(&parser.current.clone(), &mut tree));
+                let condition = Arena::with_capacity(1);
+                condition.alloc(parser.eval_expr(&parser.current.clone(), &mut tree));
 
                 parser.next_checked(|parser: _| -> Expr {
-                    let body = if parser.current.kind() != Token::LeftBrace {
+                    let body = Arena::with_capacity(1);
+                    if parser.current.kind() != Token::LeftBrace {
                         // If the token after the condition is not a `{`, then consume the next token and replace it with an Invalid
                         let previous = parser.current.range();
-
-                        Box::new(parser.next_checked(|_parser: _| -> Expr {
+                
+                        body.alloc(parser.next_checked(|_parser: _| -> Expr {
                             Expr::Invalid("Expected a {".to_string(), previous)
-                        }))
+                        }));
                     } else {
                         // If the token is a `{`, then consume the next token and evaluate it, storing it in body
-                        Box::new(parser.next_checked(|parser: _| -> Expr {
+                        body.alloc(parser.next_checked(|parser: _| -> Expr {
                             parser.eval_expr(&parser.current.clone(), &mut tree)
-                        }))
+                        }));
                     };
 
                     parser.next_checked(|parser: _| -> Expr {
@@ -125,9 +136,11 @@ impl<'source> Parser<'source> {
                                     Expr::If {
                                         condition,
                                         body,
-                                        continuation: Some(Box::new(
-                                            parser.eval_expr(&token, &mut tree),
-                                        )),
+                                        continuation: Some({
+                                            let continuation = Arena::with_capacity(1);
+                                            continuation.alloc(parser.eval_expr(&token, &mut tree));
+                                            continuation
+                                        }),
                                     }
                                 } else if parser.current.kind() == Token::RightBrace {
                                     parser.next().expect("The peeked token does not exist!");
@@ -143,9 +156,11 @@ impl<'source> Parser<'source> {
                                             Expr::If {
                                                 condition,
                                                 body,
-                                                continuation: Some(Box::new(
-                                                    parser.eval_expr(&token, &mut tree),
-                                                )),
+                                                continuation: Some({
+                                                    let continuation = Arena::with_capacity(1);
+                                                    continuation.alloc(parser.eval_expr(&token, &mut tree));
+                                                    continuation
+                                                }),
                                             }
                                         } else {
                                             Expr::If {
@@ -172,10 +187,12 @@ impl<'source> Parser<'source> {
 
             Token::ElseIf => {
                 if let Some(token) = self.next() {
-                    let condition = Box::new(self.eval_expr(&token, &mut tree));
+                    let condition = Arena::with_capacity(1);
+                    condition.alloc(self.eval_expr(&token, &mut tree));
 
                     if let Some(token) = self.next() {
-                        let body = Box::new(self.eval_expr(&token, &mut tree));
+                        let body = Arena::with_capacity(1);
+                        body.alloc(self.eval_expr(&token, &mut tree));
 
                         if let Some(token) = self.peek() {
                             if token.kind() == Token::ElseIf || token.kind() == Token::Else {
@@ -184,7 +201,11 @@ impl<'source> Parser<'source> {
                                 Expr::ElseIf {
                                     condition,
                                     body,
-                                    continuation: Some(Box::new(self.eval_expr(&token, &mut tree))),
+                                    continuation: Some({
+                                        let continuation = Arena::with_capacity(1);
+                                        continuation.alloc(self.eval_expr(&token, &mut tree));
+                                        continuation
+                                    }),
                                 }
                             } else if token.kind() == Token::LeftBrace {
                                 self.next().unwrap();
@@ -199,9 +220,11 @@ impl<'source> Parser<'source> {
                                         Expr::ElseIf {
                                             condition,
                                             body,
-                                            continuation: Some(Box::new(
-                                                self.eval_expr(&token, &mut tree),
-                                            )),
+                                            continuation: Some({
+                                                let continuation = Arena::with_capacity(1);
+                                                continuation.alloc(self.eval_expr(&token, &mut tree));
+                                                continuation
+                                            }),
                                         }
                                     } else {
                                         Expr::ElseIf {
@@ -233,10 +256,13 @@ impl<'source> Parser<'source> {
             }
 
             Token::Else => {
-                if let Some(token) = self.next() {
+                if let Some(_token) = self.next() {
                     if let Some(token) = self.next() {
+                        let body = Arena::with_capacity(1);
+                        body.alloc(self.eval_expr(&token, &mut tree));
+
                         Expr::Else {
-                            body: Box::new(self.eval_expr(&token, &mut tree)),
+                            body,
                         }
                     } else {
                         self.end_of_file = true;
@@ -247,6 +273,8 @@ impl<'source> Parser<'source> {
                     Expr::None
                 }
             }
+
+            Token::Function => parsers::function(self, token, &mut tree),
 
             Token::WhiteSpace | Token::Comment | Token::MultilineComment | Token::DocComment => {
                 self.next_checked(|parser: _| -> Expr {

@@ -13,6 +13,9 @@ Error Code | Reason | Possible Solution
 ---------- | ------ | -----------------
 E001 | Invalid Identifier | Use only accepted characters in the identifier
 E002 | Missing `in` in for-loop | Add an `in` along with a collection to be iterated over
+E003 | Missing condition | Add a condition to the conditional statement
+E004 | Missing Identifier | Add a valid identifier
+E004 | Missing `(` | Add a `(`
 
 ## Warnings
 

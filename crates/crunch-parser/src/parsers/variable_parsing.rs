@@ -41,7 +41,7 @@ pub fn parse_int<'source>(token: &TokenData<'source>) -> LiteralValue {
     }
 }
 
-fn parse_vector<'source>(
+pub fn parse_vector<'source>(
     parser: &mut Parser<'source>,
     token: &TokenData<'source>,
     mut tree: &mut Vec<Expr>,
@@ -64,7 +64,7 @@ fn parse_vector<'source>(
     LiteralValue::Vector(vector)
 }
 
-fn parse_float<'source>(token: &TokenData<'source>) -> LiteralValue {
+pub fn parse_float<'source>(token: &TokenData<'source>) -> LiteralValue {
     match token.source().parse::<f32>() {
         Ok(float) => LiteralValue::Float(FloatType::_f32(float)),
 

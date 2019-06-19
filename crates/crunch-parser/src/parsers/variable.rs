@@ -12,17 +12,25 @@ pub fn variable<'source>(
             parser.next_checked(|parser: _| -> Expr {
                 if parser.current.kind() == Token::Colon {
                     parser.next_checked(|parser: _| -> Expr {
-                        let kind = Box::new(parser.eval_expr(&parser.current.clone(), &mut tree));
+                        let kind = Arena::with_capacity(1);
+                        kind.alloc(
+                            parser
+                                .eval_expr(&parser.current.clone(), &mut tree),
+                        );
 
                         parser.next_checked(|parser: _| -> Expr {
                             if parser.current.kind() == Token::Equals {
                                 parser.next_checked(|parser: _| -> Expr {
-                                    let literal = Box::new(
-                                        parser.eval_expr(&parser.current.clone(), &mut tree),
-                                    );
+                                    let literal = Arena::with_capacity(1);
+                                    literal.alloc(parser.eval_expr(
+                                        &parser.current.clone(),
+                                        &mut tree,
+                                    ));
 
                                     parser.next_checked(|parser: _| -> Expr {
-                                        if parser.current.kind() == Token::SemiColon {
+                                        if parser.current.kind()
+                                            == Token::SemiColon
+                                        {
                                             Expr::Variable {
                                                 ident,
                                                 kind,
@@ -37,16 +45,25 @@ pub fn variable<'source>(
                                     })
                                 })
                             } else {
-                                Expr::Invalid("Expected an =".to_string(), parser.current.range())
+                                Expr::Invalid(
+                                    "Expected an =".to_string(),
+                                    parser.current.range(),
+                                )
                             }
                         })
                     })
                 } else {
-                    Expr::Invalid("Expected a :".to_string(), parser.current.range())
+                    Expr::Invalid(
+                        "Expected a :".to_string(),
+                        parser.current.range(),
+                    )
                 }
             })
         } else {
-            Expr::Invalid("Expected an identifier".to_string(), parser.current.range())
+            Expr::Invalid(
+                "Expected an identifier".to_string(),
+                parser.current.range(),
+            )
         }
     })
 }
