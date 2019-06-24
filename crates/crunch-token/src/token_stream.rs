@@ -53,10 +53,7 @@ impl<'a> TokenData<'a> {
 
     pub fn range(&self) -> Range<usize> {
         // Turn the tuple back into an range struct for better indexing
-        std::ops::Range {
-            start: self.range.0,
-            end: self.range.1,
-        }
+        std::ops::Range { start: self.range.0, end: self.range.1 }
     }
 
     pub fn is_raw_var(&self) -> bool {

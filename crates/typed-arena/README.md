@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-rust-typed-arena
-================
 
 [![Docs Status](https://docs.rs/typed-arena/badge.svg)](https://docs.rs/typed-arena)
 
@@ -28,4 +25,3 @@ The benefit of an arena is very fast allocation; just a vector push.
 
 There is also a method `into_vec()` to recover ownership of allocated objects when
 the arena is no longer required, instead of destroying everything.
->>>>>>> Refractored, fixed and tested int parser
