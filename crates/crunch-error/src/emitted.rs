@@ -29,7 +29,11 @@ impl EmittedError {
         }
     }
 
-    pub fn new_bug(message: &str, code: Option<ErrorCode>, ranges: &[Range<usize>]) -> Self {
+    pub fn new_bug(
+        message: &str,
+        code: Option<ErrorCode>,
+        ranges: &[Range<usize>],
+    ) -> Self {
         Self {
             message: message.to_owned(),
             code,
@@ -38,7 +42,11 @@ impl EmittedError {
         }
     }
 
-    pub fn new_error(message: &str, code: Option<ErrorCode>, ranges: &[Range<usize>]) -> Self {
+    pub fn new_error(
+        message: &str,
+        code: Option<ErrorCode>,
+        ranges: &[Range<usize>],
+    ) -> Self {
         Self {
             message: message.to_owned(),
             code,
@@ -47,7 +55,11 @@ impl EmittedError {
         }
     }
 
-    pub fn new_warning(message: &str, code: Option<ErrorCode>, ranges: &[Range<usize>]) -> Self {
+    pub fn new_warning(
+        message: &str,
+        code: Option<ErrorCode>,
+        ranges: &[Range<usize>],
+    ) -> Self {
         Self {
             message: message.to_owned(),
             code,
@@ -56,7 +68,11 @@ impl EmittedError {
         }
     }
 
-    pub fn new_note(message: &str, code: Option<ErrorCode>, ranges: &[Range<usize>]) -> Self {
+    pub fn new_note(
+        message: &str,
+        code: Option<ErrorCode>,
+        ranges: &[Range<usize>],
+    ) -> Self {
         Self {
             message: message.to_owned(),
             code,
@@ -65,7 +81,11 @@ impl EmittedError {
         }
     }
 
-    pub fn new_help(message: &str, code: Option<ErrorCode>, ranges: &[Range<usize>]) -> Self {
+    pub fn new_help(
+        message: &str,
+        code: Option<ErrorCode>,
+        ranges: &[Range<usize>],
+    ) -> Self {
         Self {
             message: message.to_owned(),
             code,
@@ -78,7 +98,11 @@ impl EmittedError {
         StandardStream::stderr(ColorArg::from_str("always").unwrap().into())
     }
 
-    pub fn emit(self, writer: &mut StandardStream, code_map: &CodeMap) -> Result<(), Error> {
+    pub fn emit(
+        self,
+        writer: &mut StandardStream,
+        code_map: &CodeMap,
+    ) -> Result<(), Error> {
         let diag: Diagnostic = self.into();
         emit(&mut writer.lock(), &code_map, &diag)?;
         Ok(())

@@ -1,2 +1,7 @@
+<<<<<<< HEAD
 target
 Cargo.lock
+=======
+target
+Cargo.lock
+>>>>>>> Refractored, fixed and tested int parser

@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 mod binary_operations;
 mod function;
 mod literal;
