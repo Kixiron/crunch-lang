@@ -87,7 +87,8 @@ impl<'source> Parser<'source> {
         // the token_stream. After this happens, allow_wrapping is disabled and so that behavior never happens again.
         // After allow_wrapping is disabled, current_index is incremented by one as normal
         if self.allow_wrapping {
-            let (current_index, allow_wrapping) = self.current_index.overflowing_add(1);
+            let (current_index, allow_wrapping) =
+                self.current_index.overflowing_add(1);
             self.allow_wrapping = allow_wrapping;
             self.current_index = current_index;
         } else {
@@ -132,22 +133,46 @@ impl<'source> Parser<'source> {
     }
 
     // Gets the next token that is not whitespace
-    fn next_checked<'a, F>(&mut self, callback: F) -> Expr
+    fn next_checked<S, F>(
+        &mut self,
+        callback_success: S,
+        target_token: Option<crunch_token::Token>,
+        callback_failure: Option<Box<F>>,
+    ) -> Expr
     where
-        F: FnOnce(&mut Parser<'source>) -> Expr,
+        S: FnOnce(&mut Parser<'source>) -> Expr,
+        F: FnOnce(&mut Parser<'source>) -> Expr + ?Sized,
     {
         use crunch_token::Token::WhiteSpace;
+
+        if target_token.is_some() && callback_failure.is_none() {
+            panic!("You must have a failure callback when there is a target token!");
+        }
 
         // If there is a next token
         if let Some(token) = self.next() {
             // If the token is whitespace, call next_checked recursively until a token that is not whitespace is found
             if token.kind() == WhiteSpace {
-                self.next_checked(callback)
+                self.next_checked(
+                    callback_success,
+                    target_token,
+                    callback_failure,
+                )
 
-            // If the token is not whitespace, set the current token and execute the callback
-            } else {
+            // If the token is not whitespace and the token is the correct type, execute the success callback
+            } else if target_token.is_some()
+                && Some(token.kind()) == target_token
+            {
                 // Execute the callback
-                callback(self)
+                callback_success(self)
+
+            // If not, execute the failure callback
+            } else if let Some(callback_failure) = callback_failure {
+                callback_failure(self)
+
+            // Else execute the callback
+            } else {
+                callback_success(self)
             }
 
         // If there are no more tokens, the end of the file has been reached
@@ -188,10 +213,5 @@ impl<'source> Parser<'source> {
             self.end_of_file = true;
             Expr::EndOfFile
         }
-    }
-
-    /// A convenience method for getting the current token's kind
-    fn kind(&self) -> crunch_token::Token {
-        self.current.kind()
     }
 }

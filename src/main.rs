@@ -10,6 +10,12 @@
 )]
 #![allow(non_snake_case)]
 
+// Faster allocator for the unix family
+// Custom allocators are not supported by windows
+#[cfg(target_family = "unix")]
+#[global_allocator]
+static ALLOC: mimallocator::Mimalloc = mimallocator::Mimalloc;
+
 mod cli;
 mod crunch;
 

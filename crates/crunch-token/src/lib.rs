@@ -184,8 +184,7 @@ pub enum Token {
     #[token = " "]
     WhiteSpace,
 
-    // TODO: Desired Regex is [a-zA-Z_]{1}[a-zA-Z0-9_]* but it overflows the stack, so logos needs to improve before that happens
-    #[regex = "[a-zA-Z0-9_]+"]
+    #[regex = "[a-zA-Z_]([a-zA-Z0-9_]+)?"]
     Identifier,
 }
 

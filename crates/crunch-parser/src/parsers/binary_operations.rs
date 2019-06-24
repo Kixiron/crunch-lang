@@ -13,14 +13,9 @@ pub fn binary_operation<'source>(
         Token::Or => Op::Or,
         Token::And => Op::And,
         Token::Not => Op::Not,
-        // TODO: Add all binary operations
 
-        // Should be impossible
-        // TODO: More graceful error handling
-        _ => panic!(format!(
-            "An impossible token occurred: {:?} in the `binary_operation` function",
-            token
-        )),
+        // TODO: Add all binary operations
+        _ => unreachable!(),
     };
 
     let left_hand = Arena::with_capacity(1);

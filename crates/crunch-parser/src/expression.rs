@@ -69,7 +69,7 @@ pub struct Literal {
     pub value: LiteralValue,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 pub enum LiteralValue {
     String(String),
     Float(FloatType),
@@ -77,6 +77,17 @@ pub enum LiteralValue {
     Bool(bool),
     Vector(Vec<Literal>),
     Null,
+    Error(Vec<EmittedError>),
+}
+
+impl PartialEq for LiteralValue {
+    fn eq(&self, other: &Self) -> bool {
+        std::mem::discriminant(self) == std::mem::discriminant(other)
+    }
+
+    fn ne(&self, other: &Self) -> bool {
+        std::mem::discriminant(self) != std::mem::discriminant(other)
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]

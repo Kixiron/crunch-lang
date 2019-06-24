@@ -3,6 +3,7 @@
 mod binary_operations;
 mod function;
 mod literal;
+mod loops;
 mod variable;
 mod variable_parsing;
 mod prelude {
@@ -15,5 +16,6 @@ mod prelude {
 pub use binary_operations::*;
 pub use function::*;
 pub use literal::*;
+pub use loops::*;
 pub use variable::*;
 pub use variable_parsing::*;

@@ -1,5 +1,4 @@
 use super::{expression::*, parsers, Parser};
-use crunch_error::{EmittedError, ErrorCode};
 use crunch_token::*;
 use typed_arena::Arena;
 
@@ -20,7 +19,9 @@ impl<'source> Parser<'source> {
             | Token::StrLiteral
             | Token::BoolLiteral
             | Token::Null
-            | Token::VectorLiteral => Expr::Literal(parsers::literal(self, token, &mut tree)),
+            | Token::VectorLiteral => {
+                Expr::Literal(parsers::literal(token, &mut tree))
+            }
 
             // Binary Operators
             Token::Multiply
@@ -32,78 +33,49 @@ impl<'source> Parser<'source> {
             | Token::Not => parsers::binary_operation(self, token, &mut tree),
 
             // Variable declarations
-            Token::Variable => parsers::variable(self, token, &mut tree),
+            Token::Variable => parsers::variable(self, &mut tree),
 
             // Variable types
             Token::Int | Token::Str | Token::Bool | Token::Vector => {
-                parsers::variable_type(self, token, &mut tree)
+                parsers::variable_type(token)
             }
 
-            Token::For => self.next_checked(|parser: &mut Parser<'source>| -> Expr {
-                if parser.current.kind() == Token::Identifier {
-                    let item = parser.current.source().to_owned();
+            Token::For => parsers::for_loop(self, &mut tree),
 
-                    parser.next_checked(|parser: &mut Parser<'source>| -> Expr {
-                        if parser.current.kind() == Token::In {
-                            parser.next_checked(|parser: &mut Parser<'source>| -> Expr {
-                                let collection = Arena::with_capacity(1);
-                                collection.alloc(parser.eval_expr(&parser.current.clone(), &mut tree));
-
-                                parser.next_checked(|parser: &mut Parser<'source>| -> Expr {
-                                    Expr::For {
-                                        item,
-                                        collection,
-                                        body: {
-                                            let body = Arena::with_capacity(1);
-                                            body.alloc(parser.eval_expr(&parser.current.clone(), &mut tree));
-                                            body
-                                        },
-                                    }
-                                })
-                            })
-                        } else {
-                            // If the token is not an identifier, return an invalid Expr
-                            Expr::Error(
-                                vec![
-                                    EmittedError::new_error("Missing an `in`", Some(ErrorCode::E002), &[parser.current.range()]),
-                                    EmittedError::new_help("Try adding an `in` along with a collection to be iterated over in your for loop", None, &[]),
-                                ]
-                            )
-                        }
+            Token::Loop => self.next_checked(
+                |parser: _| -> Expr {
+                    Expr::Loop({
+                        let body = Arena::with_capacity(1);
+                        body.alloc(
+                            parser
+                                .eval_expr(&parser.current.clone(), &mut tree),
+                        );
+                        body
                     })
-                } else {
-                    // If the token is not an identifier, return an invalid Expr
-                    Expr::Error(
-                        vec![
-                            EmittedError::new_error("Missing identifier", Some(ErrorCode::E001), &[parser.current.range()]),
-                            EmittedError::new_help("Try using a valid identifier", None, &[]),
-                            EmittedError::new_note("Variable names may only have upper and lowercase A-Z, 0-9 and underscores in them, and the first character must be either a letter or an underscore", None, &[])
-                        ]
-                    )
-                }
-            }),
+                },
+                None,
+                None::<Box<FnOnce(&mut Parser<'_>) -> Expr>>,
+            ),
 
-            Token::Loop => self.next_checked(|parser: _| -> Expr {
-                Expr::Loop({
+            Token::While => self.next_checked(
+                |parser: &mut Parser<'source>| -> Expr {
+                    let condition = Arena::with_capacity(1);
+                    condition.alloc(
+                        parser.eval_expr(&parser.current.clone(), &mut tree),
+                    );
+
                     let body = Arena::with_capacity(1);
-                    body.alloc(parser.eval_expr(&parser.current.clone(), &mut tree));
-                    body
-                })
-            }),
+                    body.alloc(
+                        parser.eval_expr(&parser.current.clone(), &mut tree),
+                    );
 
-            Token::While => self.next_checked(|parser: &mut Parser<'source>| -> Expr {
-                let condition = Arena::with_capacity(1);
-                condition.alloc(parser.eval_expr(&parser.current.clone(), &mut tree));
+                    Expr::While(condition, body)
+                },
+                None,
+                None::<Box<FnOnce(&mut Parser<'_>) -> Expr>>,
+            ),
 
-                let body = Arena::with_capacity(1);
-                body.alloc(parser.eval_expr(&parser.current.clone(), &mut tree));
-
-                Expr::While(
-                    condition,
-                    body,
-                )
-            }),
-
+            /*
             // FIXME: The if's are broken
             Token::If => self.next_checked(|parser: _| -> Expr {
                 let condition = Arena::with_capacity(1);
@@ -114,7 +86,7 @@ impl<'source> Parser<'source> {
                     if parser.current.kind() != Token::LeftBrace {
                         // If the token after the condition is not a `{`, then consume the next token and replace it with an Invalid
                         let previous = parser.current.range();
-                
+
                         body.alloc(parser.next_checked(|_parser: _| -> Expr {
                             Expr::Invalid("Expected a {".to_string(), previous)
                         }));
@@ -274,13 +246,21 @@ impl<'source> Parser<'source> {
                 }
             }
 
+            */
             Token::Function => parsers::function(self, token, &mut tree),
 
-            Token::WhiteSpace | Token::Comment | Token::MultilineComment | Token::DocComment => {
-                self.next_checked(|parser: _| -> Expr {
-                    // Ignore the meaningless token and evaluate and return the next Expr instead
-                    parser.eval_expr(&token, &mut tree)
-                })
+            Token::WhiteSpace
+            | Token::Comment
+            | Token::MultilineComment
+            | Token::DocComment => {
+                self.next_checked(
+                    |parser: _| -> Expr {
+                        // Ignore the meaningless token and evaluate and return the next Expr instead
+                        parser.eval_expr(&token, &mut tree)
+                    },
+                    None,
+                    None::<Box<FnOnce(&mut Parser<'_>) -> Expr>>,
+                )
             }
 
             Token::EndOfFile => {
