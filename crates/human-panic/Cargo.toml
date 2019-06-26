@@ -29,9 +29,3 @@ rand = "0.7.0-pre.0"
 
 [features]
 nightly = []
-
-[workspace]
-members = [
-  "tests/single-panic",
-  "tests/custom-panic",
-]

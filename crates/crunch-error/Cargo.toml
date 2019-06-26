@@ -3,6 +3,8 @@ name = "crunch-error"
 version = "0.1.0"
 authors = ["Kixiron <kixiron.contact@gmail.com>"]
 edition = "2018"
+license = "MIT"
+# readme = "README.md"
 
 [dependencies]
 codespan-reporting = "0.3.0"

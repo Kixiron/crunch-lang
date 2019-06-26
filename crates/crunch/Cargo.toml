@@ -1,0 +1,26 @@
+[package]
+name = "crunch"
+version = "0.0.0"
+description = "A small language"
+authors = ["Kixiron <contact.kixiron@gmail.com>"]
+edition = "2018"
+license = "MIT"
+readme = "../../README.md"
+
+[[bin]]
+name = "Crunch"
+path = "./src/main.rs"
+
+[dependencies]
+logos = "0.10.0-rc2"
+human-panic = { path = "../human-panic" }
+crunch-token = { path = "../crunch-token" }
+crunch-parser = { path = "../crunch-parser" }
+crunch-error = { path = "../crunch-error" }
+structopt = "0.2.18"
+no-panic = "0.1.10"
+codespan-reporting = "0.3.0"
+codespan = "0.3.0"
+
+[target.'cfg(target_family = "unix")'.dependencies]
+mimallocator = "0.1.0"

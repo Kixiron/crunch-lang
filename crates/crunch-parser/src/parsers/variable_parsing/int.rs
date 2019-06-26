@@ -1,16 +1,16 @@
 use super::prelude::*;
 
 lazy_static::lazy_static! {
-    // Using lazy_static to load an int parse errors to compare against any errors returned by the parsing of integers
+    // Using lazy_static to load int parse errors to compare against any errors returned by the parsing of integers
     // Waiting on https://github.com/rust-lang/rust/issues/22639 to be stabilized before more efficient matching can be done
-    static ref INT_PARSE_OVERFLOW: std::num::ParseIntError = "1231123123123123".parse::<u32>().err().unwrap();
-    static ref INT_PARSE_UNDERFLOW: std::num::ParseIntError = "-11231123123123123".parse::<i32>().err().unwrap();
-    static ref INT_PARSE_INVALID_CHAR: std::num::ParseIntError = "error".parse::<u32>().err().unwrap();
+    pub static ref INT_PARSE_OVERFLOW: std::num::ParseIntError = "1231123123123123".parse::<u32>().err().unwrap();
+    pub static ref INT_PARSE_UNDERFLOW: std::num::ParseIntError = "-11231123123123123".parse::<i32>().err().unwrap();
+    pub static ref INT_PARSE_INVALID_CHAR: std::num::ParseIntError = "error".parse::<u32>().err().unwrap();
 }
 
 // Convenience macro to throw an invalid integer error
 macro_rules! return_parse_error {
-    ($token:ident, $err:expr) => ({
+    ($token:ident, $err:expr) => {{
         if $err == Some(&*INT_PARSE_INVALID_CHAR) {
             LiteralValue::Error(vec![EmittedError::new_error(
                 "Invalid characters in integer",
@@ -19,12 +19,12 @@ macro_rules! return_parse_error {
             )])
         } else {
             LiteralValue::Error(vec![EmittedError::new_error(
-                "Invalid integer. Try removing invalid characters or making it shorter",
+                "Invalid integer. Try making it shorter",
                 None,
                 &[$token.range()],
             )])
         }
-    })
+    }};
 }
 
 pub fn parse_int<'source>(token: &TokenData<'source>) -> LiteralValue {
