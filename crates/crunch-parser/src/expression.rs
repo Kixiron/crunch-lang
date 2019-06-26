@@ -11,6 +11,10 @@ pub enum Expr {
     },
     Literal(Literal),
     VariableType(LiteralKind),
+    Parameter {
+        ident: String,
+        kind: LiteralKind,
+    },
 
     BinaryOp {
         operation: Op,

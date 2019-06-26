@@ -19,9 +19,7 @@ impl<'source> Parser<'source> {
             | Token::StrLiteral
             | Token::BoolLiteral
             | Token::Null
-            | Token::VectorLiteral => {
-                Expr::Literal(parsers::literal(token, &mut tree))
-            }
+            | Token::VectorLiteral => Expr::Literal(parsers::literal(token)),
 
             // Binary Operators
             Token::Multiply

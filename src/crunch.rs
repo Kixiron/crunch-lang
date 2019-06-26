@@ -96,10 +96,18 @@ impl Crunch {
 
         for file in self.code_map.iter() {
             let tokens = TokenStream::new(file.src());
+            println!(
+                "{:#?}",
+                tokens
+                    .clone()
+                    .filter(|t| t.kind() != crunch_token::Token::WhiteSpace)
+                    .collect::<Vec<crunch_token::TokenData>>()
+            );
             let tree = Parser::new(tokens).parse();
 
             let mut writer = EmittedError::new_writer();
             println!("{:#?}", tree);
+
             for node in tree.into_inner() {
                 match node {
                     crunch_parser::Expr::Error(errors) => {

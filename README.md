@@ -1,6 +1,7 @@
 # Crunch
 
 ## Checklist
+-----
 
 - [ ] Sublexing
     - Possibly not needed, careful vetting of all regexes might mitigate problems
@@ -109,6 +110,7 @@
 - [ ] Standardize and comment codebase
 
 ## Target Syntax
+-----
 
 The entry point of every Crunch program is a `main` function that returns `void`
 

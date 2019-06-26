@@ -124,44 +124,6 @@ pub fn parse_int<'source>(token: &TokenData<'source>) -> LiteralValue {
     }
 }
 
-pub fn parse_vector<'source>(
-    token: &TokenData<'source>,
-    mut tree: &mut Vec<Expr>,
-) -> LiteralValue {
-    let mut vector: Vec<Literal> = Vec::new();
-
-    {
-        let stream =
-            TokenStream::new(&token.source()[1..token.source.len() - 1])
-                .filter(|token| {
-                    token.kind() == Token::WhiteSpace
-                        || token.kind() == Token::Comma
-                        || token.kind() == Token::LeftBracket
-                        || token.kind() == Token::RightBracket
-                });
-
-        for token in stream {
-            vector.push(super::literal(&token, &mut tree))
-        }
-    }
-
-    LiteralValue::Vector(vector)
-}
-
-pub fn parse_float<'source>(token: &TokenData<'source>) -> LiteralValue {
-    match token.source().parse::<f32>() {
-        Ok(float) => LiteralValue::Float(FloatType::_f32(float)),
-
-        // If parsing fails, attempt to parse as a 64-bit float
-        Err(_) => match token.source().parse::<f64>() {
-            Ok(float) => LiteralValue::Float(FloatType::_f64(float)),
-
-            // If all parsing attempts fail, then it is not valid
-            Err(err) => panic!("{:?}", err),
-        },
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
