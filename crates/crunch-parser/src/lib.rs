@@ -21,9 +21,15 @@ impl Ast {
     }
 }
 
+impl Default for Ast {
+    fn default() -> Self {
+        Self(Vec::new())
+    }
+}
+
 pub struct Parser<'source> {
     /// A peekable stored iterator
-    token_stream: Box<Vec<TokenData<'source>>>,
+    token_stream: Vec<TokenData<'source>>,
     /// The current token
     current: TokenData<'source>,
     /// Whether or not the end of the file has been reached and the parsing should terminate
@@ -39,7 +45,7 @@ pub struct Parser<'source> {
 impl<'source> Parser<'source> {
     pub fn new(token_stream: TokenStream<'source>) -> Self {
         Self {
-            token_stream: Box::new(token_stream.collect::<Vec<TokenData>>()),
+            token_stream: token_stream.collect::<Vec<TokenData>>(),
             current: TokenData {
                 kind: crunch_token::Token::WhiteSpace,
                 source: " ",
@@ -63,7 +69,7 @@ impl<'source> Parser<'source> {
             // While the end of file has not been reached
             if !self.end_of_file {
                 // Fill current
-                self.current = token.clone();
+                self.current = token;
 
                 // Evaluate the current token as an Expr
                 let expr = self.eval_expr(&token, &mut tree);
@@ -191,11 +197,8 @@ impl<'source> Parser<'source> {
 
         // Weird workaround I had to do to dereference and clone the inner TokenData
         // so that there were not two mutable references of the Parser active
-        let peek = if let Some(token) = self.peek() {
-            Some(token.clone())
-        } else {
-            None
-        };
+        let peek =
+            if let Some(token) = self.peek() { Some(token) } else { None };
 
         if let Some(token) = peek {
             // If the token is whitespace, call peek_checked recursively until a token that is not whitespace is found

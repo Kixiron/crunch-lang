@@ -127,6 +127,7 @@ pub fn parse_int<'source>(token: &TokenData<'source>) -> LiteralValue {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn static_errors() {
@@ -315,5 +316,25 @@ mod tests {
                 Sign::Negative
             ))
         );
+    }
+
+    proptest! {
+        #[test]
+        fn proptest_does_not_crash(int in "\\PC*") {
+            parse_int(&TokenData {
+                kind: Token::IntLiteral,
+                source: &int,
+                range: (0, int.len()),
+            });
+        }
+
+        #[test]
+        fn proptest_int(int in r#"-?[0-9_]+"#) {
+            parse_int(&TokenData {
+                kind: Token::IntLiteral,
+                source: &int,
+                range: (0, int.len()),
+            });
+        }
     }
 }

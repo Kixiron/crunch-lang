@@ -78,9 +78,9 @@ pub enum Token {
     // " This comment exists to spare your/my syntax highlighting
     StrLiteral,
     // TODO: Allow underscores in integers for better readability
-    #[regex = "-?[0-9]+"]
+    #[regex = "-?[0-9_]+"]
     IntLiteral,
-    #[regex = r#"-?[0-9]+\.[0-9]+"#]
+    #[regex = r#"-?[0-9_]+\.[0-9_]+"#]
     FloatLiteral,
 
     #[token = "bool"]

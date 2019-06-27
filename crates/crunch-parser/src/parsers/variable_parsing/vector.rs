@@ -25,6 +25,7 @@ pub fn parse_vector<'source>(token: &TokenData<'source>) -> LiteralValue {
 mod tests {
     use super::*;
     use crate::parsers::literal::literal;
+    use proptest::prelude::*;
 
     #[test]
     fn int_vector() {
@@ -188,4 +189,24 @@ mod tests {
 
     #[test]
     fn vector_vector() {}
+
+    proptest! {
+        #[test]
+        fn proptest_does_not_crash(vector in "\\PC*") {
+            parse_vector(&TokenData {
+                kind: Token::VectorLiteral,
+                source: &vector,
+                range: (0, vector.len()),
+            });
+        }
+
+        #[test]
+        fn proptest_vector(vector in r#"Vec<[-0-9a-zA-Z_]+>"#) {
+            parse_vector(&TokenData {
+                kind: Token::VectorLiteral,
+                source: &vector,
+                range: (0, vector.len()),
+            });
+        }
+    }
 }

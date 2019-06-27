@@ -26,4 +26,27 @@ pub fn parse_float<'source>(token: &TokenData<'source>) -> LiteralValue {
 
 // TODO: Tests
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn proptest_does_not_crash(float in "\\PC*") {
+            parse_float(&TokenData {
+                kind: Token::FloatLiteral,
+                source: &float,
+                range: (0, float.len()),
+            });
+        }
+
+        #[test]
+        fn proptest_float(float in r#"-?[0-9_]+\.[0-9_]+"#) {
+            parse_float(&TokenData {
+                kind: Token::FloatLiteral,
+                source: &float,
+                range: (0, float.len()),
+            });
+        }
+    }
+}

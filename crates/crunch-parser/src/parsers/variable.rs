@@ -56,7 +56,7 @@ pub fn variable<'source>(
                                         None,
                                         None::<
                                             Box<
-                                                FnOnce(&mut Parser<'_>) -> Expr,
+                                                dyn FnOnce(&mut Parser<'_>) -> Expr,
                                             >,
                                         >,
                                     )
@@ -71,7 +71,7 @@ pub fn variable<'source>(
                             )
                         },
                         None,
-                        None::<Box<FnOnce(&mut Parser<'_>) -> Expr>>,
+                        None::<Box<dyn FnOnce(&mut Parser<'_>) -> Expr>>,
                     )
                 },
                 Some(Token::Colon),
