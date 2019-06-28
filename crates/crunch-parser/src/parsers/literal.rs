@@ -12,17 +12,30 @@ pub fn literal<'source>(token: &TokenData<'source>) -> Literal {
                 token.source()[1..token.source().len() - 1].to_owned(),
             ),
         ),
-        Token::BoolLiteral => (
-            LiteralKind::Bool,
-            LiteralValue::Bool(
-                bool::from_str(token.source()).expect("Failed to parse bool"),
-            ),
-        ),
+        Token::BoolLiteral => (LiteralKind::Bool, {
+            if let Ok(boolean) = bool::from_str(token.source()) {
+                LiteralValue::Bool(boolean)
+            } else {
+                LiteralValue::Error(vec![EmittedError::new_error(
+                    "Invalid boolean",
+                    None,
+                    &[token.range()],
+                )])
+            }
+        }),
         Token::VectorLiteral => {
             (LiteralKind::Vector, super::parse_vector(&token))
         }
 
-        _ => unreachable!(),
+        // Not unreachable, variables from within vectors are not checked for type, and so may fall through to this case
+        _ => (
+            LiteralKind::Error,
+            LiteralValue::Error(vec![EmittedError::new_error(
+                "Invalid type in vector",
+                None,
+                &[token.range()],
+            )]),
+        ),
     };
 
     Literal { kind, value }
@@ -31,6 +44,7 @@ pub fn literal<'source>(token: &TokenData<'source>) -> Literal {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn int() {
@@ -115,13 +129,6 @@ mod tests {
     }
 
     #[test]
-    fn vector() {
-        int_vector();
-        float_vector();
-        string_vector();
-        bool_vector();
-    }
-
     fn int_vector() {
         let int_vector = TokenData {
             kind: Token::VectorLiteral,
@@ -161,6 +168,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn float_vector() {
         let float_vector = TokenData {
             kind: Token::VectorLiteral,
@@ -200,6 +208,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn string_vector() {
         let string_vector = TokenData {
             kind: Token::VectorLiteral,
@@ -239,6 +248,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn bool_vector() {
         let bool_vector = TokenData {
             kind: Token::VectorLiteral,
@@ -276,5 +286,166 @@ mod tests {
                 value: LiteralValue::Vector(vec_literal),
             }
         );
+    }
+
+    #[test]
+    fn vector_vector() {
+        let vector_vector = TokenData {
+            kind: Token::VectorLiteral,
+            source: "[[true, false, true], [false, true, false], [true, false, true], [false, true, false], [true, false, true]]",
+            range: (0, 14),
+        };
+
+        let vec_literal = Literal {
+            kind: LiteralKind::Vector,
+            value: LiteralValue::Vector(vec![
+                Literal {
+                    kind: LiteralKind::Vector,
+                    value: LiteralValue::Vector(vec![
+                        Literal {
+                            kind: LiteralKind::Bool,
+                            value: LiteralValue::Bool(true),
+                        },
+                        Literal {
+                            kind: LiteralKind::Bool,
+                            value: LiteralValue::Bool(false),
+                        },
+                        Literal {
+                            kind: LiteralKind::Bool,
+                            value: LiteralValue::Bool(true),
+                        },
+                    ]),
+                },
+                Literal {
+                    kind: LiteralKind::Vector,
+                    value: LiteralValue::Vector(vec![
+                        Literal {
+                            kind: LiteralKind::Bool,
+                            value: LiteralValue::Bool(false),
+                        },
+                        Literal {
+                            kind: LiteralKind::Bool,
+                            value: LiteralValue::Bool(true),
+                        },
+                        Literal {
+                            kind: LiteralKind::Bool,
+                            value: LiteralValue::Bool(false),
+                        },
+                    ]),
+                },
+                Literal {
+                    kind: LiteralKind::Vector,
+                    value: LiteralValue::Vector(vec![
+                        Literal {
+                            kind: LiteralKind::Bool,
+                            value: LiteralValue::Bool(true),
+                        },
+                        Literal {
+                            kind: LiteralKind::Bool,
+                            value: LiteralValue::Bool(false),
+                        },
+                        Literal {
+                            kind: LiteralKind::Bool,
+                            value: LiteralValue::Bool(true),
+                        },
+                    ]),
+                },
+                Literal {
+                    kind: LiteralKind::Vector,
+                    value: LiteralValue::Vector(vec![
+                        Literal {
+                            kind: LiteralKind::Bool,
+                            value: LiteralValue::Bool(false),
+                        },
+                        Literal {
+                            kind: LiteralKind::Bool,
+                            value: LiteralValue::Bool(true),
+                        },
+                        Literal {
+                            kind: LiteralKind::Bool,
+                            value: LiteralValue::Bool(false),
+                        },
+                    ]),
+                },
+                Literal {
+                    kind: LiteralKind::Vector,
+                    value: LiteralValue::Vector(vec![
+                        Literal {
+                            kind: LiteralKind::Bool,
+                            value: LiteralValue::Bool(true),
+                        },
+                        Literal {
+                            kind: LiteralKind::Bool,
+                            value: LiteralValue::Bool(false),
+                        },
+                        Literal {
+                            kind: LiteralKind::Bool,
+                            value: LiteralValue::Bool(true),
+                        },
+                    ]),
+                },
+            ]),
+        };
+
+        assert_eq!(literal(&vector_vector), vec_literal);
+    }
+
+    proptest! {
+        #[test]
+        fn proptest_does_not_crash_int(string in "\\PC*") {
+            literal(&TokenData {
+                kind: Token::IntLiteral,
+                source: &string,
+                range: (0, string.len()),
+            });
+        }
+
+        #[test]
+        fn proptest_does_not_crash_str(string in r#""\\PC*""#) {
+            literal(&TokenData {
+                kind: Token::StrLiteral,
+                source: &string,
+                range: (0, string.len()),
+            });
+        }
+
+        #[test]
+        fn proptest_str_result_correct(string in r#""\\PC*""#) {
+            assert_eq!(literal(&TokenData {
+                kind: Token::StrLiteral,
+                source: &string,
+                range: (0, string.len())
+            }), Literal {
+                kind: LiteralKind::String,
+                value: LiteralValue::String(String::from(&string[1..string.len() - 1])), // String
+            });
+        }
+
+        #[test]
+        fn proptest_does_not_crash_float(string in "\\PC*") {
+            literal(&TokenData {
+                kind: Token::FloatLiteral,
+                source: &string,
+                range: (0, string.len()),
+            });
+        }
+
+        #[test]
+        fn proptest_does_not_crash_bool(string in "\\PC*") {
+            literal(&TokenData {
+                kind: Token::BoolLiteral,
+                source: &string,
+                range: (0, string.len()),
+            });
+        }
+
+        #[test]
+        fn proptest_does_not_crash_vector(string in r#"\[[-0-9a-zA-Z_]+\]"#) {
+            literal(&TokenData {
+                kind: Token::VectorLiteral,
+                source: &string,
+                range: (0, string.len()),
+            });
+        }
     }
 }

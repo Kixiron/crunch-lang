@@ -101,6 +101,7 @@ pub enum LiteralKind {
     Int,
     Vector,
     Bool,
+    Error,
 }
 
 #[derive(Debug, PartialEq, Clone)]

@@ -4,14 +4,12 @@ pub fn parse_vector<'source>(token: &TokenData<'source>) -> LiteralValue {
     let mut vector: Vec<Literal> = Vec::new();
 
     {
-        let stream =
-            TokenStream::new(&token.source()[1..token.source.len() - 1])
-                .filter(|token| {
-                    token.kind() == Token::WhiteSpace
-                        || token.kind() == Token::Comma
-                        || token.kind() == Token::LeftBracket
-                        || token.kind() == Token::RightBracket
-                });
+        let stream = TokenStream::new(&token.source()).filter(|token| {
+            token.kind() == Token::WhiteSpace
+                || token.kind() == Token::Comma
+                || token.kind() == Token::LeftBracket
+                || token.kind() == Token::RightBracket
+        });
 
         for token in stream {
             vector.push(crate::parsers::literal::literal(&token))
@@ -191,8 +189,9 @@ mod tests {
     fn vector_vector() {}
 
     proptest! {
+        /// Tests against randomly generated characters in the regex `[{CHARACTERS}]`
         #[test]
-        fn proptest_does_not_crash(vector in "\\PC*") {
+        fn proptest_does_not_crash(vector in r#"\[\\PC*\]"#) {
             parse_vector(&TokenData {
                 kind: Token::VectorLiteral,
                 source: &vector,
@@ -201,7 +200,7 @@ mod tests {
         }
 
         #[test]
-        fn proptest_vector(vector in r#"Vec<[-0-9a-zA-Z_]+>"#) {
+        fn proptest_vector(vector in r#"\[[-0-9a-zA-Z_]+\]"#) {
             parse_vector(&TokenData {
                 kind: Token::VectorLiteral,
                 source: &vector,

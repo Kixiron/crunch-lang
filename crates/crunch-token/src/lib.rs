@@ -95,7 +95,7 @@ pub enum Token {
     #[regex = r#"\[[-0-9a-zA-Z_, ]+\]"#]
     VectorLiteral,
 
-    #[regex = r#"Vec<[-0-9a-zA-Z_]+>"#]
+    #[regex = r#"\[[-0-9a-zA-Z_]+\]"#]
     Vector,
 
     #[token = "}"]
