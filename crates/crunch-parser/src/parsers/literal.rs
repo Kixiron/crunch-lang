@@ -6,12 +6,22 @@ pub fn literal<'source>(token: &TokenData<'source>) -> Literal {
     let (kind, value) = match token.kind() {
         Token::IntLiteral => (LiteralKind::Int, super::parse_int(&token)),
         Token::FloatLiteral => (LiteralKind::Float, super::parse_float(&token)),
-        Token::StrLiteral => (
-            LiteralKind::String,
-            LiteralValue::String(
-                token.source()[1..token.source().len() - 1].to_owned(),
-            ),
-        ),
+        Token::StrLiteral => {
+            (LiteralKind::String, {
+                match if token.source().starts_with("\"") {
+                    (token.source().starts_with("\""), token.source().ends_with("\""))
+                } else if token.source().starts_with("'") {
+                    (token.source().ends_with("'"), token.source().starts_with("'"))
+                } else {
+                    (false, false)
+                } {
+                    (true, true) => LiteralValue::String(
+                        token.source()[1..token.source().len() - 1].to_owned(),
+                    ),
+                    (_, _) => LiteralValue::Error(vec![EmittedError::new_error("Your string must start with and end with a ' or a \"", None, &[token.range()])])
+                }
+            })
+        }
         Token::BoolLiteral => (LiteralKind::Bool, {
             if let Ok(boolean) = bool::from_str(token.source()) {
                 LiteralValue::Bool(boolean)
@@ -44,6 +54,7 @@ pub fn literal<'source>(token: &TokenData<'source>) -> Literal {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crunch_token::string_macros;
     use proptest::prelude::*;
 
     #[test]
@@ -84,7 +95,21 @@ mod tests {
     fn string() {
         let string = TokenData {
             kind: Token::StrLiteral,
-            source: "Test String",
+            source: "\"Test String\"",
+            range: (0, 10),
+        };
+
+        assert_eq!(
+            literal(&string),
+            Literal {
+                kind: LiteralKind::String,
+                value: LiteralValue::String(String::from("Test String")),
+            }
+        );
+
+        let string = TokenData {
+            kind: Token::StrLiteral,
+            source: "'Test String'",
             range: (0, 10),
         };
 

@@ -28,6 +28,48 @@ macro_rules! return_parse_error {
 }
 
 pub fn parse_int<'source>(token: &TokenData<'source>) -> LiteralValue {
+    if token.source().starts_with("0x") {
+        parse_hex(token)
+    } else {
+        parse_integer(token)
+    }
+}
+
+// TODO: Find a way to use the same unsigned system as parse_integer
+fn parse_hex<'source>(token: &TokenData<'source>) -> LiteralValue {
+    // Process and trim the source string
+    let source = token.source().trim().trim_start_matches("0x");
+    debug_assert!(!source.starts_with("0x"), "Error parsing integer");
+
+    match i32::from_str_radix(source, 16) {
+        // Parse for i32
+        Ok(int) => LiteralValue::Int(IntType::_i32(int)), // If the parse is successful, return the integer
+        Err(ref err)
+            if err != &*INT_PARSE_OVERFLOW && err != &*INT_PARSE_UNDERFLOW =>
+        {
+            return_parse_error!(token, Some(err))
+        }
+
+        // Parse for i64
+        _ => match i64::from_str_radix(source, 16) {
+            Ok(int) => LiteralValue::Int(IntType::_i64(int)),
+            Err(ref err)
+                if err != &*INT_PARSE_OVERFLOW
+                    && err != &*INT_PARSE_UNDERFLOW =>
+            {
+                return_parse_error!(token, Some(err))
+            }
+
+            // Parse for i128
+            _ => match i128::from_str_radix(source, 16) {
+                Ok(int) => LiteralValue::Int(IntType::_i128(int)),
+                _ => return_parse_error!(token, None),
+            },
+        },
+    }
+}
+
+fn parse_integer<'source>(token: &TokenData<'source>) -> LiteralValue {
     // Process and trim the source string
     let source = token.source().trim().replace("_", "");
 
@@ -318,6 +360,16 @@ mod tests {
         );
     }
 
+    #[test]
+    fn parse_hex() {
+        let hex = TokenData {
+            kind: Token::IntLiteral,
+            source: "0xF0A23",
+            range: (0, 1),
+        };
+        assert_eq!(parse_int(&hex), LiteralValue::Int(IntType::_i32(985635)));
+    }
+
     proptest! {
         #[test]
         fn proptest_does_not_crash(int in "\\PC*") {
@@ -329,7 +381,35 @@ mod tests {
         }
 
         #[test]
+        fn proptest_does_not_crash_int(int in "[^0x]{2}\\PC*") {
+            // " Once again, I value my syntax highlighting
+            parse_int(&TokenData {
+                kind: Token::IntLiteral,
+                source: &int,
+                range: (0, int.len()),
+            });
+        }
+
+        #[test]
+        fn proptest_does_not_crash_hex(int in "0x\\PC*") {
+            parse_int(&TokenData {
+                kind: Token::IntLiteral,
+                source: &int,
+                range: (0, int.len()),
+            });
+        }
+
+        #[test]
         fn proptest_int(int in r#"-?[0-9_]+"#) {
+            parse_int(&TokenData {
+                kind: Token::IntLiteral,
+                source: &int,
+                range: (0, int.len()),
+            });
+        }
+
+        #[test]
+        fn proptest_hex(int in "0x[0-9A-Fa-f]+") {
             parse_int(&TokenData {
                 kind: Token::IntLiteral,
                 source: &int,

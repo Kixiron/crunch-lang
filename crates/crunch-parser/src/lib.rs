@@ -1,6 +1,9 @@
 mod evaluate_expression;
 pub mod expression;
+#[cfg(not(fuzzing))]
 mod parsers;
+#[cfg(fuzzing)]
+pub mod parsers;
 
 use crunch_token::{TokenData, TokenStream};
 use shrinkwraprs::Shrinkwrap;

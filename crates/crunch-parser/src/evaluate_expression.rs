@@ -6,7 +6,7 @@ use typed_arena::Arena;
 // TODO: This function is absolutely bogged down by the manual checking of valid `next` calls,
 // Something needs to be done to either pass that onto a separate function or a macro
 impl<'source> Parser<'source> {
-    pub fn eval_expr(
+    pub(crate) fn eval_expr(
         &mut self,
         token: &TokenData<'source>,
         mut tree: &mut Vec<Expr>,

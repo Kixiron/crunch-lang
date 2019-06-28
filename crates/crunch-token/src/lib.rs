@@ -1,3 +1,4 @@
+pub mod string_macros;
 mod token_stream;
 
 use logos::{self, Logos};
@@ -78,6 +79,7 @@ pub enum Token {
     // " This comment exists to spare your/my syntax highlighting
     StrLiteral,
     // TODO: Allow underscores in integers for better readability
+    #[regex = "0x[0-9A-Fa-f]+"]
     #[regex = "-?[0-9_]+"]
     IntLiteral,
     #[regex = r#"-?[0-9_]+\.[0-9_]+"#]
@@ -92,10 +94,10 @@ pub enum Token {
     #[token = "null"]
     Null,
 
-    #[regex = r#"\[[-0-9a-zA-Z_, ]+\]"#]
+    #[regex = r#"\[[.*]+\]"#]
     VectorLiteral,
 
-    #[regex = r#"\[[-0-9a-zA-Z_]+\]"#]
+    #[regex = r#"\[[(int)|(str)]+\]"#]
     Vector,
 
     #[token = "}"]

@@ -1,44 +1,34 @@
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-#[derive(Debug, StructOpt)]
-#[structopt(
-    name = "Crunch",
-    about = "The Crunch interpreter",
-    rename_all = "kebab-case"
-)]
-pub struct Cli {
-    /// The path of the file to interpret. If left empty, an interactive prompt will open
-    ///
-    /// Opens the requested file and runs using the Crunch interpreter. If no file is specified,
-    /// then an interactive Crunch prompt will be opened.
-    #[structopt(parse(from_os_str))]
-    pub file_path: Option<PathBuf>,
-
-    /// Displays info about Crunch
-    #[structopt(long = "info")]
-    pub display_info: bool,
-}
-
 #[derive(StructOpt)]
 #[structopt(
     name = "Crunch",
     about = "The Crunch Language",
     rename_all = "kebab-case"
 )]
-pub enum CrunchCli {
-    /// Run the crunch interpreter
+pub struct CrunchCli {
+    #[structopt(subcommand)]
+    pub(crate) cmd: Option<CrunchCmd>,
+}
+
+#[derive(StructOpt)]
+pub enum CrunchCmd {
+    /// Run a file in the crunch interpreter
     ///
-    /// Runs a REPL if no file is specified, a file if specified and a project
-    /// if in a project directory
+    /// Runs a file if specified and a project if in a project directory
     #[structopt(name = "run")]
     Run {
-        /// The path of the file to interpret. If left empty, an interactive prompt will open
+        /// The path of the file to interpret.
         ///
         /// Opens the requested file and runs using the Crunch interpreter.
         #[structopt(parse(from_os_str))]
         file_path: Option<PathBuf>,
     },
+
+    /// Run the Crunch interpreter
+    #[structopt(name = "prompt")]
+    Prompt {},
 
     /// Build a crunch file or project
     #[structopt(name = "build")]
@@ -56,7 +46,7 @@ pub enum CrunchCli {
     #[structopt(name = "update")]
     Update {},
 
-    /// Get help
+    /// Get help with crunch
     #[structopt(name = "help")]
     Help {},
 }

@@ -25,7 +25,7 @@ const fn email() -> &'static str {
 }
 
 fn main() {
-    use cli::Cli;
+    use cli::{CrunchCli, CrunchCmd};
     use crunch::Crunch;
     use structopt::StructOpt;
 
@@ -37,16 +37,34 @@ fn main() {
         homepage: env!("CARGO_PKG_HOMEPAGE").into(),
     });
 
-    let cli = Cli::from_args();
+    let cli = CrunchCli::from_args();
     let mut crunch = Crunch::new();
 
-    if !cli.display_info {
-        if let Some(file_path) = cli.file_path {
-            crunch.run_file(&file_path);
-        } else {
-            crunch.prompt();
+    if let Some(cmd) = cli.cmd {
+        match cmd {
+            CrunchCmd::Run { file_path } => {
+                if let Some(file_path) = file_path {
+                    crunch.run_file(&file_path);
+                } else {
+                    unimplemented!();
+                }
+            }
+            CrunchCmd::Prompt {} => {
+                crunch.prompt();
+            }
+            CrunchCmd::Build {} => {}
+            CrunchCmd::Test {} => {}
+            CrunchCmd::Doc {} => {}
+            CrunchCmd::Update {} => {}
+            CrunchCmd::Help {} => {
+                CrunchCli::clap()
+                    .print_long_help()
+                    .expect("Something went wrong! Please try again later.");
+            }
         }
     } else {
-        crunch.display_info();
+        CrunchCli::clap()
+            .print_help()
+            .expect("Something went wrong! Please try again later.");
     }
 }
