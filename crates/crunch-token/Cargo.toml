@@ -1,9 +1,0 @@
-[package]
-name = "crunch-token"
-version = "0.0.0"
-authors = ["Kixiron <contact.kixiron@gmail.com>"]
-edition = "2018"
-license = "MIT"
-
-[dependencies]
-logos = "0.10.0-rc2"

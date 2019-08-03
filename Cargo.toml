@@ -1,7 +1,19 @@
-[workspace]
-members = [
-    "crates/*",
-]
+[package]
+name = "crunch"
+version = "0.0.0"
+authors = ["Chase Wilson <chase.h.wilson3@gamil.com>"]
+publish = false
+description = "An esoteric language written in Rust"
+homepage = "https://github.com/Kixiron/crunch-lang"
+repository = "https://github.com/Kixiron/crunch-lang"
+readme = "README.md"
+keywords = ["crunch", "language"]
+categories = ["language"]
+license = "MIT"
+edition = "2018"
+
+[dependencies]
+array-init = "0.1.0"
 
 [profile.dev]
 opt-level = 0
@@ -18,7 +30,7 @@ overflow-checks = true
 opt-level = 3
 debug = false
 rpath = false
-lto = false
+lto = true
 debug-assertions = false
 codegen-units = 1
 panic = 'unwind'
@@ -26,21 +38,26 @@ incremental = false
 overflow-checks = false
 
 [profile.test]
-opt-level = 3
-debug = false
+opt-level = 0
+debug = true
 rpath = false
 lto = false
-debug-assertions = false
-codegen-units = 1
-incremental = false
-overflow-checks = false
+debug-assertions = true
+codegen-units = 16
+incremental = true
+overflow-checks = true
 
 [profile.bench]
 opt-level = 3
 debug = false
 rpath = false
-lto = false
+lto = true
 debug-assertions = false
 codegen-units = 1
 incremental = false
 overflow-checks = false
+
+[badges]
+is-it-maintained-issue-resolution = { repository = "https://github.com/Kixiron/crunch-lang" }
+is-it-maintained-open-issues = { repository = "https://github.com/Kixiron/crunch-lang" }
+maintenance = { status = "experimental" }

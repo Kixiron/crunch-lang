@@ -3,45 +3,35 @@
 ## Checklist
 -----
 
-- [ ] Sublexing
-    - Possibly not needed, careful vetting of all regexes might mitigate problems
 - [ ] Variables
     - [ ] Scoping
-    - [X] Support for typing
-    - [X] Naming
-    - [X] Values
-        - [X] Strings
-        - [X] Integers
-            - [X] Signed
-            - [X] Floats
+    - [ ] Support for typing
+    - [ ] Naming
+    - [ ] Values
+        - [ ] Strings
+        - [ ] Integers
+            - [ ] Signed
+            - [ ] Floats
             - [ ] Dynamic re-sizing when needed
-                - [X] When parsing
+                - [ ] When parsing
                 - [ ] When operating on
         - [ ] Vectors
-            - [X] Multi-typed
             - [ ] Indexing
             - [ ] Iteration
                 - [ ] For loop integration
-        - [X] Booleans
-    - [X] Uninitialized variables
+        - [ ] Booleans
+    - [ ] Uninitialized variables
     - [ ] Global Variables
     - [ ] Semi-static typing
     - [ ] Manipulation (Adding, indexing, removing, type info, etc.)
     - [ ] Constants
         - Strictly enforced to be unchanging
     - [ ] Calling variables
-- [X] Comments
-    - [X] Single Line
-    - [X] Multiline
-        - Also applied the regex logic in order to capture everything from `/*` to `*/` as a comment.
-    - [X] Fix string breakout
-        - Using a string declaration char (' or ") within a comment will cause it to find the next matching char, creating a long and wrong string, messing everything up
-        - Fixed by changing the comment pattern to `#[regex = "//[^\n]+\n"]`. This makes the Comment everything from `//` to a newline, mitigating any breakout
-    - [X] Documentation Comments
-        - Doc comments exist, but do nothing special (Yet)
-- [X] Char support
-    - Some strange chars will cause the program to panic
-    - Was strange interaction with the old method of parsing comments
+- [ ] Comments
+    - [ ] Single Line
+    - [ ] Multiline
+    - [ ] Documentation Comments
+- [ ] Char support
 - [ ] Vet user input
     - [ ] Make sure files exist
     - [ ] Make sure files are valid crunch files
@@ -54,15 +44,15 @@
     - [ ] Parameters
     - [ ] Method Calls
 - [ ] Loops
-    - [X] For
-    - [X] While
-    - [X] Loops
+    - [ ] For
+    - [ ] While
+    - [ ] Loops
 - [ ] Logic
-    - [X] If
-    - [X] Else
-    - [X] Else If
-    - [X] And
-    - [X] Or
+    - [ ] If
+    - [ ] Else
+    - [ ] Else If
+    - [ ] And
+    - [ ] Or
     - [ ] Not
 - [ ] Errors
     - [ ] Ergonomic Error Messages
@@ -79,17 +69,16 @@
     - [ ] Import system
     - [ ] Import functions/variables/classes from other files
     - [ ] Public/Private access
+- [ ] Mutability with `mut` keyword
 - [ ] Static analysis
-- [ ] Strong(er) typing
-- [ ] Compilation
-    - Bytecode?
-        - `.compact` extension
-        - `.crunched` extension
-        - Still requires interpreter of some sort
-    - LLVM?
-        - Multi-target machine code compilation
-    - Both?
-- [ ] Garbage Collector
+- [ ] Static(er) typing
+- [ ] Bytecode
+    - `.compact` extension?
+    - `.crunched` extension?
+    - Still requires interpreter of some sort
+- [ ] Optimization for bytecode compilation
+- [ ] JIT
+- [ ] GC
 - [ ] Tooling
     - [ ] All commandline-friendly tools
     - [ ] Package Manager
@@ -101,12 +90,9 @@
         - Compacter
 - [ ] Comprehensive Testing
 - [ ] Comprehensive Benchmarking
-    - Improve off of benchmark results to increase speed
 - [ ] Stabilize and assure using `no-panic`
 - [ ] Add better user experience using `human-panic`
-    - [ ] Custom, randomized friendly error messages
-- [ ] Decide on variable mutability by default
-    - `mut` for mutable like Rust
+- [ ] Custom, randomized friendly error messages
 - [ ] Standardize and comment codebase
 
 ## Target Syntax
@@ -116,19 +102,21 @@ The entry point of every Crunch program is a `main` function that returns `void`
 
 ```crunch
 type Syven {
-    str name,
-    int age,
+    vars:
+        name: str,
+        age: int,
 
-    fn new(str name, int age) -> Self {
-        Syven {
-            name: name,
-            age: age,
+    methods:
+        fn new(str name, int age) -> Self {
+            Syven {
+                name: name,
+                age: age,
+            }
         }
-    }
-
-    fn greet(self) -> void {
-        println("Hello {}! You are {} years old!", self.name, self.age);
-    }
+        
+        fn greet(self) -> void {
+            println("Hello {}! You are {} years old!", self.name, self.age);
+        }
 }
 
 fn hello(str name, int age) -> void {
