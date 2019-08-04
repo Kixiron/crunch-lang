@@ -68,6 +68,8 @@ impl Registers {
     #[inline]
     #[allow(unsafe_code)]
     pub fn add_strings(&mut self, left: StringPointer, right: StringPointer) {
+        assert!(left != right);
+
         unsafe {
             let (ptr, len, capacity) = {
                 let string = &self.strings[*right as usize];
