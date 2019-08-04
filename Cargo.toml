@@ -12,8 +12,20 @@ categories = ["language"]
 license = "MIT"
 edition = "2018"
 
+[[bench]]
+name = "vm_execution"
+harness = false
+
 [dependencies]
 array-init = "0.1.0"
+chrono = "0.4.7"
+serde = { version = "1.0.98", features = ["derive"] }
+bincode = "1.1.4"
+derive_more = "0.15.0"
+
+[dev-dependencies]
+color-backtrace = "0.2.2"
+criterion = "0.2.11"
 
 [profile.dev]
 opt-level = 0
