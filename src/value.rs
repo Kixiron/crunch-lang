@@ -1,6 +1,5 @@
-use super::Registers;
-use derive_more::{Add, AddAssign, Constructor, Display, From, Into, Mul, MulAssign};
-use serde::{Deserialize, Serialize};
+use super::StringPointer;
+use derive_more::Display;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Display)]
 pub enum Value {
@@ -10,6 +9,8 @@ pub enum Value {
     Str(StringPointer),
     #[display(fmt = "{}", _0)]
     Bool(bool),
+    #[display(fmt = "{}", _0)]
+    JumpLocation(u16),
     #[display(fmt = "Empty Register")]
     None,
 }
@@ -29,7 +30,7 @@ impl Value {
                 new.push_str(left);
                 new.push_str(right);
 
-                registers.load_str(new, left_reg.into());
+                registers.load_str(new, left_reg);
 
                 Str(left_reg)
             }
@@ -44,7 +45,13 @@ impl Value {
 
         match (self, other) {
             (Int(left), Int(right)) => left == right,
-            (Str(ref left), Str(ref right)) => left.fetch(registers) == right.fetch(registers),
+            (Str(left), Str(right)) => {
+                if left == right {
+                    true
+                } else {
+                    left.get(registers) == right.get(registers)
+                }
+            }
             (Bool(left), Bool(right)) => left == right,
             (None, None) => true,
             (_, _) => false,
@@ -99,48 +106,5 @@ impl std::ops::SubAssign for Value {
             (None, None) => {}
             (_, _) => unreachable!(),
         }
-    }
-}
-
-#[derive(
-    Debug,
-    Copy,
-    Clone,
-    PartialEq,
-    Eq,
-    Add,
-    Mul,
-    AddAssign,
-    MulAssign,
-    Constructor,
-    Display,
-    From,
-    Into,
-    Deserialize,
-    Serialize,
-)]
-#[display(fmt = "{}", "_0")]
-pub struct StringPointer(u8);
-
-impl StringPointer {
-    #[inline]
-    pub fn fetch(self, registers: &Registers) -> &str {
-        registers.get_str(self.0.into())
-    }
-}
-
-impl ::std::ops::Deref for StringPointer {
-    type Target = u8;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl ::std::ops::DerefMut for StringPointer {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
     }
 }

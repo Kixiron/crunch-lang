@@ -1,4 +1,5 @@
-#![deny(unsafe_code)]
+#![deny(missing_debug_implementations)]
+// #![deny(missing_docs)]
 #![warn(
     clippy::cargo,
     clippy::nursery,
@@ -10,141 +11,43 @@
     rust_2018_idioms
 )]
 
-pub const NUMBER_REGISTERS: usize = 10;
-pub const NUMBER_STRINGS: usize = 10;
+const NUMBER_REGISTERS: usize = 10;
+const NUMBER_STRINGS: usize = 10;
 
+#[cfg(feature = "bytecode")]
+mod bytecode;
 mod instruction;
+mod newtypes;
 mod registers;
 mod value;
 
+#[cfg(feature = "bytecode")]
+pub use bytecode::*;
 pub use instruction::*;
+pub use newtypes::{Index, LoadedString, Register, StringPointer};
 pub use registers::*;
 pub use value::*;
 
-#[inline]
-pub fn to_bytecode(instructions: &[Instruction]) -> Result<Vec<Vec<u8>>, &'static str> {
-    let mut vec = Vec::default();
-
-    for instruction in instructions {
-        match bincode::serialize(instruction) {
-            Ok(bytecode) => vec.push(bytecode),
-            Err(err) => {
-                println!("{:?}", err);
-                return Err("Serialization Error");
-            }
-        }
-    }
-
-    Ok(vec)
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Crunch {
+    instructions: Vec<Instruction>,
+    registers: Registers,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn init() {
-        color_backtrace::install();
-    }
-
-    #[test]
-    fn bytecode_test() {
-        init();
-
-        let instructions = {
-            use Instruction::*;
-
-            vec![
-                LoadBool(true, 0),
-                LoadBool(false, 1),
-                CondJump { offset: 8, reg: 0 },
-                CondJump { offset: 15, reg: 1 },
-                LoadStr(LoadedString::new_boxed("Else".to_owned(), 0, 2)),
-                Print(2),
-                Drop(0),
-                Drop(1),
-                Drop(2),
-                Halt,
-                LoadStr(LoadedString::new_boxed("Else".to_owned(), 0, 2)),
-                LoadStr(LoadedString::new_boxed("If".to_owned(), 1, 3)),
-                AddStr {
-                    left: 0.into(),
-                    right: 1.into(),
-                },
-                Print(2),
-                Drop(0),
-                Drop(1),
-                Drop(2),
-                Halt,
-                LoadStr(LoadedString::new_boxed("Else If".to_owned(), 0, 2)),
-                Print(2),
-                Drop(0),
-                Drop(1),
-                Drop(2),
-                Halt,
-            ]
-        };
-
-        println!("Instructions:");
-        for (line, instruction) in instructions.iter().enumerate() {
-            println!("  {:04}: {:?}", line, instruction);
-        }
-
-        println!("Bytecode:");
-        for (line, instruction) in instructions.into_iter().enumerate() {
-            let bytecode = bincode::serialize(&instruction).unwrap();
-
-            print!("  {:04}: ", line);
-            for byte in &bytecode {
-                print!("{:02X} ", byte);
-            }
-            println!();
+impl Crunch {
+    pub fn execute(&mut self) {
+        while !self.registers.environment.finished_execution {
+            self.instructions[*self.registers.environment.index as usize]
+                .execute(&mut self.registers);
         }
     }
+}
 
-    #[test]
-    fn instruction() {
-        init();
-
-        let instructions = {
-            use Instruction::*;
-
-            vec![
-                LoadBool(true, 0),
-                LoadBool(false, 1),
-                CondJump { offset: 8, reg: 0 },
-                CondJump { offset: 15, reg: 1 },
-                LoadStr(LoadedString::new_boxed("Else".to_owned(), 0, 2)),
-                Print(2),
-                Drop(0),
-                Drop(1),
-                Drop(2),
-                Halt,
-                LoadStr(LoadedString::new_boxed("Else".to_owned(), 0, 2)),
-                LoadStr(LoadedString::new_boxed("If".to_owned(), 1, 3)),
-                AddStr {
-                    left: 0.into(),
-                    right: 1.into(),
-                },
-                Print(2),
-                Drop(0),
-                Drop(1),
-                Drop(2),
-                Halt,
-                LoadStr(LoadedString::new_boxed("Else If".to_owned(), 0, 2)),
-                Print(2),
-                Drop(0),
-                Drop(1),
-                Drop(2),
-                Halt,
-            ]
-        };
-
-        let mut registers = Registers::new();
-
-        while !registers.environment.finished_execution {
-            instructions[*registers.environment.index]
-                .clone()
-                .execute(&mut registers);
+impl From<Vec<Instruction>> for Crunch {
+    fn from(instructions: Vec<Instruction>) -> Self {
+        Self {
+            instructions,
+            registers: Registers::new(),
         }
     }
 }
