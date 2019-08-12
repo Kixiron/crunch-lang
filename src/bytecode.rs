@@ -135,10 +135,10 @@ pub fn encode_instructions(instructions: &[Instruction]) -> Vec<u8> {
     let mut instruction_bytes = vec![0_u8; instructions.len() * 9];
     let mut instruction_strings: Vec<String> = Vec::default();
 
-    for instruction in instructions {
+    for (index, instruction) in instructions.iter().enumerate() {
         let (bytes, string) = encode(instruction);
 
-        instruction_bytes.extend_from_slice(&bytes);
+        instruction_bytes[index * 9..(index * 9) + 9].copy_from_slice(&bytes);
         if let Some(string) = string {
             instruction_strings.push(string);
         }
@@ -206,8 +206,6 @@ mod tests {
 
     #[test]
     fn test() {
-        use std::convert::TryInto;
-
         let instructions = vec![
             LoadInt(10, Register(0)),
             Print(Register(0)),
