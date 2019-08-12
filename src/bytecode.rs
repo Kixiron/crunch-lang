@@ -145,9 +145,10 @@ pub fn encode_instructions(instructions: &[Instruction]) -> Vec<u8> {
     }
 
     let mut string_bytes: Vec<u8> = Vec::new();
-    string_bytes.extend_from_slice(&instruction_strings.len().to_be_bytes());
+    string_bytes.extend_from_slice(&(instruction_strings.len() as u32).to_be_bytes());
+
     for string in instruction_strings {
-        string_bytes.extend_from_slice(&string.len().to_be_bytes());
+        string_bytes.extend_from_slice(&(string.len() as u32).to_be_bytes());
         string_bytes.extend_from_slice(string.as_bytes());
     }
 
@@ -171,17 +172,11 @@ pub fn decode_instructions(bytes: &[u8]) -> Vec<Instruction> {
         index += len;
     }
 
-    let mut instructions = Vec::with_capacity(
-        usize::from_be_bytes(
-            bytes[index..]
-                .try_into()
-                .unwrap_or_else(|_| unsafe { std::hint::unreachable_unchecked() }),
-        ) / 9,
-    );
+    let mut instructions = Vec::with_capacity(bytes[index..].len() / 9);
     let mut str_index = 0_usize;
 
     for chunk in bytes[index..].chunks(9) {
-        let chunk = chunk
+        let chunk: [u8; 9] = chunk
             .try_into()
             .unwrap_or_else(|_| unsafe { std::hint::unreachable_unchecked() });
         instructions.push(decode(chunk, &mut strings, &mut str_index));
@@ -193,13 +188,13 @@ pub fn decode_instructions(bytes: &[u8]) -> Vec<Instruction> {
 fn take_usize(index: &mut usize, bytes: &[u8]) -> usize {
     use std::convert::TryInto;
 
-    let int = usize::from_be_bytes(
-        bytes[*index..*index + 8]
+    let int = u32::from_be_bytes(
+        bytes[*index..*index + 4]
             .try_into()
             .unwrap_or_else(|_| unsafe { std::hint::unreachable_unchecked() }),
-    );
+    ) as usize;
 
-    *index += 8;
+    *index += 4;
 
     int
 }
@@ -234,14 +229,19 @@ mod tests {
             Drop(Register(0)),
             Halt,
         ];
-        println!("here");
         let encoded = encode_instructions(&instructions);
 
         println!("{:?}", encoded);
 
         let decoded = decode_instructions(&encoded);
 
-        println!("{:#?}", decoded);
+        for i in &decoded {
+            println!("{:?}", i);
+        }
+
+        for (index, left) in instructions.iter().enumerate() {
+            assert_eq!(left, &decoded[index]);
+        }
         assert_eq!(decoded, instructions);
 
         let mut crunch = crate::Crunch::from(decoded);
