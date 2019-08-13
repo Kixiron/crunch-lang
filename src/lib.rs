@@ -37,6 +37,10 @@ pub struct Crunch {
 impl Crunch {
     pub fn execute(&mut self) {
         while !self.registers.environment.finished_execution {
+            log::trace!(
+                "Executing Instruction {:?}",
+                self.instructions[*self.registers.environment.index as usize]
+            );
             self.instructions[*self.registers.environment.index as usize]
                 .execute(&mut self.registers);
         }

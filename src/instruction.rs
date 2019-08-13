@@ -62,51 +62,35 @@ impl Instruction {
                 trace!("Loading {:?} into {:?}", int, reg);
 
                 registers.load(Value::Int(*int), *reg);
-
-                registers.environment.index.add(Index(1));
             }
             LoadStr(load) => {
                 registers.load_str(load.string.clone(), load.str_reg);
                 registers.load(Value::Str(load.str_reg), load.reg);
-
-                registers.environment.index.add(Index(1));
             }
             LoadBool(boolean, reg) => {
                 trace!("Loading {:?} into {:?}", boolean, reg);
 
                 registers.load(Value::Bool(*boolean), *reg);
-
-                registers.environment.index.add(Index(1));
             }
             Drop(reg) => {
                 trace!("Dropping {:?}", reg);
                 registers.clear(*reg);
-
-                registers.environment.index.add(Index(1));
             }
-            DropStr(ptr) => {
-                ptr.get_mut(registers).clear();
-            }
+            DropStr(ptr) => ptr.get_mut(registers).clear(),
             AddStr { left, right } => {
                 registers.add_strings(*left, *right);
-
-                registers.environment.index.add(Index(1));
             }
             AddInt { left, right } => {
                 trace!("Adding {:?} and {:?}", left, right);
 
                 let int = *registers.get(*right);
                 (*registers.get_mut(*left)) += int;
-
-                registers.environment.index.add(Index(1));
             }
             SubInt { left, right } => {
                 trace!("Subtracting {:?} and {:?}", left, right);
 
                 let int = *registers.get(*right);
                 (*registers.get_mut(*left)) -= int;
-
-                registers.environment.index.add(Index(1));
             }
             Print(reg) => {
                 trace!("Printing {:?}", reg);
@@ -115,16 +99,13 @@ impl Instruction {
                     Value::Str(ptr) => println!("{}", ptr.get(registers)),
                     val => println!("{}", val),
                 }
-
-                registers.environment.index.add(Index(1));
             }
             Jump(index) => {
                 trace!("Jumping by offset {}", index);
 
-                registers
-                    .environment
-                    .index
-                    .set(Index((registers.environment.index.0 as i32 + index) as u32));
+                registers.environment.index.set(Index(
+                    (registers.environment.index.0 as i32 + index - 1) as u32,
+                ));
             }
             CondJump { index, reg } => {
                 let reg_value = registers.get(*reg);
@@ -135,10 +116,9 @@ impl Instruction {
                         reg,
                         reg_value
                     );
-                    registers
-                        .environment
-                        .index
-                        .set(Index((registers.environment.index.0 as i32 + index) as u32));
+                    registers.environment.index.set(Index(
+                        (registers.environment.index.0 as i32 + index - 1) as u32,
+                    ));
                 } else if reg_value == &Value::Bool(false) {
                     trace!(
                         "CondJump by offset {}, reading {:?} (Value: {})",
@@ -146,7 +126,6 @@ impl Instruction {
                         reg,
                         reg_value
                     );
-                    registers.environment.index.add(Index(1));
                 } else {
                     warn!("The requested register for `CondJump` does not contain a boolean [Register: {:?} Value: {:?}]", reg, reg_value);
 
@@ -156,7 +135,6 @@ impl Instruction {
                         reg,
                         reg_value
                     );
-                    registers.environment.index.add(Index(1));
                 }
             }
             Halt => {
@@ -164,5 +142,7 @@ impl Instruction {
                 registers.environment.finished_execution = true;
             }
         }
+
+        registers.environment.index.add(Index(1));
     }
 }
