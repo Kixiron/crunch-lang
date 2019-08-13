@@ -102,21 +102,19 @@ The entry point of every Crunch program is a `main` function that returns `void`
 
 ```crunch
 type Syven {
-    vars:
-        name: str,
-        age: int,
+    str name,
+    int age,
 
-    methods:
-        fn new(str name, int age) -> Self {
-            Syven {
-                name: name,
-                age: age,
-            }
+    fn new(str name, int age) -> Self {
+        Syven {
+            name: name,
+            age: age,
         }
-        
-        fn greet(self) -> void {
-            println("Hello {}! You are {} years old!", self.name, self.age);
-        }
+    }
+    
+    fn greet(self) -> void {
+        println("Hello {}! You are {} years old!", self.name, self.age);
+    }
 }
 
 fn hello(str name, int age) -> void {
