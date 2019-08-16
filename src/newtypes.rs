@@ -1,5 +1,5 @@
 use super::Registers;
-use derive_more::{Add, AddAssign, Constructor, Display, From, Into, Mul, MulAssign};
+use derive_more::{Add, AddAssign, Constructor, Display, From, Into, Mul, MulAssign, Sub};
 use serde::{Deserialize, Serialize};
 use shrinkwraprs::Shrinkwrap;
 
@@ -49,6 +49,7 @@ impl StringPointer {
     Eq,
     Add,
     Mul,
+    Sub,
     AddAssign,
     MulAssign,
     Constructor,

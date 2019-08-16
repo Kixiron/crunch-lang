@@ -18,6 +18,8 @@ const NUMBER_STRINGS: usize = 10;
 mod bytecode;
 mod instruction;
 mod newtypes;
+#[cfg(feature = "parser")]
+mod parser;
 mod registers;
 mod value;
 
@@ -25,6 +27,8 @@ mod value;
 pub use bytecode::*;
 pub use instruction::*;
 pub use newtypes::{Index, LoadedString, Register, StringPointer};
+#[cfg(feature = "parser")]
+pub use parser::*;
 pub use registers::*;
 pub use value::*;
 
@@ -35,6 +39,7 @@ pub struct Crunch {
 }
 
 impl Crunch {
+    #[inline]
     pub fn execute(&mut self) {
         while !self.registers.environment.finished_execution {
             log::trace!(
@@ -45,9 +50,16 @@ impl Crunch {
                 .execute(&mut self.registers);
         }
     }
+
+    #[cfg(feature = "bytecode")]
+    #[inline]
+    pub fn parse(bytes: &[u8]) -> Vec<Instruction> {
+        decode_instructions(bytes)
+    }
 }
 
 impl From<Vec<Instruction>> for Crunch {
+    #[inline]
     fn from(instructions: Vec<Instruction>) -> Self {
         Self {
             instructions,

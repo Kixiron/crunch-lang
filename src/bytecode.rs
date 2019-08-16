@@ -1,12 +1,8 @@
 use super::{Instruction, LoadedString, Register, StringPointer};
 
-const INSTRUCTION_LENGTH: usize = 7;
+const INSTRUCTION_LENGTH: usize = 8;
 
-fn decode(
-    instruction: [u8; INSTRUCTION_LENGTH],
-    strings: &mut Vec<Option<String>>,
-    str_index: &mut usize,
-) -> Instruction {
+fn decode(instruction: [u8; INSTRUCTION_LENGTH], string: Option<String>) -> Instruction {
     use std::convert::TryInto;
 
     match instruction[0] {
@@ -18,35 +14,28 @@ fn decode(
             ),
             Register(instruction[6]),
         ),
-        0x01 => {
-            let string = if let Some(ref string) = strings[*str_index] {
-                string.clone()
-            } else {
-                *str_index += 1;
-                strings[*str_index].clone().expect("No avaliable string")
-            };
-            *str_index += 1;
-
-            Instruction::LoadStr(LoadedString::new_boxed(
-                string,
-                StringPointer(instruction[2]),
-                Register(instruction[1]),
-            ))
-        }
+        0x01 => Instruction::LoadStr(LoadedString::new_boxed(
+            string.expect("Improper string distribution"),
+            StringPointer(instruction[2]),
+            Register(instruction[1]),
+        )),
         0x02 => Instruction::LoadBool(instruction[1] != 0, Register(instruction[2])),
         0x03 => Instruction::Drop(Register(instruction[1])),
         0x04 => Instruction::DropStr(StringPointer(instruction[1])),
         0x05 => Instruction::AddStr {
             left: StringPointer(instruction[1]),
             right: StringPointer(instruction[2]),
+            output: StringPointer(instruction[3]),
         },
         0x06 => Instruction::AddInt {
             left: Register(instruction[1]),
             right: Register(instruction[2]),
+            output: Register(instruction[3]),
         },
         0x07 => Instruction::SubInt {
             left: Register(instruction[1]),
             right: Register(instruction[2]),
+            output: Register(instruction[3]),
         },
         0x08 => Instruction::Print(Register(instruction[1])),
         0x09 => Instruction::Jump(i32::from_be_bytes(
@@ -63,6 +52,44 @@ fn decode(
             reg: Register(instruction[6]),
         },
         0x0B => Instruction::Halt,
+        0x0C => Instruction::MultInt {
+            left: Register(instruction[1]),
+            right: Register(instruction[2]),
+            output: Register(instruction[3]),
+        },
+        0x0D => Instruction::DivInt {
+            left: Register(instruction[1]),
+            right: Register(instruction[2]),
+            output: Register(instruction[3]),
+        },
+        0x0E => Instruction::JumpLessThan {
+            index: i32::from_be_bytes(
+                instruction[1..5]
+                    .try_into()
+                    .unwrap_or_else(|_| unsafe { std::hint::unreachable_unchecked() }),
+            ),
+            reg: Register(instruction[6]),
+            compare: Register(instruction[7]),
+        },
+        0x0F => Instruction::JumpGreaterThan {
+            index: i32::from_be_bytes(
+                instruction[1..5]
+                    .try_into()
+                    .unwrap_or_else(|_| unsafe { std::hint::unreachable_unchecked() }),
+            ),
+            reg: Register(instruction[6]),
+            compare: Register(instruction[7]),
+        },
+        0x10 => Instruction::Return,
+        0x11 => Instruction::FuncJump(
+            u32::from_be_bytes(
+                instruction[1..5]
+                    .try_into()
+                    .unwrap_or_else(|_| unsafe { std::hint::unreachable_unchecked() }),
+            )
+            .into(),
+        ),
+
         _ => unsafe { std::hint::unreachable_unchecked() },
     }
 }
@@ -97,20 +124,35 @@ fn encode(instruction: &Instruction) -> ([u8; INSTRUCTION_LENGTH], Option<String
             bytes[0] = 0x04;
             bytes[1] = **ptr;
         }
-        Instruction::AddStr { left, right } => {
+        Instruction::AddStr {
+            left,
+            right,
+            output,
+        } => {
             bytes[0] = 0x05;
             bytes[1] = **left;
             bytes[2] = **right;
+            bytes[3] = **output;
         }
-        Instruction::AddInt { left, right } => {
+        Instruction::AddInt {
+            left,
+            right,
+            output,
+        } => {
             bytes[0] = 0x06;
             bytes[1] = **left;
             bytes[2] = **right;
+            bytes[3] = **output;
         }
-        Instruction::SubInt { left, right } => {
+        Instruction::SubInt {
+            left,
+            right,
+            output,
+        } => {
             bytes[0] = 0x07;
             bytes[1] = **left;
             bytes[2] = **right;
+            bytes[3] = **output;
         }
         Instruction::Print(reg) => {
             bytes[0] = 0x08;
@@ -127,6 +169,53 @@ fn encode(instruction: &Instruction) -> ([u8; INSTRUCTION_LENGTH], Option<String
         }
         Instruction::Halt => {
             bytes[0] = 0x0B;
+        }
+        Instruction::MultInt {
+            left,
+            right,
+            output,
+        } => {
+            bytes[0] = 0x0C;
+            bytes[1] = **left;
+            bytes[2] = **right;
+            bytes[3] = **output;
+        }
+        Instruction::DivInt {
+            left,
+            right,
+            output,
+        } => {
+            bytes[0] = 0x0D;
+            bytes[1] = **left;
+            bytes[2] = **right;
+            bytes[3] = **output;
+        }
+        Instruction::JumpLessThan {
+            index,
+            reg,
+            compare,
+        } => {
+            bytes[0] = 0x0E;
+            bytes[1..5].copy_from_slice(&index.to_be_bytes());
+            bytes[6] = **reg;
+            bytes[7] = **compare;
+        }
+        Instruction::JumpGreaterThan {
+            index,
+            reg,
+            compare,
+        } => {
+            bytes[0] = 0x0F;
+            bytes[1..5].copy_from_slice(&index.to_be_bytes());
+            bytes[6] = **reg;
+            bytes[7] = **compare;
+        }
+        Instruction::Return => {
+            bytes[0] = 0x10;
+        }
+        Instruction::FuncJump(index) => {
+            bytes[0] = 0x11;
+            bytes[1..5].copy_from_slice(&index.to_be_bytes());
         }
     }
 
@@ -160,30 +249,35 @@ pub fn encode_instructions(instructions: &[Instruction]) -> Vec<u8> {
     string_bytes
 }
 
+#[inline]
 pub fn decode_instructions(bytes: &[u8]) -> Vec<Instruction> {
-    use std::convert::TryInto;
+    use std::{collections::VecDeque, convert::TryInto};
 
-    let mut index = 0_usize;
+    let mut index = 0;
     let num_strings = take_usize(&mut index, bytes);
-    let mut strings = Vec::with_capacity(num_strings);
+    let mut strings = VecDeque::with_capacity(num_strings);
 
     for _ in 0..num_strings {
         let len = take_usize(&mut index, bytes);
 
-        strings.push(Some(
+        strings.push_back(
             String::from_utf8(bytes[index..index + len].to_vec()).expect("Invalid string"),
-        ));
+        );
         index += len;
     }
 
     let mut instructions = Vec::with_capacity(bytes[index..].len() / INSTRUCTION_LENGTH);
-    let mut str_index = 0_usize;
-
     for chunk in bytes[index..].chunks(INSTRUCTION_LENGTH) {
         let chunk: [u8; INSTRUCTION_LENGTH] = chunk
             .try_into()
             .unwrap_or_else(|_| unsafe { std::hint::unreachable_unchecked() });
-        instructions.push(decode(chunk, &mut strings, &mut str_index));
+
+        let instruction = if chunk[0] == 0x01 {
+            decode(chunk, strings.pop_front())
+        } else {
+            decode(chunk, None)
+        };
+        instructions.push(instruction);
     }
 
     instructions
@@ -223,44 +317,27 @@ mod tests {
 
     #[test]
     fn test() {
-        let instructions = vec![
-            LoadInt(10, Register(0)),
-            Print(Register(0)),
-            Drop(Register(0)),
-            LoadBool(false, Register(0)),
-            CondJump {
-                index: 2,
-                reg: Register(0),
-            },
-            Print(Register(0)),
-            Drop(Register(0)),
-            LoadStr(LoadedString::new_boxed(
-                "test".to_string(),
-                StringPointer(0),
-                Register(0),
-            )),
-            Print(Register(0)),
-            Drop(Register(0)),
-            DropStr(StringPointer(0)),
-            Halt,
-        ];
+        simple_logger::init().unwrap();
+
+        let instructions: Vec<Instruction> = vec![Halt];
         let encoded = encode_instructions(&instructions);
 
         {
-            use std::convert::TryInto;
+            use std::{collections::VecDeque, convert::TryInto};
 
             println!();
 
-            let mut index = 0_usize;
+            let mut index = 0;
             let (num_string_bytes, num_strings) = debug_take_usize(&mut index, &encoded);
             let mut decoded_strings = Vec::with_capacity(num_strings);
-            let mut strings = Vec::new();
+            let mut strings = VecDeque::new();
+            let mut raw_strings = Vec::new();
 
             for line in 0..num_strings {
                 let (len_bytes, len) = debug_take_usize(&mut index, &encoded);
 
-                strings.push(format!(
-                    "    {:04}: Length: {} (Length Bytes: {})\n      String: {}\n      Bytes: {}",
+                strings.push_back(format!(
+                    "    {:04}: Length: {} (Length Bytes: {})\n      String: {:?}\n      Bytes: {}",
                     line,
                     len,
                     len_bytes
@@ -276,25 +353,35 @@ mod tests {
                         .collect::<Vec<String>>()
                         .join(" ")
                 ));
-                decoded_strings.push(Some(
+                decoded_strings.push(
                     String::from_utf8(encoded[index..index + len].to_vec())
                         .expect("Invalid string"),
-                ));
+                );
+                raw_strings.push(
+                    String::from_utf8(encoded[index..index + len].to_vec())
+                        .expect("Invalid string"),
+                );
                 index += len;
             }
 
             let mut instructions = Vec::with_capacity(encoded[index..].len() / INSTRUCTION_LENGTH);
             let mut instruction_bytes = Vec::with_capacity(encoded[index..].len());
-            let mut str_index = 0_usize;
 
             for (line, chunk) in encoded[index..].chunks(INSTRUCTION_LENGTH).enumerate() {
                 let chunk: [u8; INSTRUCTION_LENGTH] = chunk
                     .try_into()
                     .unwrap_or_else(|_| unsafe { std::hint::unreachable_unchecked() });
+                let mut str_index = 0;
+
                 instructions.push(format!(
                     "    {:04}: {:?}",
                     line,
-                    decode(chunk, &mut decoded_strings, &mut str_index)
+                    if chunk[0] == 0x01 {
+                        str_index += 1;
+                        decode(chunk, Some(raw_strings[str_index - 1].clone()))
+                    } else {
+                        decode(chunk, None)
+                    }
                 ));
                 instruction_bytes.push(format!(
                     "    {:04}: {}",
@@ -306,9 +393,11 @@ mod tests {
                         .join(" ")
                 ));
             }
+
             println!("Instructions:\n{}", instructions.join("\n"));
+            println!("Bytecode:");
             println!(
-                "Strings: {} total (Length Bytes: {})",
+                "  Strings: {} total (Length Bytes: {})",
                 num_strings,
                 num_string_bytes
                     .iter()
@@ -316,17 +405,26 @@ mod tests {
                     .collect::<Vec<String>>()
                     .join(" ")
             );
-            println!("{}", strings.join("\n"));
-            println!("Bytecode:\n{}", instruction_bytes.join("\n"));
+            println!(
+                "{}",
+                strings.into_iter().collect::<Vec<String>>().join("\n")
+            );
+            println!("  Code:\n{}", instruction_bytes.join("\n"));
         }
 
         let decoded = decode_instructions(&encoded);
+
+        {
+            use std::io::Write;
+
+            let mut file = std::fs::File::create("example.crunched").unwrap();
+            file.write_all(&encoded).unwrap();
+        }
 
         for (index, left) in instructions.iter().enumerate() {
             assert_eq!(left, &decoded[index]);
         }
         assert_eq!(decoded, instructions);
-
         println!("\nOutput:");
         let mut crunch = crate::Crunch::from(decoded);
         crunch.execute();

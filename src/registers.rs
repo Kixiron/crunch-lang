@@ -1,9 +1,12 @@
-use super::{Index, Register, StringPointer, Value, NUMBER_REGISTERS, NUMBER_STRINGS};
+use super::{Index, Instruction, Register, StringPointer, Value, NUMBER_REGISTERS, NUMBER_STRINGS};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Registers {
     registers: [Value; NUMBER_REGISTERS],
     strings: [String; NUMBER_STRINGS],
+    snapshots: Vec<(Index, [Value; NUMBER_REGISTERS])>,
+    pub functions: Vec<Vec<Instruction>>,
+    pub return_stack: Vec<Index>,
     pub environment: Environment,
 }
 
@@ -14,10 +17,16 @@ impl Registers {
         let strings: [String; NUMBER_STRINGS] =
             array_init::array_init(|_| String::with_capacity(0));
         let environment = Environment::new();
+        let return_stack = Vec::new();
+        let snapshots = Vec::new();
+        let functions = Vec::from(Vec::new());
 
         Self {
             registers,
             strings,
+            snapshots,
+            functions,
+            return_stack,
             environment,
         }
     }
@@ -65,32 +74,50 @@ impl Registers {
     }
 
     #[inline]
-    #[allow(unsafe_code)]
-    pub fn add_strings(&mut self, left: StringPointer, right: StringPointer) {
-        if left == right {
-            // Crappy costly add
-            let ref_str = self.strings[*right as usize].to_string();
-            self.strings[*left as usize].push_str(&ref_str);
-        } else {
-            // left == right is fatal with the unsafe code
-            assert!(left != right, "Cannot add a string to itself");
-
+    pub fn add_strings(
+        &mut self,
+        left: StringPointer,
+        right: StringPointer,
+        output: StringPointer,
+    ) {
+        if left != output && right != output {
             unsafe {
-                let (ptr, len, capacity) = {
-                    let string = &self.strings[*right as usize];
-                    (
-                        string.as_ptr() as *const u8,
-                        string.len(),
-                        string.capacity(),
-                    )
+                let left = {
+                    let (ptr, len, capacity) = {
+                        let string = &self.strings[*left as usize];
+                        (string.as_ptr(), string.len(), string.capacity())
+                    };
+
+                    String::from_raw_parts(ptr as *mut _, len, capacity)
                 };
-                let ref_str = String::from_raw_parts(ptr as *mut _, len, capacity);
+                let right = {
+                    let (ptr, len, capacity) = {
+                        let string = &self.strings[*right as usize];
+                        (string.as_ptr(), string.len(), string.capacity())
+                    };
 
-                self.strings[*left as usize].push_str(&ref_str);
+                    String::from_raw_parts(ptr as *mut _, len, capacity)
+                };
 
-                std::mem::forget(ref_str);
+                self.strings[*output as usize].push_str(&left);
+                self.strings[*output as usize].push_str(&right);
+
+                std::mem::forget(left);
+                std::mem::forget(right);
             }
+        } else if left == output {
+
+        } else if right == output {
+
         }
+    }
+
+    #[inline]
+    pub fn snapshot(&mut self) {
+        self.snapshots
+            .push((self.environment.index, self.registers));
+
+        // TODO: Clear registers after saving?
     }
 }
 
@@ -105,6 +132,7 @@ impl Default for Registers {
 pub struct Environment {
     pub index: Index,
     pub finished_execution: bool,
+    pub in_function: bool,
 }
 
 impl Environment {
@@ -113,6 +141,7 @@ impl Environment {
         Self {
             index: Index(0),
             finished_execution: false,
+            in_function: false,
         }
     }
 }

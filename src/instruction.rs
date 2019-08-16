@@ -1,5 +1,5 @@
 use super::{Index, LoadedString, Register, Registers, StringPointer, Value};
-use log::{trace, warn};
+use log::{error, trace, warn};
 use serde::{Deserialize, Serialize};
 
 /// Instructions for the VM
@@ -21,6 +21,7 @@ pub enum Instruction {
         left: StringPointer,
         /// The right register, unaffected by operation
         right: StringPointer,
+        output: StringPointer,
     },
     /// Adds ints strings together, storing the result in `left`
     AddInt {
@@ -28,6 +29,7 @@ pub enum Instruction {
         left: Register,
         /// The right register, unaffected by operation
         right: Register,
+        output: Register,
     },
     /// Subtracts two ints from each other, storing the result in `left`
     SubInt {
@@ -35,7 +37,28 @@ pub enum Instruction {
         left: Register,
         /// The right register, unaffected by operation
         right: Register,
+        output: Register,
     },
+    MultInt {
+        left: Register,
+        right: Register,
+        output: Register,
+    },
+    DivInt {
+        left: Register,
+        right: Register,
+        output: Register,
+    },
+    // BitShiftLeft {
+    //     reg: Register,
+    //     amount: u8,
+    //     output: Register,
+    // },
+    // BitShiftRight {
+    //     reg: Register,
+    //     amount: u8,
+    //     output: Register,
+    // },
     /// Prints the contents of a [`Register`] stdout
     Print(Register),
     /// Jumps to the nth [`Instruction`] where n is `self.0`
@@ -48,6 +71,19 @@ pub enum Instruction {
         /// If the stored value is not a `Value::Bool`, then the jump will never be preformed
         reg: Register,
     },
+    JumpLessThan {
+        index: i32,
+        reg: Register,
+        compare: Register,
+    },
+    JumpGreaterThan {
+        index: i32,
+        reg: Register,
+        compare: Register,
+    },
+    FuncJump(Index),
+    FuncCall(Index),
+    Return,
     /// Ends execution of the program by setting [`Registers.environment.finished_execution`] to `true`
     Halt,
 }
@@ -77,27 +113,71 @@ impl Instruction {
                 registers.clear(*reg);
             }
             DropStr(ptr) => ptr.get_mut(registers).clear(),
-            AddStr { left, right } => {
-                registers.add_strings(*left, *right);
+            AddStr {
+                left,
+                right,
+                output,
+            } => {
+                registers.add_strings(*left, *right, *output);
             }
-            AddInt { left, right } => {
+            AddInt {
+                left,
+                right,
+                output,
+            } => {
                 trace!("Adding {:?} and {:?}", left, right);
 
-                let int = *registers.get(*right);
-                (*registers.get_mut(*left)) += int;
+                let (left, right) = (*registers.get(*left), *registers.get(*right));
+                if let (Value::Int(left), Value::Int(right)) = (left, right) {
+                    (*registers.get_mut(*output)) = Value::Int(left + right);
+                } else {
+                    error!("Un-addable types: {:?} + {:?}", left, right);
+                }
             }
-            SubInt { left, right } => {
+            SubInt {
+                left,
+                right,
+                output,
+            } => {
                 trace!("Subtracting {:?} and {:?}", left, right);
 
-                let int = *registers.get(*right);
-                (*registers.get_mut(*left)) -= int;
+                let (left, right) = (*registers.get(*left), *registers.get(*right));
+                if let (Value::Int(left), Value::Int(right)) = (left, right) {
+                    (*registers.get_mut(*output)) = Value::Int(left - right);
+                } else {
+                    error!("Un-subtractable types: {:?} - {:?}", left, right);
+                }
+            }
+            MultInt {
+                left,
+                right,
+                output,
+            } => {
+                let (left, right) = (*registers.get(*left), *registers.get(*right));
+                if let (Value::Int(left), Value::Int(right)) = (left, right) {
+                    (*registers.get_mut(*output)) = Value::Int(left * right);
+                } else {
+                    error!("Un-multipliable types: {:?} * {:?}", left, right);
+                }
+            }
+            DivInt {
+                left,
+                right,
+                output,
+            } => {
+                let (left, right) = (*registers.get(*left), *registers.get(*right));
+                if let (Value::Int(left), Value::Int(right)) = (left, right) {
+                    (*registers.get_mut(*output)) = Value::Int(left / right);
+                } else {
+                    error!("Indivisible types: {:?} / {:?}", left, right);
+                }
             }
             Print(reg) => {
                 trace!("Printing {:?}", reg);
 
                 match registers.get(*reg) {
-                    Value::Str(ptr) => println!("{}", ptr.get(registers)),
-                    val => println!("{}", val),
+                    Value::Str(ptr) => print!("{}", ptr.get(registers)),
+                    val => print!("{}", val),
                 }
             }
             Jump(index) => {
@@ -135,6 +215,67 @@ impl Instruction {
                         reg,
                         reg_value
                     );
+                }
+            }
+            JumpLessThan {
+                index,
+                reg,
+                compare,
+            } => {
+                let reg_value = registers.get(*reg);
+                let comp_value = registers.get(*compare);
+
+                if let (Value::Int(int), Value::Int(compare)) = (reg_value, comp_value) {
+                    if int < compare {
+                        registers.environment.index.set(Index(
+                            (registers.environment.index.0 as i32 + index - 1) as u32,
+                        ));
+                    }
+                } else {
+                    error!(
+                        "Jump Less Than registers are not both integers: {:?} < {:?}",
+                        reg_value, comp_value
+                    );
+                }
+            }
+            JumpGreaterThan {
+                index,
+                reg,
+                compare,
+            } => {
+                let reg_value = registers.get(*reg);
+                let comp_value = registers.get(*compare);
+
+                if let (Value::Int(int), Value::Int(compare)) = (reg_value, comp_value) {
+                    if int > compare {
+                        registers.environment.index.set(Index(
+                            (registers.environment.index.0 as i32 + index - 1) as u32,
+                        ));
+                    }
+                } else {
+                    error!(
+                        "Jump Less Than registers are not both integers: {:?} < {:?}",
+                        reg_value, comp_value
+                    );
+                }
+            }
+            FuncJump(index) => {
+                registers.return_stack.push(registers.environment.index);
+                registers.environment.index.set(*index - 2.into());
+            }
+            FuncCall(index) => {
+                registers.snapshot();
+
+                registers.functions[index]
+            }
+            Return => {
+                if let Some(location) = registers.return_stack.pop() {
+                    registers.environment.index.set(location);
+                } else if registers.environment.in_function {
+
+                } else {
+                    registers.cleanup();
+                    registers.environment.finished_execution = true;
                 }
             }
             Halt => {
