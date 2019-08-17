@@ -12,10 +12,9 @@ use nom::{
     sequence::{preceded, terminated},
     Compare, IResult, InputLength, InputTake, InputTakeAtPosition,
 };
-use std::collections::HashMap;
 
-const WHITESPACE_CHARS: &'static str = " \n\r\t";
-const IDENT_CHARS: &'static str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890_";
+const WHITESPACE_CHARS: &str = " \n\r\t";
+const IDENT_CHARS: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890_";
 
 #[derive(Debug, PartialEq, Eq)]
 enum Value {

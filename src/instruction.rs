@@ -1,4 +1,4 @@
-use super::{Index, LoadedString, Register, Registers, StringPointer, Value};
+use super::{Index, Register, Registers, StringPointer, Value};
 use log::{error, trace, warn};
 use serde::{Deserialize, Serialize};
 
@@ -7,10 +7,11 @@ use serde::{Deserialize, Serialize};
 pub enum Instruction {
     /// Loads an integer into a [`Register`]
     LoadInt(i32, Register),
-    /// Loads a string as specified by [`LoadedString`]
-    LoadStr(Box<LoadedString>),
+    LoadStr(&'static str, StringPointer, Register),
     /// Loads a boolean into a [`Register`]
     LoadBool(bool, Register),
+    LoadHandoff(Register, Register),
+    TakeHandoff(Register, Register),
     /// Drops the contents of a [`Register`]
     Drop(Register),
     /// Drops a string by [`StringPointer`]
@@ -84,13 +85,14 @@ pub enum Instruction {
     FuncJump(Index),
     FuncCall(Index),
     Return,
+    FuncReturn,
     /// Ends execution of the program by setting [`Registers.environment.finished_execution`] to `true`
     Halt,
 }
 
 impl Instruction {
     #[inline]
-    pub fn execute(&self, registers: &mut Registers) {
+    pub fn execute(&self, mut registers: &mut Registers) {
         use Instruction::*;
 
         match self {
@@ -98,27 +100,49 @@ impl Instruction {
                 trace!("Loading {:?} into {:?}", int, reg);
 
                 registers.load(Value::Int(*int), *reg);
+                *registers.environment_mut().index_mut() += Index(1);
             }
-            LoadStr(load) => {
-                registers.load_str(load.string.clone(), load.str_reg);
-                registers.load(Value::Str(load.str_reg), load.reg);
+            LoadStr(string, ptr, reg) => {
+                registers.load_str(std::borrow::Cow::Borrowed(*string), *ptr);
+                registers.load(Value::Str(*ptr), *reg);
+
+                *registers.environment_mut().index_mut() += Index(1);
+            }
+            LoadHandoff(output_reg, handoff_reg) => {
+                let mut value = Value::None;
+                std::mem::swap(registers.get_mut(*output_reg), &mut value);
+                registers.load_handoff(*handoff_reg, value);
+
+                *registers.environment_mut().index_mut() += Index(1);
+            }
+            TakeHandoff(handoff_reg, destination_reg) => {
+                registers.registers_mut()[**destination_reg as usize] =
+                    registers.handoff_registers()[**handoff_reg as usize].clone();
+
+                *registers.environment_mut().index_mut() += Index(1);
             }
             LoadBool(boolean, reg) => {
                 trace!("Loading {:?} into {:?}", boolean, reg);
 
                 registers.load(Value::Bool(*boolean), *reg);
+
+                *registers.environment_mut().index_mut() += Index(1);
             }
             Drop(reg) => {
                 trace!("Dropping {:?}", reg);
                 registers.clear(*reg);
+
+                *registers.environment_mut().index_mut() += Index(1);
             }
-            DropStr(ptr) => ptr.get_mut(registers).clear(),
+            DropStr(ptr) => registers.get_str_mut(*ptr).to_mut().clear(),
             AddStr {
                 left,
                 right,
                 output,
             } => {
                 registers.add_strings(*left, *right, *output);
+
+                *registers.environment_mut().index_mut() += Index(1);
             }
             AddInt {
                 left,
@@ -133,6 +157,8 @@ impl Instruction {
                 } else {
                     error!("Un-addable types: {:?} + {:?}", left, right);
                 }
+
+                *registers.environment_mut().index_mut() += Index(1);
             }
             SubInt {
                 left,
@@ -147,6 +173,7 @@ impl Instruction {
                 } else {
                     error!("Un-subtractable types: {:?} - {:?}", left, right);
                 }
+                *registers.environment_mut().index_mut() += Index(1);
             }
             MultInt {
                 left,
@@ -159,6 +186,8 @@ impl Instruction {
                 } else {
                     error!("Un-multipliable types: {:?} * {:?}", left, right);
                 }
+
+                *registers.environment_mut().index_mut() += Index(1);
             }
             DivInt {
                 left,
@@ -171,21 +200,24 @@ impl Instruction {
                 } else {
                     error!("Indivisible types: {:?} / {:?}", left, right);
                 }
+
+                *registers.environment_mut().index_mut() += Index(1);
             }
             Print(reg) => {
                 trace!("Printing {:?}", reg);
 
                 match registers.get(*reg) {
-                    Value::Str(ptr) => print!("{}", ptr.get(registers)),
+                    Value::Str(ptr) => print!("{}", registers.get_str(*ptr)),
                     val => print!("{}", val),
                 }
+
+                *registers.environment_mut().index_mut() += Index(1);
             }
             Jump(index) => {
                 trace!("Jumping by offset {}", index);
 
-                registers.environment.index.set(Index(
-                    (registers.environment.index.0 as i32 + index - 1) as u32,
-                ));
+                let index = Index((*registers.environment().index() as i32 + index) as u32);
+                *registers.environment_mut().index_mut() += index;
             }
             CondJump { index, reg } => {
                 let reg_value = registers.get(*reg);
@@ -196,9 +228,9 @@ impl Instruction {
                         reg,
                         reg_value
                     );
-                    registers.environment.index.set(Index(
-                        (registers.environment.index.0 as i32 + index - 1) as u32,
-                    ));
+
+                    let index = Index((*registers.environment().index() as i32 + index) as u32);
+                    *registers.environment_mut().index_mut() += index;
                 } else if reg_value == &Value::Bool(false) {
                     trace!(
                         "CondJump by offset {}, reading {:?} (Value: {})",
@@ -206,6 +238,8 @@ impl Instruction {
                         reg,
                         reg_value
                     );
+
+                    *registers.environment_mut().index_mut() += Index(1);
                 } else {
                     warn!("The requested register for `CondJump` does not contain a boolean [Register: {:?} Value: {:?}]", reg, reg_value);
 
@@ -215,6 +249,8 @@ impl Instruction {
                         reg,
                         reg_value
                     );
+
+                    *registers.environment_mut().index_mut() += Index(1);
                 }
             }
             JumpLessThan {
@@ -227,15 +263,16 @@ impl Instruction {
 
                 if let (Value::Int(int), Value::Int(compare)) = (reg_value, comp_value) {
                     if int < compare {
-                        registers.environment.index.set(Index(
-                            (registers.environment.index.0 as i32 + index - 1) as u32,
-                        ));
+                        let index = Index((*registers.environment().index() as i32 + index) as u32);
+                        *registers.environment_mut().index_mut() += index;
                     }
                 } else {
                     error!(
                         "Jump Less Than registers are not both integers: {:?} < {:?}",
                         reg_value, comp_value
                     );
+
+                    *registers.environment_mut().index_mut() += Index(1);
                 }
             }
             JumpGreaterThan {
@@ -248,42 +285,76 @@ impl Instruction {
 
                 if let (Value::Int(int), Value::Int(compare)) = (reg_value, comp_value) {
                     if int > compare {
-                        registers.environment.index.set(Index(
-                            (registers.environment.index.0 as i32 + index - 1) as u32,
-                        ));
+                        let index = Index((*registers.environment().index() as i32 + index) as u32);
+                        *registers.environment_mut().index_mut() += index;
                     }
                 } else {
                     error!(
                         "Jump Less Than registers are not both integers: {:?} < {:?}",
                         reg_value, comp_value
                     );
+
+                    *registers.environment_mut().index_mut() += Index(1);
                 }
             }
             FuncJump(index) => {
-                registers.return_stack.push(registers.environment.index);
-                registers.environment.index.set(*index - 2.into());
+                {
+                    let index = registers.environment().index();
+                    registers.return_stack_mut().push(index);
+                }
+
+                *registers.environment_mut().index_mut() = *index;
             }
             FuncCall(index) => {
                 registers.snapshot();
+                *registers.environment_mut().index_mut() = Index(0);
 
-                registers.functions[index]
+                while !registers.environment().returning() {
+                    registers.functions()[**index as usize]
+                        [*registers.environment().index() as usize]
+                        .clone()
+                        .execute(&mut registers);
+                }
+
+                *registers.environment_mut().index_mut() += Index(1);
             }
             Return => {
-                if let Some(location) = registers.return_stack.pop() {
-                    registers.environment.index.set(location);
-                } else if registers.environment.in_function {
-
+                if let Some(location) = registers.return_stack_mut().pop() {
+                    *registers.environment_mut().index_mut() = location;
                 } else {
                     registers.cleanup();
-                    registers.environment.finished_execution = true;
+                    *registers.environment_mut().finished_execution_mut() = true;
+                }
+
+                *registers.environment_mut().index_mut() += Index(1);
+            }
+            FuncReturn => {
+                *registers.environment_mut().returning_mut() = true;
+
+                if let Some(context) = registers.snapshots_mut().pop() {
+                    *registers.environment_mut().index_mut() = context.0;
+                    *registers.registers_mut() = context.2;
+
+                    if let Some(index) = context.1 {
+                        *registers.environment_mut().returning_mut() = false;
+
+                        while !registers.environment().returning() {
+                            registers.functions()[*index as usize]
+                                [*registers.environment().index() as usize]
+                                .clone()
+                                .execute(&mut registers);
+                        }
+                    } else {
+                        trace!("Returning to main");
+                    }
+                } else {
+                    error!("Returned from non-existant function");
                 }
             }
             Halt => {
                 registers.cleanup();
-                registers.environment.finished_execution = true;
+                *registers.environment_mut().finished_execution_mut() = true;
             }
         }
-
-        registers.environment.index.add(Index(1));
     }
 }

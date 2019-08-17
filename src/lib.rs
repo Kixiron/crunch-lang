@@ -12,6 +12,7 @@
 )]
 
 const NUMBER_REGISTERS: usize = 10;
+const NUMBER_HANDOFF_REGISTERS: usize = 10;
 const NUMBER_STRINGS: usize = 10;
 
 #[cfg(feature = "bytecode")]
@@ -26,7 +27,7 @@ mod value;
 #[cfg(feature = "bytecode")]
 pub use bytecode::*;
 pub use instruction::*;
-pub use newtypes::{Index, LoadedString, Register, StringPointer};
+pub use newtypes::{Index, Register, StringPointer};
 #[cfg(feature = "parser")]
 pub use parser::*;
 pub use registers::*;
@@ -41,29 +42,29 @@ pub struct Crunch {
 impl Crunch {
     #[inline]
     pub fn execute(&mut self) {
-        while !self.registers.environment.finished_execution {
+        while !self.registers.environment().finished_execution() {
             log::trace!(
                 "Executing Instruction {:?}",
-                self.instructions[*self.registers.environment.index as usize]
+                self.instructions[*self.registers.environment().index() as usize]
             );
-            self.instructions[*self.registers.environment.index as usize]
+            self.instructions[*self.registers.environment().index() as usize]
                 .execute(&mut self.registers);
         }
     }
 
     #[cfg(feature = "bytecode")]
     #[inline]
-    pub fn parse(bytes: &[u8]) -> Vec<Instruction> {
-        decode_instructions(bytes)
+    pub fn parse(bytes: &[u8]) -> (Vec<Instruction>, Vec<Vec<Instruction>>) {
+        decode_program(bytes)
     }
 }
 
-impl From<Vec<Instruction>> for Crunch {
+impl From<(Vec<Instruction>, Vec<Vec<Instruction>>)> for Crunch {
     #[inline]
-    fn from(instructions: Vec<Instruction>) -> Self {
+    fn from(instructions: (Vec<Instruction>, Vec<Vec<Instruction>>)) -> Self {
         Self {
-            instructions,
-            registers: Registers::new(),
+            instructions: instructions.0,
+            registers: Registers::new(instructions.1),
         }
     }
 }

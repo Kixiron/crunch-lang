@@ -21,7 +21,7 @@ required-features = ["binary"]
 bytecode = []
 parser = ["nom"]
 logging = ["simple_logger", "color-backtrace"]
-binary = ["structopt", "bytecode", "parser"]
+binary = ["structopt", "bytecode", "parser", "logging"]
 default = ["bytecode", "parser"]
 
 [[bench]]
@@ -42,6 +42,7 @@ structopt = { version = "0.2.18", optional = true }
 [dev-dependencies]
 criterion = "0.2.11"
 simple_logger = "1.3.0"
+color-backtrace = "0.2.2"
 
 [profile.dev]
 opt-level = 0
