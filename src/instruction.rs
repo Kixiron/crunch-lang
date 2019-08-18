@@ -91,6 +91,7 @@ pub enum Instruction {
 }
 
 impl Instruction {
+    /// The execution of each instruction
     #[inline]
     pub fn execute(&self, mut registers: &mut Registers) {
         use Instruction::*;

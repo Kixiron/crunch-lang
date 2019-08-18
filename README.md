@@ -24,6 +24,7 @@
     - [ ] Global Variables
     - [ ] Semi-static typing
     - [ ] Manipulation (Adding, indexing, removing, type info, etc.)
+    - [ ] Runtime reflection and metaprogramming?
     - [ ] Constants
         - Strictly enforced to be unchanging
     - [ ] Calling variables
@@ -31,7 +32,6 @@
     - [ ] Single Line
     - [ ] Multiline
     - [ ] Documentation Comments
-- [ ] Char support
 - [ ] Vet user input
     - [ ] Make sure files exist
     - [ ] Make sure files are valid crunch files
@@ -72,13 +72,9 @@
 - [ ] Mutability with `mut` keyword
 - [ ] Static analysis
 - [ ] Static(er) typing
-- [ ] Bytecode
-    - `.compact` extension?
-    - `.crunched` extension?
-    - Still requires interpreter of some sort
+- [X] Bytecode
 - [ ] Optimization for bytecode compilation
 - [ ] JIT
-- [ ] GC
 - [ ] Tooling
     - [ ] All commandline-friendly tools
     - [ ] Package Manager

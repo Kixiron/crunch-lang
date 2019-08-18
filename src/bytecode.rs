@@ -1,7 +1,11 @@
 use super::{Instruction, Register, StringPointer};
 use std::{borrow::Cow, collections::VecDeque};
 
-const INSTRUCTION_LENGTH: usize = 8;
+pub const INSTRUCTION_LENGTH: usize = 8;
+pub const INSTRUCTION_BYTES: [u8; 22] = [
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+    0x10, 0x11, 0x12, 0x13, 0x14, 0x15,
+];
 
 #[inline]
 fn decode(instruction: [u8; INSTRUCTION_LENGTH], string: Option<&'static str>) -> Instruction {
@@ -434,7 +438,7 @@ mod tests {
 
         let (instructions, functions) = (
             vec![
-                LoadStr("Pass to function", StringPointer(1), Register(0)),
+                LoadStr("Hello from Crunch!", StringPointer(1), Register(0)),
                 LoadHandoff(Register(0), Register(0)),
                 FuncCall(Index(0)),
                 Halt,
