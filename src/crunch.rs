@@ -1,7 +1,7 @@
 use super::{decode_program, encode_program, Bytecode, Instruction, Registers};
 
 /// The main interface to the crunch language
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug)]
 pub struct Crunch {
     /// The Main function of the program
     instructions: Vec<Instruction>,

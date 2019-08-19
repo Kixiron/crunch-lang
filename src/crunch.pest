@@ -1,0 +1,10 @@
+alpha = { 'a'..'z' | 'A'..'Z' | "_" }
+digit = {'0'..'9'}
+ident = { (alpha | digit)+ }
+indent = { "\t" | "    " }
+w = { " " }
+var = { "str" | "int" }
+binding = { "let" ~ w* ~ ident ~ w* ~ "=" ~ w* ~ digit+ ~ "\n" }
+function_call = { ident ~ "(" ~ ident ~ ")" ~ "\n" }
+block = { (indent ~ (binding | function_call) ~ "\n")+ | "_" }
+function = { "fn" ~ w* ~ ident ~ "(" ~ w* ~ (var ~ w* ~ ident)* ~ w* ~ ")" ~ w* ~ "\n" ~ block }

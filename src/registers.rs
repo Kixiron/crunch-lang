@@ -2,9 +2,10 @@ use super::{
     Index, Instruction, Register, StringPointer, Value, NUMBER_HANDOFF_REGISTERS, NUMBER_REGISTERS,
     NUMBER_STRINGS,
 };
-use std::borrow::Cow;
+use dlopen::raw::Library;
+use std::{borrow::Cow, collections::HashMap};
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug)]
 pub struct Registers {
     registers: [Value; NUMBER_REGISTERS],
     handoff_registers: [Value; NUMBER_HANDOFF_REGISTERS],
@@ -14,6 +15,7 @@ pub struct Registers {
     functions: Vec<Vec<Instruction>>,
     return_stack: Vec<Index>,
     environment: Environment,
+    loaded_libraries: HashMap<&'static str, Library>,
 }
 
 impl Registers {
@@ -27,6 +29,7 @@ impl Registers {
         let current_func = None;
         let return_stack = Vec::new();
         let environment = Environment::new();
+        let loaded_libraries = HashMap::new();
 
         Self {
             registers,
@@ -37,6 +40,7 @@ impl Registers {
             functions,
             return_stack,
             environment,
+            loaded_libraries,
         }
     }
 
@@ -213,6 +217,14 @@ impl Registers {
             .push((self.environment.index, self.current_func, self.registers));
 
         // TODO: Clear registers after saving?
+    }
+
+    #[inline]
+    pub fn add_library(&mut self, name: &'static str) -> Result<(), dlopen::Error> {
+        let lib = Library::open(name)?;
+        self.loaded_libraries.insert(name, lib);
+
+        Ok(())
     }
 }
 

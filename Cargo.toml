@@ -39,6 +39,11 @@ array-init = "0.1.0"
 logos = { version = "0.10.0-rc2", optional = true }
 structopt = { version = "0.2.18", optional = true }
 cfg-if = "0.1.9"
+dlopen = "0.1.8"
+dlopen_derive = "0.1.4"
+pest = "2.1.1"
+pest-ast = "0.3.3"
+pest_derive = "2.1.0"
 
 [dev-dependencies]
 criterion = "0.2.11"
