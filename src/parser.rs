@@ -18,6 +18,10 @@ pub enum Node<'a> {
     Int(i32),
     Str(Cow<'a, str>),
     Block(Vec<Node<'a>>),
+    FunctionCall {
+        name: Cow<'a, str>,
+        params: Vec<Node<'a>>,
+    },
 }
 
 #[derive(Debug)]
@@ -135,7 +139,7 @@ fn process_token<'a>(
                     process_token(iter.next().expect("Expected Ident"), &mut iter, &mut ast);
 
                 if paren.0 != TokenType::LeftParen {
-                    panic!("Expected =");
+                    panic!("Expected (");
                 }
             }
 
@@ -246,7 +250,60 @@ fn process_token<'a>(
             )
         }
         TokenType::Equal => (TokenType::Equal, None),
-        TokenType::Ident => (TokenType::Ident, Some(Node::Ident(token.source))),
+        TokenType::Ident => {
+            if let Some(__paren) = iter.peek() {
+                if __paren.ty == TokenType::LeftParen {
+                    let _ = iter.next();
+
+                    let name = token.source;
+
+                    let mut params = Vec::new();
+                    loop {
+                        let param = process_token(
+                            iter.next().expect("Expected Ident"),
+                            &mut iter,
+                            &mut ast,
+                        );
+                        if param.0 == TokenType::RightParen {
+                            break;
+                        } else if param.0 == TokenType::Ident {
+                            let __comma_or_paren = process_token(
+                                iter.next().expect("Expected Ident"),
+                                &mut iter,
+                                &mut ast,
+                            );
+
+                            match __comma_or_paren.0 {
+                                TokenType::Comma => params.push(param.1.expect("Expected Ident")),
+                                TokenType::RightParen => {
+                                    params.push(param.1.expect("Expected Ident"));
+                                    break;
+                                }
+
+                                _ => panic!("Expected parameter type"),
+                            }
+                        } else {
+                            panic!("Expected parameter");
+                        }
+                    }
+
+                    {
+                        let newline = process_token(
+                            iter.next().expect("Expected Ident"),
+                            &mut iter,
+                            &mut ast,
+                        );
+                        if newline.0 != TokenType::Newline {
+                            panic!("Expected Newline");
+                        }
+                    }
+
+                    return (TokenType::Ident, Some(Node::FunctionCall { name, params }));
+                }
+            }
+
+            (TokenType::Ident, Some(Node::Ident(token.source)))
+        }
         TokenType::Space => {
             process_token(iter.next().expect("Unexpected EOF"), &mut iter, &mut ast)
         }
@@ -272,17 +329,16 @@ fn process_token<'a>(
                         .expect("Expected Expression"),
                 ];
 
-            while let Some(Node::Block(operation)) = dbg!(
-                process_token(
-                    match iter.next() {
-                        Some(token) => token,
-                        None => return (TokenType::Indent, Some(Node::Block(operations))),
-                    },
-                    &mut iter,
-                    &mut ast
-                )
-                .1
-            ) {
+            while let Some(Node::Block(operation)) = process_token(
+                match iter.next() {
+                    Some(token) => token,
+                    None => return (TokenType::Indent, Some(Node::Block(operations))),
+                },
+                &mut iter,
+                &mut ast,
+            )
+            .1
+            {
                 operations.extend(operation);
             }
 
@@ -349,7 +405,7 @@ mod tests {
     fn test() {
         println!(
             "{:?}",
-            parse("fn test(ident)\n    let i = 10\n    let j = 11\n")
+            parse("fn test(ident)\n    let i = 10\n    let j = 11\n    print(i)\n")
         );
     }
 }
