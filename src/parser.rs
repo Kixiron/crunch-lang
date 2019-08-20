@@ -16,6 +16,8 @@ pub enum Node<'a> {
         body: Box<Node<'a>>,
     },
     Int(i32),
+    Str(Cow<'a, str>),
+    Block(Vec<Node<'a>>),
 }
 
 #[derive(Debug)]
@@ -99,6 +101,14 @@ fn process_token<'a>(
                     .1
                     .expect("No value"),
             );
+
+            {
+                let newline =
+                    process_token(iter.next().expect("Expected Ident"), &mut iter, &mut ast);
+                if newline.0 != TokenType::Newline {
+                    panic!("Expected Newline");
+                }
+            }
 
             (
                 TokenType::Let,
@@ -244,10 +254,40 @@ fn process_token<'a>(
             TokenType::Int,
             Some(Node::Int(token.source.parse().unwrap())),
         ),
+        TokenType::String => (
+            TokenType::String,
+            Some(Node::Str(Cow::Owned(String::from(
+                &token.source[1..token.source.len() - 1],
+            )))),
+        ),
         TokenType::LeftParen => (TokenType::LeftParen, None),
         TokenType::RightParen => (TokenType::RightParen, None),
         TokenType::Newline => (TokenType::Newline, None),
         TokenType::End => (TokenType::End, None),
+        TokenType::Indent => {
+            let mut operations =
+                vec![
+                    process_token(iter.next().expect("Unexpected EOF"), &mut iter, &mut ast)
+                        .1
+                        .expect("Expected Expression"),
+                ];
+
+            while let Some(Node::Block(operation)) = dbg!(
+                process_token(
+                    match iter.next() {
+                        Some(token) => token,
+                        None => return (TokenType::Indent, Some(Node::Block(operations))),
+                    },
+                    &mut iter,
+                    &mut ast
+                )
+                .1
+            ) {
+                operations.extend(operation);
+            }
+
+            (TokenType::Indent, Some(Node::Block(operations)))
+        }
         _ => panic!("{:?}", token),
     }
 }
@@ -286,6 +326,8 @@ impl<'a> Iterator for TokenStream<'a> {
         if !self.eof {
             let token = self.current.clone();
 
+            println!("{:?}", token);
+
             self.advance();
 
             if token.ty == TokenType::End {
@@ -305,7 +347,10 @@ mod tests {
 
     #[test]
     fn test() {
-        println!("{:?}", parse("fn test(ident)\n"));
+        println!(
+            "{:?}",
+            parse("fn test(ident)\n    let i = 10\n    let j = 11\n")
+        );
     }
 }
 

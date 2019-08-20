@@ -2,7 +2,7 @@
     missing_debug_implementations,
     deprecated,
     unused_must_use,
-    missing_docs
+    // missing_docs
 )]
 #![warn(
     clippy::cargo,
@@ -144,25 +144,11 @@ mod registers;
 mod value;
 
 pub use crate::crunch::Crunch;
-
-cfg_if::cfg_if! {
-    if #[cfg(any(test, bench))] {
-        #[cfg(feature = "bytecode")]
-        pub use bytecode::*;
-        pub use instruction::*;
-        pub use newtypes::*;
-        #[cfg(feature = "parser")]
-        pub use parser::*;
-        pub use registers::*;
-        pub use value::*;
-    } else {
-        #[cfg(feature = "bytecode")]
-        use bytecode::*;
-        use instruction::*;
-        use newtypes::*;
-        #[cfg(feature = "parser")]
-        use parser::*;
-        use registers::*;
-        use value::*;
-    }
-}
+#[cfg(feature = "bytecode")]
+pub use bytecode::*;
+pub use instruction::*;
+pub use newtypes::*;
+#[cfg(feature = "parser")]
+pub use parser::*;
+pub use registers::*;
+pub use value::*;
