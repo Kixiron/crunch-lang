@@ -120,7 +120,7 @@
 //!
 
 /// The number of available registers for the VM
-const NUMBER_REGISTERS: usize = 10;
+const NUMBER_REGISTERS: usize = 256;
 /// The number of available handoff registers for the VM
 const NUMBER_HANDOFF_REGISTERS: usize = 10;
 /// The number of stored strings for the VM
@@ -131,6 +131,7 @@ const NUMBER_STRINGS: usize = 10;
 mod bytecode;
 /// The main Crunch interface
 mod crunch;
+mod gc;
 /// Instruction definitions and executions
 mod instruction;
 /// Helper types
@@ -146,6 +147,7 @@ mod value;
 pub use crate::crunch::Crunch;
 #[cfg(feature = "bytecode")]
 pub use bytecode::*;
+pub use gc::*;
 pub use instruction::*;
 pub use newtypes::*;
 #[cfg(feature = "parser")]

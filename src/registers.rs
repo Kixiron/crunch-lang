@@ -4,7 +4,7 @@ use super::{
 };
 use std::borrow::Cow;
 
-#[derive(Debug)]
+#[allow(missing_debug_implementations)]
 pub struct Registers {
     registers: [Value; NUMBER_REGISTERS],
     handoff_registers: [Value; NUMBER_HANDOFF_REGISTERS],
@@ -114,7 +114,7 @@ impl Registers {
 impl Registers {
     #[inline]
     pub fn cleanup(&mut self) {
-        for reg in &mut self.registers {
+        for reg in self.registers.iter_mut() {
             *reg = Value::None;
         }
     }

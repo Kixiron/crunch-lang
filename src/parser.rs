@@ -52,6 +52,7 @@ pub fn parse<'a>(input: &'a str) -> Vec<Node<'a>> {
     let mut ast = Vec::new();
 
     {
+        let mut free = Vec::new();
         let result = match IntoIterator::into_iter(tokenstream) {
             mut iter => loop {
                 let next;
@@ -62,7 +63,7 @@ pub fn parse<'a>(input: &'a str) -> Vec<Node<'a>> {
                 let current = next;
 
                 {
-                    if let Some(node) = process_token(current, &mut iter, &mut ast).1 {
+                    if let Some(node) = process_token(current, &mut iter, &mut ast, &mut free).1 {
                         ast.push(node);
                     }
                 }
@@ -78,12 +79,17 @@ fn process_token<'a>(
     token: Token<'a>,
     mut iter: &mut Peekable<TokenStream<'a>>,
     mut ast: &mut Vec<Node<'a>>,
+    mut free: &mut Vec<Node<'a>>,
 ) -> (TokenType, Option<Node<'a>>) {
     match token.ty {
         TokenType::Let => {
             let ident = {
-                let ident =
-                    process_token(iter.next().expect("Expected Ident"), &mut iter, &mut ast);
+                let ident = process_token(
+                    iter.next().expect("Expected Ident"),
+                    &mut iter,
+                    &mut ast,
+                    &mut free,
+                );
                 if ident.0 != TokenType::Ident || ident.1.is_none() {
                     panic!("Expected Ident");
                 }
@@ -92,8 +98,12 @@ fn process_token<'a>(
             };
 
             {
-                let equals =
-                    process_token(iter.next().expect("Expected Ident"), &mut iter, &mut ast);
+                let equals = process_token(
+                    iter.next().expect("Expected Ident"),
+                    &mut iter,
+                    &mut ast,
+                    &mut free,
+                );
 
                 if equals.0 != TokenType::Equal {
                     panic!("Expected =");
@@ -101,14 +111,23 @@ fn process_token<'a>(
             }
 
             let value = Box::new(
-                process_token(iter.next().expect("Expected Ident"), &mut iter, &mut ast)
-                    .1
-                    .expect("No value"),
+                process_token(
+                    iter.next().expect("Expected Ident"),
+                    &mut iter,
+                    &mut ast,
+                    &mut free,
+                )
+                .1
+                .expect("No value"),
             );
 
             {
-                let newline =
-                    process_token(iter.next().expect("Expected Ident"), &mut iter, &mut ast);
+                let newline = process_token(
+                    iter.next().expect("Expected Ident"),
+                    &mut iter,
+                    &mut ast,
+                    &mut free,
+                );
                 if newline.0 != TokenType::Newline {
                     panic!("Expected Newline");
                 }
@@ -125,8 +144,12 @@ fn process_token<'a>(
         }
         TokenType::Function => {
             let ident = {
-                let ident =
-                    process_token(iter.next().expect("Expected Ident"), &mut iter, &mut ast);
+                let ident = process_token(
+                    iter.next().expect("Expected Ident"),
+                    &mut iter,
+                    &mut ast,
+                    &mut free,
+                );
                 if ident.0 != TokenType::Ident || ident.1.is_none() {
                     panic!("Expected Ident");
                 }
@@ -135,8 +158,12 @@ fn process_token<'a>(
             };
 
             {
-                let paren =
-                    process_token(iter.next().expect("Expected Ident"), &mut iter, &mut ast);
+                let paren = process_token(
+                    iter.next().expect("Expected Ident"),
+                    &mut iter,
+                    &mut ast,
+                    &mut free,
+                );
 
                 if paren.0 != TokenType::LeftParen {
                     panic!("Expected (");
@@ -145,13 +172,21 @@ fn process_token<'a>(
 
             let mut params = Vec::new();
             loop {
-                let param =
-                    process_token(iter.next().expect("Expected Ident"), &mut iter, &mut ast);
+                let param = process_token(
+                    iter.next().expect("Expected Ident"),
+                    &mut iter,
+                    &mut ast,
+                    &mut free,
+                );
                 if param.0 == TokenType::RightParen {
                     break;
                 } else if param.0 == TokenType::Ident {
-                    let colon_or_comma =
-                        process_token(iter.next().expect("Expected Ident"), &mut iter, &mut ast);
+                    let colon_or_comma = process_token(
+                        iter.next().expect("Expected Ident"),
+                        &mut iter,
+                        &mut ast,
+                        &mut free,
+                    );
 
                     match colon_or_comma.0 {
                         TokenType::Colon => {
@@ -159,6 +194,7 @@ fn process_token<'a>(
                                 iter.next().expect("Expected Ident"),
                                 &mut iter,
                                 &mut ast,
+                                &mut free,
                             );
 
                             if let Node::Ident(ident) = ty.1.expect("Expected Type") {
@@ -183,7 +219,12 @@ fn process_token<'a>(
             }
 
             let returns = {
-                let ty = process_token(iter.next().expect("Expected Ident"), &mut iter, &mut ast);
+                let ty = process_token(
+                    iter.next().expect("Expected Ident"),
+                    &mut iter,
+                    &mut ast,
+                    &mut free,
+                );
 
                 match ty.0 {
                     TokenType::Newline => {
@@ -194,6 +235,7 @@ fn process_token<'a>(
                                 iter.next().expect("Expected Ident"),
                                 &mut iter,
                                 &mut ast,
+                                &mut free,
                             )
                             .1
                             .expect("Expected body"),
@@ -214,6 +256,7 @@ fn process_token<'a>(
                             iter.next().expect("Expected Ident"),
                             &mut iter,
                             &mut ast,
+                            &mut free,
                         );
                         if let Node::Ident(ident) = ty.1.expect("Expected Type") {
                             Ty::from(ident)
@@ -226,17 +269,26 @@ fn process_token<'a>(
             };
 
             {
-                let newline =
-                    process_token(iter.next().expect("Expected Ident"), &mut iter, &mut ast);
+                let newline = process_token(
+                    iter.next().expect("Expected Ident"),
+                    &mut iter,
+                    &mut ast,
+                    &mut free,
+                );
                 if newline.0 != TokenType::Newline {
                     panic!("Expected Newline");
                 }
             }
 
             let body = Box::new(
-                process_token(iter.next().expect("Expected Ident"), &mut iter, &mut ast)
-                    .1
-                    .expect("Expected body"),
+                process_token(
+                    iter.next().expect("Expected Ident"),
+                    &mut iter,
+                    &mut ast,
+                    &mut free,
+                )
+                .1
+                .expect("Expected body"),
             );
 
             (
@@ -250,12 +302,33 @@ fn process_token<'a>(
             )
         }
         TokenType::Equal => (TokenType::Equal, None),
-        TokenType::Ident => {
-            if let Some(__paren) = iter.peek() {
-                if __paren.ty == TokenType::LeftParen {
-                    let _ = iter.next();
-
-                    let name = token.source;
+        TokenType::Ident => (TokenType::Ident, Some(Node::Ident(token.source))),
+        TokenType::Space => process_token(
+            iter.next().expect("Unexpected EOF"),
+            &mut iter,
+            &mut ast,
+            &mut free,
+        ),
+        TokenType::Int => (
+            TokenType::Int,
+            Some(Node::Int(token.source.parse().unwrap())),
+        ),
+        TokenType::String => (
+            TokenType::String,
+            Some(Node::Str(Cow::Owned(String::from(
+                &token.source[1..token.source.len() - 1],
+            )))),
+        ),
+        TokenType::LeftParen => {
+            if free.len() > 0 {
+                if let Node::Ident(_) = free[free.len()] {
+                    let name = {
+                        if let Some(Node::Ident(name)) = free.pop() {
+                            name
+                        } else {
+                            unreachable!()
+                        }
+                    };
 
                     let mut params = Vec::new();
                     loop {
@@ -263,17 +336,19 @@ fn process_token<'a>(
                             iter.next().expect("Expected Ident"),
                             &mut iter,
                             &mut ast,
+                            &mut free,
                         );
                         if param.0 == TokenType::RightParen {
                             break;
                         } else if param.0 == TokenType::Ident {
-                            let __comma_or_paren = process_token(
+                            let __comma_or_end = process_token(
                                 iter.next().expect("Expected Ident"),
                                 &mut iter,
                                 &mut ast,
+                                &mut free,
                             );
 
-                            match __comma_or_paren.0 {
+                            match __comma_or_end.0 {
                                 TokenType::Comma => params.push(param.1.expect("Expected Ident")),
                                 TokenType::RightParen => {
                                     params.push(param.1.expect("Expected Ident"));
@@ -292,42 +367,34 @@ fn process_token<'a>(
                             iter.next().expect("Expected Ident"),
                             &mut iter,
                             &mut ast,
+                            &mut free,
                         );
                         if newline.0 != TokenType::Newline {
                             panic!("Expected Newline");
                         }
                     }
 
-                    return (TokenType::Ident, Some(Node::FunctionCall { name, params }));
+                    return (
+                        TokenType::LeftParen,
+                        Some(Node::FunctionCall { name, params }),
+                    );
                 }
             }
 
-            (TokenType::Ident, Some(Node::Ident(token.source)))
+            (TokenType::LeftParen, None)
         }
-        TokenType::Space => {
-            process_token(iter.next().expect("Unexpected EOF"), &mut iter, &mut ast)
-        }
-        TokenType::Int => (
-            TokenType::Int,
-            Some(Node::Int(token.source.parse().unwrap())),
-        ),
-        TokenType::String => (
-            TokenType::String,
-            Some(Node::Str(Cow::Owned(String::from(
-                &token.source[1..token.source.len() - 1],
-            )))),
-        ),
-        TokenType::LeftParen => (TokenType::LeftParen, None),
         TokenType::RightParen => (TokenType::RightParen, None),
         TokenType::Newline => (TokenType::Newline, None),
         TokenType::End => (TokenType::End, None),
         TokenType::Indent => {
-            let mut operations =
-                vec![
-                    process_token(iter.next().expect("Unexpected EOF"), &mut iter, &mut ast)
-                        .1
-                        .expect("Expected Expression"),
-                ];
+            let mut operations = vec![process_token(
+                iter.next().expect("Unexpected EOF"),
+                &mut iter,
+                &mut ast,
+                &mut free,
+            )
+            .1
+            .expect("Expected Expression")];
 
             while let Some(Node::Block(operation)) = process_token(
                 match iter.next() {
@@ -336,6 +403,7 @@ fn process_token<'a>(
                 },
                 &mut iter,
                 &mut ast,
+                &mut free,
             )
             .1
             {
@@ -404,8 +472,10 @@ mod tests {
     #[test]
     fn test() {
         println!(
-            "{:?}",
-            parse("fn test(ident)\n    let i = 10\n    let j = 11\n    print(i)\n")
+            "{:#?}",
+            parse(
+                "fn test(ident)\n    let i = 10\n    let j = 11\n    let u = 'test'\n    print(u)\n"
+            )
         );
     }
 }
@@ -426,6 +496,35 @@ impl<'a> Token<'a> {
         }
     }
 }
+
+/*
+macro_rules! tokens {
+    ($([$name:item, $token:literal],)*) => {
+        macro_rules! regex {
+            ($variant:ident $regex:literal) => {
+                #[end]
+                End,
+                #[error]
+                Error,
+                #[regex = $regex]
+                $variant,
+            }
+        }
+
+        #[derive(Logos, Debug, PartialEq, Eq, Clone, Copy)]
+        pub enum TokenType {
+            (
+                #[token = $token]
+                $name,
+            )*
+        }
+    };
+}
+
+tokens! {
+    Comma, ","
+}
+*/
 
 #[derive(Logos, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TokenType {
@@ -477,7 +576,7 @@ pub enum TokenType {
     Ident,
     #[regex = "[1234567890]+"]
     Int,
-    #[regex = "'[^']'"]
+    #[regex = "'[^']*'"]
     String,
     #[token = " "]
     Space,
