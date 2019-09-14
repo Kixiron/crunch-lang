@@ -1,4 +1,4 @@
-use crunch::Crunch;
+use crunch::*;
 use structopt::StructOpt;
 
 fn main() {
@@ -16,7 +16,7 @@ fn main() {
     };
 
     let mut crunch = {
-        let instructions = Crunch::parse(&bytecode);
+        let instructions = Crunch::parse(Crunch::validate(&bytecode).unwrap());
         Crunch::from(instructions)
     };
     crunch.execute();
