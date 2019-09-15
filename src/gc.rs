@@ -1,13 +1,7 @@
-use require_unsafe_in_body::require_unsafe_in_bodies;
-use std::{
-    alloc,
-    cmp::Ordering,
-    collections::HashMap,
-    fmt,
-    marker::PhantomData,
-    mem,
-    ptr::{self, NonNull},
-};
+use std::{alloc, mem, ptr, slice};
+
+/// 64mb per half of heap
+const HEAP_HALF_SIZE: usize = 1000 * 1000 * 64;
 
 #[inline]
 #[cfg(target_family = "unix")]
@@ -35,32 +29,27 @@ pub(crate) fn page_size() -> usize {
     }
 }
 
-pub trait Mark {
-    fn marked(&self) -> bool;
-    fn mark(&mut self);
-    fn unmark(&mut self);
-}
-
-#[derive(Debug)]
-pub struct GcValue<T: Mark + ?Sized> {
-    ptr: *mut T,
-}
-
 #[derive(Debug)]
 pub struct Gc {
-    left_heap: Region,
-    right_heap: Region,
-    allocations: HashMap<usize, (Region, GcValue<dyn Mark>)>,
-    roots: Vec<usize>,
+    /// The current root objects
+    roots: Vec<GcValue>,
+    /// The left heap
+    left: *mut u8,
+    /// The right heap
+    right: *mut u8,
+    /// The start of free memory
+    latest: usize,
+    /// The heap side currently in use
+    current_side: Side,
+    /// A vector of each allocation's id and current pointer
+    allocations: Vec<(usize, *mut u8)>,
 }
 
 impl Gc {
-    #[inline]
+    /// Create a new GC instance
     pub fn new() -> Self {
-        /// 64 megabytes per heap side
-        const HEAP_SIZE: usize = 1000 * 1000 * 64;
-
-        let (left_heap, right_heap) = {
+        let (left, right) = {
+            // Get the memory page size
             let page_size = {
                 let size = page_size();
                 assert!(size > 0);
@@ -68,245 +57,376 @@ impl Gc {
                 size
             };
 
-            let layout = alloc::Layout::from_size_align(HEAP_SIZE, page_size)
+            // Create the layout for a heap half
+            let layout = alloc::Layout::from_size_align(HEAP_HALF_SIZE, page_size)
                 .expect("Failed to create GC memory block layout");
 
-            let left = {
-                let alloc = unsafe { alloc::alloc_zeroed(layout) } as usize;
-
-                Region::new(alloc, alloc + HEAP_SIZE)
-            };
-
-            let right = {
-                let alloc = unsafe { alloc::alloc_zeroed(layout) } as usize;
-
-                Region::new(alloc, alloc + HEAP_SIZE)
-            };
+            // Left heap
+            let left = unsafe { alloc::alloc_zeroed(layout) };
+            // Right heap
+            let right = unsafe { alloc::alloc_zeroed(layout) };
 
             (left, right)
         };
 
         Self {
-            left_heap,
-            right_heap,
-            allocations: HashMap::new(),
+            left,
+            right,
+            allocations: Vec::new(),
             roots: Vec::new(),
+            current_side: Side::Left,
+            latest: left as usize,
         }
     }
 
-    #[inline]
-    pub fn alloc_num<T: Mark>(&mut self, count: usize, root: bool) -> GcHandle<T> {
-        let region = {
-            let len = if self.allocations.len() > 0 {
-                self.allocations.len() - 1
-            } else {
-                0
-            };
+    /// Allocate the space for an object
+    pub fn allocate<T>(&mut self, size: usize) -> Option<(GcValue, usize)> {
+        let (end, ptr) = (self.latest + size, self.latest as *mut u8);
+        let heap = self.get_side();
 
-            Region::new(len, len + mem::size_of::<T>() * count)
+        // If the object is too large return None
+        if end - heap as usize > HEAP_HALF_SIZE {
+            return None;
+        }
+
+        // Generate the Id of the new allocation based off of it's pointer
+        let mut new_id = ptr as usize;
+        loop {
+            if !self
+                .allocations
+                .iter()
+                .any(|(id, _)| *id == new_id as usize)
+            {
+                self.allocations.push((new_id, ptr));
+                break;
+            }
+            new_id += 1;
+        }
+
+        // Create the GcValue
+        let value = GcValue {
+            id: new_id,
+            size: mem::size_of::<T>(),
+            children: Vec::new(),
+            marked: false,
         };
 
-        let mut key = region.start.to_usize();
-        loop {
-            if !self.allocations.contains_key(&key) {
-                self.allocations.insert(key, (region, 0));
+        // end = self.latest + size
+        self.latest = end;
 
-                break GcHandle::new(key);
+        Some((value, new_id))
+    }
+
+    /// Collect all unused objects and shift to the other heap half
+    pub fn collect(&mut self) {
+        // The allocations to be transferred over to the new heap
+        let mut keep = Vec::new();
+        // Get the valid allocations of roots and all children
+        for root in &mut self.roots {
+            if !root.marked {
+                keep.extend(root.collect());
             }
-            key += 1;
+        }
+
+        let heap = {
+            match !self.current_side {
+                Side::Left => self.left,
+                Side::Right => self.right,
+            }
+        };
+        self.latest = heap as usize;
+
+        let mut new_allocations = Vec::new();
+        // Iterate over allocations to keep to move them onto the new heap
+        for (id, size) in keep {
+            // Get the pointer to the location on the old heap
+            let ptr = self.get_ptr(id).unwrap();
+
+            // Unsafe Usage: Get the bytes from the object on the old heap and copy them onto the new heap
+            unsafe {
+                let target: &mut [u8] = slice::from_raw_parts_mut(self.latest as *mut _, size);
+                target.copy_from_slice(slice::from_raw_parts(ptr, size));
+            }
+
+            // Push the new allocation to new_allocations
+            new_allocations.push((id, self.latest as *mut u8));
+
+            // Increment by the size of the moved object
+            self.latest += size;
+        }
+        self.allocations = new_allocations;
+
+        // Overwrite old heap
+        unsafe {
+            ptr::write_bytes(self.get_side(), 0, HEAP_HALF_SIZE);
+        }
+
+        // Change the current side
+        self.current_side = !self.current_side;
+
+        // There has to be a better way to unmark all allocations
+        for root in &mut self.roots {
+            if root.marked {
+                root.unmark();
+            }
         }
     }
 
-    #[inline]
-    pub fn mark(&mut self) {
-        for root in &self.roots {
-            if let Some(root) = self.allocations.get(&root) {
-                unsafe {
-                    (*(root.0.start.to_mut_ptr())).mark();
-                }
-            }
+    /// Fetches the current pointer associated with an id
+    pub(crate) fn get_ptr(&self, id: usize) -> Option<*mut u8> {
+        self.allocations
+            .iter()
+            .find(|alloc| alloc.0 == id)
+            .map(|alloc| alloc.1)
+    }
+
+    /// Add a root object
+    pub fn add_root(&mut self, root: GcValue) {
+        self.roots.push(root);
+    }
+
+    /// Remove a root object
+    pub fn remove_root(&mut self, id: usize) -> Result<(), ()> {
+        if let Some(index) = self.roots.iter().position(|value| value.id == id) {
+            self.roots.remove(index);
+            return Ok(());
+        }
+
+        Err(())
+    }
+
+    /// Write to an object
+    /// Note: No current way to verify that `data` does not overflow onto other allocations
+    /// Function really should be unsafe
+    pub fn write<T>(&self, id: usize, data: T) {
+        let ptr = self.get_ptr(id).unwrap();
+
+        unsafe {
+            ptr::write_volatile(ptr as *mut T, data);
         }
     }
-}
 
-#[derive(Debug)]
-pub struct GcHandle<T>(Address, PhantomData<T>);
+    /// Fetch an object's value
+    pub fn fetch<T>(&self, id: usize) -> Option<T> {
+        if let Some((_, ptr)) = self.allocations.iter().find(|(i, _)| *i == id) {
+            Some(unsafe { ptr::read_volatile(*ptr as *const T) })
+        } else {
+            None
+        }
 
-impl<T> GcHandle<T> {
-    pub fn new<U: Into<Address>>(addr: U) -> Self {
-        Self(addr.into(), PhantomData)
+        // Strange bug, the above code works fine, but replacing it with
+        // if let Some(ptr) = self.get_ptr(id) {
+        //     Some(unsafe { ptr::read_volatile(*ptr as *const T) })
+        // } else {
+        //     None
+        // }
+        // causes an immediate and silent crash
+        // Definitely the sign of a deeper problem
+    }
+
+    /// Gets the current heap side
+    pub fn get_side(&self) -> *mut u8 {
+        match self.current_side {
+            Side::Left => self.left,
+            Side::Right => self.right,
+        }
+    }
+
+    /// Information about the state of the GC
+    pub fn data(&self) -> GcData {
+        GcData {
+            heap_size: HEAP_HALF_SIZE,
+            heap_usage: self.latest - self.get_side() as usize,
+            num_roots: self.roots.len(),
+            num_allocations: self.allocations.len(),
+        }
+    }
+
+    /// See if the GC contains an Id
+    pub fn contains(&self, id: usize) -> bool {
+        self.allocations.iter().any(|(__id, _)| *__id == id)
     }
 }
 
 #[derive(Debug, Copy, Clone)]
-pub struct Region {
-    start: Address,
-    end: Address,
+pub struct GcData {
+    heap_size: usize,
+    heap_usage: usize,
+    num_roots: usize,
+    num_allocations: usize,
 }
 
-impl Region {
-    pub fn new<T: Into<Address>>(start: T, end: T) -> Region {
-        let (start, end) = (start.into(), end.into());
-        debug_assert!(start <= end);
-
-        Region { start, end }
-    }
-
-    #[inline(always)]
-    pub fn contains(&self, addr: Address) -> bool {
-        self.start <= addr && addr < self.end
-    }
-
-    #[inline(always)]
-    pub fn valid_top(&self, addr: Address) -> bool {
-        self.start <= addr && addr <= self.end
-    }
-
-    #[inline(always)]
-    pub fn size(&self) -> usize {
-        self.end.to_usize() - self.start.to_usize()
-    }
-
-    #[inline(always)]
-    pub fn empty(&self) -> bool {
-        self.start == self.end
-    }
-
-    #[inline(always)]
-    pub fn disjunct(&self, other: &Region) -> bool {
-        self.end <= other.start || self.start >= other.end
-    }
-
-    #[inline(always)]
-    pub fn overlaps(&self, other: &Region) -> bool {
-        !self.disjunct(other)
-    }
-
-    #[inline(always)]
-    pub fn fully_contains(&self, other: &Region) -> bool {
-        self.contains(other.start) && self.valid_top(other.end)
+impl std::fmt::Display for GcData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f,
+            "Total Heap Size: {} bytes\nTotal Heap Usage: {} bytes\nPercent Heap Usage: {:.2}%\nTotal Root Objects: {}\nTotal Allocations: {}",
+            self.heap_size / 8,
+            self.heap_usage,
+            (self.heap_usage as f64 / (self.heap_size / 8) as f64) * 100.0,
+            self.num_roots,
+            self.num_allocations
+        )
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
-#[repr(transparent)]
-pub struct Address(usize);
+/// Represents the heap side currently used
+#[derive(Debug, Copy, Clone)]
+enum Side {
+    Left,
+    Right,
+}
 
-impl Address {
-    #[inline(always)]
-    pub fn from(val: usize) -> Address {
-        Address(val)
-    }
+impl std::ops::Not for Side {
+    type Output = Self;
 
-    #[inline(always)]
-    pub fn region_start(self, size: usize) -> Region {
-        Region::new(self, self.offset(size))
-    }
-
-    #[inline(always)]
-    pub fn offset_from(self, base: Address) -> usize {
-        debug_assert!(self >= base);
-
-        self.to_usize() - base.to_usize()
-    }
-
-    #[inline(always)]
-    pub fn offset(self, offset: usize) -> Address {
-        Address(self.0 + offset)
-    }
-
-    #[inline(always)]
-    pub fn sub(self, offset: usize) -> Address {
-        Address(self.0 - offset)
-    }
-
-    #[inline(always)]
-    pub fn add_ptr(self, words: usize) -> Address {
-        Address(self.0 + words * std::mem::size_of::<usize>())
-    }
-
-    #[inline(always)]
-    pub fn sub_ptr(self, words: usize) -> Address {
-        Address(self.0 - words * std::mem::size_of::<usize>())
-    }
-
-    #[inline(always)]
-    pub fn to_usize(self) -> usize {
-        self.0
-    }
-
-    #[inline(always)]
-    pub fn from_ptr<T>(ptr: *const T) -> Address {
-        Address(ptr as usize)
-    }
-
-    #[inline(always)]
-    pub fn to_ptr<T>(&self) -> *const T {
-        self.0 as *const T
-    }
-
-    #[inline(always)]
-    pub fn to_mut_ptr<T>(&self) -> *mut T {
-        self.0 as *const T as *mut T
-    }
-
-    #[inline(always)]
-    pub fn null() -> Address {
-        Address(0)
-    }
-
-    #[inline(always)]
-    pub fn is_null(self) -> bool {
-        self.0 == 0
-    }
-
-    #[inline(always)]
-    pub fn is_non_null(self) -> bool {
-        self.0 != 0
+    fn not(self) -> Self::Output {
+        match self {
+            Self::Left => Self::Right,
+            Self::Right => Self::Left,
+        }
     }
 }
 
-impl fmt::Display for Address {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:p}", self.to_ptr::<usize>())
-    }
+#[derive(Debug, Clone)]
+pub struct GcValue {
+    id: usize,
+    size: usize,
+    children: Vec<GcValue>,
+    marked: bool,
 }
 
-impl fmt::Debug for Address {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:p}", self.to_ptr::<usize>())
-    }
-}
+impl GcValue {
+    /// Fetches The id and size of all children
+    pub fn collect(&mut self) -> Vec<(usize, usize)> {
+        let mut keep = Vec::new();
 
-impl PartialOrd for Address {
-    fn partial_cmp(&self, other: &Address) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
+        self.marked = true;
+        keep.push((self.id, self.size));
 
-impl Ord for Address {
-    fn cmp(&self, other: &Address) -> Ordering {
-        self.to_usize().cmp(&other.to_usize())
-    }
-}
+        for child in &mut self.children {
+            if !child.marked {
+                keep.extend(child.collect());
+            }
+        }
 
-impl From<usize> for Address {
-    fn from(val: usize) -> Address {
-        Address(val)
+        keep
+    }
+
+    /// Adds a child
+    pub fn add_child(&mut self, child: GcValue) {
+        self.children.push(child);
+    }
+
+    /// Unmarks self and all children
+    pub fn unmark(&mut self) {
+        self.marked = false;
+
+        for child in &mut self.children {
+            if child.marked {
+                child.unmark();
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::mem::size_of;
 
     #[test]
-    fn gc() {
+    fn alloc_usizes() {
         let mut gc = Gc::new();
-        println!("{:?}", gc);
 
-        let handle = gc.alloc_num::<usize>(10, true);
-        println!("{:?}", handle);
-        println!("{:?}", gc);
+        let (keep, keep_id) = gc.allocate::<usize>(size_of::<usize>()).unwrap();
+        gc.write(keep_id, usize::max_value());
+        gc.add_root(keep);
+        assert!(gc.contains(keep_id));
+        assert!(gc.fetch::<usize>(keep_id) == Some(usize::max_value()));
+
+        let (_discard, discard_id) = gc.allocate::<usize>(size_of::<usize>()).unwrap();
+        gc.write(discard_id, usize::max_value() - 1);
+        assert!(gc.contains(discard_id));
+        assert!(gc.fetch::<usize>(discard_id) == Some(usize::max_value() - 1));
+
+        gc.collect();
+
+        assert!(gc.contains(keep_id));
+        assert!(gc.fetch::<usize>(keep_id) == Some(usize::max_value()));
+
+        assert!(!gc.contains(discard_id));
+        assert!(gc.fetch::<usize>(discard_id).is_none());
+
+        gc.collect();
+
+        assert!(gc.contains(keep_id));
+        assert!(gc.fetch::<usize>(keep_id) == Some(usize::max_value()));
+
+        assert!(!gc.contains(discard_id));
+        assert!(gc.fetch::<usize>(discard_id).is_none());
+
+        assert!(gc.remove_root(keep_id).is_ok());
+
+        gc.collect();
+
+        assert!(!gc.contains(keep_id));
+        assert!(gc.fetch::<usize>(keep_id).is_none());
+
+        gc.collect();
+
+        assert!(!gc.contains(keep_id));
+        assert!(gc.fetch::<usize>(keep_id).is_none());
+    }
+
+    #[test]
+    fn gc_test() {
+        let mut gc = Gc::new();
+
+        let (mut ten, ten_id) = gc.allocate::<usize>(size_of::<usize>()).unwrap();
+        println!("Allocated usize: Ptr: {:p}", gc.get_ptr(ten_id).unwrap());
+        gc.write(ten_id, 10);
+
+        let (eleven, eleven_id) = gc.allocate::<usize>(size_of::<usize>()).unwrap();
+        println!("Allocated usize: Ptr: {:p}", gc.get_ptr(eleven_id).unwrap());
+        gc.write(eleven_id, 11);
+
+        let (_twelve, twelve_id) = gc.allocate::<usize>(size_of::<usize>()).unwrap();
+        println!("Allocated usize: Ptr: {:p}", gc.get_ptr(twelve_id).unwrap());
+        gc.write(twelve_id, 12);
+
+        ten.add_child(eleven);
+        println!("Added Child to ten: {:?}", ten);
+
+        gc.add_root(ten);
+        println!("Added root to GC: {:?}", gc.roots);
+
+        println!("=> Before Collect\n{}", gc.data());
+
+        println!(
+            "Ten: {:?}, Eleven: {:?}",
+            gc.fetch::<usize>(ten_id),
+            gc.fetch::<usize>(eleven_id)
+        );
+
+        gc.collect();
+        println!("=> After Collect\n{}", gc.data());
+
+        println!(
+            "Ten: {:?}, Eleven: {:?}",
+            gc.fetch::<usize>(ten_id),
+            gc.fetch::<usize>(eleven_id)
+        );
+
+        println!("{:#?}", gc);
+        gc.collect();
+        println!("{:#?}", gc);
+
+        println!(
+            "Ten: {:?}, Eleven: {:?}",
+            gc.fetch::<usize>(ten_id),
+            gc.fetch::<usize>(eleven_id)
+        );
+
+        println!("=> After Second Collect\n{}", gc.data());
     }
 }
