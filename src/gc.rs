@@ -202,21 +202,21 @@ impl Gc {
         let ptr = self.get_ptr(id).unwrap();
 
         unsafe {
-            ptr::write_volatile(ptr as *mut T, data);
+            ptr::write(ptr as *mut T, data);
         }
     }
 
     /// Fetch an object's value
     pub fn fetch<T>(&self, id: usize) -> Option<T> {
         if let Some((_, ptr)) = self.allocations.iter().find(|(i, _)| *i == id) {
-            Some(unsafe { ptr::read_volatile(*ptr as *const T) })
+            Some(unsafe { ptr::read(*ptr as *const T) })
         } else {
             None
         }
 
         // Strange bug, the above code works fine, but replacing it with
         // if let Some(ptr) = self.get_ptr(id) {
-        //     Some(unsafe { ptr::read_volatile(*ptr as *const T) })
+        //     Some(unsafe { ptr::read(*ptr as *const T) })
         // } else {
         //     None
         // }
