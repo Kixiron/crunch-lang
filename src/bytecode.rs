@@ -358,6 +358,218 @@ pub fn decode_program(bytes: &[u8]) -> (Vec<Instruction>, Vec<Vec<Instruction>>)
     (main, functions)
 }
 
+pub fn disassemble(bytes: &[u8]) -> String {
+    use super::NUMBER_REGISTERS;
+    use std::fmt::Write;
+
+    #[derive(Debug, Copy, Clone, PartialEq)]
+    enum Value {
+        Str(&'static str),
+        Int(i32),
+        Bool(bool),
+        None,
+    }
+
+    impl Value {
+        pub fn to_string(&self) -> String {
+            match self {
+                Value::Str(inner) => inner.to_string(),
+                Value::Int(inner) => inner.to_string(),
+                Value::Bool(inner) => inner.to_string(),
+                Value::None => String::from("None"),
+            }
+        }
+    }
+
+    let functions = {
+        let (main, functions) = decode_program(bytes);
+        let mut funcs = vec![main];
+        funcs.extend_from_slice(&functions);
+        funcs
+    };
+
+    let mut output = String::new();
+    for (index, function) in functions.into_iter().enumerate() {
+        if index == 0 {
+            write!(&mut output, "=> Main Function\n").unwrap();
+        } else {
+            write!(&mut output, "=> Function {}\n", index).unwrap();
+        }
+
+        let mut registers = [Value::None; NUMBER_REGISTERS];
+        for (instruction_index, instruction) in function.into_iter().enumerate() {
+            match instruction {
+                Instruction::LoadInt(val, reg) => {
+                    registers[*reg as usize] = Value::Int(val.clone())
+                }
+                Instruction::LoadStr(val, _, reg) => {
+                    registers[*reg as usize] = Value::Str(val.clone())
+                }
+                Instruction::LoadBool(val, reg) => {
+                    registers[*reg as usize] = Value::Bool(val.clone())
+                }
+                Instruction::LoadHandoff(input, output) => {
+                    let mut val = Value::None;
+                    std::mem::swap(&mut registers[*input as usize], &mut val);
+                    registers[*output as usize] = val;
+                }
+                _ => {}
+            }
+
+            let param = {
+                use Instruction::*;
+
+                match instruction {
+                    LoadInt(val, reg) => format!("{}, r{}", val, *reg),
+                    LoadBool(val, reg) => format!("{}, r{}", val, *reg),
+                    LoadStr(string, str_reg, reg) => {
+                        format!("{:?}, sr{}, r{}", string, str_reg, reg)
+                    }
+                    Drop(reg) => format!("r{}", reg),
+                    DropStr(str_reg) => format!("sr{}", str_reg),
+                    LoadHandoff(reg, hand_reg) => format!("r{}, hr{}", reg, hand_reg),
+                    TakeHandoff(reg, hand_reg) => format!("hr{}, r{}", reg, hand_reg),
+                    AddStr {
+                        left,
+                        right,
+                        output,
+                    } => format!("sr{}, sr{}, sr{}", left, right, output),
+                    AddInt {
+                        left,
+                        right,
+                        output,
+                    } => format!(
+                        "r{}, [r{} + r{}]",
+                        output,
+                        if registers[*left as usize] != Value::None {
+                            format!("r{}: {:?}", left, registers[*left as usize].to_string())
+                        } else {
+                            format!("r{}", left)
+                        },
+                        if registers[*right as usize] != Value::None {
+                            format!("r{}: {:?}", right, registers[*right as usize].to_string())
+                        } else {
+                            format!("r{}", right)
+                        }
+                    ),
+                    SubInt {
+                        left,
+                        right,
+                        output,
+                    } => format!(
+                        "r{}, [r{} - r{}]",
+                        output,
+                        if registers[*left as usize] != Value::None {
+                            format!("r{}: {:?}", left, registers[*left as usize].to_string())
+                        } else {
+                            format!("r{}", left)
+                        },
+                        if registers[*right as usize] != Value::None {
+                            format!("r{}: {:?}", right, registers[*right as usize].to_string())
+                        } else {
+                            format!("r{}", right)
+                        }
+                    ),
+                    MultInt {
+                        left,
+                        right,
+                        output,
+                    } => format!(
+                        "r{}, [r{} * r{}]",
+                        output,
+                        if registers[*left as usize] != Value::None {
+                            format!("r{}: {:?}", left, registers[*left as usize].to_string())
+                        } else {
+                            format!("r{}", left)
+                        },
+                        if registers[*right as usize] != Value::None {
+                            format!("r{}: {:?}", right, registers[*right as usize].to_string())
+                        } else {
+                            format!("r{}", right)
+                        }
+                    ),
+                    DivInt {
+                        left,
+                        right,
+                        output,
+                    } => format!(
+                        "r{}, [r{} / r{}]",
+                        output,
+                        if registers[*left as usize] != Value::None {
+                            format!("r{}: {:?}", left, registers[*left as usize].to_string())
+                        } else {
+                            format!("r{}", left)
+                        },
+                        if registers[*right as usize] != Value::None {
+                            format!("r{}: {:?}", right, registers[*right as usize].to_string())
+                        } else {
+                            format!("r{}", right)
+                        }
+                    ),
+                    Print(reg) => {
+                        if registers[*reg as usize] != Value::None {
+                            format!("r{}: {:?}", reg, registers[*reg as usize].to_string())
+                        } else {
+                            format!("r{}", reg)
+                        }
+                    }
+                    Jump(abs) => format!("{:04}", abs),
+                    CondJump { index, reg } => format!("{:04}, r{}", index, reg),
+                    JumpLessThan {
+                        index,
+                        reg,
+                        compare,
+                    }
+                    | JumpGreaterThan {
+                        index,
+                        reg,
+                        compare,
+                    } => {
+                        let mut string = format!("{:04}, ", index);
+                        if registers[*reg as usize] != Value::None {
+                            write!(
+                                &mut string,
+                                "r{}: {:?}, ",
+                                reg,
+                                registers[*reg as usize].to_string()
+                            )
+                            .unwrap();
+                        } else {
+                            write!(&mut string, "r{}, ", reg).unwrap();
+                        }
+                        if registers[*compare as usize] != Value::None {
+                            write!(
+                                &mut string,
+                                "r{}: {:?}",
+                                compare,
+                                registers[*compare as usize].to_string()
+                            )
+                            .unwrap();
+                        } else {
+                            write!(&mut string, "r{}", compare).unwrap();
+                        }
+                        string
+                    }
+                    FuncJump(index) => format!("func{}", *index),
+                    FuncCall(index) => format!("func{}", *index),
+                    Return | FuncReturn | Halt => String::new(),
+                }
+            };
+
+            write!(
+                &mut output,
+                "  {:04}: {} {}\n",
+                instruction_index,
+                instruction.to_str(),
+                param,
+            )
+            .unwrap();
+        }
+    }
+
+    output
+}
+
 #[inline]
 fn encode_instructions(instructions: &[Instruction]) -> (Vec<u8>, Vec<String>) {
     let mut instruction_bytes = vec![0_u8; instructions.len() * INSTRUCTION_LENGTH];
@@ -416,7 +628,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test() {
+    fn byte_test() {
         use crate::{Index, Instruction::*};
 
         // simple_logger::init().unwrap();
@@ -443,16 +655,13 @@ mod tests {
                 FuncCall(Index(0)),
                 Halt,
             ],
-            vec![
-                // println
-                vec![
-                    LoadStr("\n", StringPointer(0), Register(0)),
-                    TakeHandoff(Register(0), Register(1)),
-                    Print(Register(1)),
-                    Print(Register(0)),
-                    FuncReturn,
-                ],
-            ],
+            vec![vec![
+                LoadStr("\n", StringPointer(0), Register(0)),
+                TakeHandoff(Register(0), Register(1)),
+                Print(Register(1)),
+                Print(Register(0)),
+                FuncReturn,
+            ]],
         );
 
         let encoded_program = encode_program(&instructions, &functions);
@@ -574,6 +783,10 @@ mod tests {
         }
 
         let decoded_program = decode_program(&encoded_program);
+
+        use std::io::Write;
+        let mut file = std::fs::File::create("./examples/hello_world.crunch").unwrap();
+        file.write_all(&encoded_program).unwrap();
 
         assert_eq!((instructions, functions), decoded_program);
         let mut crunch = crate::Crunch::from(decoded_program);

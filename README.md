@@ -134,6 +134,7 @@ type Syven
 :: Functions can also be untyped
 fn hello(name, age)
     println("Hello {}! You are {} years old!", name, age)
+    
 :: This untyped function will be desugared into a generic function like this
 fn hello<T, E>(name: T, age E) -> void
     println("Hello {}! You are {} years old!", name, age)

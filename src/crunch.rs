@@ -1,4 +1,4 @@
-use super::{decode_program, encode_program, Bytecode, Instruction, Registers};
+use super::{decode_program, disassemble, encode_program, Bytecode, Instruction, Registers};
 
 /// The main interface to the crunch language
 #[allow(missing_debug_implementations)]
@@ -12,7 +12,6 @@ pub struct Crunch {
 /// The main usage of Crunch
 impl Crunch {
     /// Execute the currently loaded program
-    ///
     #[inline]
     pub fn execute(&mut self) {
         while !self.registers.environment().finished_execution() {
@@ -26,24 +25,26 @@ impl Crunch {
     }
 
     /// Parse validated bytecode into the Main Function and Function Table
-    #[cfg(feature = "bytecode")]
     #[inline]
     pub fn parse<'a>(bytes: Bytecode<'a>) -> (Vec<Instruction>, Vec<Vec<Instruction>>) {
         decode_program(*bytes)
     }
 
     /// Validate raw bytes as valid [`Bytecode`]
-    #[cfg(feature = "bytecode")]
     #[inline]
     pub fn validate<'a>(bytes: &'a [u8]) -> Result<Bytecode<'a>, &'static str> {
         Bytecode::validate(bytes)
     }
 
     /// Encode the currently loaded program as bytes
-    #[cfg(feature = "bytecode")]
     #[inline]
     pub fn encode(&self) -> Vec<u8> {
         encode_program(&self.instructions, self.registers.functions())
+    }
+
+    #[inline]
+    pub fn disassemble<'a>(bytes: Bytecode<'a>) -> String {
+        disassemble(*bytes)
     }
 }
 

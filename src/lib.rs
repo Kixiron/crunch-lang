@@ -127,7 +127,6 @@ const NUMBER_HANDOFF_REGISTERS: usize = 10;
 const NUMBER_STRINGS: usize = 10;
 
 /// Encoding and decoding bytecode
-#[cfg(feature = "bytecode")]
 mod bytecode;
 /// The main Crunch interface
 mod crunch;
@@ -137,7 +136,6 @@ mod instruction;
 /// Helper types
 mod newtypes;
 /// Front-end language parsing
-#[cfg(feature = "parser")]
 mod parser;
 /// The main VM
 mod registers;
@@ -145,12 +143,10 @@ mod registers;
 mod value;
 
 pub use crate::crunch::Crunch;
-#[cfg(feature = "bytecode")]
 pub use bytecode::*;
 pub use gc::*;
 pub use instruction::*;
 pub use newtypes::*;
-#[cfg(feature = "parser")]
 pub use parser::*;
 pub use registers::*;
 pub use value::*;

@@ -1,530 +1,493 @@
+use crate::{Instruction, NUMBER_REGISTERS, NUMBER_STRINGS};
+use codespan::{FileId, Files};
+use codespan_reporting::diagnostic::{Diagnostic, Label, Severity};
 use logos::{Lexer, Logos};
-use std::{borrow::Cow, iter::Peekable};
+use std::borrow::Cow;
 
-#[derive(Debug)]
+pub fn fast_interpret<'a>(ast: Vec<Node<'a>>) -> Vec<Instruction> {
+    let mut instructions = Vec::new();
+
+    let mut regs: [Option<()>; NUMBER_REGISTERS] = [None; NUMBER_REGISTERS];
+    let mut str_regs: [Option<()>; NUMBER_STRINGS] = [None; NUMBER_STRINGS];
+    for node in ast {
+        fast_interp_node(node, &mut instructions, &mut regs, &mut str_regs);
+    }
+
+    instructions
+}
+
+macro_rules! pos {
+    ($var:expr) => {{
+        let pos = $var.iter().position(|val| val.is_none()).unwrap();
+        $var[pos] = Some(());
+        (pos as u8).into()
+    }};
+}
+
+fn fast_interp_node<'a>(
+    node: Node<'a>,
+    mut instructions: &mut Vec<Instruction>,
+    mut regs: &mut [Option<()>; NUMBER_REGISTERS],
+    mut str_regs: &mut [Option<()>; NUMBER_STRINGS],
+) {
+    match node {
+        Node::FunctionDecl(decl) => {
+            for node in decl.body {
+                fast_interp_node(node, &mut instructions, &mut regs, &mut str_regs)
+            }
+        }
+        Node::Binding(binding) => match binding.ty {
+            Type::Bool => instructions.push(Instruction::LoadBool(
+                if let Literal::Bool(b) = binding.val {
+                    b
+                } else {
+                    panic!()
+                },
+                pos!(regs),
+            )),
+            Type::Int => instructions.push(Instruction::LoadInt(
+                if let Literal::Int(i) = binding.val {
+                    i
+                } else {
+                    panic!()
+                },
+                pos!(regs),
+            )),
+            Type::String => instructions.push(Instruction::LoadStr(
+                if let Literal::String(s) = binding.val {
+                    let s = Box::leak(Box::new(s.into_owned()));
+                    unsafe { std::mem::transmute::<&str, &'static str>(&s[1..s.len() - 1]) }
+                } else {
+                    panic!()
+                },
+                pos!(str_regs),
+                pos!(regs),
+            )),
+            Type::Infer => instructions.push(match binding.val {
+                Literal::String(s) => Instruction::LoadStr(
+                    {
+                        let s = Box::leak(Box::new(s.into_owned()));
+                        unsafe { std::mem::transmute::<&str, &'static str>(&s[1..s.len() - 1]) }
+                    },
+                    pos!(str_regs),
+                    pos!(regs),
+                ),
+                Literal::Bool(b) => Instruction::LoadBool(b, pos!(regs)),
+                Literal::Int(i) => Instruction::LoadInt(i, pos!(regs)),
+                _ => unimplemented!(),
+            }),
+
+            _ => unimplemented!(),
+        },
+        _ => unimplemented!(),
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+struct Ident<'a>(Cow<'a, str>);
+
+#[derive(Debug, PartialEq)]
 pub enum Node<'a> {
-    Ident(Cow<'a, str>),
-    Binding {
-        ident: Box<Node<'a>>,
-        ty: Ty<'a>,
-        value: Box<Node<'a>>,
-    },
-    FunctionDecl {
-        ident: Box<Node<'a>>,
-        params: Vec<(Node<'a>, Ty<'a>)>,
-        returns: Ty<'a>,
-        body: Box<Node<'a>>,
-    },
-    Int(i32),
-    Str(Cow<'a, str>),
-    Block(Vec<Node<'a>>),
-    FunctionCall {
-        name: Cow<'a, str>,
-        params: Vec<Node<'a>>,
+    FunctionDecl(FunctionDecl<'a>),
+    Binding(Binding<'a>),
+    BinaryOp {
+        op: BinOp,
+        left: Box<Node<'a>>,
+        right: Box<Node<'a>>,
     },
 }
 
-#[derive(Debug)]
-pub enum Ty<'a> {
-    Int,
-    Str,
+#[derive(Debug, PartialEq)]
+pub struct Binding<'a> {
+    name: Ident<'a>,
+    ty: Type<'a>,
+    val: Literal<'a>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum BinOp {
+    Add,
+    Sub,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct FunctionDecl<'a> {
+    name: Ident<'a>,
+    parameters: Vec<ParameterDecl<'a>>,
+    returns: Type<'a>,
+    body: Vec<Node<'a>>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ParameterDecl<'a> {
+    name: Ident<'a>,
+    ty: Type<'a>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum Type<'a> {
+    String,
     Bool,
+    Int,
     Infer,
     Void,
     Custom(Cow<'a, str>),
 }
 
-impl<'a> From<Cow<'a, str>> for Ty<'a> {
-    fn from(ty: Cow<'a, str>) -> Self {
-        match &*ty {
-            "int" => Ty::Int,
-            "str" => Ty::Str,
-            "bool" => Ty::Bool,
-            "void" => Ty::Void,
-            "_" => Ty::Infer,
-            _ => Ty::Custom(ty),
-        }
-    }
+#[derive(Debug, PartialEq, Eq, Clone)]
+enum Literal<'a> {
+    String(Cow<'a, str>),
+    Bool(bool),
+    Int(i32),
+    Variable(Ident<'a>),
 }
 
-pub fn parse<'a>(input: &'a str) -> Vec<Node<'a>> {
-    let tokenstream = TokenStream::new(input).peekable();
-    let mut ast = Vec::new();
-
-    {
-        let mut free = Vec::new();
-        let result = match IntoIterator::into_iter(tokenstream) {
-            mut iter => loop {
-                let next;
-                match iter.next() {
-                    Some(val) => next = val,
-                    None => break,
-                };
-                let current = next;
-
-                {
-                    if let Some(node) = process_token(current, &mut iter, &mut ast, &mut free).1 {
-                        ast.push(node);
-                    }
-                }
-            },
-        };
-        result
-    }
-
-    ast
-}
-
-fn process_token<'a>(
-    token: Token<'a>,
-    mut iter: &mut Peekable<TokenStream<'a>>,
-    mut ast: &mut Vec<Node<'a>>,
-    mut free: &mut Vec<Node<'a>>,
-) -> (TokenType, Option<Node<'a>>) {
-    match token.ty {
-        TokenType::Let => {
-            let ident = {
-                let ident = process_token(
-                    iter.next().expect("Expected Ident"),
-                    &mut iter,
-                    &mut ast,
-                    &mut free,
-                );
-                if ident.0 != TokenType::Ident || ident.1.is_none() {
-                    panic!("Expected Ident");
-                }
-
-                Box::new(ident.1.unwrap())
-            };
-
-            {
-                let equals = process_token(
-                    iter.next().expect("Expected Ident"),
-                    &mut iter,
-                    &mut ast,
-                    &mut free,
-                );
-
-                if equals.0 != TokenType::Equal {
-                    panic!("Expected =");
-                }
-            }
-
-            let value = Box::new(
-                process_token(
-                    iter.next().expect("Expected Ident"),
-                    &mut iter,
-                    &mut ast,
-                    &mut free,
-                )
-                .1
-                .expect("No value"),
-            );
-
-            {
-                let newline = process_token(
-                    iter.next().expect("Expected Ident"),
-                    &mut iter,
-                    &mut ast,
-                    &mut free,
-                );
-                if newline.0 != TokenType::Newline {
-                    panic!("Expected Newline");
-                }
-            }
-
-            (
-                TokenType::Let,
-                Some(Node::Binding {
-                    ident,
-                    ty: Ty::Infer,
-                    value,
-                }),
-            )
-        }
-        TokenType::Function => {
-            let ident = {
-                let ident = process_token(
-                    iter.next().expect("Expected Ident"),
-                    &mut iter,
-                    &mut ast,
-                    &mut free,
-                );
-                if ident.0 != TokenType::Ident || ident.1.is_none() {
-                    panic!("Expected Ident");
-                }
-
-                Box::new(ident.1.unwrap())
-            };
-
-            {
-                let paren = process_token(
-                    iter.next().expect("Expected Ident"),
-                    &mut iter,
-                    &mut ast,
-                    &mut free,
-                );
-
-                if paren.0 != TokenType::LeftParen {
-                    panic!("Expected (");
-                }
-            }
-
-            let mut params = Vec::new();
-            loop {
-                let param = process_token(
-                    iter.next().expect("Expected Ident"),
-                    &mut iter,
-                    &mut ast,
-                    &mut free,
-                );
-                if param.0 == TokenType::RightParen {
-                    break;
-                } else if param.0 == TokenType::Ident {
-                    let colon_or_comma = process_token(
-                        iter.next().expect("Expected Ident"),
-                        &mut iter,
-                        &mut ast,
-                        &mut free,
-                    );
-
-                    match colon_or_comma.0 {
-                        TokenType::Colon => {
-                            let ty = process_token(
-                                iter.next().expect("Expected Ident"),
-                                &mut iter,
-                                &mut ast,
-                                &mut free,
-                            );
-
-                            if let Node::Ident(ident) = ty.1.expect("Expected Type") {
-                                params.push((param.1.expect("Expected Ident"), Ty::from(ident)));
-                            } else {
-                                panic!("Expected Ident");
-                            }
-                        }
-                        TokenType::Comma => {
-                            params.push((param.1.expect("Expected Ident"), Ty::Infer))
-                        }
-                        TokenType::RightParen => {
-                            params.push((param.1.expect("Expected Ident"), Ty::Infer));
-                            break;
-                        }
-
-                        _ => panic!("Expected parameter type"),
-                    }
-                } else {
-                    panic!("Expected parameter");
-                }
-            }
-
-            let returns = {
-                let ty = process_token(
-                    iter.next().expect("Expected Ident"),
-                    &mut iter,
-                    &mut ast,
-                    &mut free,
-                );
-
-                match ty.0 {
-                    TokenType::Newline => {
-                        let returns = Ty::Void;
-
-                        let body = Box::new(
-                            process_token(
-                                iter.next().expect("Expected Ident"),
-                                &mut iter,
-                                &mut ast,
-                                &mut free,
-                            )
-                            .1
-                            .expect("Expected body"),
-                        );
-
-                        return (
-                            TokenType::Function,
-                            Some(Node::FunctionDecl {
-                                ident,
-                                params,
-                                returns,
-                                body,
-                            }),
-                        );
-                    }
-                    TokenType::RightArrow => {
-                        let ty = process_token(
-                            iter.next().expect("Expected Ident"),
-                            &mut iter,
-                            &mut ast,
-                            &mut free,
-                        );
-                        if let Node::Ident(ident) = ty.1.expect("Expected Type") {
-                            Ty::from(ident)
-                        } else {
-                            panic!("Expected Ident");
-                        }
-                    }
-                    _ => panic!("Expected return type"),
-                }
-            };
-
-            {
-                let newline = process_token(
-                    iter.next().expect("Expected Ident"),
-                    &mut iter,
-                    &mut ast,
-                    &mut free,
-                );
-                if newline.0 != TokenType::Newline {
-                    panic!("Expected Newline");
-                }
-            }
-
-            let body = Box::new(
-                process_token(
-                    iter.next().expect("Expected Ident"),
-                    &mut iter,
-                    &mut ast,
-                    &mut free,
-                )
-                .1
-                .expect("Expected body"),
-            );
-
-            (
-                TokenType::Function,
-                Some(Node::FunctionDecl {
-                    ident,
-                    params,
-                    returns,
-                    body,
-                }),
-            )
-        }
-        TokenType::Equal => (TokenType::Equal, None),
-        TokenType::Ident => (TokenType::Ident, Some(Node::Ident(token.source))),
-        TokenType::Space => process_token(
-            iter.next().expect("Unexpected EOF"),
-            &mut iter,
-            &mut ast,
-            &mut free,
-        ),
-        TokenType::Int => (
-            TokenType::Int,
-            Some(Node::Int(token.source.parse().unwrap())),
-        ),
-        TokenType::String => (
-            TokenType::String,
-            Some(Node::Str(Cow::Owned(String::from(
-                &token.source[1..token.source.len() - 1],
-            )))),
-        ),
-        TokenType::LeftParen => {
-            if free.len() > 0 {
-                if let Node::Ident(_) = free[free.len()] {
-                    let name = {
-                        if let Some(Node::Ident(name)) = free.pop() {
-                            name
-                        } else {
-                            unreachable!()
-                        }
-                    };
-
-                    let mut params = Vec::new();
-                    loop {
-                        let param = process_token(
-                            iter.next().expect("Expected Ident"),
-                            &mut iter,
-                            &mut ast,
-                            &mut free,
-                        );
-                        if param.0 == TokenType::RightParen {
-                            break;
-                        } else if param.0 == TokenType::Ident {
-                            let __comma_or_end = process_token(
-                                iter.next().expect("Expected Ident"),
-                                &mut iter,
-                                &mut ast,
-                                &mut free,
-                            );
-
-                            match __comma_or_end.0 {
-                                TokenType::Comma => params.push(param.1.expect("Expected Ident")),
-                                TokenType::RightParen => {
-                                    params.push(param.1.expect("Expected Ident"));
-                                    break;
-                                }
-
-                                _ => panic!("Expected parameter type"),
-                            }
-                        } else {
-                            panic!("Expected parameter");
-                        }
-                    }
-
-                    {
-                        let newline = process_token(
-                            iter.next().expect("Expected Ident"),
-                            &mut iter,
-                            &mut ast,
-                            &mut free,
-                        );
-                        if newline.0 != TokenType::Newline {
-                            panic!("Expected Newline");
-                        }
-                    }
-
-                    return (
-                        TokenType::LeftParen,
-                        Some(Node::FunctionCall { name, params }),
-                    );
-                }
-            }
-
-            (TokenType::LeftParen, None)
-        }
-        TokenType::RightParen => (TokenType::RightParen, None),
-        TokenType::Newline => (TokenType::Newline, None),
-        TokenType::End => (TokenType::End, None),
-        TokenType::Indent => {
-            let mut operations = vec![process_token(
-                iter.next().expect("Unexpected EOF"),
-                &mut iter,
-                &mut ast,
-                &mut free,
-            )
-            .1
-            .expect("Expected Expression")];
-
-            while let Some(Node::Block(operation)) = process_token(
-                match iter.next() {
-                    Some(token) => token,
-                    None => return (TokenType::Indent, Some(Node::Block(operations))),
-                },
-                &mut iter,
-                &mut ast,
-                &mut free,
-            )
-            .1
-            {
-                operations.extend(operation);
-            }
-
-            (TokenType::Indent, Some(Node::Block(operations)))
-        }
-        _ => panic!("{:?}", token),
-    }
-}
+type Result<T> = std::result::Result<T, Diagnostic>;
 
 #[allow(missing_debug_implementations)]
-pub struct TokenStream<'a> {
-    next: Lexer<TokenType, &'a str>,
-    current: Token<'a>,
-    eof: bool,
+pub struct Parser<'a> {
+    token_stream: TokenStream<'a>,
+    next: Option<Token<'a>>,
+    peek: Option<Token<'a>>,
+    codespan: Files,
+    files: Vec<FileId>,
 }
 
-impl<'a> TokenStream<'a> {
-    pub fn new(input: &'a str) -> Self {
-        let mut lexer = TokenType::lexer(input);
-        let current = Token::new(lexer.token, lexer.slice(), lexer.range());
-        lexer.advance();
+impl<'a> Parser<'a> {
+    pub fn new(filename: Option<&'a str>, input: &'a str) -> Self {
+        let mut token_stream = TokenStream::new(input);
+        let peek = token_stream.next();
+        let next = token_stream.next();
+        let (codespan, files) = {
+            let mut files = Files::new();
+            let ids = vec![if let Some(filename) = filename {
+                files.add(filename, input)
+            } else {
+                files.add("Crunch Source File", input)
+            }];
+            (files, ids)
+        };
 
         Self {
-            current,
-            next: lexer,
-            eof: false,
+            token_stream,
+            next,
+            peek,
+            codespan,
+            files,
         }
     }
 
-    fn advance(&mut self) {
-        self.current = Token::new(self.next.token, self.next.slice(), self.next.range());
+    pub fn parse(&mut self) -> Result<Vec<Node<'a>>> {
+        println!("parsing");
+        let mut ast = Vec::new();
 
-        self.next.advance();
-    }
-}
-
-impl<'a> Iterator for TokenStream<'a> {
-    type Item = Token<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if !self.eof {
-            let token = self.current.clone();
-
-            println!("{:?}", token);
-
-            self.advance();
-
-            if token.ty == TokenType::End {
-                self.eof = true;
+        loop {
+            if let Some(token) = &self.next {
+                match token.ty {
+                    TokenType::Function => ast.push(Node::FunctionDecl(self.parse_function()?)),
+                    TokenType::End => break,
+                    TokenType::Space | TokenType::Comment | TokenType::Newline => {
+                        self.next(line!())?;
+                        continue;
+                    }
+                    TokenType::Error => {
+                        return Err(Diagnostic::new(
+                            Severity::Error,
+                            "Invalid token",
+                            Label::new(
+                                self.files[0],
+                                token.range.0 as u32..token.range.1 as u32, // What?
+                                format!("{:?} is not a valid token", token.source),
+                            ),
+                        ));
+                    }
+                    _ => {
+                        return Err(Diagnostic::new(
+                            Severity::Error,
+                            "Invalid top-level token",
+                            Label::new(
+                                self.files[0],
+                                token.range.0 as u32..token.range.1 as u32, // What?
+                                format!("Expected Function, got {:?}", token.ty),
+                            ),
+                        ));
+                    }
+                }
+            } else {
+                break;
             }
 
-            Some(token)
+            if let Err(_) = self.next(line!()) {
+                return Ok(ast);
+            }
+        }
+
+        Ok(ast)
+    }
+
+    fn parse_function(&mut self) -> Result<FunctionDecl<'a>> {
+        let ident = self.eat(TokenType::Ident)?;
+        self.eat(TokenType::LeftParen)?;
+
+        let mut parameters = Vec::new();
+        while self.peek()?.ty != TokenType::RightParen {
+            parameters.push(self.parse_named_parameter()?);
+
+            if self.peek()?.ty == TokenType::Comma {
+                self.eat(TokenType::Comma)?;
+            }
+        }
+
+        self.eat(TokenType::RightParen)?;
+
+        self.eat_w()?;
+        let returns = if self.next(line!())?.ty == TokenType::RightArrow {
+            self.parse_type()?
         } else {
-            None
-        }
-    }
-}
+            Type::Infer
+        };
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+        self.eat_of(&[TokenType::Newline, TokenType::Comment])?;
 
-    #[test]
-    fn test() {
-        println!(
-            "{:#?}",
-            parse(
-                "fn test(ident)\n    let i = 10\n    let j = 11\n    let u = 'test'\n    print(u)\n"
-            )
-        );
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Token<'a> {
-    pub ty: TokenType,
-    pub source: Cow<'a, str>,
-    pub range: (usize, usize),
-}
-
-impl<'a> Token<'a> {
-    pub fn new(ty: TokenType, source: &'a str, range: std::ops::Range<usize>) -> Self {
-        Self {
-            ty,
-            source: Cow::Borrowed(source),
-            range: (range.start, range.end),
-        }
-    }
-}
-
-/*
-macro_rules! tokens {
-    ($([$name:item, $token:literal],)*) => {
-        macro_rules! regex {
-            ($variant:ident $regex:literal) => {
-                #[end]
-                End,
-                #[error]
-                Error,
-                #[regex = $regex]
-                $variant,
+        let mut body = Vec::new();
+        while let Ok(token) = self.next(line!()) {
+            if token.ty == TokenType::Indent {
+                body.push(self.parse_expr()?);
+            } else {
+                break;
             }
         }
 
-        #[derive(Logos, Debug, PartialEq, Eq, Clone, Copy)]
-        pub enum TokenType {
-            (
-                #[token = $token]
-                $name,
-            )*
+        Ok(FunctionDecl {
+            name: Ident(ident.source),
+            parameters,
+            returns,
+            body,
+        })
+    }
+
+    fn parse_expr(&mut self) -> Result<Node<'a>> {
+        self.eat_w()?;
+        match &self.next(line!())?.ty {
+            &TokenType::Let => {
+                let name = self.eat(TokenType::Ident)?;
+
+                let ty = if self.peek().unwrap().ty == TokenType::Colon {
+                    self.eat(TokenType::Colon)?;
+                    self.parse_type()?
+                } else {
+                    Type::Infer
+                };
+
+                self.eat(TokenType::Equal)?;
+
+                let val = self.parse_variable()?;
+
+                self.eat(TokenType::Newline)?;
+
+                Ok(Node::Binding(Binding {
+                    name: Ident(name.source),
+                    ty,
+                    val,
+                }))
+            }
+            _ => unimplemented!(),
         }
-    };
+    }
+
+    #[inline]
+    fn parse_variable(&mut self) -> Result<Literal<'a>> {
+        self.eat_w()?;
+        let token = self.next(line!())?;
+        Ok(match token.ty {
+            TokenType::Int => Literal::Int(token.source.parse().unwrap()),
+            TokenType::String => Literal::String(token.source),
+            TokenType::Bool => Literal::Bool(token.source.parse().unwrap()),
+            TokenType::Ident => Literal::Variable(Ident(token.source)),
+            _ => {
+                eprintln!("{:?}", token.ty);
+                unimplemented!()
+            }
+        })
+    }
+
+    #[inline]
+    fn parse_named_parameter(&mut self) -> Result<ParameterDecl<'a>> {
+        let ident = self.eat(TokenType::Ident)?;
+        self.eat(TokenType::Colon)?;
+        let ty = self.parse_type()?;
+
+        Ok(ParameterDecl {
+            name: Ident(ident.source),
+            ty,
+        })
+    }
+
+    #[inline]
+    fn parse_type(&mut self) -> Result<Type<'a>> {
+        let ident = self.eat(TokenType::Ident)?;
+        Ok(match ident.source {
+            Cow::Borrowed("void") => Type::Void,
+            Cow::Borrowed("str") => Type::String,
+            Cow::Borrowed("int") => Type::Int,
+            Cow::Borrowed("bool") => Type::Bool,
+            custom => Type::Custom(custom),
+        })
+    }
+
+    #[inline]
+    fn next(&mut self, line: u32) -> Result<Token<'a>> {
+        let mut next = self.token_stream.next();
+        std::mem::swap(&mut next, &mut self.peek);
+        self.next = next.clone();
+
+        if let Some(next) = next {
+            Ok(next)
+        } else {
+            eprintln!("Failed to get next token on line {}", line);
+            Err(Diagnostic::new(
+                Severity::Error,
+                "Unexpected End Of File",
+                Label::new(
+                    self.files[0],
+                    self.codespan.source_span(self.files[0]),
+                    format!("Unexpected End Of File"),
+                ),
+            ))
+        }
+    }
+
+    #[inline]
+    fn peek(&mut self) -> Result<Token<'a>> {
+        if let Some(next) = self.peek.clone() {
+            Ok(next)
+        } else {
+            eprintln!("Failed to peek");
+            Err(Diagnostic::new(
+                Severity::Error,
+                "Unexpected End Of File",
+                Label::new(
+                    self.files[0],
+                    self.codespan.source_span(self.files[0]),
+                    format!("Unexpected End Of File"),
+                ),
+            ))
+        }
+    }
+
+    #[inline]
+    fn eat_w(&mut self) -> Result<()> {
+        while let Some(token) = &self.peek {
+            if token.ty != TokenType::Space {
+                break;
+            } else {
+                self.next(line!())?;
+            }
+        }
+        Ok(())
+    }
+
+    #[inline]
+    fn eat(&mut self, expected: TokenType) -> Result<Token<'a>> {
+        self.eat_w()?;
+
+        let token = self.next(line!())?;
+
+        if token.ty == expected {
+            Ok(token)
+        } else {
+            eprintln!(
+                "Failed to eat token: Expected {:?}, got {:?}",
+                expected, token.ty
+            );
+            Err(Diagnostic::new(
+                Severity::Error,
+                format!(
+                    "Unexpected Token: Expected {:?}, got {:?}",
+                    expected, token.ty
+                ),
+                Label::new(
+                    self.files[0],
+                    token.range.0 as u32..token.range.1 as u32,
+                    format!("Expected {:?}", expected),
+                ),
+            ))
+        }
+    }
+
+    #[inline]
+    fn eat_of(&mut self, expected: &[TokenType]) -> Result<Token<'a>> {
+        self.eat_w()?;
+
+        let token = self.next(line!())?;
+
+        if expected.contains(&token.ty) {
+            Ok(token)
+        } else {
+            eprintln!(
+                "Failed to eat from tokens: Expected {:?}, got {:?}",
+                expected, token.ty
+            );
+
+            Err(Diagnostic::new(
+                Severity::Error,
+                format!(
+                    "Unexpected Token: Expected one of {}, got {:?}",
+                    expected
+                        .iter()
+                        .map(|t| format!("{:?}", t))
+                        .collect::<Vec<String>>()
+                        .join(", "),
+                    token.ty
+                ),
+                Label::new(
+                    self.files[0],
+                    self.codespan.source_span(self.files[0]),
+                    format!("Unexpected Token: {:?}", token.ty),
+                ),
+            ))
+        }
+    }
 }
 
-tokens! {
-    Comma, ","
+#[test]
+fn parse_test() {
+    const CODE: &str = "fn main(test: int, test2: str) -> void :: Main Function\n    \
+                        let i = \'10\'\n    \
+                        let i = 11\n\
+                        \n\
+                        fn main(test: int, test2: str) -> void\n    \
+                        let i: int = 15\n    \
+                        let i: int = 120\n";
+    const FILENAME: &str = "parse_test.crunch";
+
+    let mut parser = Parser::new(Some(FILENAME), CODE);
+
+    let writer = codespan_reporting::term::termcolor::StandardStream::stderr(
+        codespan_reporting::term::termcolor::ColorChoice::Auto,
+    );
+    let config = codespan_reporting::term::Config::default();
+    match parser.parse() {
+        Ok(ast) => {
+            println!("{:#?}", ast);
+
+            println!("{:?}", fast_interpret(ast));
+        }
+        Err(err) => {
+            codespan_reporting::term::emit(
+                &mut writer.lock(),
+                &config,
+                &{
+                    let mut files = Files::new();
+                    files.add(FILENAME, CODE);
+                    files
+                },
+                &err,
+            )
+            .unwrap();
+        }
+    }
 }
-*/
 
 #[derive(Logos, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TokenType {
@@ -590,4 +553,58 @@ pub enum TokenType {
     RightArrow,
     #[token = "<-"]
     LeftArrow,
+    #[token = "true"]
+    #[token = "false"]
+    Bool,
+}
+
+#[allow(missing_debug_implementations)]
+pub struct TokenStream<'a> {
+    lexer: Lexer<TokenType, &'a str>,
+    current: Token<'a>,
+}
+
+impl<'a> TokenStream<'a> {
+    pub fn new(input: &'a str) -> Self {
+        let lexer = TokenType::lexer(input);
+        let current = Token::new(lexer.token, lexer.slice(), lexer.range());
+
+        Self { current, lexer }
+    }
+
+    fn advance(&mut self) {
+        self.current = Token::new(self.lexer.token, self.lexer.slice(), self.lexer.range());
+
+        self.lexer.advance();
+    }
+}
+
+impl<'a> Iterator for TokenStream<'a> {
+    type Item = Token<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.advance();
+
+        match self.current.ty {
+            TokenType::End => None,
+            _ => Some(self.current.clone()),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Token<'a> {
+    pub ty: TokenType,
+    pub source: Cow<'a, str>,
+    pub range: (usize, usize),
+}
+
+impl<'a> Token<'a> {
+    pub fn new(ty: TokenType, source: &'a str, range: std::ops::Range<usize>) -> Self {
+        Self {
+            ty,
+            source: Cow::Borrowed(source),
+            range: (range.start, range.end),
+        }
+    }
 }

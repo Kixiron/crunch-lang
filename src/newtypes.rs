@@ -77,7 +77,6 @@ pub struct Index(pub u32);
 #[repr(transparent)]
 pub struct Register(pub u8);
 
-#[cfg(feature = "bytecode")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, From, Into, Deserialize, Serialize, Shrinkwrap)]
 pub struct Bytecode<'a>(&'a [u8]);
 

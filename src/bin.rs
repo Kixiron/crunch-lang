@@ -15,6 +15,14 @@ fn main() {
         bytecode
     };
 
+    if opt.disassemble {
+        println!(
+            "{}",
+            Crunch::disassemble(Crunch::validate(&bytecode).unwrap())
+        );
+        return;
+    }
+
     let mut crunch = {
         let instructions = Crunch::parse(Crunch::validate(&bytecode).unwrap());
         Crunch::from(instructions)
@@ -27,4 +35,6 @@ fn main() {
 struct Opt {
     #[structopt(parse(from_os_str))]
     file: std::path::PathBuf,
+    #[structopt(long = "disassemble")]
+    disassemble: bool,
 }

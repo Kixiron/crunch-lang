@@ -173,38 +173,11 @@ impl Registers {
         right: StringPointer,
         output: StringPointer,
     ) {
-        // TODO: Fast, safe alternative
-
-        *self.get_str_mut(output) = Cow::Owned(self.get_str(left).to_owned());
-        let right = self.get_str(right).to_owned();
-        self.get_str_mut(output).to_mut().push_str(&right);
-
-        // if left != output && right != output {
-        //     unsafe {
-        //         let left = {
-        //             let (ptr, len, capacity) = {
-        //                 let string = &self.strings[*left as usize];
-        //                 (string.as_ptr(), string.len(), string.capacity())
-        //             };
-        //
-        //             String::from_raw_parts(ptr as *mut _, len, capacity)
-        //         };
-        //         let right = {
-        //             let (ptr, len, capacity) = {
-        //                 let string = &self.strings[*right as usize];
-        //                 (string.as_ptr(), string.len(), string.capacity())
-        //             };
-        //
-        //             String::from_raw_parts(ptr as *mut _, len, capacity)
-        //         };
-        //
-        //         self.strings[*output as usize].push_str(&left);
-        //         self.strings[*output as usize].push_str(&right);
-        //
-        //         std::mem::forget(left);
-        //         std::mem::forget(right);
-        //     }
-        // }
+        let mut out = String::with_capacity(self.get_str(left).len() + self.get_str(right).len());
+        out.push_str(self.get_str(left));
+        out.push_str(self.get_str(right));
+    
+        *self.get_str_mut(output) = Cow::Owned(out);
     }
 
     #[inline]

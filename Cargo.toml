@@ -15,41 +15,37 @@ edition = "2018"
 [[bin]]
 name = "crunch"
 path = "src/bin.rs"
-required-features = ["binary"]
-
-[features]
-bytecode = []
-parser = ["logos"]
-logging = ["simple_logger", "color-backtrace"]
-binary = ["structopt", "bytecode", "parser", "logging"]
-default = ["bytecode", "parser"]
 
 [[bench]]
 name = "vm_execution"
 harness = false
 
 [dependencies]
-serde = { version = "1.0.99", features = ["derive"] }
+serde = { version = "1.0.101", features = ["derive"] }
 derive_more = "0.15.0"
 shrinkwraprs = "0.2.1"
 log = "0.4.8"
-simple_logger = { version = "1.3.0", optional = true }
-color-backtrace = { version = "0.2.2", optional = true }
+simple_logger = "1.3.0"
+color-backtrace = "0.2.3"
 array-init = "0.1.0"
-logos = { version = "0.10.0-rc2", optional = true }
-structopt = { version = "0.2.18", optional = true }
-require_unsafe_in_body = "0.1.2"
+logos = "0.10.0-rc2"
+structopt = "0.3.2"
+require_unsafe_in_body = "0.2.0"
+pest = "2.1.2"
+pest_derive = "2.1.0"
+codespan = "0.4.1"
+codespan-reporting = "0.4.1"
 
 [target.'cfg(target_family = "windows")'.dependencies]
-winapi = "0.3.7"
+winapi = "0.3.8"
 
 [target.'cfg(target_family = "unix")'.dependencies]
 libc = "0.2.62"
 
 [dev-dependencies]
-criterion = "0.2.11"
+criterion = "0.3.0"
 simple_logger = "1.3.0"
-color-backtrace = "0.2.2"
+color-backtrace = "0.2.3"
 
 [profile.dev]
 opt-level = 0

@@ -359,3 +359,63 @@ impl Instruction {
         }
     }
 }
+
+impl Instruction {
+    #[allow(unused_variables)]
+    pub fn to_str(&self) -> &'static str {
+        use Instruction::*;
+
+        match self {
+            &LoadInt(_, _) => "LoadInt",
+            &LoadStr(_, _, _) => "LoadStr",
+            &LoadBool(_, _) => "LoadBool",
+            &Drop(_) => "Drop",
+            &DropStr(_) => "DropStr",
+            &LoadHandoff(_, _) => "LoadHandoff",
+            &TakeHandoff(_, _) => "TakeHandoff",
+            &AddStr {
+                left,
+                right,
+                output,
+            } => "AddStr",
+            &AddInt {
+                left,
+                right,
+                output,
+            } => "AddInt",
+            &SubInt {
+                left,
+                right,
+                output,
+            } => "SubInt",
+            &MultInt {
+                left,
+                right,
+                output,
+            } => "MultInt",
+            &DivInt {
+                left,
+                right,
+                output,
+            } => "DivInt",
+            &Print(_) => "Print",
+            &Jump(_) => "Jump",
+            &CondJump { index, reg } => "CondJump",
+            &JumpLessThan {
+                index,
+                reg,
+                compare,
+            } => "JumpLessThan",
+            &JumpGreaterThan {
+                index,
+                reg,
+                compare,
+            } => "JumpGreaterThan",
+            &FuncJump(_) => "FuncJump",
+            &FuncCall(_) => "FuncCall",
+            &Return => "Return",
+            &FuncReturn => "FuncReturn",
+            &Halt => "Halt",
+        }
+    }
+}
