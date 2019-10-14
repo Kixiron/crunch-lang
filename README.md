@@ -91,23 +91,8 @@
 - [ ] Custom, randomized friendly error messages
 - [ ] Standardize and comment codebase
 - [ ] FFI
+
 # Crunch
-
-## Usage
-
-Reading bytecode from a file and executing
-
-```rust
-use std::{fs::File, io::Read, convert::TryFrom};
-use crunch::Crunch;
-
-let mut file = File::open("examples/hello_world.crunch").unwrap();
-let mut bytes: Vec<u8> = Vec::new();
-file.read_to_end(&mut bytes);
-
-let mut crunch = Crunch::try_from(&bytes).unwrap(); // Will panic if the bytecode has an invalid format
-crunch.execute(); // Executes the program
-```
 
 ## Target Syntax
 

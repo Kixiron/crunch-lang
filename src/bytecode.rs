@@ -1,338 +1,267 @@
-use super::{Instruction, Register, StringPointer};
-use std::{borrow::Cow, collections::VecDeque};
+use super::{Instruction, Value};
+use std::collections::VecDeque;
 
 pub const INSTRUCTION_LENGTH: usize = 8;
-pub const INSTRUCTION_BYTES: [u8; 22] = [
-    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
-    0x10, 0x11, 0x12, 0x13, 0x14, 0x15,
+#[cfg_attr(rustfmt, rustfmt::skip)]
+pub const INSTRUCTION_BYTES: [u8; 23] = [
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 
+    0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 
+    0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11, 
+    0x12, 0x13, 0x14, 0x15, 0x16
 ];
 
 #[inline]
-fn decode(instruction: [u8; INSTRUCTION_LENGTH], string: Option<&'static str>) -> Instruction {
-    use std::convert::TryInto;
+fn decode(instruction: [u8; INSTRUCTION_LENGTH], value: Option<Value>) -> Instruction {
+    use std::{convert::TryInto, mem::size_of};
 
-    match instruction[0] {
-        0x00 => Instruction::LoadInt(
-            i32::from_be_bytes(
-                instruction[1..5]
-                    .try_into()
-                    .unwrap_or_else(|_| unsafe { std::hint::unreachable_unchecked() }),
-            ),
-            Register(instruction[6]),
+    let instruction = match instruction[0] {
+        0x00 => Instruction::Load(
+            u32::from_be_bytes(instruction[1..size_of::<u32>() + 1].try_into().unwrap()),
+            instruction[size_of::<u32>() + 2].into(),
         ),
-        0x01 => Instruction::LoadStr(
-            string.expect("Improper string distribution"),
-            StringPointer(instruction[2]),
-            Register(instruction[1]),
+        0x01 => Instruction::Cache(
+            u32::from_be_bytes(instruction[1..size_of::<u32>() + 1].try_into().unwrap()),
+            value.unwrap(),
         ),
-        0x02 => Instruction::LoadBool(instruction[1] != 0, Register(instruction[2])),
-        0x03 => Instruction::Drop(Register(instruction[1])),
-        0x04 => Instruction::DropStr(StringPointer(instruction[1])),
-        0x05 => Instruction::AddStr {
-            left: StringPointer(instruction[1]),
-            right: StringPointer(instruction[2]),
-            output: StringPointer(instruction[3]),
-        },
-        0x06 => Instruction::AddInt {
-            left: Register(instruction[1]),
-            right: Register(instruction[2]),
-            output: Register(instruction[3]),
-        },
-        0x07 => Instruction::SubInt {
-            left: Register(instruction[1]),
-            right: Register(instruction[2]),
-            output: Register(instruction[3]),
-        },
-        0x08 => Instruction::Print(Register(instruction[1])),
-        0x09 => Instruction::Jump(i32::from_be_bytes(
-            instruction[1..5]
-                .try_into()
-                .unwrap_or_else(|_| unsafe { std::hint::unreachable_unchecked() }),
+        0x02 => Instruction::CompToReg(instruction[1].into()),
+        0x03 => Instruction::OpToReg(instruction[1].into()),
+        0x04 => Instruction::DropReg(
+            u32::from_be_bytes(instruction[1..size_of::<u32>() + 1].try_into().unwrap()),
+            instruction[size_of::<u32>() + 2].into(),
+        ),
+        0x05 => Instruction::Drop(u32::from_be_bytes(
+            instruction[1..size_of::<u32>() + 1].try_into().unwrap(),
         )),
-        0x0A => Instruction::CondJump {
-            index: i32::from_be_bytes(
-                instruction[1..5]
-                    .try_into()
-                    .unwrap_or_else(|_| unsafe { std::hint::unreachable_unchecked() }),
-            ),
-            reg: Register(instruction[6]),
-        },
-        0x0B => Instruction::Halt,
-        0x0C => Instruction::MultInt {
-            left: Register(instruction[1]),
-            right: Register(instruction[2]),
-            output: Register(instruction[3]),
-        },
-        0x0D => Instruction::DivInt {
-            left: Register(instruction[1]),
-            right: Register(instruction[2]),
-            output: Register(instruction[3]),
-        },
-        0x0E => Instruction::JumpLessThan {
-            index: i32::from_be_bytes(
-                instruction[1..5]
-                    .try_into()
-                    .unwrap_or_else(|_| unsafe { std::hint::unreachable_unchecked() }),
-            ),
-            reg: Register(instruction[6]),
-            compare: Register(instruction[7]),
-        },
-        0x0F => Instruction::JumpGreaterThan {
-            index: i32::from_be_bytes(
-                instruction[1..5]
-                    .try_into()
-                    .unwrap_or_else(|_| unsafe { std::hint::unreachable_unchecked() }),
-            ),
-            reg: Register(instruction[6]),
-            compare: Register(instruction[7]),
-        },
-        0x10 => Instruction::Return,
-        0x11 => Instruction::FuncJump(
-            u32::from_be_bytes(
-                instruction[1..5]
-                    .try_into()
-                    .unwrap_or_else(|_| unsafe { std::hint::unreachable_unchecked() }),
-            )
-            .into(),
-        ),
-        0x12 => Instruction::FuncReturn,
-        0x13 => Instruction::FuncCall(
-            u32::from_be_bytes(
-                instruction[1..5]
-                    .try_into()
-                    .unwrap_or_else(|_| unsafe { std::hint::unreachable_unchecked() }),
-            )
-            .into(),
-        ),
-        0x14 => Instruction::LoadHandoff(Register(instruction[1]), Register(instruction[2])),
-        0x15 => Instruction::TakeHandoff(Register(instruction[1]), Register(instruction[2])),
 
-        _ => unsafe { std::hint::unreachable_unchecked() },
-    }
+        0x06 => Instruction::Add(instruction[1].into(), instruction[2].into()),
+        0x07 => Instruction::Sub(instruction[1].into(), instruction[2].into()),
+        0x08 => Instruction::Mult(instruction[1].into(), instruction[2].into()),
+        0x09 => Instruction::Div(instruction[1].into(), instruction[2].into()),
+
+        0x0A => Instruction::Print(instruction[1].into()),
+
+        0x0B => Instruction::Jump(i32::from_be_bytes(
+            instruction[1..size_of::<i32>() + 1].try_into().unwrap(),
+        )),
+        0x0C => Instruction::JumpComp(i32::from_be_bytes(
+            instruction[1..size_of::<i32>() + 1].try_into().unwrap(),
+        )),
+
+        0x0D => Instruction::And(instruction[1].into(), instruction[2].into()),
+        0x0E => Instruction::Or(instruction[1].into(), instruction[2].into()),
+        0x0F => Instruction::Xor(instruction[1].into(), instruction[2].into()),
+        0x10 => Instruction::Not(instruction[1].into()),
+
+        0x11 => Instruction::Eq(instruction[1].into(), instruction[2].into()),
+        0x12 => Instruction::NotEq(instruction[1].into(), instruction[2].into()),
+        0x13 => Instruction::GreaterThan(instruction[1].into(), instruction[2].into()),
+        0x14 => Instruction::LessThan(instruction[1].into(), instruction[2].into()),
+
+        0x15 => Instruction::Return,
+        0x16 => Instruction::Halt,
+
+        _ => Instruction::Illegal,
+    };
+
+    instruction
 }
 
 #[inline]
-fn encode(instruction: &Instruction) -> ([u8; INSTRUCTION_LENGTH], Option<Cow<'static, str>>) {
+fn encode(instruction: Instruction) -> ([u8; INSTRUCTION_LENGTH], Option<Value>) {
+    use std::mem::size_of;
+
     let mut bytes = [0; INSTRUCTION_LENGTH];
-    let mut string = None;
+    let mut value = None;
 
     match instruction {
-        Instruction::LoadInt(int, reg) => {
+        Instruction::Load(heap_loc, reg) => {
             bytes[0] = 0x00;
-            bytes[1..5].copy_from_slice(&int.to_be_bytes());
-            bytes[6] = **reg;
+            bytes[1..size_of::<u32>() + 1].copy_from_slice(&heap_loc.to_be_bytes());
+            bytes[size_of::<u32>() + 2] = *reg;
         }
-        Instruction::LoadStr(input_string, ptr, reg) => {
+        Instruction::Cache(heap_loc, val) => {
             bytes[0] = 0x01;
-            bytes[1] = **reg;
-            bytes[2] = **ptr;
-
-            string = Some(Cow::Borrowed(*input_string));
+            bytes[1..size_of::<u32>() + 1].copy_from_slice(&heap_loc.to_be_bytes());
+            value = Some(val);
         }
-        Instruction::LoadBool(boolean, reg) => {
+        Instruction::CompToReg(reg) => {
             bytes[0] = 0x02;
-            bytes[1] = (*boolean).into();
-            bytes[2] = **reg;
+            bytes[1] = *reg;
+        }
+        Instruction::OpToReg(reg) => {
+            bytes[0] = 0x03;
+            bytes[1] = *reg;
+        }
+        Instruction::DropReg(heap_loc, reg) => {
+            bytes[0] = 0x04;
+            bytes[1..size_of::<u32>() + 1].copy_from_slice(&heap_loc.to_be_bytes());
+            bytes[size_of::<u32>() + 2] = *reg;
         }
         Instruction::Drop(reg) => {
-            bytes[0] = 0x03;
-            bytes[1] = **reg;
-        }
-        Instruction::DropStr(ptr) => {
-            bytes[0] = 0x04;
-            bytes[1] = **ptr;
-        }
-        Instruction::AddStr {
-            left,
-            right,
-            output,
-        } => {
             bytes[0] = 0x05;
-            bytes[1] = **left;
-            bytes[2] = **right;
-            bytes[3] = **output;
+            bytes[1..size_of::<u32>() + 1].copy_from_slice(&reg.to_be_bytes());
         }
-        Instruction::AddInt {
-            left,
-            right,
-            output,
-        } => {
+
+        Instruction::Add(left, right) => {
             bytes[0] = 0x06;
-            bytes[1] = **left;
-            bytes[2] = **right;
-            bytes[3] = **output;
+            bytes[1] = *left;
+            bytes[2] = *right;
         }
-        Instruction::SubInt {
-            left,
-            right,
-            output,
-        } => {
+        Instruction::Sub(left, right) => {
             bytes[0] = 0x07;
-            bytes[1] = **left;
-            bytes[2] = **right;
-            bytes[3] = **output;
+            bytes[1] = *left;
+            bytes[2] = *right;
         }
-        Instruction::Print(reg) => {
+        Instruction::Mult(left, right) => {
             bytes[0] = 0x08;
-            bytes[1] = **reg;
+            bytes[1] = *left;
+            bytes[2] = *right;
         }
-        Instruction::Jump(index) => {
+        Instruction::Div(left, right) => {
             bytes[0] = 0x09;
-            bytes[1..5].copy_from_slice(&index.to_be_bytes());
+            bytes[1] = *left;
+            bytes[2] = *right;
         }
-        Instruction::CondJump { index, reg } => {
+
+        Instruction::Print(reg) => {
             bytes[0] = 0x0A;
-            bytes[1..5].copy_from_slice(&index.to_be_bytes());
-            bytes[6] = **reg;
+            bytes[1] = *reg;
+        }
+
+        Instruction::Jump(loc) => {
+            bytes[0] = 0x0B;
+            bytes[1..size_of::<i32>() + 1].copy_from_slice(&loc.to_be_bytes());
+        }
+        Instruction::JumpComp(loc) => {
+            bytes[0] = 0x0C;
+            bytes[1..size_of::<i32>() + 1].copy_from_slice(&loc.to_be_bytes());
+        }
+
+        Instruction::And(left, right) => {
+            bytes[0] = 0x0D;
+            bytes[1] = *left;
+            bytes[2] = *right;
+        }
+        Instruction::Or(left, right) => {
+            bytes[0] = 0x0E;
+            bytes[1] = *left;
+            bytes[2] = *right;
+        }
+        Instruction::Xor(left, right) => {
+            bytes[0] = 0x0F;
+            bytes[1] = *left;
+            bytes[2] = *right;
+        }
+        Instruction::Not(reg) => {
+            bytes[0] = 0x10;
+            bytes[1] = *reg;
+        }
+
+        Instruction::Eq(left, right) => {
+            bytes[0] = 0x11;
+            bytes[1] = *left;
+            bytes[2] = *right;
+        }
+        Instruction::NotEq(left, right) => {
+            bytes[0] = 0x12;
+            bytes[1] = *left;
+            bytes[2] = *right;
+        }
+        Instruction::GreaterThan(left, right) => {
+            bytes[0] = 0x13;
+            bytes[1] = *left;
+            bytes[2] = *right;
+        }
+        Instruction::LessThan(left, right) => {
+            bytes[0] = 0x14;
+            bytes[1] = *left;
+            bytes[2] = *right;
+        }
+
+        Instruction::Return => {
+            bytes[0] = 0x15;
         }
         Instruction::Halt => {
-            bytes[0] = 0x0B;
+            bytes[0] = 0x16;
         }
-        Instruction::MultInt {
-            left,
-            right,
-            output,
-        } => {
-            bytes[0] = 0x0C;
-            bytes[1] = **left;
-            bytes[2] = **right;
-            bytes[3] = **output;
-        }
-        Instruction::DivInt {
-            left,
-            right,
-            output,
-        } => {
-            bytes[0] = 0x0D;
-            bytes[1] = **left;
-            bytes[2] = **right;
-            bytes[3] = **output;
-        }
-        Instruction::JumpLessThan {
-            index,
-            reg,
-            compare,
-        } => {
-            bytes[0] = 0x0E;
-            bytes[1..5].copy_from_slice(&index.to_be_bytes());
-            bytes[6] = **reg;
-            bytes[7] = **compare;
-        }
-        Instruction::JumpGreaterThan {
-            index,
-            reg,
-            compare,
-        } => {
-            bytes[0] = 0x0F;
-            bytes[1..5].copy_from_slice(&index.to_be_bytes());
-            bytes[6] = **reg;
-            bytes[7] = **compare;
-        }
-        Instruction::Return => {
-            bytes[0] = 0x10;
-        }
-        Instruction::FuncJump(index) => {
-            bytes[0] = 0x11;
-            bytes[1..5].copy_from_slice(&index.to_be_bytes());
-        }
-        Instruction::FuncReturn => {
-            bytes[0] = 0x12;
-        }
-        Instruction::FuncCall(index) => {
-            bytes[0] = 0x13;
-            bytes[1..5].copy_from_slice(&index.to_be_bytes());
-        }
-        Instruction::LoadHandoff(output_reg, handoff_reg) => {
-            bytes[0] = 0x14;
-            bytes[1] = **output_reg;
-            bytes[2] = **handoff_reg;
-        }
-        Instruction::TakeHandoff(handoff_reg, destination_reg) => {
-            bytes[0] = 0x15;
-            bytes[1] = **handoff_reg;
-            bytes[2] = **destination_reg;
-        }
+
+        Instruction::Illegal => unreachable!(),
     }
 
-    (bytes, string)
+    (bytes, value)
 }
 
 #[inline]
 pub fn encode_program(main: &[Instruction], functions: &[Vec<Instruction>]) -> Vec<u8> {
     // Encode the main function and strings
-    let (main_bytes, main_strings) = encode_instructions(main);
+    let (main_bytes, main_values) = encode_instructions(main);
 
-    let (func_bytes, func_strings) = {
-        let (mut func_bytes, mut func_strings) = (Vec::new(), Vec::new());
+    let (func_bytes, func_values) = {
+        let (mut func_bytes, mut func_values) = (Vec::new(), Vec::new());
 
         func_bytes.extend_from_slice(&(functions.len() as u32).to_be_bytes());
 
         // Encode each function to bytecode and store all their strings
         for function in functions {
             // Encode the function
-            let (bytes, strings) = encode_instructions(function);
+            let (bytes, values) = encode_instructions(function);
             // Push the length of the function to the stored bytes
             func_bytes.extend_from_slice(&(function.len() as u32).to_be_bytes());
             // Push the instructions to the stored bytes
             func_bytes.extend_from_slice(&bytes);
             // Push the strings to the stored strings
-            func_strings.extend_from_slice(&strings);
+            func_values.extend_from_slice(&values);
         }
 
-        (func_bytes, func_strings)
+        (func_bytes, func_values)
     };
 
     // Encode the strings
-    let mut strings = {
+    let mut values = {
         // Combine the function strings and the main function strings
-        let mut strings = func_strings;
-        strings.extend_from_slice(&main_strings);
+        let mut values = func_values;
+        values.extend_from_slice(&main_values);
 
         // Prepare vec for encoded strings
-        let mut string_bytes: Vec<u8> = Vec::new();
-        string_bytes.extend_from_slice(&(strings.len() as u32).to_be_bytes());
+        let mut value_bytes: Vec<u8> = Vec::new();
+        value_bytes.extend_from_slice(&(values.len() as u32).to_be_bytes());
 
-        for string in strings {
-            string_bytes.extend_from_slice(&(string.len() as u32).to_be_bytes());
-            string_bytes.extend_from_slice(string.as_bytes());
+        for val in values {
+            value_bytes.extend_from_slice(&val.as_bytes());
         }
 
-        string_bytes
+        value_bytes
     };
 
-    strings.extend_from_slice(&func_bytes);
-    strings.extend_from_slice(&main_bytes);
+    values.extend_from_slice(&func_bytes);
+    values.extend_from_slice(&main_bytes);
 
     // Layout:
-    // Strings
-    //     Function Strings
-    //     Main Strings
+    // Values
+    //     Function Values
+    //     Main Values
     // Functions
     // Main
-    strings
+    values
 }
 
 #[inline]
 pub fn decode_program(bytes: &[u8]) -> (Vec<Instruction>, Vec<Vec<Instruction>>) {
+    use std::convert::TryInto;
+
     let mut index = 0;
 
-    let mut strings = {
-        let num_strings = take_usize(&mut index, bytes);
-        let mut strings = VecDeque::with_capacity(num_strings);
+    let mut values = {
+        let num_values = take_usize(&mut index, bytes);
+        let mut values = VecDeque::with_capacity(num_values);
 
-        for _ in 0..num_strings {
-            let len = take_usize(&mut index, bytes);
-
-            strings.push_back(
-                std::str::from_utf8(unsafe {
-                    std::mem::transmute::<_, _>(&bytes[index..index + len])
-                })
-                .expect("Invalid string"),
-            );
-            index += len;
+        for _ in 0..num_values {
+            values
+                .push_back(Value::from_bytes(bytes[index..index + 8].try_into().unwrap()).unwrap());
+            index += 8;
         }
 
-        strings
+        values
     };
 
     let functions = {
@@ -344,7 +273,7 @@ pub fn decode_program(bytes: &[u8]) -> (Vec<Instruction>, Vec<Vec<Instruction>>)
 
             functions.push(decode_instructions(
                 &bytes[index..index + (len * INSTRUCTION_LENGTH)],
-                &mut strings,
+                &mut values,
             ));
 
             index += len * INSTRUCTION_LENGTH;
@@ -353,33 +282,14 @@ pub fn decode_program(bytes: &[u8]) -> (Vec<Instruction>, Vec<Vec<Instruction>>)
         functions
     };
 
-    let main = decode_instructions(&bytes[index..], &mut strings);
+    let main = decode_instructions(&bytes[index..], &mut values);
 
     (main, functions)
 }
 
 pub fn disassemble(bytes: &[u8]) -> String {
     use super::NUMBER_REGISTERS;
-    use std::fmt::Write;
-
-    #[derive(Debug, Copy, Clone, PartialEq)]
-    enum Value {
-        Str(&'static str),
-        Int(i32),
-        Bool(bool),
-        None,
-    }
-
-    impl Value {
-        pub fn to_string(&self) -> String {
-            match self {
-                Value::Str(inner) => inner.to_string(),
-                Value::Int(inner) => inner.to_string(),
-                Value::Bool(inner) => inner.to_string(),
-                Value::None => String::from("None"),
-            }
-        }
-    }
+    use std::{collections::HashMap, fmt::Write};
 
     let functions = {
         let (main, functions) = decode_program(bytes);
@@ -397,21 +307,22 @@ pub fn disassemble(bytes: &[u8]) -> String {
         }
 
         let mut registers = [Value::None; NUMBER_REGISTERS];
+        let mut heap: HashMap<u32, Value> = HashMap::new();
+
         for (instruction_index, instruction) in function.into_iter().enumerate() {
             match instruction {
-                Instruction::LoadInt(val, reg) => {
-                    registers[*reg as usize] = Value::Int(val.clone())
+                Instruction::Load(heap_loc, reg) => {
+                    registers[*reg as usize] = heap.get(&heap_loc).unwrap_or(&Value::None).clone();
                 }
-                Instruction::LoadStr(val, _, reg) => {
-                    registers[*reg as usize] = Value::Str(val.clone())
+                Instruction::Cache(heap_loc, val) => {
+                    heap.insert(heap_loc, val);
                 }
-                Instruction::LoadBool(val, reg) => {
-                    registers[*reg as usize] = Value::Bool(val.clone())
+                Instruction::Drop(heap_loc) => {
+                    heap.remove(&heap_loc);
                 }
-                Instruction::LoadHandoff(input, output) => {
-                    let mut val = Value::None;
-                    std::mem::swap(&mut registers[*input as usize], &mut val);
-                    registers[*output as usize] = val;
+                Instruction::DropReg(heap_loc, reg) => {
+                    heap.insert(heap_loc, registers[*reg as usize]);
+                    registers[*reg as usize] = Value::None;
                 }
                 _ => {}
             }
@@ -420,139 +331,57 @@ pub fn disassemble(bytes: &[u8]) -> String {
                 use Instruction::*;
 
                 match instruction {
-                    LoadInt(val, reg) => format!("{}, r{}", val, *reg),
-                    LoadBool(val, reg) => format!("{}, r{}", val, *reg),
-                    LoadStr(string, str_reg, reg) => {
-                        format!("{:?}, sr{}, r{}", string, str_reg, reg)
+                    Load(heap, reg) | DropReg(heap, reg) => {
+                        format!("{:p}, {}", heap as *const u8, reg)
                     }
-                    Drop(reg) => format!("r{}", reg),
-                    DropStr(str_reg) => format!("sr{}", str_reg),
-                    LoadHandoff(reg, hand_reg) => format!("r{}, hr{}", reg, hand_reg),
-                    TakeHandoff(reg, hand_reg) => format!("hr{}, r{}", reg, hand_reg),
-                    AddStr {
-                        left,
-                        right,
-                        output,
-                    } => format!("sr{}, sr{}, sr{}", left, right, output),
-                    AddInt {
-                        left,
-                        right,
-                        output,
-                    } => format!(
-                        "r{}, [r{} + r{}]",
-                        output,
-                        if registers[*left as usize] != Value::None {
-                            format!("r{}: {:?}", left, registers[*left as usize].to_string())
-                        } else {
-                            format!("r{}", left)
-                        },
-                        if registers[*right as usize] != Value::None {
-                            format!("r{}: {:?}", right, registers[*right as usize].to_string())
-                        } else {
-                            format!("r{}", right)
-                        }
-                    ),
-                    SubInt {
-                        left,
-                        right,
-                        output,
-                    } => format!(
-                        "r{}, [r{} - r{}]",
-                        output,
-                        if registers[*left as usize] != Value::None {
-                            format!("r{}: {:?}", left, registers[*left as usize].to_string())
-                        } else {
-                            format!("r{}", left)
-                        },
-                        if registers[*right as usize] != Value::None {
-                            format!("r{}: {:?}", right, registers[*right as usize].to_string())
-                        } else {
-                            format!("r{}", right)
-                        }
-                    ),
-                    MultInt {
-                        left,
-                        right,
-                        output,
-                    } => format!(
-                        "r{}, [r{} * r{}]",
-                        output,
-                        if registers[*left as usize] != Value::None {
-                            format!("r{}: {:?}", left, registers[*left as usize].to_string())
-                        } else {
-                            format!("r{}", left)
-                        },
-                        if registers[*right as usize] != Value::None {
-                            format!("r{}: {:?}", right, registers[*right as usize].to_string())
-                        } else {
-                            format!("r{}", right)
-                        }
-                    ),
-                    DivInt {
-                        left,
-                        right,
-                        output,
-                    } => format!(
-                        "r{}, [r{} / r{}]",
-                        output,
-                        if registers[*left as usize] != Value::None {
-                            format!("r{}: {:?}", left, registers[*left as usize].to_string())
-                        } else {
-                            format!("r{}", left)
-                        },
-                        if registers[*right as usize] != Value::None {
-                            format!("r{}: {:?}", right, registers[*right as usize].to_string())
-                        } else {
-                            format!("r{}", right)
-                        }
-                    ),
+                    Cache(heap, val) => format!("{:p}, {}", heap as *const u8, val.to_string()),
+                    CompToReg(reg) | OpToReg(reg) => format!("{}", reg),
+                    Drop(reg) => format!("{}", reg),
+
                     Print(reg) => {
                         if registers[*reg as usize] != Value::None {
-                            format!("r{}: {:?}", reg, registers[*reg as usize].to_string())
+                            format!("{}: {}", reg, registers[*reg as usize].to_string())
                         } else {
-                            format!("r{}", reg)
+                            format!("{}", reg)
                         }
                     }
-                    Jump(abs) => format!("{:04}", abs),
-                    CondJump { index, reg } => format!("{:04}, r{}", index, reg),
-                    JumpLessThan {
-                        index,
-                        reg,
-                        compare,
-                    }
-                    | JumpGreaterThan {
-                        index,
-                        reg,
-                        compare,
-                    } => {
-                        let mut string = format!("{:04}, ", index);
+
+                    Jump(abs) | JumpComp(abs) => format!("{:04}", abs),
+
+                    Not(reg) => format!(
+                        "{}",
                         if registers[*reg as usize] != Value::None {
-                            write!(
-                                &mut string,
-                                "r{}: {:?}, ",
-                                reg,
-                                registers[*reg as usize].to_string()
-                            )
-                            .unwrap();
+                            format!("{}: {}", reg, registers[*reg as usize].to_string())
                         } else {
-                            write!(&mut string, "r{}, ", reg).unwrap();
+                            format!("{}", reg)
                         }
-                        if registers[*compare as usize] != Value::None {
-                            write!(
-                                &mut string,
-                                "r{}: {:?}",
-                                compare,
-                                registers[*compare as usize].to_string()
-                            )
-                            .unwrap();
+                    ),
+
+                    Add(left, right)
+                    | Sub(left, right)
+                    | Mult(left, right)
+                    | Div(left, right)
+                    | And(left, right)
+                    | Or(left, right)
+                    | Xor(left, right)
+                    | Eq(left, right)
+                    | NotEq(left, right)
+                    | GreaterThan(left, right)
+                    | LessThan(left, right) => format!(
+                        "{}, {}",
+                        if registers[*left as usize] != Value::None {
+                            format!("{}: {:?}", left, registers[*left as usize].to_string())
                         } else {
-                            write!(&mut string, "r{}", compare).unwrap();
+                            format!("{}", left)
+                        },
+                        if registers[*right as usize] != Value::None {
+                            format!("{}: {:?}", right, registers[*right as usize].to_string())
+                        } else {
+                            format!("{}", right)
                         }
-                        string
-                    }
-                    FuncJump(index) => format!("func{}", *index),
-                    FuncCall(index) => format!("func{}", *index),
-                    Return | FuncReturn | Halt => String::new(),
+                    ),
+
+                    Return | Halt | Illegal => String::new(),
                 }
             };
 
@@ -571,26 +400,26 @@ pub fn disassemble(bytes: &[u8]) -> String {
 }
 
 #[inline]
-fn encode_instructions(instructions: &[Instruction]) -> (Vec<u8>, Vec<String>) {
+fn encode_instructions(instructions: &[Instruction]) -> (Vec<u8>, Vec<Value>) {
     let mut instruction_bytes = vec![0_u8; instructions.len() * INSTRUCTION_LENGTH];
-    let mut instruction_strings: Vec<String> = Vec::default();
+    let mut values = Vec::default();
 
-    for (index, instruction) in instructions.iter().enumerate() {
-        let (bytes, string) = encode(instruction);
+    for (index, instruction) in instructions.into_iter().enumerate() {
+        let (bytes, val) = encode(instruction.clone());
 
         instruction_bytes
             [index * INSTRUCTION_LENGTH..(index * INSTRUCTION_LENGTH) + INSTRUCTION_LENGTH]
             .copy_from_slice(&bytes);
-        if let Some(string) = string {
-            instruction_strings.push(string.into_owned());
+        if let Some(val) = val {
+            values.push(val);
         }
     }
 
-    (instruction_bytes, instruction_strings)
+    (instruction_bytes, values)
 }
 
 #[inline]
-fn decode_instructions(bytes: &[u8], strings: &mut VecDeque<&'static str>) -> Vec<Instruction> {
+fn decode_instructions(bytes: &[u8], values: &mut VecDeque<Value>) -> Vec<Instruction> {
     use std::convert::TryInto;
 
     let mut instructions = Vec::with_capacity(bytes.len() / INSTRUCTION_LENGTH);
@@ -598,7 +427,7 @@ fn decode_instructions(bytes: &[u8], strings: &mut VecDeque<&'static str>) -> Ve
         let chunk: [u8; INSTRUCTION_LENGTH] = chunk.try_into().expect("Invalid chunk length");
 
         let instruction = if chunk[0] == 0x01 {
-            decode(chunk, strings.pop_front())
+            decode(chunk, values.pop_front())
         } else {
             decode(chunk, None)
         };
@@ -629,164 +458,37 @@ mod tests {
 
     #[test]
     fn byte_test() {
-        use crate::{Index, Instruction::*};
+        use crate::Instruction::*;
+        use std::io::Write;
 
-        // simple_logger::init().unwrap();
+        simple_logger::init().unwrap();
         color_backtrace::install();
-
-        let take_usize = |index: &mut usize, bytes: &[u8]| -> (usize, [u8; 4]) {
-            use std::convert::TryInto;
-
-            let bytes = bytes[*index..*index + 4]
-                .try_into()
-                .expect("Invalid u32 length");
-
-            let int = u32::from_be_bytes(bytes) as usize;
-
-            *index += 4;
-
-            (int, bytes)
-        };
 
         let (instructions, functions) = (
             vec![
-                LoadStr("Hello from Crunch!", StringPointer(1), Register(0)),
-                LoadHandoff(Register(0), Register(0)),
-                FuncCall(Index(0)),
+                Cache(0, Value::Int(10)),
+                Load(0, 0.into()),
+                Print(0.into()),
+                Cache(1, Value::Int(5)),
+                Load(1, 1.into()),
+                Print(1.into()),
+                Div(0.into(), 1.into()),
+                OpToReg(3.into()),
+                Print(3.into()),
+                Drop(0),
+                Drop(1),
                 Halt,
             ],
-            vec![vec![
-                LoadStr("\n", StringPointer(0), Register(0)),
-                TakeHandoff(Register(0), Register(1)),
-                Print(Register(1)),
-                Print(Register(0)),
-                FuncReturn,
-            ]],
+            Vec::new(),
         );
 
         let encoded_program = encode_program(&instructions, &functions);
-
-        {
-            let display_bytes = |b: &[u8]| -> String {
-                b.iter()
-                    .map(|b| format!("{:02X}", b))
-                    .collect::<Vec<String>>()
-                    .join(" ")
-            };
-
-            let mut index = 0;
-
-            let (mut strings, disp_strings) = {
-                let (mut disp_strings, (num_strings, num_strings_bytes), mut strings) = (
-                    String::new(),
-                    take_usize(&mut index, &encoded_program),
-                    VecDeque::new(),
-                );
-
-                disp_strings += &format!(
-                    "Strings: (Number: {}, Bytes: {})\n",
-                    num_strings,
-                    display_bytes(&num_strings_bytes)
-                );
-
-                for i in 0..num_strings {
-                    let (str_len, str_len_bytes) = take_usize(&mut index, &encoded_program);
-                    let bytes = &encoded_program[index..index + str_len];
-                    index += str_len;
-
-                    disp_strings += &format!(
-                        "  {:04}: Len: {}, Bytes: {}\n    String: {:?}\n    Bytes: {}\n",
-                        i,
-                        str_len,
-                        display_bytes(&str_len_bytes),
-                        String::from_utf8(bytes.to_vec()).unwrap(),
-                        display_bytes(&bytes),
-                    );
-
-                    strings.push_back(
-                        std::str::from_utf8(unsafe {
-                            std::mem::transmute::<_, &'static [u8]>(bytes)
-                        })
-                        .unwrap(),
-                    );
-                }
-
-                (strings, disp_strings)
-            };
-
-            let functions = {
-                let (mut functions, (num_functions, num_functions_bytes)) =
-                    (String::new(), take_usize(&mut index, &encoded_program));
-
-                functions += &format!(
-                    "Functions: (Number: {}, Bytes: {})\n",
-                    num_functions,
-                    display_bytes(&num_functions_bytes)
-                );
-
-                for i in 0..num_functions {
-                    let (func_len, func_len_bytes) = take_usize(&mut index, &encoded_program);
-
-                    functions += &format!(
-                        "  {:04}: Len: {}, Bytes: {}\n    Instructions:\n{}\n    Bytes:\n{}\n",
-                        i,
-                        func_len,
-                        display_bytes(&func_len_bytes),
-                        decode_instructions(
-                            &encoded_program[index..index + (func_len * INSTRUCTION_LENGTH)],
-                            &mut strings,
-                        )
-                        .iter()
-                        .enumerate()
-                        .map(|(index, i)| format!("      {:04}: {:?}", index, i))
-                        .collect::<Vec<String>>()
-                        .join("\n"),
-                        (&encoded_program[index..index + (func_len * INSTRUCTION_LENGTH)])
-                            .chunks(INSTRUCTION_LENGTH)
-                            .enumerate()
-                            .map(|(index, c)| format!("      {:04}: {}", index, display_bytes(&c)))
-                            .collect::<Vec<String>>()
-                            .join("\n"),
-                    );
-
-                    index += func_len * INSTRUCTION_LENGTH;
-                }
-
-                functions
-            };
-
-            let main = {
-                let mut main = String::new();
-
-                main += "Main Function:\n  Instructions:\n";
-
-                let instructions = decode_instructions(&encoded_program[index..], &mut strings);
-                for (index, instruction) in instructions.iter().enumerate() {
-                    main += &format!("    {:04}: {:?}\n", index, instruction);
-                }
-
-                main += "  Bytes:\n";
-                for (index, bytes) in encoded_program[index..]
-                    .chunks(INSTRUCTION_LENGTH)
-                    .enumerate()
-                {
-                    main += &format!("    {:04}: {}\n", index, display_bytes(&bytes));
-                }
-
-                main
-            };
-
-            println!("\n{}", disp_strings);
-            println!("{}", functions);
-            println!("{}", main);
-            println!("Output:");
-        }
-
         let decoded_program = decode_program(&encoded_program);
 
-        use std::io::Write;
-        let mut file = std::fs::File::create("./examples/hello_world.crunch").unwrap();
+        let mut file = std::fs::File::create("./examples/hello_world.crunched").unwrap();
         file.write_all(&encoded_program).unwrap();
+
+        println!("{}", disassemble(&encoded_program));
 
         assert_eq!((instructions, functions), decoded_program);
         let mut crunch = crate::Crunch::from(decoded_program);

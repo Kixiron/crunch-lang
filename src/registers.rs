@@ -1,22 +1,25 @@
 use super::{
-    Index, Instruction, Register, StringPointer, Value, NUMBER_HANDOFF_REGISTERS, NUMBER_REGISTERS,
-    NUMBER_STRINGS,
+    Gc, Index, Instruction, Register, StringPointer, Value, NUMBER_HANDOFF_REGISTERS,
+    NUMBER_REGISTERS, NUMBER_STRINGS,
 };
 use std::borrow::Cow;
 
 #[allow(missing_debug_implementations)]
-pub struct Registers {
-    registers: [Value; NUMBER_REGISTERS],
-    handoff_registers: [Value; NUMBER_HANDOFF_REGISTERS],
-    strings: [Cow<'static, str>; NUMBER_STRINGS],
-    snapshots: Vec<(Index, Option<Index>, [Value; NUMBER_REGISTERS])>,
-    current_func: Option<Index>,
-    functions: Vec<Vec<Instruction>>,
-    return_stack: Vec<Index>,
-    environment: Environment,
+pub struct Vm {
+    pub registers: [Value; NUMBER_REGISTERS],
+    pub handoff_registers: [Value; NUMBER_HANDOFF_REGISTERS],
+    pub strings: [Cow<'static, str>; NUMBER_STRINGS],
+    pub snapshots: Vec<(Index, Option<Index>, [Value; NUMBER_REGISTERS])>,
+    pub current_func: Option<Index>,
+    pub functions: Vec<Vec<Instruction>>,
+    pub return_stack: Vec<Index>,
+    pub environment: Environment,
+    pub prev_op: Value,
+    pub prev_comp: bool,
+    pub gc: Gc,
 }
 
-impl Registers {
+impl Vm {
     #[inline]
     pub fn new(functions: Vec<Vec<Instruction>>) -> Self {
         let registers = [Value::None; NUMBER_REGISTERS];
@@ -27,6 +30,7 @@ impl Registers {
         let current_func = None;
         let return_stack = Vec::new();
         let environment = Environment::new();
+        let gc = Gc::new();
 
         Self {
             registers,
@@ -37,87 +41,14 @@ impl Registers {
             functions,
             return_stack,
             environment,
+            prev_op: Value::None,
+            prev_comp: false,
+            gc,
         }
     }
 
     #[inline]
-    pub const fn registers(&self) -> &[Value; NUMBER_REGISTERS] {
-        &self.registers
-    }
-
-    #[inline]
-    pub fn registers_mut(&mut self) -> &mut [Value; NUMBER_REGISTERS] {
-        &mut self.registers
-    }
-
-    #[inline]
-    pub const fn handoff_registers(&self) -> &[Value; NUMBER_HANDOFF_REGISTERS] {
-        &self.handoff_registers
-    }
-
-    #[inline]
-    pub fn handoff_registers_mut(&mut self) -> &mut [Value; NUMBER_HANDOFF_REGISTERS] {
-        &mut self.handoff_registers
-    }
-
-    #[inline]
-    pub fn snapshots(&self) -> &Vec<(Index, Option<Index>, [Value; NUMBER_REGISTERS])> {
-        &self.snapshots
-    }
-
-    #[inline]
-    pub fn snapshots_mut(&mut self) -> &mut Vec<(Index, Option<Index>, [Value; NUMBER_REGISTERS])> {
-        &mut self.snapshots
-    }
-
-    #[inline]
-    pub const fn current_func(&self) -> &Option<Index> {
-        &self.current_func
-    }
-
-    #[inline]
-    pub fn current_func_mut(&mut self) -> &mut Option<Index> {
-        &mut self.current_func
-    }
-
-    #[inline]
-    pub fn functions(&self) -> &Vec<Vec<Instruction>> {
-        &self.functions
-    }
-
-    #[inline]
-    pub fn functions_mut(&mut self) -> &mut Vec<Vec<Instruction>> {
-        &mut self.functions
-    }
-
-    #[inline]
-    pub fn return_stack(&self) -> &Vec<Index> {
-        &self.return_stack
-    }
-
-    #[inline]
-    pub fn return_stack_mut(&mut self) -> &mut Vec<Index> {
-        &mut self.return_stack
-    }
-
-    #[inline]
-    pub const fn environment(&self) -> &Environment {
-        &self.environment
-    }
-
-    #[inline]
-    pub fn environment_mut(&mut self) -> &mut Environment {
-        &mut self.environment
-    }
-}
-
-impl Registers {
-    #[inline]
-    pub fn cleanup(&mut self) {
-        for reg in self.registers.iter_mut() {
-            *reg = Value::None;
-        }
-    }
+    pub fn cleanup(&mut self) {}
 
     #[inline]
     pub fn clear(&mut self, reg: Register) {
@@ -155,18 +86,6 @@ impl Registers {
     }
 
     #[inline]
-    pub fn take_handoff(&mut self, reg: Register) -> Value {
-        let mut value = Value::None;
-        std::mem::swap(&mut value, self.get_mut(reg));
-        value
-    }
-
-    #[inline]
-    pub fn load_handoff(&mut self, handoff_reg: Register, value: Value) {
-        self.handoff_registers[*handoff_reg as usize] = value;
-    }
-
-    #[inline]
     pub fn add_strings(
         &mut self,
         left: StringPointer,
@@ -176,7 +95,7 @@ impl Registers {
         let mut out = String::with_capacity(self.get_str(left).len() + self.get_str(right).len());
         out.push_str(self.get_str(left));
         out.push_str(self.get_str(right));
-    
+
         *self.get_str_mut(output) = Cow::Owned(out);
     }
 
@@ -191,9 +110,9 @@ impl Registers {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Environment {
-    index: Index,
-    finished_execution: bool,
-    returning: bool,
+    pub index: Index,
+    pub finished_execution: bool,
+    pub returning: bool,
 }
 
 impl Environment {
@@ -204,36 +123,6 @@ impl Environment {
             finished_execution: false,
             returning: false,
         }
-    }
-
-    #[inline]
-    pub fn index(&self) -> Index {
-        self.index
-    }
-
-    #[inline]
-    pub fn index_mut(&mut self) -> &mut Index {
-        &mut self.index
-    }
-
-    #[inline]
-    pub fn finished_execution(&self) -> bool {
-        self.finished_execution
-    }
-
-    #[inline]
-    pub fn finished_execution_mut(&mut self) -> &mut bool {
-        &mut self.finished_execution
-    }
-
-    #[inline]
-    pub fn returning(&self) -> bool {
-        self.returning
-    }
-
-    #[inline]
-    pub fn returning_mut(&mut self) -> &mut bool {
-        &mut self.returning
     }
 }
 

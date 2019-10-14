@@ -1,421 +1,348 @@
-use super::{Index, Register, Registers, StringPointer, Value};
-use log::{error, trace, warn};
-use serde::{Deserialize, Serialize};
+use super::{Index, Register, Value, Vm};
 
 /// Instructions for the VM
-#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Instruction {
-    /// Loads an integer into a [`Register`]
-    LoadInt(i32, Register),
-    LoadStr(&'static str, StringPointer, Register),
-    /// Loads a boolean into a [`Register`]
-    LoadBool(bool, Register),
-    LoadHandoff(Register, Register),
-    TakeHandoff(Register, Register),
-    /// Drops the contents of a [`Register`]
-    Drop(Register),
-    /// Drops a string by [`StringPointer`]
-    DropStr(StringPointer),
-    /// Adds two strings together, storing the result in `left`
-    AddStr {
-        /// The left register, stores the added string
-        left: StringPointer,
-        /// The right register, unaffected by operation
-        right: StringPointer,
-        output: StringPointer,
-    },
-    /// Adds ints strings together, storing the result in `left`
-    AddInt {
-        /// The left register, stores the added value
-        left: Register,
-        /// The right register, unaffected by operation
-        right: Register,
-        output: Register,
-    },
-    /// Subtracts two ints from each other, storing the result in `left`
-    SubInt {
-        /// The left register, stores the subtracted value
-        left: Register,
-        /// The right register, unaffected by operation
-        right: Register,
-        output: Register,
-    },
-    MultInt {
-        left: Register,
-        right: Register,
-        output: Register,
-    },
-    DivInt {
-        left: Register,
-        right: Register,
-        output: Register,
-    },
-    // BitShiftLeft {
-    //     reg: Register,
-    //     amount: u8,
-    //     output: Register,
-    // },
-    // BitShiftRight {
-    //     reg: Register,
-    //     amount: u8,
-    //     output: Register,
-    // },
-    /// Prints the contents of a [`Register`] stdout
+    /// Load a Value from the GC into a register
+    Load(u32, Register),
+    /// Cache a Value into the GC
+    Cache(u32, Value),
+    CompToReg(Register),
+    OpToReg(Register),
+    DropReg(u32, Register),
+    Drop(u32),
+
+    Add(Register, Register),
+    Sub(Register, Register),
+    Mult(Register, Register),
+    Div(Register, Register),
+
     Print(Register),
-    /// Jumps to the nth [`Instruction`] where n is `self.0`
+
     Jump(i32),
-    /// Jumps to the nth [`Instruction`] where n is the `index`
-    CondJump {
-        /// The nth [`Instruction`] to jump to
-        index: i32,
-        /// The register to read for a bool. If the bool if true, the jump is preformed.
-        /// If the stored value is not a `Value::Bool`, then the jump will never be preformed
-        reg: Register,
-    },
-    JumpLessThan {
-        index: i32,
-        reg: Register,
-        compare: Register,
-    },
-    JumpGreaterThan {
-        index: i32,
-        reg: Register,
-        compare: Register,
-    },
-    FuncJump(Index),
-    FuncCall(Index),
+    JumpComp(i32),
+
+    And(Register, Register),
+    Or(Register, Register),
+    Xor(Register, Register),
+    Not(Register),
+
+    Eq(Register, Register),
+    NotEq(Register, Register),
+    GreaterThan(Register, Register),
+    LessThan(Register, Register),
+
     Return,
-    FuncReturn,
-    /// Ends execution of the program by setting [`Registers.environment.finished_execution`] to `true`
     Halt,
+
+    Illegal,
+}
+
+#[test]
+fn inst_test() {
+    use Instruction::*;
+
+    //simple_logger::init().unwrap();
+
+    let inst = vec![
+        Cache(0, Value::Bool(true)),
+        Load(0, 0.into()),
+        Print(0.into()),
+        Eq(0.into(), 0.into()),
+        JumpComp(2),
+        Print(0.into()),
+        Print(0.into()),
+        Print(0.into()),
+        Cache(1, Value::Int(1)),
+        Load(1, 1.into()),
+        Cache(2, Value::Int(0)),
+        Load(2, 2.into()),
+        Div(1.into(), 2.into()),
+        Halt,
+    ];
+
+    let mut crunch = crate::Crunch::from((inst, Vec::new()));
+    crunch.execute();
+}
+
+pub type Result<T> = std::result::Result<T, RuntimeError>;
+
+#[derive(Debug, Clone)]
+pub struct RuntimeError {
+    pub ty: RuntimeErrorTy,
+    pub message: String,
+}
+
+impl RuntimeError {
+    pub fn emit(&self) {
+        println!("[Crunch Runtime Error: {:?}] {}", self.ty, self.message);
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum RuntimeErrorTy {
+    GcError,
+    DivideByZero,
+    IncompatibleTypes,
 }
 
 impl Instruction {
     /// The execution of each instruction
     #[inline]
-    pub fn execute(&self, mut registers: &mut Registers) {
-        use Instruction::*;
-
+    pub fn execute(&self, mut vm: &mut Vm) -> Result<()> {
         match self {
-            LoadInt(int, reg) => {
-                trace!("Loading {:?} into {:?}", int, reg);
+            Instruction::Load(heap_loc, reg) => {
+                trace!("Loading val at {} into {}", heap_loc, reg);
 
-                registers.load(Value::Int(*int), *reg);
-                *registers.environment_mut().index_mut() += Index(1);
+                let val: Value = match vm.gc.fetch(*heap_loc as usize) {
+                    Some(val) => val,
+                    None => {
+                        return Err(RuntimeError {
+                            ty: RuntimeErrorTy::GcError,
+                            message: "Failed to retrieve error value from GC".to_string(),
+                        });
+                    }
+                };
+
+                vm.registers[**reg as usize] = val;
+
+                /*
+                println!(
+                    "vm: [{}]",
+                    vm
+                        .vm
+                        .iter()
+                        .map(|r| format!("{:?}", r))
+                        .collect::<Vec<String>>()
+                        .join(",")
+                );
+                */
+
+                vm.environment.index += Index(1);
             }
-            LoadStr(string, ptr, reg) => {
-                registers.load_str(std::borrow::Cow::Borrowed(*string), *ptr);
-                registers.load(Value::Str(*ptr), *reg);
+            Instruction::Cache(heap_loc, val) => {
+                trace!("Loading value onto heap at {}, Val: {:?}", heap_loc, val);
 
-                *registers.environment_mut().index_mut() += Index(1);
-            }
-            LoadHandoff(output_reg, handoff_reg) => {
-                let mut value = Value::None;
-                std::mem::swap(registers.get_mut(*output_reg), &mut value);
-                registers.load_handoff(*handoff_reg, value);
+                if let Some((alloc_val, alloc_id)) = vm
+                    .gc
+                    .allocate_id(std::mem::size_of::<Value>(), *heap_loc as usize)
+                {
+                    unsafe {
+                        if let Err(err) = vm.gc.write(alloc_id, val.to_owned(), Some(&alloc_val)) {
+                            return Err(RuntimeError {
+                                ty: RuntimeErrorTy::GcError,
+                                message: err,
+                            });
+                        }
+                    }
 
-                *registers.environment_mut().index_mut() += Index(1);
-            }
-            TakeHandoff(handoff_reg, destination_reg) => {
-                registers.registers_mut()[**destination_reg as usize] =
-                    registers.handoff_registers()[**handoff_reg as usize].clone();
+                    vm.gc.add_root(alloc_val);
 
-                *registers.environment_mut().index_mut() += Index(1);
-            }
-            LoadBool(boolean, reg) => {
-                trace!("Loading {:?} into {:?}", boolean, reg);
+                    vm.environment.index += Index(1);
 
-                registers.load(Value::Bool(*boolean), *reg);
-
-                *registers.environment_mut().index_mut() += Index(1);
-            }
-            Drop(reg) => {
-                trace!("Dropping {:?}", reg);
-                registers.clear(*reg);
-
-                *registers.environment_mut().index_mut() += Index(1);
-            }
-            DropStr(ptr) => registers.get_str_mut(*ptr).to_mut().clear(),
-            AddStr {
-                left,
-                right,
-                output,
-            } => {
-                registers.add_strings(*left, *right, *output);
-
-                *registers.environment_mut().index_mut() += Index(1);
-            }
-            AddInt {
-                left,
-                right,
-                output,
-            } => {
-                trace!("Adding {:?} and {:?}", left, right);
-
-                let (left, right) = (*registers.get(*left), *registers.get(*right));
-                if let (Value::Int(left), Value::Int(right)) = (left, right) {
-                    (*registers.get_mut(*output)) = Value::Int(left + right);
+                    assert_eq!(*heap_loc as usize, *alloc_id);
                 } else {
-                    error!("Un-addable types: {:?} + {:?}", left, right);
+                    return Err(RuntimeError {
+                        ty: RuntimeErrorTy::GcError,
+                        message: "Failed to allocate value to GC".to_string(),
+                    });
+                }
+            }
+            Instruction::CompToReg(reg) => {
+                trace!("Loading previous comparison into {}", reg);
+
+                vm.registers[**reg as usize] = Value::Bool(vm.prev_comp);
+                vm.environment.index += Index(1);
+            }
+            Instruction::OpToReg(reg) => {
+                trace!("Loading previous operation into {}", reg);
+
+                std::mem::swap(&mut vm.registers[**reg as usize], &mut vm.prev_op);
+                vm.environment.index += Index(1);
+            }
+            Instruction::DropReg(heap_loc, reg) => {
+                trace!("Clearing register {}", reg);
+
+                let mut val = Value::None;
+                std::mem::swap(&mut val, &mut vm.registers[**reg as usize]);
+
+                unsafe {
+                    if let Err(err) = vm.gc.write(*heap_loc as usize, val, None) {
+                        return Err(RuntimeError {
+                            ty: RuntimeErrorTy::GcError,
+                            message: err,
+                        });
+                    }
                 }
 
-                *registers.environment_mut().index_mut() += Index(1);
+                vm.environment.index += Index(1);
             }
-            SubInt {
-                left,
-                right,
-                output,
-            } => {
-                trace!("Subtracting {:?} and {:?}", left, right);
-
-                let (left, right) = (*registers.get(*left), *registers.get(*right));
-                if let (Value::Int(left), Value::Int(right)) = (left, right) {
-                    (*registers.get_mut(*output)) = Value::Int(left - right);
-                } else {
-                    error!("Un-subtractable types: {:?} - {:?}", left, right);
+            Instruction::Drop(id) => {
+                trace!("Dropping {:?}", id);
+                if vm.gc.remove_root(*id as usize).is_err() {
+                    return Err(RuntimeError {
+                        ty: RuntimeErrorTy::GcError,
+                        message: "Attempted to drop non-existant value".to_string(),
+                    });
                 }
-                *registers.environment_mut().index_mut() += Index(1);
+                vm.environment.index += Index(1);
             }
-            MultInt {
-                left,
-                right,
-                output,
-            } => {
-                let (left, right) = (*registers.get(*left), *registers.get(*right));
-                if let (Value::Int(left), Value::Int(right)) = (left, right) {
-                    (*registers.get_mut(*output)) = Value::Int(left * right);
-                } else {
-                    error!("Un-multipliable types: {:?} * {:?}", left, right);
-                }
 
-                *registers.environment_mut().index_mut() += Index(1);
+            Instruction::Add(left, right) => {
+                vm.prev_op = (*(*vm).get(*left) + *(*vm).get(*right))?;
+                vm.environment.index += Index(1);
             }
-            DivInt {
-                left,
-                right,
-                output,
-            } => {
-                let (left, right) = (*registers.get(*left), *registers.get(*right));
-                if let (Value::Int(left), Value::Int(right)) = (left, right) {
-                    (*registers.get_mut(*output)) = Value::Int(left / right);
-                } else {
-                    error!("Indivisible types: {:?} / {:?}", left, right);
-                }
-
-                *registers.environment_mut().index_mut() += Index(1);
+            Instruction::Sub(left, right) => {
+                vm.prev_op = (*(*vm).get(*left) - *(*vm).get(*right))?;
+                vm.environment.index += Index(1);
             }
-            Print(reg) => {
-                trace!("Printing {:?}", reg);
-
-                match registers.get(*reg) {
-                    Value::Str(ptr) => print!("{}", registers.get_str(*ptr)),
-                    val => print!("{}", val),
-                }
-
-                *registers.environment_mut().index_mut() += Index(1);
+            Instruction::Mult(left, right) => {
+                vm.prev_op = (*(*vm).get(*left) * *(*vm).get(*right))?;
+                vm.environment.index += Index(1);
             }
-            Jump(index) => {
+            Instruction::Div(left, right) => {
+                vm.prev_op = (*(*vm).get(*left) / *(*vm).get(*right))?;
+                vm.environment.index += Index(1);
+            }
+
+            Instruction::Print(reg) => {
+                trace!("Printing reg {:?}", reg);
+
+                println!("{}", vm.get(*reg));
+                vm.environment.index += Index(1);
+            }
+
+            Instruction::Jump(index) => {
                 trace!("Jumping by offset {}", index);
 
-                let index = Index((*registers.environment().index() as i32 + index) as u32);
-                *registers.environment_mut().index_mut() += index;
+                let index = Index((*vm.environment.index as i32 + index + 1) as u32);
+                vm.environment.index = index;
             }
-            CondJump { index, reg } => {
-                let reg_value = registers.get(*reg);
-                if reg_value == &Value::Bool(true) {
-                    trace!(
-                        "CondJump by offset {}, reading {:?} (Value: {})",
-                        index,
-                        reg,
-                        reg_value
-                    );
+            Instruction::JumpComp(index) => {
+                trace!(
+                    "Comparison Jump: Prev Comp is {}, jump amount {}",
+                    vm.prev_comp,
+                    index
+                );
 
-                    let index = Index((*registers.environment().index() as i32 + index) as u32);
-                    *registers.environment_mut().index_mut() += index;
-                } else if reg_value == &Value::Bool(false) {
-                    trace!(
-                        "CondJump by offset {}, reading {:?} (Value: {})",
-                        index,
-                        reg,
-                        reg_value
-                    );
-
-                    *registers.environment_mut().index_mut() += Index(1);
+                if vm.prev_comp {
+                    let index = Index((*vm.environment.index as i32 + index + 1) as u32);
+                    vm.environment.index = index;
                 } else {
-                    warn!("The requested register for `CondJump` does not contain a boolean [Register: {:?} Value: {:?}]", reg, reg_value);
-
-                    trace!(
-                        "CondJump by offset {}, reading {:?} (Value: {})",
-                        index,
-                        reg,
-                        reg_value
-                    );
-
-                    *registers.environment_mut().index_mut() += Index(1);
+                    vm.environment.index += Index(1);
                 }
             }
-            JumpLessThan {
-                index,
-                reg,
-                compare,
-            } => {
-                let reg_value = registers.get(*reg);
-                let comp_value = registers.get(*compare);
 
-                if let (Value::Int(int), Value::Int(compare)) = (reg_value, comp_value) {
-                    if int < compare {
-                        let index = Index((*registers.environment().index() as i32 + index) as u32);
-                        *registers.environment_mut().index_mut() += index;
-                    }
-                } else {
-                    error!(
-                        "Jump Less Than registers are not both integers: {:?} < {:?}",
-                        reg_value, comp_value
-                    );
-
-                    *registers.environment_mut().index_mut() += Index(1);
-                }
+            Instruction::And(left, right) => {
+                vm.prev_op = (*(*vm).get(*left) & *(*vm).get(*right))?;
+                vm.environment.index += Index(1);
             }
-            JumpGreaterThan {
-                index,
-                reg,
-                compare,
-            } => {
-                let reg_value = registers.get(*reg);
-                let comp_value = registers.get(*compare);
-
-                if let (Value::Int(int), Value::Int(compare)) = (reg_value, comp_value) {
-                    if int > compare {
-                        let index = Index((*registers.environment().index() as i32 + index) as u32);
-                        *registers.environment_mut().index_mut() += index;
-                    }
-                } else {
-                    error!(
-                        "Jump Less Than registers are not both integers: {:?} < {:?}",
-                        reg_value, comp_value
-                    );
-
-                    *registers.environment_mut().index_mut() += Index(1);
-                }
+            Instruction::Or(left, right) => {
+                vm.prev_op = (*(*vm).get(*left) | *(*vm).get(*right))?;
+                vm.environment.index += Index(1);
             }
-            FuncJump(index) => {
-                {
-                    let index = registers.environment().index();
-                    registers.return_stack_mut().push(index);
-                }
-
-                *registers.environment_mut().index_mut() = *index;
+            Instruction::Xor(left, right) => {
+                vm.prev_op = (*(*vm).get(*left) ^ *(*vm).get(*right))?;
+                vm.environment.index += Index(1);
             }
-            FuncCall(index) => {
-                registers.snapshot();
-                *registers.environment_mut().index_mut() = Index(0);
-
-                while !registers.environment().returning() {
-                    registers.functions()[**index as usize]
-                        [*registers.environment().index() as usize]
-                        .clone()
-                        .execute(&mut registers);
-                }
-
-                *registers.environment_mut().index_mut() += Index(1);
+            Instruction::Not(reg) => {
+                vm.prev_op = (!*(*vm).get(*reg))?;
+                vm.environment.index += Index(1);
             }
-            Return => {
-                if let Some(location) = registers.return_stack_mut().pop() {
-                    *registers.environment_mut().index_mut() = location;
-                } else {
-                    registers.cleanup();
-                    *registers.environment_mut().finished_execution_mut() = true;
-                }
 
-                *registers.environment_mut().index_mut() += Index(1);
+            Instruction::Eq(left, right) => {
+                vm.prev_comp = *(*vm).get(*left) == *(*vm).get(*right);
+                vm.environment.index += Index(1);
             }
-            FuncReturn => {
-                *registers.environment_mut().returning_mut() = true;
+            Instruction::NotEq(left, right) => {
+                vm.prev_comp = *(*vm).get(*left) != *(*vm).get(*right);
+                vm.environment.index += Index(1);
+            }
+            Instruction::GreaterThan(left, right) => {
+                vm.prev_comp = *(*vm).get(*left) > *(*vm).get(*right);
+                vm.environment.index += Index(1);
+            }
+            Instruction::LessThan(left, right) => {
+                vm.prev_comp = *(*vm).get(*left) < *(*vm).get(*right);
+                vm.environment.index += Index(1);
+            }
 
-                if let Some(context) = registers.snapshots_mut().pop() {
-                    *registers.environment_mut().index_mut() = context.0;
-                    *registers.registers_mut() = context.2;
+            Instruction::Return => {
+                vm.environment.returning = true;
+
+                if let Some(context) = vm.snapshots.pop() {
+                    vm.environment.index = context.0;
+                    vm.registers = context.2;
 
                     if let Some(index) = context.1 {
-                        *registers.environment_mut().returning_mut() = false;
+                        vm.environment.returning = false;
 
-                        while !registers.environment().returning() {
-                            registers.functions()[*index as usize]
-                                [*registers.environment().index() as usize]
+                        while !vm.environment.returning {
+                            vm.functions[*index as usize][*vm.environment.index as usize]
                                 .clone()
-                                .execute(&mut registers);
+                                .execute(&mut vm)?;
                         }
                     } else {
                         trace!("Returning to main");
                     }
                 } else {
-                    error!("Returned from non-existant function");
+                    if let Some(location) = vm.return_stack.pop() {
+                        vm.environment.index = location;
+                    } else {
+                        vm.cleanup();
+                        vm.environment.finished_execution = true;
+                    }
+
+                    vm.environment.index += Index(1);
                 }
             }
-            Halt => {
-                registers.cleanup();
-                *registers.environment_mut().finished_execution_mut() = true;
+            Instruction::Halt => {
+                vm.cleanup();
+                vm.environment.finished_execution = true;
             }
+
+            Instruction::Illegal => panic!("Illegal Instruction"),
         }
+
+        Ok(())
     }
 }
 
 impl Instruction {
     #[allow(unused_variables)]
     pub fn to_str(&self) -> &'static str {
-        use Instruction::*;
-
         match self {
-            &LoadInt(_, _) => "LoadInt",
-            &LoadStr(_, _, _) => "LoadStr",
-            &LoadBool(_, _) => "LoadBool",
-            &Drop(_) => "Drop",
-            &DropStr(_) => "DropStr",
-            &LoadHandoff(_, _) => "LoadHandoff",
-            &TakeHandoff(_, _) => "TakeHandoff",
-            &AddStr {
-                left,
-                right,
-                output,
-            } => "AddStr",
-            &AddInt {
-                left,
-                right,
-                output,
-            } => "AddInt",
-            &SubInt {
-                left,
-                right,
-                output,
-            } => "SubInt",
-            &MultInt {
-                left,
-                right,
-                output,
-            } => "MultInt",
-            &DivInt {
-                left,
-                right,
-                output,
-            } => "DivInt",
-            &Print(_) => "Print",
-            &Jump(_) => "Jump",
-            &CondJump { index, reg } => "CondJump",
-            &JumpLessThan {
-                index,
-                reg,
-                compare,
-            } => "JumpLessThan",
-            &JumpGreaterThan {
-                index,
-                reg,
-                compare,
-            } => "JumpGreaterThan",
-            &FuncJump(_) => "FuncJump",
-            &FuncCall(_) => "FuncCall",
-            &Return => "Return",
-            &FuncReturn => "FuncReturn",
-            &Halt => "Halt",
+            Self::Load(_, _) => "ld",
+            Self::Cache(_, _) => "cache",
+            Self::CompToReg(_) => "compr",
+            Self::OpToReg(_) => "opr",
+            Self::DropReg(_, _) => "dropr",
+            Self::Drop(_) => "drop",
+
+            Self::Add(_, _) => "add",
+            Self::Sub(_, _) => "sub",
+            Self::Mult(_, _) => "mul",
+            Self::Div(_, _) => "div",
+
+            Self::Print(_) => "print",
+
+            Self::Jump(_) => "jmp",
+            Self::JumpComp(_) => "jmpcmp",
+
+            Self::And(_, _) => "and",
+            Self::Or(_, _) => "or",
+            Self::Xor(_, _) => "xor",
+            Self::Not(_) => "not",
+
+            Self::Eq(_, _) => "eq",
+            Self::NotEq(_, _) => "neq",
+            Self::GreaterThan(_, _) => "grt",
+            Self::LessThan(_, _) => "let",
+
+            Self::Return => "ret",
+            Self::Halt => "halt",
+
+            Self::Illegal => "illegal",
         }
     }
 }

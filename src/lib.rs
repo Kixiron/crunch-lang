@@ -126,6 +126,34 @@ const NUMBER_HANDOFF_REGISTERS: usize = 10;
 /// The number of stored strings for the VM
 const NUMBER_STRINGS: usize = 10;
 
+#[doc(hidden)]
+#[macro_export]
+macro_rules! unreachable {
+    () => {{
+        #[cfg(debug_assertions)]
+        std::unreachable!();
+
+        #[cfg(not(debug_assertions))]
+        unsafe { std::hint::unreachable_unchecked() }
+    }};
+
+    ($($arg:tt)*) => {{
+        #[cfg(debug_assertions)]
+        std::unreachable!($($arg)*);
+
+        #[cfg(not(debug_assertions))]
+        unsafe { std::hint::unreachable_unchecked() }
+    }};
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! trace {
+    ($($arg:tt)*) => {
+        log::trace!("[{} {}:{}] {}", file!(), line!(), column!(), format_args!($($arg)*))
+    }
+}
+
 /// Encoding and decoding bytecode
 mod bytecode;
 /// The main Crunch interface

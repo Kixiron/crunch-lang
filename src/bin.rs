@@ -2,32 +2,22 @@ use crunch::*;
 use structopt::StructOpt;
 
 fn main() {
+    color_backtrace::install();
+
     let opt = Opt::from_args();
 
-    let bytecode = {
-        use std::{fs::File, io::Read};
-
-        let mut bytecode = Vec::new();
-        let mut file = File::open(&opt.file).expect("File does not exist");
-        file.read_to_end(&mut bytecode)
-            .expect("Could not read file");
-
-        bytecode
-    };
-
-    if opt.disassemble {
-        println!(
-            "{}",
-            Crunch::disassemble(Crunch::validate(&bytecode).unwrap())
-        );
-        return;
+    match opt.file.as_path().extension() {
+        Some(ext) => match ext.to_os_string() {
+            ref a if &*a == "crunch" => Crunch::run_source_file(&opt.file),
+            ref b if &*b == "crunched" => Crunch::run_byte_file(&opt.file),
+            _ => {
+                println!("Please choose a valid .crunch or .crunched file");
+            }
+        },
+        None => {
+            println!("Please choose a valid .crunch or .crunched file");
+        }
     }
-
-    let mut crunch = {
-        let instructions = Crunch::parse(Crunch::validate(&bytecode).unwrap());
-        Crunch::from(instructions)
-    };
-    crunch.execute();
 }
 
 #[derive(Debug, StructOpt)]
@@ -35,6 +25,4 @@ fn main() {
 struct Opt {
     #[structopt(parse(from_os_str))]
     file: std::path::PathBuf,
-    #[structopt(long = "disassemble")]
-    disassemble: bool,
 }

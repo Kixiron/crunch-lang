@@ -6,7 +6,6 @@ use shrinkwraprs::Shrinkwrap;
 
 /// A pointer/index for a string
 #[derive(
-    Debug,
     Copy,
     Clone,
     PartialEq,
@@ -27,6 +26,12 @@ use shrinkwraprs::Shrinkwrap;
 #[display(fmt = "{}", "_0")]
 #[repr(transparent)]
 pub struct StringPointer(pub u8);
+
+impl std::fmt::Debug for StringPointer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Sx{:03}", self.0)
+    }
+}
 
 /// The instruction index for the VM
 #[derive(
@@ -54,7 +59,6 @@ pub struct StringPointer(pub u8);
 pub struct Index(pub u32);
 
 #[derive(
-    Debug,
     Copy,
     Clone,
     PartialEq,
@@ -73,9 +77,15 @@ pub struct Index(pub u32);
     SubAssign,
     Sub,
 )]
-#[display(fmt = "{}", "_0")]
+#[display(fmt = "Rx{}", "_0")]
 #[repr(transparent)]
 pub struct Register(pub u8);
+
+impl std::fmt::Debug for Register {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Rx{:03}", self.0)
+    }
+}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, From, Into, Deserialize, Serialize, Shrinkwrap)]
 pub struct Bytecode<'a>(&'a [u8]);
@@ -88,27 +98,25 @@ impl<'a> Bytecode<'a> {
 
         let mut index = 0;
 
-        // Validate Strings
+        // Validate Values
         {
-            let num_strings = u32::from_be_bytes(match bytes[index..index + 4].try_into() {
+            let num_values = u32::from_be_bytes(match bytes[index..index + 4].try_into() {
                 Ok(i) => i,
-                Err(_) => return Err("Invalid Number of Strings"),
+                Err(_) => return Err("Invalid Number of Values"),
             });
             index += 4;
 
-            for _ in 0..num_strings {
-                let str_len = u32::from_be_bytes(match bytes[index..index + 4].try_into() {
-                    Ok(i) => i,
-                    Err(_) => return Err("Invalid String Length"),
-                });
-                index += 4;
+            for _ in 0..num_values {
+                let b = match bytes[index..index + 8 as usize].try_into() {
+                    Ok(b) => b,
+                    Err(_) => return Err("Invalid Value"),
+                };
 
-                let _ =
-                    std::str::from_utf8(match bytes[index..index + str_len as usize].try_into() {
-                        Ok(i) => i,
-                        Err(_) => return Err("Invalid String"),
-                    });
-                index += str_len as usize;
+                if let Err(_) = crate::Value::from_bytes(b) {
+                    return Err("Invalid Value");
+                }
+
+                index += 8 as usize;
             }
         }
 

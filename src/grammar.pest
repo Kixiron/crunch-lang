@@ -28,5 +28,5 @@ double_quote_str = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
 enum_decl = { "enum" ~ w ~ ident ~ w ~ "\n" ~ w ~ ("    " ~ enum_field)* }
 enum_field = { ident ~ w ~ ("(" ~ w ~ ty* ~ w ~ ")")? }
 ty = @{ "void" | "int" | "str" | "bool" | "[" ~ w ~ ty ~ w ~ "]" }
-COMMENT = _{ ".." ~ (!"\n" ~ ANY)* }
+COMMENT = _{ "::" ~ (!"\n" ~ ANY)* }
 WHITESPACE = _{ " " }

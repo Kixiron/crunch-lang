@@ -14,6 +14,8 @@ pub(crate) fn page_size() -> usize {
         panic!("could not determine page size.");
     }
 
+    trace!("Memory Page Size: {}", val);
+
     val as usize
 }
 
@@ -23,12 +25,16 @@ pub(crate) fn page_size() -> usize {
     use std::mem::MaybeUninit;
     use winapi::um::sysinfoapi::{GetSystemInfo, SYSTEM_INFO};
 
-    unsafe {
+    let val = unsafe {
         let mut system_info: MaybeUninit<SYSTEM_INFO> = MaybeUninit::zeroed();
         GetSystemInfo(system_info.as_mut_ptr());
 
         system_info.assume_init().dwPageSize as usize
-    }
+    };
+
+    trace!("Memory Page Size: {}", val);
+
+    val
 }
 
 #[derive(Debug)]
@@ -50,12 +56,13 @@ pub struct Gc {
 impl Gc {
     /// Create a new GC instance
     pub fn new() -> Self {
+        trace!("Initializing GC");
+
         let (left, right) = {
             // Get the memory page size
             let page_size = {
                 let size = page_size();
                 assert!(size > 0);
-
                 size
             };
 
@@ -65,10 +72,10 @@ impl Gc {
 
             // Left heap
             let left = HeapPointer::new(unsafe { alloc::alloc_zeroed(layout) });
-            println!("Left Heap: {:p}", left);
+            trace!("Left Heap: {:p}", left);
             // Right heap
             let right = HeapPointer::new(unsafe { alloc::alloc_zeroed(layout) });
-            println!("Right Heap: {:p}", right);
+            trace!("Right Heap: {:p}", right);
 
             (left, right)
         };
@@ -85,6 +92,11 @@ impl Gc {
 
     /// Allocate the space for an object
     pub fn allocate(&mut self, size: usize) -> Option<(GcValue, AllocId)> {
+        trace!("Allocating size {}", size);
+
+        #[cfg(feature = "force_gc_cleanup")]
+        self.collect();
+
         let (block_end, block_start) = (
             *self.latest as usize + size + 1,
             (*self.latest as usize + 1) as *mut u8,
@@ -93,11 +105,12 @@ impl Gc {
 
         // If the object is too large return None
         if block_end - *heap as usize > HEAP_HALF_SIZE {
+            self.collect(); // Collect garbage
             return None;
         }
 
-        // Generate the Id of the new allocation based off of it's pointer
-        let mut new_id: AllocId = AllocId::new(block_start as usize);
+        // Generate the Id of the new allocation based off of its pointer
+        let mut new_id: AllocId = AllocId::new(block_start as usize >> 2);
         loop {
             if !self.allocations.iter().any(|(id, _)| *id == new_id) {
                 self.allocations
@@ -121,8 +134,58 @@ impl Gc {
         Some((value, new_id))
     }
 
+    /// Allocate the space for an object
+    pub fn allocate_id<Id: Into<AllocId>>(
+        &mut self,
+        size: usize,
+        id: Id,
+    ) -> Option<(GcValue, AllocId)> {
+        let id = id.into();
+
+        trace!("Allocating for size {} and id {}", size, id.0);
+
+        #[cfg(feature = "force_gc_cleanup")]
+        self.collect();
+
+        let (block_end, block_start) = (
+            *self.latest as usize + size + 1,
+            (*self.latest as usize + 1) as *mut u8,
+        );
+        let heap = self.get_side();
+
+        // If the object is too large return None
+        if block_end - *heap as usize > HEAP_HALF_SIZE {
+            trace!("Object too large, failing allocation");
+            self.collect(); // Collect garbage
+            return None;
+        }
+
+        if !self.allocations.iter().any(|(i, _)| *i == id) {
+            self.allocations.push((id, HeapPointer::new(block_start)));
+        } else {
+            trace!("Requested Id {:?} already exists, failing allocation", id);
+            trace!("Gc Dump: {:?}", self);
+            return None;
+        }
+
+        // Create the GcValue
+        let value = GcValue {
+            id,
+            size,
+            children: Vec::new(),
+            marked: false,
+        };
+
+        // end = self.latest + size
+        self.latest = HeapPointer::new(block_end as *mut u8);
+
+        Some((value, id))
+    }
+
     /// Collect all unused objects and shift to the other heap half
     pub fn collect(&mut self) {
+        trace!("GC Collecting");
+
         // The allocations to be transferred over to the new heap
         let mut keep = Vec::new();
         // Get the valid allocations of roots and all children
@@ -155,6 +218,8 @@ impl Gc {
             // Push the new allocation to new_allocations
             new_allocations.push((id, self.latest));
 
+            trace!("Saving allocation {:?}", id);
+
             // Increment by the size of the moved object
             self.latest = self.latest.wrapping_add(size).into();
         }
@@ -178,7 +243,6 @@ impl Gc {
 
     fn fetch_value<Id: Into<AllocId> + Copy>(&self, id: Id) -> Option<&GcValue> {
         for root in &self.roots {
-            println!("Root {:?}", id.into());
             if root.id == id.into() {
                 return Some(root);
             } else {
@@ -203,13 +267,22 @@ impl Gc {
     /// Add a root object
     #[inline]
     pub fn add_root(&mut self, root: GcValue) {
+        trace!("Adding GC Root: {:?}", root);
         self.roots.push(root);
     }
 
     /// Remove a root object
-    pub fn remove_root<Id: Into<AllocId> + Copy>(&mut self, id: Id) -> Result<(), ()> {
-        if let Some(index) = self.roots.iter().position(|value| value.id == id.into()) {
+    pub fn remove_root(&mut self, id: impl Into<AllocId> + Copy) -> Result<(), ()> {
+        let id = id.into();
+
+        trace!("Removing GC Root: {:?}", id);
+
+        if let Some(index) = self.roots.iter().position(|value| value.id == id) {
             self.roots.remove(index);
+
+            #[cfg(feature = "force_gc_cleanup")]
+            self.collect();
+
             return Ok(());
         }
 
@@ -217,18 +290,18 @@ impl Gc {
     }
 
     /// Write to an object
-    pub fn write<T, Id: Into<AllocId> + Copy>(
+    /// WARNING: Any object passed as `data` MUST BE OWNED
+    pub unsafe fn write<T>(
         &self,
-        id: Id,
+        id: impl Into<AllocId> + Copy,
         data: T,
         concrete_value: Option<&GcValue>,
     ) -> Result<(), String> {
         match (self.get_ptr(id), self.fetch_value(id), concrete_value) {
             (Some(ptr), Some(value), _) => {
                 if !mem::size_of::<T>() > value.size {
-                    unsafe {
-                        ptr::write(*ptr as *mut T, data);
-                    }
+                    ptr::write(*ptr as *mut T, data);
+
                     Ok(())
                 } else {
                     Err(format!(
@@ -240,9 +313,8 @@ impl Gc {
             }
             (Some(ptr), None, Some(value)) => {
                 if !mem::size_of::<T>() > value.size {
-                    unsafe {
-                        ptr::write(*ptr as *mut T, data);
-                    }
+                    ptr::write(*ptr as *mut T, data);
+
                     Ok(())
                 } else {
                     Err(format!(
@@ -288,7 +360,7 @@ impl Gc {
 
     /// Information about the state of the GC
     pub fn data(&self) -> GcData {
-        println!(
+        trace!(
             "Latest: {:?}, Start: {:?}, Diff {}",
             self.latest,
             self.get_side(),
@@ -303,6 +375,7 @@ impl Gc {
     }
 
     /// See if the GC contains an Id
+    #[inline]
     pub fn contains<Id: Into<AllocId> + Copy>(&self, id: Id) -> bool {
         self.allocations.iter().any(|(__id, _)| *__id == id.into())
     }
@@ -439,18 +512,46 @@ mod tests {
     use std::mem::size_of;
 
     #[test]
+    fn alloc_value() {
+        use crate::Value;
+
+        let mut gc = Gc::new();
+
+        let (int, int_id) = gc.allocate(size_of::<Value>()).unwrap();
+        unsafe {
+            gc.write(int_id, Value::Int(10), Some(&int)).unwrap();
+        }
+        gc.add_root(int);
+        assert!(gc.contains(int_id));
+        assert!(gc.fetch(int_id) == Some(Value::Int(10)));
+
+        let (int_2, int_2_id) = dbg!(gc.allocate_id(size_of::<Value>(), 0).unwrap());
+        unsafe {
+            gc.write(int_2_id, Value::Int(20), Some(&int_2)).unwrap();
+        }
+        gc.add_root(int_2);
+        assert_eq!(AllocId(0), int_2_id);
+        assert!(gc.contains(int_2_id));
+        assert!(gc.fetch(int_2_id) == Some(Value::Int(20)));
+    }
+
+    #[test]
     fn alloc_usizes() {
         let mut gc = Gc::new();
 
         let (keep, keep_id) = gc.allocate(size_of::<usize>()).unwrap();
-        gc.write(keep_id, usize::max_value(), Some(&keep)).unwrap();
+        unsafe {
+            gc.write(keep_id, usize::max_value(), Some(&keep)).unwrap();
+        }
         gc.add_root(keep);
         assert!(gc.contains(keep_id));
         assert!(gc.fetch(keep_id) == Some(usize::max_value()));
 
         let (discard, discard_id) = gc.allocate(size_of::<usize>()).unwrap();
-        gc.write(discard_id, usize::max_value() - 1, Some(&discard))
-            .unwrap();
+        unsafe {
+            gc.write(discard_id, usize::max_value() - 1, Some(&discard))
+                .unwrap();
+        }
         assert!(gc.contains(discard_id));
         assert!(gc.fetch(discard_id) == Some(usize::max_value() - 1));
 
@@ -489,15 +590,21 @@ mod tests {
 
         let (mut ten, ten_id) = gc.allocate(size_of::<usize>()).unwrap();
         println!("Allocated usize: Ptr: {:p}", gc.get_ptr(ten_id).unwrap());
-        gc.write(ten_id, 10, Some(&ten)).unwrap();
+        unsafe {
+            gc.write(ten_id, 10, Some(&ten)).unwrap();
+        }
 
         let (eleven, eleven_id) = gc.allocate(size_of::<usize>()).unwrap();
         println!("Allocated usize: Ptr: {:p}", gc.get_ptr(eleven_id).unwrap());
-        gc.write(eleven_id, 11, Some(&eleven)).unwrap();
+        unsafe {
+            gc.write(eleven_id, 11, Some(&eleven)).unwrap();
+        }
 
         let (twelve, twelve_id) = gc.allocate(size_of::<usize>()).unwrap();
         println!("Allocated usize: Ptr: {:p}", gc.get_ptr(twelve_id).unwrap());
-        gc.write(twelve_id, 12, Some(&twelve)).unwrap();
+        unsafe {
+            gc.write(twelve_id, 12, Some(&twelve)).unwrap();
+        }
 
         ten.add_child(eleven);
         println!("Added Child to ten: {:?}", ten);
