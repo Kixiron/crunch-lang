@@ -207,10 +207,11 @@ pub fn encode_program(main: &[Instruction], functions: &[Vec<Instruction>]) -> V
     // Encode the main function and strings
     let (main_bytes, main_values) = encode_instructions(main);
 
-    let (func_bytes, func_values) = {
+    let (func_bytes, func_values): (Vec<u8>, Vec<Value>) = {
         let (mut func_bytes, mut func_values) = (Vec::new(), Vec::new());
 
         func_bytes.extend_from_slice(&(functions.len() as u32).to_be_bytes());
+        println!("Num functions {}", functions.len());
 
         // Encode each function to bytecode and store all their strings
         for function in functions {
@@ -233,13 +234,35 @@ pub fn encode_program(main: &[Instruction], functions: &[Vec<Instruction>]) -> V
         let mut values = func_values;
         values.extend_from_slice(&main_values);
 
-        // Prepare vec for encoded strings
-        let mut value_bytes: Vec<u8> = Vec::new();
+        // Prepare vec for encoded values
+        let mut value_bytes = Vec::with_capacity(std::mem::size_of::<u32>() + (values.len() * 8));
         value_bytes.extend_from_slice(&(values.len() as u32).to_be_bytes());
 
+        println!("Num values {}", values.len());
+
+        // Prepare vec for encoded strings
+        let mut string_bytes = std::iter::repeat(0)
+            .take(std::mem::size_of::<u32>())
+            .collect::<Vec<u8>>();
+        let mut num_strings = 0_u32;
+
         for val in values {
-            value_bytes.extend_from_slice(&val.as_bytes());
+            let (value, string): ([u8; 8], Option<&[u8]>) = val.as_bytes();
+
+            // Add the value to encoded values
+            value_bytes.extend_from_slice(&value);
+
+            // Add the string to the encoded strings
+            if let Some(string) = string {
+                string_bytes.extend_from_slice(&(string.len() as u32).to_be_bytes());
+                string_bytes.extend_from_slice(string);
+                num_strings += 1;
+            }
         }
+
+        println!("Num strings {}", num_strings);
+
+        string_bytes[0..std::mem::size_of::<u32>()].copy_from_slice(&num_strings.to_be_bytes());
 
         value_bytes
     };
@@ -266,10 +289,32 @@ pub fn decode_program(bytes: &[u8]) -> (Vec<Instruction>, Vec<Vec<Instruction>>)
         let num_values = take_usize(&mut index, bytes);
         let mut values = VecDeque::with_capacity(num_values);
 
-        for _ in 0..num_values {
+        println!("Num values: {}", num_values);
+
+        let raw_vals = {
+            let mut values: Vec<&[u8]> = Vec::new();
+            for _ in 0..num_values {
+                values.push(&bytes[index..index + 8]);
+                index += 8;
+            }
             values
-                .push_back(Value::from_bytes(bytes[index..index + 8].try_into().unwrap()).unwrap());
-            index += 8;
+        };
+
+        let num_strings = take_usize(&mut index, bytes) as u32;
+        println!("Num strings: {}", num_strings);
+        let mut strings = VecDeque::new();
+        for _ in 0..num_strings {
+            let str_len = take_usize(&mut index, bytes) as u32;
+
+            strings.push_back(
+                String::from_utf8(bytes[index..index + str_len as usize].to_vec()).unwrap(),
+            );
+
+            index += str_len as usize;
+        }
+
+        for val in raw_vals {
+            values.push_back(Value::from_bytes(val.try_into().unwrap(), &mut strings).unwrap());
         }
 
         values
@@ -278,6 +323,7 @@ pub fn decode_program(bytes: &[u8]) -> (Vec<Instruction>, Vec<Vec<Instruction>>)
     let functions = {
         let num_functions = take_usize(&mut index, bytes);
         let mut functions = Vec::with_capacity(num_functions);
+        println!("Num functions {}", num_functions);
 
         for _ in 0..num_functions {
             let len = take_usize(&mut index, bytes);
@@ -317,26 +363,26 @@ pub fn disassemble(bytes: &[u8]) -> String {
             write!(&mut output, "=> Function {}\n", index).unwrap();
         }
 
-        let mut registers = [Value::None; NUMBER_REGISTERS];
+        let mut registers: [Value; NUMBER_REGISTERS] = array_init::array_init(|_| Value::None);
         let mut heap: HashMap<u32, Value> = HashMap::new();
 
         for (instruction_index, instruction) in function.into_iter().enumerate() {
-            match instruction {
+            match &instruction {
                 Instruction::Load(heap_loc, reg) => {
-                    registers[*reg as usize] = heap.get(&heap_loc).unwrap_or(&Value::None).clone();
+                    registers[**reg as usize] = heap.get(&heap_loc).unwrap_or(&Value::None).clone();
                 }
                 Instruction::Cache(heap_loc, val) => {
-                    heap.insert(heap_loc, val);
+                    heap.insert(*heap_loc, val.clone());
                 }
                 Instruction::Drop(heap_loc) => {
                     heap.remove(&heap_loc);
                 }
                 Instruction::DropReg(reg) => {
-                    registers[*reg as usize] = Value::None;
+                    registers[**reg as usize] = Value::None;
                 }
                 Instruction::Save(heap_loc, reg) => {
-                    heap.insert(heap_loc, registers[*reg as usize]);
-                    registers[*reg as usize] = Value::None;
+                    heap.insert(*heap_loc, registers[**reg as usize].clone());
+                    registers[**reg as usize] = Value::None;
                 }
                 _ => {}
             }
@@ -344,17 +390,17 @@ pub fn disassemble(bytes: &[u8]) -> String {
             let param = {
                 use Instruction::*;
 
-                match instruction {
+                match &instruction {
                     Load(heap, reg) | Save(heap, reg) => {
-                        format!("{:p}, {}", heap as *const u8, reg)
+                        format!("{:p}, {}", *heap as *const u8, reg)
                     }
-                    Cache(heap, val) => format!("{:p}, {}", heap as *const u8, val.to_string()),
+                    Cache(heap, ref val) => format!("{:p}, {}", *heap as *const u8, val),
                     CompToReg(reg) | OpToReg(reg) | DropReg(reg) => format!("{}", reg),
                     Drop(reg) => format!("{}", reg),
 
                     Print(reg) => {
-                        if registers[*reg as usize] != Value::None {
-                            format!("{}: {}", reg, registers[*reg as usize].to_string())
+                        if registers[**reg as usize] != Value::None {
+                            format!("{}: {}", reg, registers[**reg as usize].to_string())
                         } else {
                             format!("{}", reg)
                         }
@@ -364,8 +410,8 @@ pub fn disassemble(bytes: &[u8]) -> String {
 
                     Not(reg) => format!(
                         "{}",
-                        if registers[*reg as usize] != Value::None {
-                            format!("{}: {}", reg, registers[*reg as usize].to_string())
+                        if registers[**reg as usize] != Value::None {
+                            format!("{}: {}", reg, registers[**reg as usize].to_string())
                         } else {
                             format!("{}", reg)
                         }
@@ -383,13 +429,13 @@ pub fn disassemble(bytes: &[u8]) -> String {
                     | GreaterThan(left, right)
                     | LessThan(left, right) => format!(
                         "{}, {}",
-                        if registers[*left as usize] != Value::None {
-                            format!("{}: {:?}", left, registers[*left as usize].to_string())
+                        if registers[**left as usize] != Value::None {
+                            format!("{}: {:?}", left, registers[**left as usize].to_string())
                         } else {
                             format!("{}", left)
                         },
-                        if registers[*right as usize] != Value::None {
-                            format!("{}: {:?}", right, registers[*right as usize].to_string())
+                        if registers[**right as usize] != Value::None {
+                            format!("{}: {:?}", right, registers[**right as usize].to_string())
                         } else {
                             format!("{}", right)
                         }

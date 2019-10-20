@@ -76,8 +76,8 @@ impl<'a> Interpreter<'a> {
 
     /// Interpret the contained ast and return the instructions
     pub fn interpret(mut self) -> Result<(Vec<Instruction>, Vec<Vec<Instruction>>)> {
-        for node_index in 0..self.ast.len() {
-            // UNSAFE: Safe because node_index will never be greater than ast.len()
+        for node_index in 0..self.ast.len() - 1 {
+            // UNSAFE: Safe because node_index will never be greater than ast.len() - 1
             // or less than zero, and therefore should never be out of bounds
             match unsafe { self.ast.get_unchecked(node_index) } {
                 Node::Func(_) => self.interp_func(node_index)?,

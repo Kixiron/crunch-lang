@@ -2,13 +2,15 @@ use super::instruction::{Result, RuntimeError, RuntimeErrorTy};
 use derive_more::Display;
 use std::ops;
 
-#[derive(Debug, Copy, Clone, Eq, Display)]
+#[derive(Debug, Clone, Eq, Display)]
 pub enum Value {
     #[display(fmt = "{}", _0)]
     Int(i32),
     #[display(fmt = "{}", _0)]
     Bool(bool),
-    #[display(fmt = "Empty Register")]
+    #[display(fmt = "{}", _0)]
+    String(String),
+    #[display(fmt = "null")]
     None,
 }
 
@@ -18,46 +20,59 @@ impl Value {
         match self {
             Self::Int(_) => "int",
             Self::Bool(_) => "bool",
+            Self::String(_) => "str",
             Self::None => "none",
         }
     }
 
     #[inline]
-    pub fn as_bytes(&self) -> [u8; 8] {
+    pub fn as_bytes(&self) -> ([u8; 8], Option<&[u8]>) {
         use std::mem::size_of;
 
         let mut bytes = [0; 8];
+        let mut string_bytes = None;
 
         match self {
-            Self::Int(i) => {
+            Self::None => {
                 bytes[0] = 0x00;
+            }
+            Self::Int(i) => {
+                bytes[0] = 0x01;
                 bytes[1..size_of::<i32>() + 1].copy_from_slice(&i.to_be_bytes());
             }
             Self::Bool(b) => {
-                bytes[0] = 0x01;
+                bytes[0] = 0x02;
                 bytes[1] = *b as u8;
             }
-            Self::None => {
-                bytes[0] = 0x02;
+            Self::String(s) => {
+                bytes[0] = 0x03;
+                string_bytes = Some(s.as_bytes());
             }
         }
 
-        bytes
+        (bytes, string_bytes)
     }
 
     #[inline]
-    pub fn from_bytes(value: [u8; 8]) -> std::result::Result<Self, &'static str> {
+    pub fn from_bytes(
+        value: [u8; 8],
+        strings: &mut std::collections::VecDeque<String>,
+    ) -> std::result::Result<Self, &'static str> {
         use std::{convert::TryInto, mem::size_of};
 
         Ok(match value[0] {
-            0x00 => Self::Int(i32::from_be_bytes(
+            0x00 => Self::None,
+            0x01 => Self::Int(i32::from_be_bytes(
                 match value[1..size_of::<i32>() + 1].try_into() {
                     Ok(val) => val,
                     Err(_) => return Err("Invalid integer"),
                 },
             )),
-            0x01 => Self::Bool(value[1] > 0),
-            0x02 => Self::None,
+            0x02 => Self::Bool(value[1] > 0),
+            0x03 => Self::String(match strings.pop_front() {
+                Some(s) => s,
+                None => return Err("Not enough strings supplied"),
+            }),
 
             _ => return Err("Invalid Value Header"),
         })

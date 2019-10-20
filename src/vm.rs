@@ -26,7 +26,7 @@ pub struct Vm {
 impl Vm {
     #[inline]
     pub fn new(functions: Vec<Vec<Instruction>>, options: &crate::Options) -> Self {
-        let registers = [Value::None; NUMBER_REGISTERS];
+        let registers = array_init::array_init(|_| Value::None);
         let snapshots = Vec::new();
         let current_func = None;
         let return_stack = Vec::new();
@@ -72,8 +72,10 @@ impl Vm {
 
     #[inline]
     pub fn snapshot(&mut self) {
+        let mut old_regs = array_init::array_init(|_| Value::None);
+        std::mem::swap(&mut old_regs, &mut self.registers);
         self.snapshots
-            .push((self.environment.index, self.current_func, self.registers));
+            .push((self.environment.index, self.current_func, old_regs));
 
         // TODO: Clear registers after saving?
     }

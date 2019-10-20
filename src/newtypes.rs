@@ -71,24 +71,7 @@ impl<'a> Bytecode<'a> {
 
         // Validate Values
         {
-            let num_values = u32::from_be_bytes(match bytes[index..index + 4].try_into() {
-                Ok(i) => i,
-                Err(_) => return Err("Invalid Number of Values"),
-            });
-            index += 4;
-
-            for _ in 0..num_values {
-                let b = match bytes[index..index + 8 as usize].try_into() {
-                    Ok(b) => b,
-                    Err(_) => return Err("Invalid Value"),
-                };
-
-                if let Err(_) = crate::Value::from_bytes(b) {
-                    return Err("Invalid Value");
-                }
-
-                index += 8 as usize;
-            }
+            // TODO: Validate once Value encoding is stable
         }
 
         // Validate Functions

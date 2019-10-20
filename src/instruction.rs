@@ -204,19 +204,19 @@ impl Instruction {
             }
 
             Instruction::Add(left, right) => {
-                vm.prev_op = (*(*vm).get(*left) + *(*vm).get(*right))?;
+                vm.prev_op = ((*vm).get(*left).to_owned() + (*vm).get(*right).to_owned())?;
                 vm.environment.index += Index(1);
             }
             Instruction::Sub(left, right) => {
-                vm.prev_op = (*(*vm).get(*left) - *(*vm).get(*right))?;
+                vm.prev_op = ((*vm).get(*left).to_owned() - (*vm).get(*right).to_owned())?;
                 vm.environment.index += Index(1);
             }
             Instruction::Mult(left, right) => {
-                vm.prev_op = (*(*vm).get(*left) * *(*vm).get(*right))?;
+                vm.prev_op = ((*vm).get(*left).to_owned() * (*vm).get(*right).to_owned())?;
                 vm.environment.index += Index(1);
             }
             Instruction::Div(left, right) => {
-                vm.prev_op = (*(*vm).get(*left) / *(*vm).get(*right))?;
+                vm.prev_op = ((*vm).get(*left).to_owned() / (*vm).get(*right).to_owned())?;
                 vm.environment.index += Index(1);
             }
 
@@ -249,36 +249,36 @@ impl Instruction {
             }
 
             Instruction::And(left, right) => {
-                vm.prev_op = (*(*vm).get(*left) & *(*vm).get(*right))?;
+                vm.prev_op = ((*vm).get(*left).to_owned() & (*vm).get(*right).to_owned())?;
                 vm.environment.index += Index(1);
             }
             Instruction::Or(left, right) => {
-                vm.prev_op = (*(*vm).get(*left) | *(*vm).get(*right))?;
+                vm.prev_op = ((*vm).get(*left).to_owned() | (*vm).get(*right).to_owned())?;
                 vm.environment.index += Index(1);
             }
             Instruction::Xor(left, right) => {
-                vm.prev_op = (*(*vm).get(*left) ^ *(*vm).get(*right))?;
+                vm.prev_op = ((*vm).get(*left).to_owned() ^ (*vm).get(*right).to_owned())?;
                 vm.environment.index += Index(1);
             }
             Instruction::Not(reg) => {
-                vm.prev_op = (!*(*vm).get(*reg))?;
+                vm.prev_op = (!(*vm).get(*reg).to_owned())?;
                 vm.environment.index += Index(1);
             }
 
             Instruction::Eq(left, right) => {
-                vm.prev_comp = *(*vm).get(*left) == *(*vm).get(*right);
+                vm.prev_comp = (*vm).get(*left).to_owned() == (*vm).get(*right).to_owned();
                 vm.environment.index += Index(1);
             }
             Instruction::NotEq(left, right) => {
-                vm.prev_comp = *(*vm).get(*left) != *(*vm).get(*right);
+                vm.prev_comp = (*vm).get(*left).to_owned() != (*vm).get(*right).to_owned();
                 vm.environment.index += Index(1);
             }
             Instruction::GreaterThan(left, right) => {
-                vm.prev_comp = *(*vm).get(*left) > *(*vm).get(*right);
+                vm.prev_comp = (*vm).get(*left).to_owned() > (*vm).get(*right).to_owned();
                 vm.environment.index += Index(1);
             }
             Instruction::LessThan(left, right) => {
-                vm.prev_comp = *(*vm).get(*left) < *(*vm).get(*right);
+                vm.prev_comp = (*vm).get(*left).to_owned() < (*vm).get(*right).to_owned();
                 vm.environment.index += Index(1);
             }
 
