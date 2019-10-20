@@ -132,10 +132,6 @@
 
 /// The number of available registers for the VM
 const NUMBER_REGISTERS: usize = 256;
-/// The number of available handoff registers for the VM
-const NUMBER_HANDOFF_REGISTERS: usize = 10;
-/// The number of stored strings for the VM
-const NUMBER_STRINGS: usize = 10;
 
 #[doc(hidden)]
 #[macro_export]

@@ -4,35 +4,6 @@ use derive_more::{
 use serde::{Deserialize, Serialize};
 use shrinkwraprs::Shrinkwrap;
 
-/// A pointer/index for a string
-#[derive(
-    Copy,
-    Clone,
-    PartialEq,
-    Eq,
-    Add,
-    Mul,
-    AddAssign,
-    SubAssign,
-    MulAssign,
-    Constructor,
-    Display,
-    From,
-    Into,
-    Deserialize,
-    Serialize,
-    Shrinkwrap,
-)]
-#[display(fmt = "{}", "_0")]
-#[repr(transparent)]
-pub struct StringPointer(pub u8);
-
-impl std::fmt::Debug for StringPointer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Sx{:03}", self.0)
-    }
-}
-
 /// The instruction index for the VM
 #[derive(
     Debug,

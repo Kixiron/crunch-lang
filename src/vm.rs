@@ -1,8 +1,4 @@
-use super::{
-    Gc, Index, Instruction, Register, StringPointer, Value, NUMBER_HANDOFF_REGISTERS,
-    NUMBER_REGISTERS, NUMBER_STRINGS,
-};
-use std::borrow::Cow;
+use super::{Gc, Index, Instruction, Register, Value, NUMBER_REGISTERS};
 
 #[derive(Debug)]
 pub struct VmOptions {}
@@ -16,8 +12,6 @@ impl From<&crate::Options> for VmOptions {
 #[allow(missing_debug_implementations)]
 pub struct Vm {
     pub registers: [Value; NUMBER_REGISTERS],
-    pub handoff_registers: [Value; NUMBER_HANDOFF_REGISTERS],
-    pub strings: [Cow<'static, str>; NUMBER_STRINGS],
     pub snapshots: Vec<(Index, Option<Index>, [Value; NUMBER_REGISTERS])>,
     pub current_func: Option<Index>,
     pub functions: Vec<Vec<Instruction>>,
@@ -33,9 +27,6 @@ impl Vm {
     #[inline]
     pub fn new(functions: Vec<Vec<Instruction>>, options: &crate::Options) -> Self {
         let registers = [Value::None; NUMBER_REGISTERS];
-        let handoff_registers = [Value::None; NUMBER_HANDOFF_REGISTERS];
-        let strings: [Cow<'static, str>; NUMBER_STRINGS] =
-            array_init::array_init(|_| Cow::Borrowed(""));
         let snapshots = Vec::new();
         let current_func = None;
         let return_stack = Vec::new();
@@ -44,8 +35,6 @@ impl Vm {
 
         Self {
             registers,
-            handoff_registers,
-            strings,
             snapshots,
             current_func,
             functions,
@@ -72,42 +61,13 @@ impl Vm {
     }
 
     #[inline]
-    pub fn load_str(&mut self, value: Cow<'static, str>, reg: StringPointer) {
-        self.strings[*reg as usize] = value;
-    }
-
-    #[inline]
     pub fn get(&self, reg: Register) -> &Value {
         &self.registers[*reg as usize]
     }
 
     #[inline]
-    pub fn get_str(&self, reg: StringPointer) -> &str {
-        &self.strings[*reg as usize]
-    }
-
-    #[inline]
     pub fn get_mut(&mut self, reg: Register) -> &mut Value {
         &mut self.registers[*reg as usize]
-    }
-
-    #[inline]
-    pub fn get_str_mut(&mut self, reg: StringPointer) -> &mut Cow<'static, str> {
-        &mut self.strings[*reg as usize]
-    }
-
-    #[inline]
-    pub fn add_strings(
-        &mut self,
-        left: StringPointer,
-        right: StringPointer,
-        output: StringPointer,
-    ) {
-        let mut out = String::with_capacity(self.get_str(left).len() + self.get_str(right).len());
-        out.push_str(self.get_str(left));
-        out.push_str(self.get_str(right));
-
-        *self.get_str_mut(output) = Cow::Owned(out);
     }
 
     #[inline]
