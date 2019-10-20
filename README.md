@@ -183,3 +183,15 @@ let dependencies: [Dependency] = [
 `nullable<ty>`: Makes a type able to be null. `ty` is the contained type. The contained value can be `ty` or `null`
 `bool`: A boolean value of either `true` or `false`
 `vector<ty>`: A vector of values. `ty` is the contained type
+
+## Language Builtins
+
+`@print` Prints to stdout
+`@collect` Forces a GC collection cycle
+`@halt` Halts program execution
+
+## CLI Options
+
+`--burn-gc` Preforms a GC collect at every opportunity
+`--debug-log` Activates verbose logging
+`--fault-tolerant` Allows minor errors to occur without triggering runtime errors

@@ -3,11 +3,12 @@ use std::collections::VecDeque;
 
 pub const INSTRUCTION_LENGTH: usize = 8;
 #[cfg_attr(rustfmt, rustfmt::skip)]
-pub const INSTRUCTION_BYTES: [u8; 23] = [
+pub const INSTRUCTION_BYTES: [u8; 25] = [
     0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 
     0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 
     0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11, 
-    0x12, 0x13, 0x14, 0x15, 0x16
+    0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+    0x18
 ];
 
 #[inline]
@@ -25,10 +26,7 @@ fn decode(instruction: [u8; INSTRUCTION_LENGTH], value: Option<Value>) -> Instru
         ),
         0x02 => Instruction::CompToReg(instruction[1].into()),
         0x03 => Instruction::OpToReg(instruction[1].into()),
-        0x04 => Instruction::DropReg(
-            u32::from_be_bytes(instruction[1..size_of::<u32>() + 1].try_into().unwrap()),
-            instruction[size_of::<u32>() + 2].into(),
-        ),
+        0x04 => Instruction::DropReg(instruction[1].into()),
         0x05 => Instruction::Drop(u32::from_be_bytes(
             instruction[1..size_of::<u32>() + 1].try_into().unwrap(),
         )),
@@ -60,6 +58,12 @@ fn decode(instruction: [u8; INSTRUCTION_LENGTH], value: Option<Value>) -> Instru
         0x15 => Instruction::Return,
         0x16 => Instruction::Halt,
 
+        0x17 => Instruction::Save(
+            u32::from_be_bytes(instruction[1..size_of::<u32>() + 1].try_into().unwrap()),
+            instruction[size_of::<u32>() + 2].into(),
+        ),
+        0x18 => Instruction::Collect,
+
         _ => Instruction::Illegal,
     };
 
@@ -84,6 +88,11 @@ fn encode(instruction: Instruction) -> ([u8; INSTRUCTION_LENGTH], Option<Value>)
             bytes[1..size_of::<u32>() + 1].copy_from_slice(&heap_loc.to_be_bytes());
             value = Some(val);
         }
+        Instruction::Save(heap_loc, reg) => {
+            bytes[0] = 0x17;
+            bytes[1..size_of::<u32>() + 1].copy_from_slice(&heap_loc.to_be_bytes());
+            bytes[size_of::<u32>() + 2] = *reg;
+        }
         Instruction::CompToReg(reg) => {
             bytes[0] = 0x02;
             bytes[1] = *reg;
@@ -92,10 +101,9 @@ fn encode(instruction: Instruction) -> ([u8; INSTRUCTION_LENGTH], Option<Value>)
             bytes[0] = 0x03;
             bytes[1] = *reg;
         }
-        Instruction::DropReg(heap_loc, reg) => {
+        Instruction::DropReg(reg) => {
             bytes[0] = 0x04;
-            bytes[1..size_of::<u32>() + 1].copy_from_slice(&heap_loc.to_be_bytes());
-            bytes[size_of::<u32>() + 2] = *reg;
+            bytes[1] = *reg;
         }
         Instruction::Drop(reg) => {
             bytes[0] = 0x05;
@@ -178,6 +186,9 @@ fn encode(instruction: Instruction) -> ([u8; INSTRUCTION_LENGTH], Option<Value>)
             bytes[2] = *right;
         }
 
+        Instruction::Collect => {
+            bytes[0] = 0x18;
+        }
         Instruction::Return => {
             bytes[0] = 0x15;
         }
@@ -320,7 +331,10 @@ pub fn disassemble(bytes: &[u8]) -> String {
                 Instruction::Drop(heap_loc) => {
                     heap.remove(&heap_loc);
                 }
-                Instruction::DropReg(heap_loc, reg) => {
+                Instruction::DropReg(reg) => {
+                    registers[*reg as usize] = Value::None;
+                }
+                Instruction::Save(heap_loc, reg) => {
                     heap.insert(heap_loc, registers[*reg as usize]);
                     registers[*reg as usize] = Value::None;
                 }
@@ -331,11 +345,11 @@ pub fn disassemble(bytes: &[u8]) -> String {
                 use Instruction::*;
 
                 match instruction {
-                    Load(heap, reg) | DropReg(heap, reg) => {
+                    Load(heap, reg) | Save(heap, reg) => {
                         format!("{:p}, {}", heap as *const u8, reg)
                     }
                     Cache(heap, val) => format!("{:p}, {}", heap as *const u8, val.to_string()),
-                    CompToReg(reg) | OpToReg(reg) => format!("{}", reg),
+                    CompToReg(reg) | OpToReg(reg) | DropReg(reg) => format!("{}", reg),
                     Drop(reg) => format!("{}", reg),
 
                     Print(reg) => {
@@ -381,7 +395,7 @@ pub fn disassemble(bytes: &[u8]) -> String {
                         }
                     ),
 
-                    Return | Halt | Illegal => String::new(),
+                    Return | Halt | Illegal | Collect => String::new(),
                 }
             };
 
@@ -477,6 +491,7 @@ mod tests {
                 Print(3.into()),
                 Drop(0),
                 Drop(1),
+                Collect,
                 Halt,
             ],
             Vec::new(),
@@ -491,7 +506,11 @@ mod tests {
         println!("{}", disassemble(&encoded_program));
 
         assert_eq!((instructions, functions), decoded_program);
-        let mut crunch = crate::Crunch::from(decoded_program);
+        let mut crunch = crate::Crunch::from((
+            decoded_program.0,
+            decoded_program.1,
+            crate::OptionBuilder::new("./byte_test").build(),
+        ));
         crunch.execute();
     }
 }

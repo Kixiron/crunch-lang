@@ -106,6 +106,7 @@ pub enum FuncExpr<'a> {
     Binding(Binding<'a>),
     FuncCall(FuncCall<'a>),
     Assign(Assign<'a>),
+    Builtin(Builtin<'a>),
 }
 
 impl<'a> fmt::Debug for FuncExpr<'a> {
@@ -114,8 +115,16 @@ impl<'a> fmt::Debug for FuncExpr<'a> {
             Self::Binding(b) => write!(f, "{:#?}", b),
             Self::FuncCall(c) => write!(f, "{:#?}", c),
             Self::Assign(a) => write!(f, "{:#?}", a),
+            Self::Builtin(b) => write!(f, "{:#?}", b),
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum Builtin<'a> {
+    Print(Vec<IdentLiteral<'a>>),
+    Collect,
+    Halt,
 }
 
 #[derive(Debug, Clone)]
@@ -199,7 +208,7 @@ impl<'a> fmt::Debug for IdentLiteral<'a> {
 #[derive(Debug, Clone)]
 pub struct Assign<'a> {
     pub name: Ident<'a>,
-    pub val: Ident<'a>,
+    pub val: IdentLiteral<'a>,
     pub ty: Type<'a>,
     pub info: LocInfo,
 }

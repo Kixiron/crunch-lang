@@ -16,7 +16,11 @@ fn ten_plus_twenty(c: &mut Criterion) {
         Halt,
     ];
 
-    let mut crunch = Crunch::from((inst, Vec::new()));
+    let mut crunch = Crunch::from((
+        inst,
+        Vec::new(),
+        OptionBuilder::new("./ten_plus_twenty").build(),
+    ));
 
     c.bench_function("Ten Plus Twenty", |b| b.iter(|| crunch.execute()));
 }

@@ -1,198 +1,12 @@
 mod ast;
 mod token;
 
-use crate::{Instruction, NUMBER_REGISTERS, NUMBER_STRINGS};
-use ast::*;
+pub use ast::*;
+
 use codespan::{FileId, Files, Span};
 use codespan_reporting::diagnostic::{Diagnostic, Label, Severity};
 use std::borrow::Cow;
 use token::*;
-
-pub fn fast_interpret<'a>(ast: Vec<Node<'a>>) -> (Vec<Instruction>, Vec<Vec<Instruction>>) {
-    let mut instructions = Vec::new();
-    let mut functions = Vec::new();
-    let mut variables = Vec::new();
-
-    let mut regs: [Option<()>; NUMBER_REGISTERS] = [None; NUMBER_REGISTERS];
-    let mut str_regs: [Option<()>; NUMBER_STRINGS] = [None; NUMBER_STRINGS];
-    for node in ast {
-        fast_interp_node(
-            node,
-            &mut instructions,
-            &mut regs,
-            &mut str_regs,
-            &mut functions,
-            &mut variables,
-        );
-    }
-
-    functions.sort_by_key(|(_, _, index)| *index);
-
-    if functions.is_empty() {
-        trace!(
-            "Interp Output: {:?}",
-            (vec![Instruction::Halt], Vec::<Instruction>::new())
-        );
-        return (vec![Instruction::Halt], Vec::new());
-    }
-
-    let mut main_func = if functions[0].2.is_none() {
-        functions.remove(0).1
-    } else {
-        panic!("No Main")
-    };
-    main_func.push(Instruction::Halt);
-
-    let functions = functions
-        .into_iter()
-        .filter_map(
-            |(_, vec, index)| {
-                if index.is_some() {
-                    Some(vec)
-                } else {
-                    None
-                }
-            },
-        )
-        .collect::<Vec<Vec<Instruction>>>();
-
-    trace!("Interp Output: {:?}", (&main_func, &functions));
-
-    (main_func, functions)
-}
-
-macro_rules! pos {
-    ($var:expr) => {{
-        let pos = $var.iter().position(Option::is_none).unwrap();
-        $var[pos] = Some(());
-        (pos as u8).into()
-    }};
-}
-
-fn interp_func_body<'a>(
-    line: FuncBody<'a>,
-    instructions: &mut Vec<Instruction>,
-    regs: &mut [Option<()>; NUMBER_REGISTERS],
-    str_regs: &mut [Option<()>; NUMBER_STRINGS],
-    _functions: &mut Vec<(String, Vec<Instruction>, Option<usize>)>,
-    variables: &mut Vec<(String, usize, Type<'a>)>,
-) {
-    match line.expr {
-        FuncExpr::Binding(binding) => {
-            let pos: crate::Register = pos!(regs);
-            variables.push((
-                match binding.name.name {
-                    Cow::Owned(s) => s,
-                    Cow::Borrowed(s) => s.to_owned(),
-                },
-                *pos as usize,
-                binding.ty.clone(),
-            ));
-
-            /*
-            match &binding.ty {
-                Type::Bool => instructions.push(Instruction::LoadBool(
-                    if let BindingVal::Literal(l) = binding.val {
-                        if let LiteralInner::Bool(b) = l.val {
-                            b
-                        } else {
-                            panic!()
-                        }
-                    } else {
-                        panic!()
-                    },
-                    pos,
-                )),
-                Type::Int => instructions.push(Instruction::LoadInt(
-                    if let BindingVal::Literal(l) = binding.val {
-                        if let LiteralInner::Int(i) = l.val {
-                            i
-                        } else {
-                            panic!()
-                        }
-                    } else {
-                        panic!()
-                    },
-                    pos,
-                )),
-                Type::String => instructions.push(Instruction::LoadStr(
-                    if let BindingVal::Literal(l) = binding.val {
-                        if let LiteralInner::String(s) = l.val {
-                            let s = Box::leak(Box::new(s.into_owned()));
-                            unsafe { std::mem::transmute::<&str, &'static str>(&s[1..s.len() - 1]) }
-                        } else {
-                            panic!()
-                        }
-                    } else {
-                        panic!()
-                    },
-                    pos!(str_regs),
-                    pos,
-                )),
-                e => {
-                    trace!("{:?}", e);
-                    unimplemented!()
-                }
-            }
-            */
-        }
-        FuncExpr::FuncCall(_) | FuncExpr::Assign(_) => unimplemented!(),
-    }
-}
-
-fn fast_interp_node<'a>(
-    node: Node<'a>,
-    mut instructions: &mut Vec<Instruction>,
-    mut regs: &mut [Option<()>; NUMBER_REGISTERS],
-    mut str_regs: &mut [Option<()>; NUMBER_STRINGS],
-    mut functions: &mut Vec<(String, Vec<Instruction>, Option<usize>)>,
-    mut variables: &mut Vec<(String, usize, Type<'a>)>,
-) {
-    match node {
-        Node::Func(decl) => {
-            let curr = instructions.len();
-
-            for node in decl.body {
-                interp_func_body(
-                    node,
-                    &mut instructions,
-                    &mut regs,
-                    &mut str_regs,
-                    &mut functions,
-                    &mut variables,
-                )
-            }
-
-            let end = instructions.len();
-
-            if decl.name.name != Cow::Borrowed("main") {
-                functions.push((
-                    match decl.name.name {
-                        Cow::Owned(s) => s,
-                        Cow::Borrowed(s) => s.to_owned(),
-                    },
-                    instructions[curr..end].to_vec(),
-                    Some(match functions.last() {
-                        Some(last) => match last.2 {
-                            Some(last) => last + 1,
-                            None => 0,
-                        },
-                        None => 0,
-                    }),
-                ));
-            } else {
-                functions.push((
-                    match decl.name.name {
-                        Cow::Owned(s) => s,
-                        Cow::Borrowed(s) => s.to_owned(),
-                    },
-                    instructions[curr..end].to_vec(),
-                    None,
-                ));
-            }
-        }
-    }
-}
 
 type Result<T> = std::result::Result<T, Diagnostic>;
 
@@ -204,11 +18,8 @@ pub struct Parser<'a> {
     codespan: Files,
     files: Vec<FileId>,
     current_file: FileId,
-    bugs: Vec<Diagnostic>,
-    errors: Vec<Diagnostic>,
-    warnings: Vec<Diagnostic>,
-    notes: Vec<Diagnostic>,
-    helps: Vec<Diagnostic>,
+    diagnostics: Vec<Diagnostic>,
+    error: bool,
 }
 
 impl<'a> Parser<'a> {
@@ -226,8 +37,7 @@ impl<'a> Parser<'a> {
             (files, ids)
         };
         let current_file = files[0];
-        let (bugs, errors, warnings, notes, helps) =
-            (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        let diagnostics = Vec::new();
 
         Self {
             token_stream,
@@ -236,11 +46,8 @@ impl<'a> Parser<'a> {
             codespan,
             files,
             current_file,
-            bugs,
-            errors,
-            warnings,
-            notes,
-            helps,
+            diagnostics,
+            error: false,
         }
     }
 
@@ -256,7 +63,7 @@ impl<'a> Parser<'a> {
                         ast.push(Node::Func(match self.parse_function(token.range.0) {
                             Ok(node) => node,
                             Err(err) => {
-                                self.errors.push(err);
+                                self.diagnostics.push(err);
                                 continue;
                             }
                         }));
@@ -264,12 +71,12 @@ impl<'a> Parser<'a> {
                     TokenType::End => break,
                     TokenType::Space | TokenType::Comment | TokenType::Newline => {
                         if let Err(err) = self.next(line!()) {
-                            self.errors.push(err);
+                            self.diagnostics.push(err);
                         }
                         continue;
                     }
                     TokenType::Error => {
-                        self.errors.push(Diagnostic::new(
+                        self.diagnostics.push(Diagnostic::new(
                             Severity::Error,
                             "Invalid token",
                             Label::new(
@@ -280,7 +87,7 @@ impl<'a> Parser<'a> {
                         ));
                     }
                     _ => {
-                        self.errors.push(Diagnostic::new(
+                        self.diagnostics.push(Diagnostic::new(
                             Severity::Error,
                             "Invalid top-level token",
                             Label::new(
@@ -296,61 +103,30 @@ impl<'a> Parser<'a> {
             }
 
             if self.next(line!()).is_err() {
-                return if !self.errors.is_empty() || !self.bugs.is_empty() {
-                    let mut output = Vec::with_capacity(
-                        self.bugs.len()
-                            + self.errors.len()
-                            + self.warnings.len()
-                            + self.notes.len()
-                            + self.helps.len(),
-                    );
+                return if self.error {
+                    let mut diagnostics = Vec::new();
+                    std::mem::swap(&mut diagnostics, &mut self.diagnostics);
 
-                    output.append(&mut self.bugs);
-                    output.append(&mut self.errors);
-                    output.append(&mut self.warnings);
-                    output.append(&mut self.notes);
-                    output.append(&mut self.helps);
-
-                    Err(output)
+                    Err(diagnostics)
                 } else {
-                    let mut output = Vec::with_capacity(
-                        self.warnings.len() + self.notes.len() + self.helps.len(),
-                    );
+                    let mut diagnostics = Vec::new();
+                    std::mem::swap(&mut diagnostics, &mut self.diagnostics);
 
-                    output.append(&mut self.warnings);
-                    output.append(&mut self.notes);
-                    output.append(&mut self.helps);
-
-                    Ok((ast, output))
+                    Ok((ast, diagnostics))
                 };
             }
         }
 
-        if !self.errors.is_empty() || !self.bugs.is_empty() {
-            let mut output = Vec::with_capacity(
-                self.bugs.len()
-                    + self.errors.len()
-                    + self.warnings.len()
-                    + self.notes.len()
-                    + self.helps.len(),
-            );
+        if self.error {
+            let mut diagnostics = Vec::new();
+            std::mem::swap(&mut diagnostics, &mut self.diagnostics);
 
-            output.append(&mut self.bugs);
-            output.append(&mut self.errors);
-            output.append(&mut self.warnings);
-            output.append(&mut self.notes);
-            output.append(&mut self.helps);
-
-            Err(output)
+            Err(diagnostics)
         } else {
-            let mut output =
-                Vec::with_capacity(self.warnings.len() + self.notes.len() + self.helps.len());
+            let mut diagnostics = Vec::new();
+            std::mem::swap(&mut diagnostics, &mut self.diagnostics);
 
-            output.append(&mut self.warnings);
-            output.append(&mut self.notes);
-            output.append(&mut self.helps);
-
-            Ok((ast, output))
+            Ok((ast, diagnostics))
         }
     }
 
@@ -404,7 +180,9 @@ impl<'a> Parser<'a> {
 
     fn parse_func_body(&mut self, span_start: u32) -> Result<FuncBody<'a>> {
         self.eat_w()?;
-        let (expr, span_end): (FuncExpr<'a>, u32) = match self.next(line!())?.ty {
+
+        let token = self.next(line!())?;
+        let (expr, span_end): (FuncExpr<'a>, u32) = match token.ty {
             TokenType::Let => {
                 let name = Ident::from_token(self.eat(TokenType::Ident)?, self.current_file);
 
@@ -434,6 +212,44 @@ impl<'a> Parser<'a> {
                     span_end,
                 )
             }
+            TokenType::Print => {
+                let mut params = Vec::new();
+
+                let mut peek = self.peek()?;
+                while peek.ty != TokenType::RightParen {
+                    params.push(match peek.ty {
+                        TokenType::String | TokenType::Bool | TokenType::Int => {
+                            IdentLiteral::Literal(self.parse_variable()?)
+                        }
+                        TokenType::Ident => IdentLiteral::Variable(Ident::from_token(
+                            self.eat(TokenType::Ident)?,
+                            self.current_file,
+                        )),
+                        _ => {
+                            return Err(Diagnostic::new(
+                                Severity::Error,
+                                "Invalid Function Parameter",
+                                Label::new(
+                                    self.files[0],
+                                    self.codespan.source_span(self.files[0]),
+                                    "Expected Ident or Literal, got ".to_string(),
+                                ),
+                            ))
+                        }
+                    });
+
+                    if self.peek()?.ty == TokenType::Comma {
+                        self.eat(TokenType::Comma)?;
+                    }
+
+                    peek = self.peek()?;
+                }
+
+                let span_end = self.eat(TokenType::RightParen)?.range.1;
+
+                (FuncExpr::Builtin(Builtin::Print(params)), span_end)
+            }
+            TokenType::Collect => (FuncExpr::Builtin(Builtin::Collect), token.range.1),
             _ => unimplemented!(),
         };
 
@@ -657,7 +473,15 @@ fn parse_test() {
             use std::io::Write;
 
             let mut file = std::fs::File::create("./OUTPUT.md").unwrap();
-            let bytecode = fast_interpret(ast.0.clone());
+            let options = crate::OptionBuilder::new("./parse_test").build();
+            let bytecode =
+                match crate::interpreter::Interpreter::new(ast.0.clone(), &options).interpret() {
+                    Ok(interp) => interp,
+                    Err(err) => {
+                        err.emit();
+                        panic!("Runtime error while compiling");
+                    }
+                };
             file.write_all(
                 format!(
                     "# Source Code  \n\n```\n{}\n```\n\n# AST  \n\n```\n{:#?}\n```\n\n# Bytecode IR  \n\n```\n{:#?}\n```\n\n# Raw Bytecode  \n\n```\n{}\n```\n",

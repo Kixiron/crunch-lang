@@ -9,7 +9,8 @@ pub enum Instruction {
     Cache(u32, Value),
     CompToReg(Register),
     OpToReg(Register),
-    DropReg(u32, Register),
+    Save(u32, Register),
+    DropReg(Register),
     Drop(u32),
 
     Add(Register, Register),
@@ -32,6 +33,7 @@ pub enum Instruction {
     GreaterThan(Register, Register),
     LessThan(Register, Register),
 
+    Collect,
     Return,
     Halt,
 
@@ -61,7 +63,11 @@ fn inst_test() {
         Halt,
     ];
 
-    let mut crunch = crate::Crunch::from((inst, Vec::new()));
+    let mut crunch = crate::Crunch::from((
+        inst,
+        Vec::new(),
+        crate::OptionBuilder::new("./inst_test").build(),
+    ));
     crunch.execute();
 }
 
@@ -84,6 +90,8 @@ pub enum RuntimeErrorTy {
     GcError,
     DivideByZero,
     IncompatibleTypes,
+    MissingMain,
+    NullVar,
 }
 
 impl Instruction {
@@ -160,14 +168,15 @@ impl Instruction {
                 std::mem::swap(&mut vm.registers[**reg as usize], &mut vm.prev_op);
                 vm.environment.index += Index(1);
             }
-            Instruction::DropReg(heap_loc, reg) => {
-                trace!("Clearing register {}", reg);
-
-                let mut val = Value::None;
-                std::mem::swap(&mut val, &mut vm.registers[**reg as usize]);
+            Instruction::Save(heap_loc, reg) => {
+                trace!("Saving register {} to {}", reg, heap_loc);
 
                 unsafe {
-                    if let Err(err) = vm.gc.write(*heap_loc as usize, val, None) {
+                    if let Err(err) = vm.gc.write(
+                        *heap_loc as usize,
+                        vm.registers[**reg as usize].clone(),
+                        None,
+                    ) {
                         return Err(RuntimeError {
                             ty: RuntimeErrorTy::GcError,
                             message: err,
@@ -175,6 +184,12 @@ impl Instruction {
                     }
                 }
 
+                vm.environment.index += Index(1);
+            }
+            Instruction::DropReg(reg) => {
+                trace!("Clearing register {}", reg);
+
+                vm.registers[**reg as usize] = Value::None;
                 vm.environment.index += Index(1);
             }
             Instruction::Drop(id) => {
@@ -267,6 +282,12 @@ impl Instruction {
                 vm.environment.index += Index(1);
             }
 
+            Instruction::Collect => {
+                trace!("Forcing a GC collect");
+
+                vm.gc.collect();
+                vm.environment.index += Index(1);
+            }
             Instruction::Return => {
                 vm.environment.returning = true;
 
@@ -316,7 +337,8 @@ impl Instruction {
             Self::Cache(_, _) => "cache",
             Self::CompToReg(_) => "compr",
             Self::OpToReg(_) => "opr",
-            Self::DropReg(_, _) => "dropr",
+            Self::Save(_, _) => "save",
+            Self::DropReg(_) => "dropr",
             Self::Drop(_) => "drop",
 
             Self::Add(_, _) => "add",
@@ -339,6 +361,7 @@ impl Instruction {
             Self::GreaterThan(_, _) => "grt",
             Self::LessThan(_, _) => "let",
 
+            Self::Collect => "coll",
             Self::Return => "ret",
             Self::Halt => "halt",
 

@@ -13,6 +13,7 @@ pub enum Value {
 }
 
 impl Value {
+    #[inline]
     pub fn ty(&self) -> &'static str {
         match self {
             Self::Int(_) => "int",
@@ -21,6 +22,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn as_bytes(&self) -> [u8; 8] {
         use std::mem::size_of;
 
@@ -43,6 +45,7 @@ impl Value {
         bytes
     }
 
+    #[inline]
     pub fn from_bytes(value: [u8; 8]) -> std::result::Result<Self, &'static str> {
         use std::{convert::TryInto, mem::size_of};
 
@@ -64,6 +67,7 @@ impl Value {
 impl ops::Add for Value {
     type Output = Result<Self>;
 
+    #[inline]
     fn add(self, other: Self) -> Self::Output {
         match (self, other) {
             (Self::Int(left), Self::Int(right)) => Ok(Self::Int(right + left)),
@@ -84,6 +88,7 @@ impl ops::Add for Value {
 impl ops::Sub for Value {
     type Output = Result<Self>;
 
+    #[inline]
     fn sub(self, other: Self) -> Self::Output {
         match (self, other) {
             (Self::Int(left), Self::Int(right)) => Ok(Self::Int(right - left)),
@@ -103,6 +108,7 @@ impl ops::Sub for Value {
 impl ops::Mul for Value {
     type Output = Result<Self>;
 
+    #[inline]
     fn mul(self, other: Self) -> Self::Output {
         match (self, other) {
             (Self::Int(left), Self::Int(right)) => Ok(Self::Int(right * left)),
@@ -122,6 +128,7 @@ impl ops::Mul for Value {
 impl ops::Div for Value {
     type Output = Result<Self>;
 
+    #[inline]
     fn div(self, other: Self) -> Self::Output {
         match (self, other) {
             (Self::Int(left), Self::Int(right)) => {
@@ -150,6 +157,7 @@ impl ops::Div for Value {
 impl ops::BitAnd for Value {
     type Output = Result<Self>;
 
+    #[inline]
     fn bitand(self, other: Self) -> Self::Output {
         match (self, other) {
             (Self::Int(left), Self::Int(right)) => Ok(Self::Int(right & left)),
@@ -170,6 +178,7 @@ impl ops::BitAnd for Value {
 impl ops::BitOr for Value {
     type Output = Result<Self>;
 
+    #[inline]
     fn bitor(self, other: Self) -> Self::Output {
         match (self, other) {
             (Self::Int(left), Self::Int(right)) => Ok(Self::Int(right | left)),
@@ -190,6 +199,7 @@ impl ops::BitOr for Value {
 impl ops::BitXor for Value {
     type Output = Result<Self>;
 
+    #[inline]
     fn bitxor(self, other: Self) -> Self::Output {
         match (self, other) {
             (Self::Int(left), Self::Int(right)) => Ok(Self::Int(right ^ left)),
@@ -210,6 +220,7 @@ impl ops::BitXor for Value {
 impl ops::Not for Value {
     type Output = Result<Self>;
 
+    #[inline]
     fn not(self) -> Self::Output {
         match self {
             Self::Int(int) => Ok(Self::Int(!int)),
@@ -224,6 +235,7 @@ impl ops::Not for Value {
 }
 
 impl std::cmp::PartialOrd for Value {
+    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         match (self, other) {
             (Self::Int(left), Self::Int(right)) => Some(left.cmp(right)),
@@ -235,6 +247,7 @@ impl std::cmp::PartialOrd for Value {
 }
 
 impl std::cmp::PartialEq for Value {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Int(left), Self::Int(right)) => left == right,

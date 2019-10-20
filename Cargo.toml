@@ -1,7 +1,7 @@
 [package]
 name = "crunch"
 version = "0.0.0"
-authors = ["Chase Wilson <chase.h.wilson3@gamil.com>"]
+authors = ["Chase Wilson <chase.h.wilson3@gmail.com>"]
 publish = false
 description = "An esoteric language written in Rust"
 homepage = "https://github.com/Kixiron/crunch-lang"
@@ -11,9 +11,6 @@ keywords = ["crunch", "language"]
 categories = ["language"]
 license = "MIT"
 edition = "2018"
-
-[features]
-force_gc_cleanup = []
 
 [[bin]]
 name = "crunch"
@@ -38,12 +35,14 @@ pest = "2.1.2"
 pest_derive = "2.1.0"
 codespan = "0.5.0"
 codespan-reporting = "0.5.0"
+human-panic = "1.0.1"
+lazy_static = "1.4.0"
 
 [target.'cfg(target_family = "windows")'.dependencies]
 winapi = "0.3.8"
 
 [target.'cfg(target_family = "unix")'.dependencies]
-libc = "0.2.62"
+libc = "0.2.64"
 
 [dev-dependencies]
 criterion = "0.3.0"

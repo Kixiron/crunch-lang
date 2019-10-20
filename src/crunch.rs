@@ -1,5 +1,8 @@
-use super::{decode_program, disassemble, encode_program, Bytecode, Instruction, Vm};
-use std::path::Path;
+use super::{
+    decode_program, disassemble, encode_program, interpreter::Interpreter, Bytecode, Instruction,
+    Vm,
+};
+use crate::Options;
 
 /// The main interface to the crunch language
 #[allow(missing_debug_implementations)]
@@ -8,6 +11,8 @@ pub struct Crunch {
     instructions: Vec<Instruction>,
     /// The main contents of the VM
     vm: Vm,
+    /// Contained options
+    _options: Options,
 }
 
 /// The main usage of Crunch
@@ -36,15 +41,15 @@ impl Crunch {
     }
 
     #[inline]
-    pub fn run_source_file<'a>(file: &Path) {
-        trace!("Running Source File: {}", file.display());
+    pub fn run_source_file<'a>(options: Options) {
+        trace!("Running Source File: {}", options.file.display());
 
         let source = {
             use std::{fs::File, io::Read};
 
             let mut buf = String::new();
 
-            let mut file = match File::open(file) {
+            let mut file = match File::open(&options.file) {
                 Ok(file) => file,
                 Err(err) => {
                     println!("Error Opening File: {:?}", err);
@@ -61,7 +66,7 @@ impl Crunch {
         };
 
         let mut parser = super::parser::Parser::new(
-            match file.file_name() {
+            match options.file.file_name() {
                 Some(name) => name.to_str(),
                 None => None,
             },
@@ -69,11 +74,10 @@ impl Crunch {
         );
 
         match parser.parse() {
-            Ok(ast) => {
-                let instructions = super::parser::fast_interpret(ast.0.clone());
-
-                Self::from(instructions).execute()
-            }
+            Ok(ast) => match Interpreter::new(ast.0.clone(), &options).interpret() {
+                Ok((main, funcs)) => Self::from((main, funcs, options)).execute(),
+                Err(err) => err.emit(),
+            },
 
             // Emit parsing errors
             Err(err) => {
@@ -85,7 +89,7 @@ impl Crunch {
 
                 let mut files = codespan::Files::new();
                 files.add(
-                    match file.file_name() {
+                    match options.file.file_name() {
                         Some(name) => name.to_str().unwrap_or("Crunch Source File"),
                         None => "Crunch Source File",
                     },
@@ -104,15 +108,15 @@ impl Crunch {
     }
 
     #[inline]
-    pub fn run_byte_file<'a>(file: &Path) {
-        trace!("Running Compiled File: {}", file.display());
+    pub fn run_byte_file<'a>(options: Options) {
+        trace!("Running Compiled File: {}", options.file.display());
 
         let source = {
             use std::{fs::File, io::Read};
 
             let mut buf = Vec::new();
 
-            let mut file = match File::open(file) {
+            let mut file = match File::open(&options.file) {
                 Ok(file) => file,
                 Err(err) => {
                     println!("Error Opening File: {:?}", err);
@@ -138,7 +142,7 @@ impl Crunch {
 
         let instructions = Self::parse_bytecode(bytes);
 
-        Self::from(instructions).execute()
+        Self::from((instructions.0, instructions.1, options)).execute()
     }
 
     /// Parse validated bytecode into the Main Function and Function Table
@@ -165,35 +169,16 @@ impl Crunch {
     }
 }
 
-impl From<(Vec<Instruction>, Vec<Vec<Instruction>>)> for Crunch {
+impl From<(Vec<Instruction>, Vec<Vec<Instruction>>, Options)> for Crunch {
     #[inline]
-    fn from((instructions, functions): (Vec<Instruction>, Vec<Vec<Instruction>>)) -> Self {
+    fn from(
+        (instructions, functions, options): (Vec<Instruction>, Vec<Vec<Instruction>>, Options),
+    ) -> Self {
         Self {
             instructions,
-            vm: Vm::new(functions),
+            vm: Vm::new(functions, &options),
+            _options: options,
         }
-    }
-}
-
-impl std::convert::TryFrom<&[u8]> for Crunch {
-    type Error = &'static str;
-
-    #[inline]
-    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        let bytecode = Self::validate(bytes)?;
-
-        Ok(Self::from(Self::parse_bytecode(bytecode)))
-    }
-}
-
-impl std::convert::TryFrom<&Vec<u8>> for Crunch {
-    type Error = &'static str;
-
-    #[inline]
-    fn try_from(bytes: &Vec<u8>) -> Result<Self, Self::Error> {
-        let bytecode = Self::validate(bytes)?;
-
-        Ok(Self::from(Self::parse_bytecode(bytecode)))
     }
 }
 

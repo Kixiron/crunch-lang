@@ -38,6 +38,19 @@ pub(crate) fn page_size() -> usize {
 }
 
 #[derive(Debug)]
+pub struct GcOptions {
+    pub burn_gc: bool,
+}
+
+impl From<&crate::Options> for GcOptions {
+    fn from(options: &crate::Options) -> Self {
+        Self {
+            burn_gc: options.burn_gc,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct Gc {
     /// The current root objects
     roots: Vec<GcValue>,
@@ -51,11 +64,12 @@ pub struct Gc {
     current_side: Side,
     /// A vector of each allocation's id and current pointer
     allocations: Vec<(AllocId, HeapPointer)>,
+    options: GcOptions,
 }
 
 impl Gc {
     /// Create a new GC instance
-    pub fn new() -> Self {
+    pub fn new(options: &crate::Options) -> Self {
         trace!("Initializing GC");
 
         let (left, right) = {
@@ -87,6 +101,7 @@ impl Gc {
             roots: Vec::new(),
             current_side: Side::Left,
             latest: left,
+            options: GcOptions::from(options),
         }
     }
 
@@ -94,8 +109,9 @@ impl Gc {
     pub fn allocate(&mut self, size: usize) -> Option<(GcValue, AllocId)> {
         trace!("Allocating size {}", size);
 
-        #[cfg(feature = "force_gc_cleanup")]
-        self.collect();
+        if self.options.burn_gc {
+            self.collect();
+        }
 
         let (block_end, block_start) = (
             *self.latest as usize + size + 1,
@@ -144,8 +160,9 @@ impl Gc {
 
         trace!("Allocating for size {} and id {}", size, id.0);
 
-        #[cfg(feature = "force_gc_cleanup")]
-        self.collect();
+        if self.options.burn_gc {
+            self.collect();
+        }
 
         let (block_end, block_start) = (
             *self.latest as usize + size + 1,
@@ -203,6 +220,8 @@ impl Gc {
         };
         self.latest = heap;
 
+        trace!("Allocations before collect: {}", self.allocations.len());
+
         let mut new_allocations = Vec::new();
         // Iterate over allocations to keep to move them onto the new heap
         for (id, size) in keep {
@@ -224,6 +243,8 @@ impl Gc {
             self.latest = self.latest.wrapping_add(size).into();
         }
         self.allocations = new_allocations;
+
+        trace!("Allocations after collect: {}", self.allocations.len());
 
         // Overwrite old heap
         unsafe {
@@ -280,8 +301,9 @@ impl Gc {
         if let Some(index) = self.roots.iter().position(|value| value.id == id) {
             self.roots.remove(index);
 
-            #[cfg(feature = "force_gc_cleanup")]
-            self.collect();
+            if self.options.burn_gc {
+                self.collect();
+            }
 
             return Ok(());
         }
@@ -311,6 +333,7 @@ impl Gc {
                     ))
                 }
             }
+
             (Some(ptr), None, Some(value)) => {
                 if !mem::size_of::<T>() > value.size {
                     ptr::write(*ptr as *mut T, data);
@@ -324,6 +347,7 @@ impl Gc {
                     ))
                 }
             }
+
             _ => Err(format!(
                 "Id {:?} could not be fetched.\nSelf: {:?}",
                 id.into(),
@@ -366,6 +390,7 @@ impl Gc {
             self.get_side(),
             *self.latest as usize - *self.get_side() as usize
         );
+
         GcData {
             heap_size: HEAP_HALF_SIZE,
             heap_usage: *self.latest as usize - *self.get_side() as usize,
@@ -515,7 +540,7 @@ mod tests {
     fn alloc_value() {
         use crate::Value;
 
-        let mut gc = Gc::new();
+        let mut gc = Gc::new(&crate::OptionBuilder::new("./alloc_val").build());
 
         let (int, int_id) = gc.allocate(size_of::<Value>()).unwrap();
         unsafe {
@@ -537,7 +562,7 @@ mod tests {
 
     #[test]
     fn alloc_usizes() {
-        let mut gc = Gc::new();
+        let mut gc = Gc::new(&crate::OptionBuilder::new("./alloc_usizes").build());
 
         let (keep, keep_id) = gc.allocate(size_of::<usize>()).unwrap();
         unsafe {
@@ -586,7 +611,7 @@ mod tests {
 
     #[test]
     fn gc_test() {
-        let mut gc = Gc::new();
+        let mut gc = Gc::new(&crate::OptionBuilder::new("./gc_test").build());
 
         let (mut ten, ten_id) = gc.allocate(size_of::<usize>()).unwrap();
         println!("Allocated usize: Ptr: {:p}", gc.get_ptr(ten_id).unwrap());

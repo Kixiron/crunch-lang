@@ -68,6 +68,10 @@ pub enum TokenType {
     #[token = "true"]
     #[token = "false"]
     Bool,
+    #[token = "@print"]
+    Print,
+    #[token = "@collect"]
+    Collect,
 }
 
 #[allow(missing_debug_implementations)]

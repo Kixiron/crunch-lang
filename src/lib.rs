@@ -116,7 +116,18 @@
 //! `float`: A semi-dynamically sized float of up to 64 bits
 //! `void`: Nothing
 //! `nullable<ty>`: Makes a type able to be null. `ty` is the contained type. The contained value can be `ty` or `null`
+//! `result<ty: Ok, ty: Err>:
 //! `bool`: A boolean value of either `true` or `false`
+//!
+//! ## Language Builtins
+//! -----
+//!
+//! `@print` Prints to stdout
+//! `@collect` Forces a GC collection cycle
+//! `@assert` Assertions
+//! `@try` Unwrap an error or null type
+//! `@await` Async code
+//! `@spawn` Spawns a thread
 //!
 
 /// The number of available registers for the VM
@@ -134,7 +145,7 @@ macro_rules! unreachable {
         std::unreachable!();
 
         #[cfg(not(debug_assertions))]
-        unsafe { std::hint::unreachable_unchecked() }
+        unsafe { std::hint::unreachable_unchecked(); }
     }};
 
     ($($arg:tt)*) => {{
@@ -142,7 +153,7 @@ macro_rules! unreachable {
         std::unreachable!($($arg)*);
 
         #[cfg(not(debug_assertions))]
-        unsafe { std::hint::unreachable_unchecked() }
+        unsafe { std::hint::unreachable_unchecked(); }
     }};
 }
 
@@ -150,7 +161,8 @@ macro_rules! unreachable {
 #[macro_export]
 macro_rules! trace {
     ($($arg:tt)*) => {
-        log::trace!("[{} {}:{}] {}", file!(), line!(), column!(), format_args!($($arg)*))
+        // log::trace!("[{} {}:{}] {}", file!(), line!(), column!(), format_args!($($arg)*));
+        log::trace!($($arg)*);
     }
 }
 
@@ -158,17 +170,20 @@ macro_rules! trace {
 mod bytecode;
 /// The main Crunch interface
 mod crunch;
+/// The Garbage Collector
 mod gc;
 /// Instruction definitions and executions
 mod instruction;
+/// The Interpreter
+mod interpreter;
 /// Helper types
 mod newtypes;
 /// Front-end language parsing
 mod parser;
-/// The main VM
-mod registers;
 /// Values contained within the VM
 mod value;
+/// The main VM
+mod vm;
 
 pub use crate::crunch::Crunch;
 pub use bytecode::*;
@@ -176,5 +191,66 @@ pub use gc::*;
 pub use instruction::*;
 pub use newtypes::*;
 pub use parser::*;
-pub use registers::*;
 pub use value::*;
+pub use vm::*;
+
+use std::path::PathBuf;
+
+#[derive(Debug, structopt::StructOpt, Clone)]
+pub struct Options {
+    /// The target file
+    #[structopt(parse(from_os_str))]
+    pub file: PathBuf,
+
+    /// Activates a GC Collection cycle at every opportunity
+    #[structopt(long = "--burn-gc")]
+    pub burn_gc: bool,
+
+    /// Activates detailed debug logging
+    #[structopt(long = "--debug-log")]
+    pub debug_log: bool,
+
+    /// Allows some runtime errors to be ignored
+    #[structopt(long = "--fault-tolerant")]
+    pub fault_tolerant: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct OptionBuilder {
+    file: PathBuf,
+    burn_gc: bool,
+    debug_log: bool,
+    fault_tolerant: bool,
+}
+
+impl OptionBuilder {
+    pub fn new(file: impl Into<PathBuf>) -> Self {
+        Self {
+            file: file.into(),
+            burn_gc: false,
+            debug_log: false,
+            fault_tolerant: false,
+        }
+    }
+
+    pub fn burn_gc(&mut self, b: bool) {
+        self.burn_gc = b
+    }
+
+    pub fn debug_log(&mut self, b: bool) {
+        self.debug_log = b
+    }
+
+    pub fn fault_tolerant(&mut self, b: bool) {
+        self.fault_tolerant = b
+    }
+
+    pub fn build(self) -> Options {
+        Options {
+            file: self.file,
+            burn_gc: self.burn_gc,
+            debug_log: self.debug_log,
+            fault_tolerant: self.fault_tolerant,
+        }
+    }
+}
