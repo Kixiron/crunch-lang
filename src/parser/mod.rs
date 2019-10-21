@@ -488,7 +488,7 @@ fn parse_test() {
                     CODE,
                     ast,
                     &bytecode,
-                    super::bytecode::encode_program(&bytecode.0, &bytecode.1)
+                    super::bytecode::encode_program(bytecode.0.clone(), bytecode.1.clone())
                         .into_iter()
                         .map(|b| format!("{:02X}", b))
                         .collect::<Vec<String>>()

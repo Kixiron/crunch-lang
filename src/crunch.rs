@@ -160,7 +160,7 @@ impl Crunch {
     /// Encode the currently loaded program as bytes
     #[inline]
     fn encode(&self) -> Vec<u8> {
-        encode_program(&self.instructions, &self.vm.functions)
+        encode_program(self.instructions.clone(), self.vm.functions.clone())
     }
 
     #[inline]

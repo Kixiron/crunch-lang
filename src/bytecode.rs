@@ -12,7 +12,7 @@ pub const INSTRUCTION_BYTES: [u8; 25] = [
 ];
 
 #[inline]
-fn decode(instruction: [u8; INSTRUCTION_LENGTH], value: Option<Value>) -> Instruction {
+fn decode_instruction(instruction: [u8; INSTRUCTION_LENGTH], value: Option<Value>) -> Instruction {
     use std::{convert::TryInto, mem::size_of};
 
     let instruction = match instruction[0] {
@@ -71,9 +71,7 @@ fn decode(instruction: [u8; INSTRUCTION_LENGTH], value: Option<Value>) -> Instru
 }
 
 #[inline]
-fn encode(instruction: Instruction) -> ([u8; INSTRUCTION_LENGTH], Option<Value>) {
-    use std::mem::size_of;
-
+fn encode_instruction(instruction: Instruction) -> ([u8; INSTRUCTION_LENGTH], Option<Value>) {
     let mut bytes = [0; INSTRUCTION_LENGTH];
     let mut value = None;
 
@@ -196,152 +194,252 @@ fn encode(instruction: Instruction) -> ([u8; INSTRUCTION_LENGTH], Option<Value>)
             bytes[0] = 0x16;
         }
 
-        Instruction::Illegal => unreachable!(),
+        Instruction::Illegal => unreachable!(
+            "I mean, why are you *purposefully* making an Illegal Instruction? Just... Why?"
+        ),
     }
 
     (bytes, value)
 }
 
-#[inline]
-pub fn encode_program(main: &[Instruction], functions: &[Vec<Instruction>]) -> Vec<u8> {
-    // Encode the main function and strings
-    let (main_bytes, main_values) = encode_instructions(main);
-
-    let (func_bytes, func_values): (Vec<u8>, Vec<Value>) = {
-        let (mut func_bytes, mut func_values) = (Vec::new(), Vec::new());
-
-        func_bytes.extend_from_slice(&(functions.len() as u32).to_be_bytes());
-        println!("Num functions {}", functions.len());
-
-        // Encode each function to bytecode and store all their strings
-        for function in functions {
-            // Encode the function
-            let (bytes, values) = encode_instructions(function);
-            // Push the length of the function to the stored bytes
-            func_bytes.extend_from_slice(&(function.len() as u32).to_be_bytes());
-            // Push the instructions to the stored bytes
-            func_bytes.extend_from_slice(&bytes);
-            // Push the strings to the stored strings
-            func_values.extend_from_slice(&values);
-        }
-
-        (func_bytes, func_values)
-    };
-
-    // Encode the strings
-    let mut values = {
-        // Combine the function strings and the main function strings
-        let mut values = func_values;
-        values.extend_from_slice(&main_values);
-
-        // Prepare vec for encoded values
-        let mut value_bytes = Vec::with_capacity(std::mem::size_of::<u32>() + (values.len() * 8));
-        value_bytes.extend_from_slice(&(values.len() as u32).to_be_bytes());
-
-        println!("Num values {}", values.len());
-
-        // Prepare vec for encoded strings
-        let mut string_bytes = std::iter::repeat(0)
-            .take(std::mem::size_of::<u32>())
-            .collect::<Vec<u8>>();
-        let mut num_strings = 0_u32;
-
-        for val in values {
-            let (value, string): ([u8; 8], Option<&[u8]>) = val.as_bytes();
-
-            // Add the value to encoded values
-            value_bytes.extend_from_slice(&value);
-
-            // Add the string to the encoded strings
-            if let Some(string) = string {
-                string_bytes.extend_from_slice(&(string.len() as u32).to_be_bytes());
-                string_bytes.extend_from_slice(string);
-                num_strings += 1;
-            }
-        }
-
-        println!("Num strings {}", num_strings);
-
-        string_bytes[0..std::mem::size_of::<u32>()].copy_from_slice(&num_strings.to_be_bytes());
-
-        value_bytes
-    };
-
-    values.extend_from_slice(&func_bytes);
-    values.extend_from_slice(&main_bytes);
-
-    // Layout:
-    // Values
-    //     Function Values
-    //     Main Values
-    // Functions
-    // Main
-    values
+macro_rules! append {
+    ($consumer:tt, $($victim:tt,)*) => {{
+        $(
+            $consumer.extend_from_slice(&$victim);
+        )*
+    }};
 }
 
-#[inline]
-pub fn decode_program(bytes: &[u8]) -> (Vec<Instruction>, Vec<Vec<Instruction>>) {
-    use std::convert::TryInto;
+use std::{convert::TryInto, mem::size_of};
 
-    let mut index = 0;
+pub fn decode_program(program: &[u8]) -> (Vec<Instruction>, Vec<Vec<Instruction>>) {
+    let (function_strings, main_strings, program) = decode_strings(program);
 
-    let mut values = {
-        let num_values = take_usize(&mut index, bytes);
-        let mut values = VecDeque::with_capacity(num_values);
+    let (mut function_values, program) = decode_values(program, function_strings);
+    let (mut main_values, program) = decode_values(program, main_strings);
 
-        println!("Num values: {}", num_values);
+    let number_functions = u32::from_be_bytes(program[0..size_of::<u32>()].try_into().unwrap());
+    let mut functions = Vec::with_capacity(number_functions as usize);
 
-        let raw_vals = {
-            let mut values: Vec<&[u8]> = Vec::new();
-            for _ in 0..num_values {
-                values.push(&bytes[index..index + 8]);
-                index += 8;
-            }
-            values
-        };
+    let mut program = &program[size_of::<u32>()..];
+    for _ in 0..number_functions {
+        let (function, prog) = decode_function(program, &mut function_values);
+        functions.push(function);
+        program = prog;
+    }
 
-        let num_strings = take_usize(&mut index, bytes) as u32;
-        println!("Num strings: {}", num_strings);
-        let mut strings = VecDeque::new();
-        for _ in 0..num_strings {
-            let str_len = take_usize(&mut index, bytes) as u32;
-
-            strings.push_back(
-                String::from_utf8(bytes[index..index + str_len as usize].to_vec()).unwrap(),
-            );
-
-            index += str_len as usize;
-        }
-
-        for val in raw_vals {
-            values.push_back(Value::from_bytes(val.try_into().unwrap(), &mut strings).unwrap());
-        }
-
-        values
-    };
-
-    let functions = {
-        let num_functions = take_usize(&mut index, bytes);
-        let mut functions = Vec::with_capacity(num_functions);
-        println!("Num functions {}", num_functions);
-
-        for _ in 0..num_functions {
-            let len = take_usize(&mut index, bytes);
-
-            functions.push(decode_instructions(
-                &bytes[index..index + (len * INSTRUCTION_LENGTH)],
-                &mut values,
-            ));
-
-            index += len * INSTRUCTION_LENGTH;
-        }
-
-        functions
-    };
-
-    let main = decode_instructions(&bytes[index..], &mut values);
+    let (main, _program) = decode_function(program, &mut main_values);
 
     (main, functions)
+}
+
+fn decode_function<'a>(
+    program: &'a [u8],
+    values: &mut VecDeque<Value>,
+) -> (Vec<Instruction>, &'a [u8]) {
+    let mut index = 0;
+
+    let number_instructions =
+        u32::from_be_bytes(program[index..index + size_of::<u32>()].try_into().unwrap());
+    index += size_of::<u32>();
+
+    let mut instructions = Vec::with_capacity(number_instructions as usize);
+
+    for _ in 0..number_instructions {
+        let bytes: [u8; INSTRUCTION_LENGTH] = program[index..index + INSTRUCTION_LENGTH]
+            .try_into()
+            .unwrap();
+
+        let value = if bytes[0] == 0x01 {
+            Some(values.pop_front().unwrap())
+        } else {
+            None
+        };
+
+        instructions.push(decode_instruction(bytes, value));
+
+        index += INSTRUCTION_LENGTH;
+    }
+
+    (instructions, &program[index..])
+}
+
+fn decode_values(program: &[u8], mut strings: VecDeque<String>) -> (VecDeque<Value>, &[u8]) {
+    let mut index = 0;
+
+    let number_values =
+        u32::from_be_bytes(program[index..index + size_of::<u32>()].try_into().unwrap());
+    index += size_of::<u32>();
+
+    let mut values = VecDeque::with_capacity(number_values as usize);
+
+    for _ in 0..number_values {
+        let bytes = program[index..index + 8].try_into().unwrap();
+
+        let value = Value::from_bytes(bytes, &mut strings).unwrap();
+
+        values.push_back(value);
+
+        index += 8;
+    }
+
+    (values, &program[index..])
+}
+
+fn decode_strings(program: &[u8]) -> (VecDeque<String>, VecDeque<String>, &[u8]) {
+    let mut index = 0;
+
+    let number_function_strings =
+        u32::from_be_bytes(program[index..index + size_of::<u32>()].try_into().unwrap());
+    index += size_of::<u32>();
+
+    let mut function_strings = VecDeque::with_capacity(number_function_strings as usize);
+
+    for _ in 0..number_function_strings {
+        let string_len =
+            u32::from_be_bytes(program[index..index + size_of::<u32>()].try_into().unwrap());
+        index += size_of::<u32>();
+
+        let string =
+            String::from_utf8(program[index..index + string_len as usize].to_vec()).unwrap();
+
+        function_strings.push_back(string);
+    }
+
+    let number_main_strings =
+        u32::from_be_bytes(program[index..index + size_of::<u32>()].try_into().unwrap());
+    index += size_of::<u32>();
+
+    let mut main_strings = VecDeque::with_capacity(number_main_strings as usize);
+
+    for _ in 0..number_main_strings {
+        let string_len =
+            u32::from_be_bytes(program[index..index + size_of::<u32>()].try_into().unwrap());
+        index += size_of::<u32>();
+
+        println!(
+            "String Length: {}; Index + String: {}",
+            string_len,
+            index + string_len as usize
+        );
+
+        let string =
+            String::from_utf8(program[index..index + string_len as usize].to_vec()).unwrap();
+
+        main_strings.push_back(string);
+    }
+
+    (function_strings, main_strings, &program[index..])
+}
+
+pub fn encode_program(main: Vec<Instruction>, functions: Vec<Vec<Instruction>>) -> Vec<u8> {
+    let (main_bytes, main_values) = encode_function(main);
+    let (function_bytes, function_values) = encode_functions(functions);
+
+    let (main_value_bytes, main_value_strings) = encode_values(main_values);
+    let (function_value_bytes, function_value_strings) = encode_values(function_values);
+
+    let mut output_vec = Vec::with_capacity(
+        main_bytes.len()
+            + main_value_bytes.len()
+            + main_value_strings.len()
+            + function_bytes.len()
+            + function_value_bytes.len()
+            + function_value_strings.len(),
+    );
+
+    // Strings
+    //      Functions
+    //      Main
+    // Values
+    //      Functions
+    //      Main
+    // Instructions
+    //      Functions
+    //      Main
+
+    append!(
+        output_vec,
+        function_value_strings,
+        main_value_strings,
+        function_value_bytes,
+        main_value_bytes,
+        function_bytes,
+        main_bytes,
+    );
+
+    output_vec
+}
+
+fn encode_functions(functions: Vec<Vec<Instruction>>) -> (Vec<u8>, Vec<Value>) {
+    // Create the output vector of bytes
+    let mut output_bytes =
+        Vec::with_capacity(size_of::<u32>() + (functions.len() * INSTRUCTION_LENGTH));
+
+    // Create the output vector of values
+    let mut output_values = Vec::new();
+
+    // Add the number of functions to output_bytes
+    output_bytes.extend_from_slice(&(functions.len() as u32).to_be_bytes());
+
+    // For each function, encode all of its instructions and capture their values
+    for function in functions {
+        let (bytes, values) = encode_function(function);
+
+        output_bytes.extend_from_slice(&bytes);
+        output_values.extend_from_slice(&values);
+    }
+
+    (output_bytes, output_values)
+}
+
+fn encode_function(function: Vec<Instruction>) -> (Vec<u8>, Vec<Value>) {
+    // Create the output vector of bytes
+    let mut output_bytes =
+        Vec::with_capacity(size_of::<u32>() + (function.len() * INSTRUCTION_LENGTH));
+
+    // Add the length of the function to the output bytes
+    output_bytes.extend_from_slice(&(function.len() as u32).to_be_bytes());
+
+    // Create the output vector of values
+    let mut output_values = Vec::new();
+
+    // For each instruction, encode it and capture the Value (If any)
+    for instruction in function {
+        let (bytes, value) = encode_instruction(instruction);
+
+        output_bytes.extend_from_slice(&bytes);
+
+        if let Some(value) = value {
+            output_values.push(value);
+        }
+    }
+
+    (output_bytes, output_values)
+}
+
+fn encode_values(values: Vec<Value>) -> (Vec<u8>, Vec<u8>) {
+    let mut value_bytes = Vec::with_capacity(size_of::<u32>() + (values.len() * 8));
+
+    value_bytes.extend_from_slice(&(values.len() as u32).to_be_bytes());
+
+    let mut value_strings = Vec::new();
+
+    for value in values {
+        let (bytes, string) = value.as_bytes();
+
+        value_bytes.extend_from_slice(&bytes);
+
+        if let Some(string) = string {
+            // Add the length of the string
+            value_strings.extend_from_slice(&(string.len() as u32).to_be_bytes());
+
+            // Add the string
+            value_strings.extend_from_slice(string);
+        }
+    }
+
+    (value_bytes, value_strings)
 }
 
 pub fn disassemble(bytes: &[u8]) -> String {
@@ -460,25 +558,6 @@ pub fn disassemble(bytes: &[u8]) -> String {
 }
 
 #[inline]
-fn encode_instructions(instructions: &[Instruction]) -> (Vec<u8>, Vec<Value>) {
-    let mut instruction_bytes = vec![0_u8; instructions.len() * INSTRUCTION_LENGTH];
-    let mut values = Vec::default();
-
-    for (index, instruction) in instructions.into_iter().enumerate() {
-        let (bytes, val) = encode(instruction.clone());
-
-        instruction_bytes
-            [index * INSTRUCTION_LENGTH..(index * INSTRUCTION_LENGTH) + INSTRUCTION_LENGTH]
-            .copy_from_slice(&bytes);
-        if let Some(val) = val {
-            values.push(val);
-        }
-    }
-
-    (instruction_bytes, values)
-}
-
-#[inline]
 fn decode_instructions(bytes: &[u8], values: &mut VecDeque<Value>) -> Vec<Instruction> {
     use std::convert::TryInto;
 
@@ -487,9 +566,9 @@ fn decode_instructions(bytes: &[u8], values: &mut VecDeque<Value>) -> Vec<Instru
         let chunk: [u8; INSTRUCTION_LENGTH] = chunk.try_into().expect("Invalid chunk length");
 
         let instruction = if chunk[0] == 0x01 {
-            decode(chunk, values.pop_front())
+            decode_instruction(chunk, values.pop_front())
         } else {
-            decode(chunk, None)
+            decode_instruction(chunk, None)
         };
         instructions.push(instruction);
     }
@@ -543,7 +622,7 @@ mod tests {
             Vec::new(),
         );
 
-        let encoded_program = encode_program(&instructions, &functions);
+        let encoded_program = encode_program(instructions.clone(), functions.clone());
         let decoded_program = decode_program(&encoded_program);
 
         let mut file = std::fs::File::create("./examples/hello_world.crunched").unwrap();
