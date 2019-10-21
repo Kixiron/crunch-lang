@@ -146,6 +146,7 @@ impl<'a> Interpreter<'a> {
 
     /// Interpret a function
     fn interp_func(&mut self, node_index: usize) -> Result<()> {
+        #[allow(irrefutable_let_patterns)] // Note: Will not always be irrefutable
         let func = if let Node::Func(func) = self.ast.remove(node_index) {
             func
         } else {

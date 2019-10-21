@@ -19,19 +19,23 @@
 //!
 //! ## Usage
 //!
+//! Executing a source code file
+//!
+//! ```rust
+//! use crunch::{OptionBuilder, Crunch};
+//!
+//! Crunch::run_source_file(OptionBuilder::new("./source_file.crunch").build());
+//! ```
+//!
 //! Reading bytecode from a file and executing
 //!
 //! ```rust
-//! use std::{fs::File, io::Read, convert::TryFrom};
-//! use crunch::Crunch;
+//! use crunch::{OptionBuilder, Crunch};
 //!
-//! let mut file = File::open("examples/hello_world.crunch").unwrap();
-//! let mut bytes: Vec<u8> = Vec::new();
-//! file.read_to_end(&mut bytes);
-//!
-//! let mut crunch = Crunch::try_from(&bytes).unwrap(); // Will panic if the bytecode has an invalid format
-//! crunch.execute(); // Executes the program
+//! Crunch::run_byte_file(OptionBuilder::new("./bytecode_file.crunched").build());
 //! ```
+//!
+//! This, however, is an incredibly high-level usage of the language, akin to the behind-the-scenes of the CLI
 //!
 //! ## Target Syntax
 //!
@@ -133,6 +137,8 @@
 /// The number of available registers for the VM
 const NUMBER_REGISTERS: usize = 256;
 
+/// Signals an unreachable codepath, uses std in debug mode and
+/// unreachable_unchecked in release
 #[doc(hidden)]
 #[macro_export]
 macro_rules! unreachable {
@@ -153,6 +159,7 @@ macro_rules! unreachable {
     }};
 }
 
+/// A wrapper around the trace macro from log
 #[doc(hidden)]
 #[macro_export]
 macro_rules! trace {
