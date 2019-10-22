@@ -4,6 +4,8 @@ use derive_more::{
 use serde::{Deserialize, Serialize};
 use shrinkwraprs::Shrinkwrap;
 
+// TODO: Are these types really needed?
+
 /// The instruction index for the VM
 #[derive(
     Debug,

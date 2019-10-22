@@ -1,6 +1,8 @@
 use super::INSTRUCTION_LENGTH;
-use crate::{Instruction, Value};
+use crate::{Instruction, Value, VALUE_LENGTH};
 use std::{collections::VecDeque, convert::TryInto, mem::size_of};
+
+// TODO: Document & Test all functions
 
 pub fn decode_program(program: &[u8]) -> (Vec<Instruction>, Vec<Vec<Instruction>>) {
     let (function_strings, main_strings, program) = decode_strings(program);
@@ -70,13 +72,13 @@ fn decode_values(program: &[u8], mut strings: VecDeque<String>) -> (VecDeque<Val
 
     if number_values != 0 {
         for _ in 0..number_values {
-            let bytes = program[index..index + 8].try_into().unwrap();
+            let bytes = program[index..index + VALUE_LENGTH].try_into().unwrap();
 
             let value = Value::from_bytes(bytes, &mut strings).unwrap();
 
             values.push_back(value);
 
-            index += 8;
+            index += VALUE_LENGTH;
         }
     }
 

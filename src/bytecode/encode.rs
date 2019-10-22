@@ -1,6 +1,8 @@
 use super::INSTRUCTION_LENGTH;
-use crate::{Instruction, Value};
+use crate::{Instruction, Value, VALUE_LENGTH};
 use std::mem::size_of;
+
+// TODO: Document & Test all functions
 
 pub fn encode_program(main: Vec<Instruction>, functions: Vec<Vec<Instruction>>) -> Vec<u8> {
     // Get the functions to a byte format and extract their values
@@ -90,7 +92,7 @@ fn encode_function(function: Vec<Instruction>) -> (Vec<u8>, Vec<Value>) {
 }
 
 fn encode_values(values: Vec<Value>) -> (Vec<u8>, Vec<u8>) {
-    let mut value_bytes = Vec::with_capacity(size_of::<u32>() + (values.len() * 8));
+    let mut value_bytes = Vec::with_capacity(size_of::<u32>() + (values.len() * VALUE_LENGTH));
 
     value_bytes.extend_from_slice(&(values.len() as u32).to_be_bytes());
 

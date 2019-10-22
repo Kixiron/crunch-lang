@@ -1,6 +1,45 @@
 use super::{Index, Register, Value, Vm};
 
+/// A type alias for results that could be a [`RuntimeError`]
+pub type Result<T> = std::result::Result<T, RuntimeError>;
+
+/// A Crunch Runtime Error
+// TODO: Make this more detailed
+#[derive(Debug, Clone)]
+pub struct RuntimeError {
+    /// The type of error
+    pub ty: RuntimeErrorTy,
+    /// The error message
+    pub message: String,
+}
+
+impl RuntimeError {
+    /// Prints the formatted error to stdout
+    // TODO: Make this fancy, and more detailed
+    pub fn emit(&self) {
+        println!("[Crunch Runtime Error: {:?}] {}", self.ty, self.message);
+    }
+}
+
+/// The type of [`RuntimeError`] that occurred
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RuntimeErrorTy {
+    /// An error in the [`GC`]
+    GcError,
+    /// The user attempted to divide by zero
+    DivideByZero,
+    /// The two types are incompatible in the requested operation
+    IncompatibleTypes,
+    /// The program is missing a main function
+    MissingMain,
+    /// The requested variable is null
+    NullVar,
+    /// Thrown when an illegal instruction is executed
+    IllegalInstruction,
+}
+
 /// Instructions for the VM
+// TODO: Document all Instructions
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Instruction {
     /// Load a Value from the GC into a register
@@ -34,68 +73,16 @@ pub enum Instruction {
     LessThan(Register, Register),
 
     Collect,
+    // TODO: Flesh this instruction out
     Return,
     Halt,
 
     Illegal,
 }
 
-#[test]
-fn inst_test() {
-    use Instruction::*;
-
-    //simple_logger::init().unwrap();
-
-    let inst = vec![
-        Cache(0, Value::Bool(true)),
-        Load(0, 0.into()),
-        Print(0.into()),
-        Eq(0.into(), 0.into()),
-        JumpComp(2),
-        Print(0.into()),
-        Print(0.into()),
-        Print(0.into()),
-        Cache(1, Value::Int(1)),
-        Load(1, 1.into()),
-        Cache(2, Value::Int(0)),
-        Load(2, 2.into()),
-        Div(1.into(), 2.into()),
-        Halt,
-    ];
-
-    let mut crunch = crate::Crunch::from((
-        inst,
-        Vec::new(),
-        crate::OptionBuilder::new("./inst_test").build(),
-    ));
-    crunch.execute();
-}
-
-pub type Result<T> = std::result::Result<T, RuntimeError>;
-
-#[derive(Debug, Clone)]
-pub struct RuntimeError {
-    pub ty: RuntimeErrorTy,
-    pub message: String,
-}
-
-impl RuntimeError {
-    pub fn emit(&self) {
-        println!("[Crunch Runtime Error: {:?}] {}", self.ty, self.message);
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum RuntimeErrorTy {
-    GcError,
-    DivideByZero,
-    IncompatibleTypes,
-    MissingMain,
-    NullVar,
-}
-
 impl Instruction {
     /// The execution of each instruction
+    // TODO: Document this bad boy
     #[inline]
     pub fn execute(&self, mut vm: &mut Vm) -> Result<()> {
         match self {
@@ -114,19 +101,7 @@ impl Instruction {
 
                 vm.registers[**reg as usize] = val;
 
-                /*
-                println!(
-                    "vm: [{}]",
-                    vm
-                        .vm
-                        .iter()
-                        .map(|r| format!("{:?}", r))
-                        .collect::<Vec<String>>()
-                        .join(",")
-                );
-                */
-
-                vm.environment.index += Index(1);
+                vm.index += Index(1);
             }
             Instruction::Cache(heap_loc, val) => {
                 trace!("Loading value onto heap at {}, Val: {:?}", heap_loc, val);
@@ -146,7 +121,7 @@ impl Instruction {
 
                     vm.gc.add_root(alloc_val);
 
-                    vm.environment.index += Index(1);
+                    vm.index += Index(1);
 
                     assert_eq!(*heap_loc as usize, *alloc_id);
                 } else {
@@ -160,13 +135,13 @@ impl Instruction {
                 trace!("Loading previous comparison into {}", reg);
 
                 vm.registers[**reg as usize] = Value::Bool(vm.prev_comp);
-                vm.environment.index += Index(1);
+                vm.index += Index(1);
             }
             Instruction::OpToReg(reg) => {
                 trace!("Loading previous operation into {}", reg);
 
                 std::mem::swap(&mut vm.registers[**reg as usize], &mut vm.prev_op);
-                vm.environment.index += Index(1);
+                vm.index += Index(1);
             }
             Instruction::Save(heap_loc, reg) => {
                 trace!("Saving register {} to {}", reg, heap_loc);
@@ -184,13 +159,13 @@ impl Instruction {
                     }
                 }
 
-                vm.environment.index += Index(1);
+                vm.index += Index(1);
             }
             Instruction::DropReg(reg) => {
                 trace!("Clearing register {}", reg);
 
                 vm.registers[**reg as usize] = Value::None;
-                vm.environment.index += Index(1);
+                vm.index += Index(1);
             }
             Instruction::Drop(id) => {
                 trace!("Dropping {:?}", id);
@@ -200,38 +175,38 @@ impl Instruction {
                         message: "Attempted to drop non-existant value".to_string(),
                     });
                 }
-                vm.environment.index += Index(1);
+                vm.index += Index(1);
             }
 
             Instruction::Add(left, right) => {
                 vm.prev_op = ((*vm).get(*left).to_owned() + (*vm).get(*right).to_owned())?;
-                vm.environment.index += Index(1);
+                vm.index += Index(1);
             }
             Instruction::Sub(left, right) => {
                 vm.prev_op = ((*vm).get(*left).to_owned() - (*vm).get(*right).to_owned())?;
-                vm.environment.index += Index(1);
+                vm.index += Index(1);
             }
             Instruction::Mult(left, right) => {
                 vm.prev_op = ((*vm).get(*left).to_owned() * (*vm).get(*right).to_owned())?;
-                vm.environment.index += Index(1);
+                vm.index += Index(1);
             }
             Instruction::Div(left, right) => {
                 vm.prev_op = ((*vm).get(*left).to_owned() / (*vm).get(*right).to_owned())?;
-                vm.environment.index += Index(1);
+                vm.index += Index(1);
             }
 
             Instruction::Print(reg) => {
                 trace!("Printing reg {:?}", reg);
 
                 println!("{}", vm.get(*reg));
-                vm.environment.index += Index(1);
+                vm.index += Index(1);
             }
 
             Instruction::Jump(index) => {
                 trace!("Jumping by offset {}", index);
 
-                let index = Index((*vm.environment.index as i32 + index + 1) as u32);
-                vm.environment.index = index;
+                let index = Index((*vm.index as i32 + index + 1) as u32);
+                vm.index = index;
             }
             Instruction::JumpComp(index) => {
                 trace!(
@@ -241,65 +216,65 @@ impl Instruction {
                 );
 
                 if vm.prev_comp {
-                    let index = Index((*vm.environment.index as i32 + index + 1) as u32);
-                    vm.environment.index = index;
+                    let index = Index((*vm.index as i32 + index + 1) as u32);
+                    vm.index = index;
                 } else {
-                    vm.environment.index += Index(1);
+                    vm.index += Index(1);
                 }
             }
 
             Instruction::And(left, right) => {
                 vm.prev_op = ((*vm).get(*left).to_owned() & (*vm).get(*right).to_owned())?;
-                vm.environment.index += Index(1);
+                vm.index += Index(1);
             }
             Instruction::Or(left, right) => {
                 vm.prev_op = ((*vm).get(*left).to_owned() | (*vm).get(*right).to_owned())?;
-                vm.environment.index += Index(1);
+                vm.index += Index(1);
             }
             Instruction::Xor(left, right) => {
                 vm.prev_op = ((*vm).get(*left).to_owned() ^ (*vm).get(*right).to_owned())?;
-                vm.environment.index += Index(1);
+                vm.index += Index(1);
             }
             Instruction::Not(reg) => {
                 vm.prev_op = (!(*vm).get(*reg).to_owned())?;
-                vm.environment.index += Index(1);
+                vm.index += Index(1);
             }
 
             Instruction::Eq(left, right) => {
                 vm.prev_comp = (*vm).get(*left).to_owned() == (*vm).get(*right).to_owned();
-                vm.environment.index += Index(1);
+                vm.index += Index(1);
             }
             Instruction::NotEq(left, right) => {
                 vm.prev_comp = (*vm).get(*left).to_owned() != (*vm).get(*right).to_owned();
-                vm.environment.index += Index(1);
+                vm.index += Index(1);
             }
             Instruction::GreaterThan(left, right) => {
                 vm.prev_comp = (*vm).get(*left).to_owned() > (*vm).get(*right).to_owned();
-                vm.environment.index += Index(1);
+                vm.index += Index(1);
             }
             Instruction::LessThan(left, right) => {
                 vm.prev_comp = (*vm).get(*left).to_owned() < (*vm).get(*right).to_owned();
-                vm.environment.index += Index(1);
+                vm.index += Index(1);
             }
 
             Instruction::Collect => {
                 trace!("Forcing a GC collect");
 
                 vm.gc.collect();
-                vm.environment.index += Index(1);
+                vm.index += Index(1);
             }
             Instruction::Return => {
-                vm.environment.returning = true;
+                vm.returning = true;
 
                 if let Some(context) = vm.snapshots.pop() {
-                    vm.environment.index = context.0;
+                    vm.index = context.0;
                     vm.registers = context.2;
 
                     if let Some(index) = context.1 {
-                        vm.environment.returning = false;
+                        vm.returning = false;
 
-                        while !vm.environment.returning {
-                            vm.functions[*index as usize][*vm.environment.index as usize]
+                        while !vm.returning {
+                            vm.functions[*index as usize][*vm.index as usize]
                                 .clone()
                                 .execute(&mut vm)?;
                         }
@@ -308,29 +283,32 @@ impl Instruction {
                     }
                 } else {
                     if let Some(location) = vm.return_stack.pop() {
-                        vm.environment.index = location;
+                        vm.index = location;
                     } else {
                         vm.cleanup();
-                        vm.environment.finished_execution = true;
+                        vm.finished_execution = true;
                     }
 
-                    vm.environment.index += Index(1);
+                    vm.index += Index(1);
                 }
             }
             Instruction::Halt => {
                 vm.cleanup();
-                vm.environment.finished_execution = true;
+                vm.finished_execution = true;
             }
 
-            Instruction::Illegal => panic!("Illegal Instruction"),
+            Instruction::Illegal => {
+                return Err(RuntimeError {
+                    ty: RuntimeErrorTy::IllegalInstruction,
+                    message: "Illegal Instruction".to_string(),
+                })
+            }
         }
 
         Ok(())
     }
-}
 
-impl Instruction {
-    #[allow(unused_variables)]
+    /// Turns the instruction into a string representation, for disassembly purposes
     pub fn to_str(&self) -> &'static str {
         match self {
             Self::Load(_, _) => "ld",
@@ -367,5 +345,210 @@ impl Instruction {
 
             Self::Illegal => "illegal",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn variable_ops() {
+        let mut vm = Vm::new(
+            Vec::new(),
+            &crate::OptionBuilder::new("./variable_tests").build(),
+        );
+
+        let cache = Instruction::Cache(0, Value::Int(10));
+        cache.execute(&mut vm).unwrap();
+        assert!(vm.gc.contains(0));
+        assert_eq!(vm.gc.fetch(0), Some(Value::Int(10)));
+
+        let load = Instruction::Load(0, 0.into());
+        load.execute(&mut vm).unwrap();
+        assert_eq!(vm.registers[0], Value::Int(10));
+
+        let comp_to_reg = Instruction::CompToReg(1.into());
+        vm.prev_comp = true;
+        comp_to_reg.execute(&mut vm).unwrap();
+        assert_eq!(vm.registers[1], Value::Bool(true));
+        vm.prev_comp = false;
+        comp_to_reg.execute(&mut vm).unwrap();
+        assert_eq!(vm.registers[1], Value::Bool(false));
+
+        let op_to_reg = Instruction::OpToReg(2.into());
+        vm.prev_op = Value::Int(10);
+        op_to_reg.execute(&mut vm).unwrap();
+        assert_eq!(vm.registers[2], Value::Int(10));
+        vm.prev_op = Value::Int(20);
+        op_to_reg.execute(&mut vm).unwrap();
+        assert_eq!(vm.registers[2], Value::Int(20));
+
+        let save = Instruction::Save(0, 2.into());
+        save.execute(&mut vm).unwrap();
+        assert!(vm.gc.contains(0));
+        assert_eq!(vm.gc.fetch(0), Some(Value::Int(20)));
+
+        let drop_reg = Instruction::DropReg(1.into());
+        drop_reg.execute(&mut vm).unwrap();
+        assert_eq!(vm.registers[1], Value::None);
+
+        let drop = Instruction::Drop(0);
+        assert!(vm.gc.contains(0));
+        assert_eq!(vm.gc.fetch(0), Some(Value::Int(20)));
+        drop.execute(&mut vm).unwrap();
+        vm.gc.collect();
+        assert!(!vm.gc.contains(0));
+        assert_eq!(vm.gc.fetch(0), <Option<usize>>::None);
+    }
+
+    #[test]
+    fn math_ops() {
+        let mut vm = Vm::new(
+            Vec::new(),
+            &crate::OptionBuilder::new("./variable_tests").build(),
+        );
+
+        vm.registers[0] = Value::Int(10);
+        vm.registers[1] = Value::Int(10);
+
+        let add = Instruction::Add(0.into(), 1.into());
+        add.execute(&mut vm).unwrap();
+        assert_eq!(vm.prev_op, Value::Int(10 + 10));
+
+        let sub = Instruction::Sub(0.into(), 1.into());
+        sub.execute(&mut vm).unwrap();
+        assert_eq!(vm.prev_op, Value::Int(10 - 10));
+
+        let mult = Instruction::Mult(0.into(), 1.into());
+        mult.execute(&mut vm).unwrap();
+        assert_eq!(vm.prev_op, Value::Int(10 * 10));
+
+        let div = Instruction::Div(0.into(), 1.into());
+        div.execute(&mut vm).unwrap();
+        assert_eq!(vm.prev_op, Value::Int(10 / 10));
+    }
+
+    #[test]
+    fn print_op() {
+        // TODO: Capture STDOUT to find out if this worked
+    }
+
+    #[test]
+    fn jump_ops() {
+        let mut vm = Vm::new(
+            Vec::new(),
+            &crate::OptionBuilder::new("./variable_tests").build(),
+        );
+
+        // Each executed instruction increments the index by one, so take that into account
+
+        let jump = Instruction::Jump(10);
+        jump.execute(&mut vm).unwrap();
+        assert_eq!(vm.index, 11.into());
+
+        let jump_comp = Instruction::JumpComp(10);
+        jump_comp.execute(&mut vm).unwrap();
+        assert_eq!(vm.index, 12.into());
+        vm.prev_comp = true;
+        jump_comp.execute(&mut vm).unwrap();
+        assert_eq!(vm.index, 23.into());
+    }
+
+    #[test]
+    fn bitwise_ops() {
+        let mut vm = Vm::new(
+            Vec::new(),
+            &crate::OptionBuilder::new("./variable_tests").build(),
+        );
+
+        vm.registers[0] = Value::Int(10);
+        vm.registers[1] = Value::Int(10);
+
+        let and = Instruction::And(0.into(), 1.into());
+        and.execute(&mut vm).unwrap();
+        assert_eq!(vm.prev_op, Value::Int(10 & 10));
+
+        let or = Instruction::Or(0.into(), 1.into());
+        or.execute(&mut vm).unwrap();
+        assert_eq!(vm.prev_op, Value::Int(10 | 10));
+
+        let xor = Instruction::Xor(0.into(), 1.into());
+        xor.execute(&mut vm).unwrap();
+        assert_eq!(vm.prev_op, Value::Int(10 ^ 10));
+
+        let not = Instruction::Not(0.into());
+        not.execute(&mut vm).unwrap();
+        assert_eq!(vm.prev_op, Value::Int(!10));
+    }
+
+    #[test]
+    fn eq_ops() {
+        let mut vm = Vm::new(
+            Vec::new(),
+            &crate::OptionBuilder::new("./variable_tests").build(),
+        );
+
+        vm.registers[0] = Value::Int(10);
+        vm.registers[1] = Value::Int(10);
+
+        let eq = Instruction::Eq(0.into(), 1.into());
+        eq.execute(&mut vm).unwrap();
+        assert_eq!(vm.prev_comp, true);
+
+        vm.registers[0] = Value::Int(20);
+
+        let not_eq = Instruction::NotEq(0.into(), 1.into());
+        not_eq.execute(&mut vm).unwrap();
+        assert_eq!(vm.prev_comp, true);
+
+        let greater_than = Instruction::GreaterThan(0.into(), 1.into());
+        greater_than.execute(&mut vm).unwrap();
+        assert_eq!(vm.prev_comp, true);
+
+        vm.registers[0] = Value::Int(0);
+
+        let less_than = Instruction::LessThan(0.into(), 1.into());
+        less_than.execute(&mut vm).unwrap();
+        assert_eq!(vm.prev_comp, true);
+    }
+
+    #[test]
+    fn misc_ops() {
+        let mut vm = Vm::new(
+            Vec::new(),
+            &crate::OptionBuilder::new("./variable_tests").build(),
+        );
+
+        let collect = Instruction::Collect;
+
+        let (discard, discard_id) = vm.gc.allocate(std::mem::size_of::<Value>()).unwrap();
+        unsafe {
+            vm.gc
+                .write(discard_id, Value::Int(10), Some(&discard))
+                .unwrap();
+        }
+        assert!(vm.gc.contains(discard_id));
+        assert!(vm.gc.fetch(discard_id) == Some(Value::Int(10)));
+        collect.execute(&mut vm).unwrap();
+        assert!(!vm.gc.contains(discard_id));
+
+        // TODO: Find way to test these
+        // Return,
+        // Halt,
+    }
+
+    #[test]
+    fn illegal_op() {
+        let mut vm = Vm::new(
+            Vec::new(),
+            &crate::OptionBuilder::new("./variable_tests").build(),
+        );
+
+        let illegal = Instruction::Illegal;
+        assert_eq!(
+            illegal.execute(&mut vm).err().unwrap().ty,
+            RuntimeErrorTy::IllegalInstruction
+        );
     }
 }

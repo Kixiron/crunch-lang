@@ -5,6 +5,7 @@ use std::{alloc, mem, ptr, slice};
 /// 64mb per half of heap
 const HEAP_HALF_SIZE: usize = 1000 * 1000 * 64;
 
+/// Gets the memory page size
 #[inline]
 #[cfg(target_family = "unix")]
 pub(crate) fn page_size() -> usize {
@@ -19,6 +20,7 @@ pub(crate) fn page_size() -> usize {
     val as usize
 }
 
+/// Gets the memory page size
 #[inline]
 #[cfg(target_family = "windows")]
 pub(crate) fn page_size() -> usize {
@@ -32,13 +34,19 @@ pub(crate) fn page_size() -> usize {
         system_info.assume_init().dwPageSize as usize
     };
 
+    if val == 0 {
+        panic!("could not determine page size.");
+    }
+
     trace!("Memory Page Size: {}", val);
 
     val
 }
 
+/// The options for an initialized GC
 #[derive(Debug)]
 pub struct GcOptions {
+    /// Activates a GC collect at every opportunity
     pub burn_gc: bool,
 }
 
@@ -50,6 +58,7 @@ impl From<&crate::Options> for GcOptions {
     }
 }
 
+/// The Crunch Garbage Collector
 #[derive(Debug)]
 pub struct Gc {
     /// The current root objects
@@ -262,6 +271,7 @@ impl Gc {
         }
     }
 
+    /// Fetch a currently allocated value
     fn fetch_value<Id: Into<AllocId> + Copy>(&self, id: Id) -> Option<&GcValue> {
         for root in &self.roots {
             if root.id == id.into() {
@@ -364,6 +374,7 @@ impl Gc {
             None
         }
 
+        // TODO: Investigate this
         // Strange bug, the above code works fine, but replacing it with
         // if let Some(ptr) = self.get_ptr(id) {
         //     Some(unsafe { ptr::read(*ptr as *const T) })
@@ -406,11 +417,16 @@ impl Gc {
     }
 }
 
+/// The status of the GC
 #[derive(Debug, Copy, Clone)]
 pub struct GcData {
+    /// Size of the heap
     heap_size: usize,
+    /// Amount of the heap currently used
     heap_usage: usize,
+    /// Number of Root objects
     num_roots: usize,
+    /// Total number of allocated objects
     num_allocations: usize,
 }
 
@@ -445,6 +461,7 @@ impl std::ops::Not for Side {
     }
 }
 
+/// The id of a currently allocated object
 #[derive(
     Debug,
     Copy,
@@ -465,6 +482,7 @@ impl std::ops::Not for Side {
 #[repr(transparent)]
 pub struct AllocId(usize);
 
+/// A pointer into the Heap
 #[derive(Debug, Copy, Clone, PartialEq, Eq, From, Into, Constructor, Shrinkwrap, Mul, MulAssign)]
 #[repr(transparent)]
 pub struct HeapPointer(*mut u8);
@@ -475,16 +493,22 @@ impl std::fmt::Pointer for HeapPointer {
     }
 }
 
+/// A value contained in the GC
 #[derive(Debug, Clone)]
 pub struct GcValue {
+    /// The id of the object, points into an hashmap containing the true pointer of the object
     id: AllocId,
+    /// The size of the object, in bytes
     size: usize,
+    /// The children of the value, will all be collected when it itself is collected
     children: Vec<GcValue>,
+    /// Whether or not the object is marked, for collection purposes
     marked: bool,
 }
 
 impl GcValue {
     /// Fetches The id and size of all children
+    #[inline]
     pub fn collect(&mut self) -> Vec<(AllocId, usize)> {
         let mut keep = Vec::new();
 
@@ -500,6 +524,8 @@ impl GcValue {
         keep
     }
 
+    /// Fetches a child of the Value
+    #[inline]
     pub fn fetch_child<Id: Into<AllocId> + Copy>(&self, id: Id) -> Option<&GcValue> {
         for child in &self.children {
             if child.id == id.into() {
@@ -515,11 +541,13 @@ impl GcValue {
     }
 
     /// Adds a child
+    #[inline]
     pub fn add_child(&mut self, child: GcValue) {
         self.children.push(child);
     }
 
     /// Unmarks self and all children
+    #[inline]
     pub fn unmark(&mut self) {
         self.marked = false;
 

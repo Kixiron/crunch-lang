@@ -1,4 +1,5 @@
 use crate::{
+    instruction::Result,
     instruction::{RuntimeError, RuntimeErrorTy},
     parser::*,
     Instruction, Options, Value, NUMBER_REGISTERS,
@@ -22,8 +23,6 @@ impl<'a> Scope<'a> {
     }
 }
 
-type Result<T> = std::result::Result<T, RuntimeError>;
-
 /// Convenience macro to get the next available register's position and reserve it
 macro_rules! pos {
     ($var:expr, $addr:expr) => {{
@@ -33,9 +32,12 @@ macro_rules! pos {
     }};
 }
 
+/// Gets the next available GC id, inserts it into the GC and returns it
 macro_rules! next_gc_id {
     ($gc:expr) => {{
-        *$gc.iter().last().unwrap_or(&0) as u32
+        let id = *$gc.iter().last().unwrap_or(&0);
+        $gc.insert(id);
+        id as u32
     }};
 }
 

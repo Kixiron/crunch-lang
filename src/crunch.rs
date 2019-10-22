@@ -22,15 +22,14 @@ impl Crunch {
     pub fn execute(&mut self) {
         trace!("Starting Crunch Execution");
 
-        while !self.vm.environment.finished_execution {
+        while !self.vm.finished_execution {
             trace!(
                 "Executing instruction: {:?}",
-                self.instructions[*self.vm.environment.index as usize]
+                self.instructions[*self.vm.index as usize]
             );
 
-            if let Err(err) =
-                self.instructions[*self.vm.environment.index as usize].execute(&mut self.vm)
-            {
+            // If an error occurs during execution, emit the error and return
+            if let Err(err) = self.instructions[*self.vm.index as usize].execute(&mut self.vm) {
                 err.emit();
                 trace!("Finished Crunch Execution with Error");
                 return;
@@ -40,6 +39,7 @@ impl Crunch {
         trace!("Finished Crunch Execution");
     }
 
+    /// Run a source file in the `.crunch` format
     #[inline]
     pub fn run_source_file<'a>(options: Options) {
         trace!("Running Source File: {}", options.file.display());
@@ -107,6 +107,7 @@ impl Crunch {
         }
     }
 
+    /// Run a byte file in the `.crunched` format
     #[inline]
     pub fn run_byte_file<'a>(options: Options) {
         trace!("Running Compiled File: {}", options.file.display());
@@ -163,6 +164,7 @@ impl Crunch {
         encode_program(self.instructions.clone(), self.vm.functions.clone())
     }
 
+    /// Disassemble bytecode in the `.crunched` format
     #[inline]
     pub fn disassemble<'a>(bytes: Bytecode<'a>) -> String {
         disassemble(*bytes)
@@ -183,6 +185,7 @@ impl From<(Vec<Instruction>, Vec<Vec<Instruction>>, Options)> for Crunch {
 }
 
 impl Into<Vec<u8>> for Crunch {
+    #[inline(always)]
     fn into(self) -> Vec<u8> {
         self.encode()
     }

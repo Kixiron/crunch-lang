@@ -1,5 +1,6 @@
 use super::{Gc, Index, Instruction, Register, Value, NUMBER_REGISTERS};
 
+/// The initialized options for the VM
 #[derive(Debug)]
 pub struct VmOptions {}
 
@@ -9,40 +10,52 @@ impl From<&crate::Options> for VmOptions {
     }
 }
 
+/// The VM environment for Crunch
 #[allow(missing_debug_implementations)]
 pub struct Vm {
+    /// The active VM Registers
     pub registers: [Value; NUMBER_REGISTERS],
+    /// The register snapshots (For moving functions)
     pub snapshots: Vec<(Index, Option<Index>, [Value; NUMBER_REGISTERS])>,
+    /// The index of the current function, None if the current function is the main
     pub current_func: Option<Index>,
+    /// The functions of the program
     pub functions: Vec<Vec<Instruction>>,
+    /// The function return stack
     pub return_stack: Vec<Index>,
-    pub environment: Environment,
+    /// The current instruction index of the current function
+    pub index: Index,
+    /// Whether or not program execution is done
+    pub finished_execution: bool,
+    /// Whether or not the program is currently returning
+    // TODO: Needed?
+    pub returning: bool,
+    /// The value of the previous operation
     pub prev_op: Value,
+    /// The status of the previous comparison
     pub prev_comp: bool,
+    /// The Garbage Collector
     pub gc: Gc,
+    /// The options initialized with the VM
     pub options: VmOptions,
 }
 
 impl Vm {
+    /// Creates a new VM from functions and options
     #[inline]
     pub fn new(functions: Vec<Vec<Instruction>>, options: &crate::Options) -> Self {
-        let registers = array_init::array_init(|_| Value::None);
-        let snapshots = Vec::new();
-        let current_func = None;
-        let return_stack = Vec::new();
-        let environment = Environment::new();
-        let gc = Gc::new(options);
-
         Self {
-            registers,
-            snapshots,
-            current_func,
+            registers: array_init::array_init(|_| Value::None),
+            snapshots: Vec::new(),
+            current_func: None,
             functions,
-            return_stack,
-            environment,
+            return_stack: Vec::new(),
+            index: Index(0),
+            finished_execution: false,
+            returning: false,
             prev_op: Value::None,
             prev_comp: false,
-            gc,
+            gc: Gc::new(options),
             options: VmOptions::from(options),
         }
     }
@@ -75,33 +88,8 @@ impl Vm {
         let mut old_regs = array_init::array_init(|_| Value::None);
         std::mem::swap(&mut old_regs, &mut self.registers);
         self.snapshots
-            .push((self.environment.index, self.current_func, old_regs));
+            .push((self.index, self.current_func, old_regs));
 
         // TODO: Clear registers after saving?
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Environment {
-    pub index: Index,
-    pub finished_execution: bool,
-    pub returning: bool,
-}
-
-impl Environment {
-    #[inline]
-    pub const fn new() -> Self {
-        Self {
-            index: Index(0),
-            finished_execution: false,
-            returning: false,
-        }
-    }
-}
-
-impl Default for Environment {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
     }
 }

@@ -204,19 +204,15 @@ pub struct Options {
     /// The target file
     #[structopt(parse(from_os_str))]
     pub file: PathBuf,
-
     /// Activates a GC Collection cycle at every opportunity
-    #[structopt(long = "--burn-gc")]
     pub burn_gc: bool,
-
     /// Activates detailed debug logging
-    #[structopt(long = "--debug-log")]
     pub debug_log: bool,
-
     /// Allows some runtime errors to be ignored
-    #[structopt(long = "--fault-tolerant")]
     pub fault_tolerant: bool,
 }
+
+// TODO: Document the option builder
 
 #[derive(Debug, Clone)]
 pub struct OptionBuilder {

@@ -2,6 +2,10 @@ use super::instruction::{Result, RuntimeError, RuntimeErrorTy};
 use derive_more::Display;
 use std::ops;
 
+/// The length of an encoded Value
+pub const VALUE_LENGTH: usize = 6;
+
+/// A value contained in the GC
 #[derive(Debug, Clone, Eq, Display)]
 pub enum Value {
     #[display(fmt = "{}", _0)]
@@ -15,6 +19,7 @@ pub enum Value {
 }
 
 impl Value {
+    /// Get the type of the Value as a static str
     #[inline]
     pub fn ty(&self) -> &'static str {
         match self {
@@ -25,11 +30,13 @@ impl Value {
         }
     }
 
+    /// Convert the Value into its Bytecode representation
+    // TODO: Test this
     #[inline]
-    pub fn as_bytes(&self) -> ([u8; 8], Option<&[u8]>) {
+    pub fn as_bytes(&self) -> ([u8; VALUE_LENGTH], Option<&[u8]>) {
         use std::mem::size_of;
 
-        let mut bytes = [0; 8];
+        let mut bytes = [0; VALUE_LENGTH];
         let mut string_bytes = None;
 
         match self {
@@ -53,9 +60,11 @@ impl Value {
         (bytes, string_bytes)
     }
 
+    /// Create a Value from its Bytecode representation
+    // TODO: Test this
     #[inline]
     pub fn from_bytes(
-        value: [u8; 8],
+        value: [u8; VALUE_LENGTH],
         strings: &mut std::collections::VecDeque<String>,
     ) -> std::result::Result<Self, &'static str> {
         use std::{convert::TryInto, mem::size_of};
@@ -79,6 +88,8 @@ impl Value {
     }
 }
 
+// TODO: Test all implemented operations
+
 impl ops::Add for Value {
     type Output = Result<Self>;
 
@@ -87,6 +98,13 @@ impl ops::Add for Value {
         match (self, other) {
             (Self::Int(left), Self::Int(right)) => Ok(Self::Int(right + left)),
             (Self::None, Self::None) => Ok(Self::None),
+            (Self::String(left), Self::String(right)) => {
+                let mut output = Vec::with_capacity(left.as_bytes().len() + right.as_bytes().len());
+                output.extend_from_slice(left.as_bytes());
+                output.extend_from_slice(right.as_bytes());
+
+                Ok(Self::String(unsafe { String::from_utf8_unchecked(output) }))
+            }
 
             (left, right) => Err(RuntimeError {
                 ty: RuntimeErrorTy::IncompatibleTypes,
@@ -255,6 +273,7 @@ impl std::cmp::PartialOrd for Value {
         match (self, other) {
             (Self::Int(left), Self::Int(right)) => Some(left.cmp(right)),
             (Self::Bool(left), Self::Bool(right)) => Some(left.cmp(right)),
+            (Self::String(left), Self::String(right)) => Some(left.cmp(right)),
 
             (_, _) => None,
         }
@@ -267,6 +286,7 @@ impl std::cmp::PartialEq for Value {
         match (self, other) {
             (Self::Int(left), Self::Int(right)) => left == right,
             (Self::Bool(left), Self::Bool(right)) => left == right,
+            (Self::String(left), Self::String(right)) => left == right,
             (Self::None, Self::None) => true,
 
             (_, _) => false,
