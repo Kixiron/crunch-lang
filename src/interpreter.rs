@@ -178,8 +178,17 @@ impl<'a> Interpreter<'a> {
                             BindingVal::Literal(literal) => match literal.val {
                                 LiteralInner::Bool(b) => Value::Bool(b),
                                 LiteralInner::Int(i) => Value::Int(i),
+                                LiteralInner::String(s) => Value::String(s.to_string()),
                                 _ => unimplemented!(),
                             },
+                            // BindingVal::BinOp(bin_op) => {
+                            // TODO: Finish this
+                            //
+                            // match bin_op.op {
+                            //        Op::Add => {}
+                            //        Op::Sub => {}
+                            //    }
+                            // }
                             _ => unimplemented!(),
                         };
 

@@ -115,23 +115,23 @@
 //! Primitive types
 //! -----
 //!
-//! `str`: A dynamically growable string stored on the Heap
-//! `int`: A semi-dynamically sized signed integer of up to 128 bits
-//! `float`: A semi-dynamically sized float of up to 64 bits
-//! `void`: Nothing
-//! `nullable<ty>`: Makes a type able to be null. `ty` is the contained type. The contained value can be `ty` or `null`
-//! `result<ty: Ok, ty: Err>:
-//! `bool`: A boolean value of either `true` or `false`
+//! `str`: A dynamically growable string stored on the Heap  
+//! `int`: A semi-dynamically sized signed integer of up to 128 bits  
+//! `float`: A semi-dynamically sized float of up to 64 bits  
+//! `void`: Nothing  
+//! `nullable<ty>`: Makes a type able to be null. `ty` is the contained type. The contained value can be `ty` or `null`  
+//! `result<ty: Ok, ty: Err>: TODO  
+//! `bool`: A boolean value of either `true` or `false`  
 //!
 //! ## Language Builtins
 //! -----
 //!
-//! `@print` Prints to stdout
-//! `@collect` Forces a GC collection cycle
-//! `@assert` Assertions
-//! `@try` Unwrap an error or null type
-//! `@await` Async code
-//! `@spawn` Spawns a thread
+//! `@print` Prints to stdout  
+//! `@collect` Forces a GC collection cycle  
+//! `@assert` Assertions  
+//! `@try` Unwrap an error or null type  
+//! `@await` Async code  
+//! `@spawn` Spawns a thread  
 //!
 
 /// The number of available registers for the VM

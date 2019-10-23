@@ -1,7 +1,7 @@
 use super::{Gc, Index, Instruction, Register, Value, NUMBER_REGISTERS};
 
 /// The initialized options for the VM
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct VmOptions {}
 
 impl From<&crate::Options> for VmOptions {
@@ -38,12 +38,18 @@ pub struct Vm {
     pub gc: Gc,
     /// The options initialized with the VM
     pub options: VmOptions,
+    /// The stdout that the program will print to, recommended to be `std::io::stdout()`
+    pub stdout: Box<dyn std::io::Write>,
 }
 
 impl Vm {
     /// Creates a new VM from functions and options
     #[inline]
-    pub fn new(functions: Vec<Vec<Instruction>>, options: &crate::Options) -> Self {
+    pub fn new(
+        functions: Vec<Vec<Instruction>>,
+        options: &crate::Options,
+        stdout: Box<dyn std::io::Write>,
+    ) -> Self {
         Self {
             registers: array_init::array_init(|_| Value::None),
             snapshots: Vec::new(),
@@ -57,6 +63,7 @@ impl Vm {
             prev_comp: false,
             gc: Gc::new(options),
             options: VmOptions::from(options),
+            stdout,
         }
     }
 

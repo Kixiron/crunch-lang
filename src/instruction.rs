@@ -198,7 +198,10 @@ impl Instruction {
             Instruction::Print(reg) => {
                 trace!("Printing reg {:?}", reg);
 
-                println!("{}", vm.get(*reg));
+                if let Err(_err) = write!(vm.stdout, "{}", vm.get(*reg).clone()) {
+                    panic!("Handle this sometime");
+                }
+
                 vm.index += Index(1);
             }
 
@@ -288,9 +291,9 @@ impl Instruction {
                         vm.cleanup();
                         vm.finished_execution = true;
                     }
-
-                    vm.index += Index(1);
                 }
+
+                vm.index += Index(1);
             }
             Instruction::Halt => {
                 vm.cleanup();
@@ -351,12 +354,14 @@ impl Instruction {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::stdout;
 
     #[test]
     fn variable_ops() {
         let mut vm = Vm::new(
             Vec::new(),
-            &crate::OptionBuilder::new("./variable_tests").build(),
+            &crate::OptionBuilder::new("./variable_ops").build(),
+            Box::new(stdout()),
         );
 
         let cache = Instruction::Cache(0, Value::Int(10));
@@ -406,7 +411,8 @@ mod tests {
     fn math_ops() {
         let mut vm = Vm::new(
             Vec::new(),
-            &crate::OptionBuilder::new("./variable_tests").build(),
+            &crate::OptionBuilder::new("./math_ops").build(),
+            Box::new(stdout()),
         );
 
         vm.registers[0] = Value::Int(10);
@@ -431,14 +437,97 @@ mod tests {
 
     #[test]
     fn print_op() {
-        // TODO: Capture STDOUT to find out if this worked
+        // Have to construct a new one every time because box::into_raw consumes vm.stdout
+
+        let print = Instruction::Print(0.into());
+
+        {
+            let mut vm = Vm::new(
+                Vec::new(),
+                &crate::OptionBuilder::new("./print_op").build(),
+                Box::new(Vec::<u8>::new()),
+            );
+
+            vm.registers[0] = Value::String("Test".to_string());
+            print.execute(&mut vm).unwrap();
+            assert_eq!(
+                unsafe { *(Box::into_raw(vm.stdout) as *const &str) },
+                "Test"
+            );
+        }
+
+        {
+            let mut vm = Vm::new(
+                Vec::new(),
+                &crate::OptionBuilder::new("./print_op").build(),
+                Box::new(Vec::<u8>::new()),
+            );
+
+            vm.registers[0] = Value::Int(10);
+            print.execute(&mut vm).unwrap();
+            assert_eq!(unsafe { *(Box::into_raw(vm.stdout) as *const &str) }, "10");
+        }
+
+        {
+            let mut vm = Vm::new(
+                Vec::new(),
+                &crate::OptionBuilder::new("./print_op").build(),
+                Box::new(Vec::<u8>::new()),
+            );
+
+            vm.registers[0] = Value::Bool(true);
+            print.execute(&mut vm).unwrap();
+            assert_eq!(
+                unsafe { *(Box::into_raw(vm.stdout) as *const &str) },
+                "true"
+            );
+        }
+
+        {
+            let mut vm = Vm::new(
+                Vec::new(),
+                &crate::OptionBuilder::new("./F").build(),
+                Box::new(Vec::<u8>::new()),
+            );
+
+            vm.registers[0] = Value::Bool(false);
+            print.execute(&mut vm).unwrap();
+            assert_eq!(
+                unsafe { *(Box::into_raw(vm.stdout) as *const &str) },
+                "false"
+            );
+        }
+
+        {
+            // Test that writing to stdout works too, can only verify that it does,
+            // not that it is correct
+
+            let mut vm = Vm::new(
+                Vec::new(),
+                &crate::OptionBuilder::new("./F").build(),
+                Box::new(stdout()),
+            );
+
+            vm.registers[0] = Value::String("Test".to_string());
+            print.execute(&mut vm).unwrap();
+
+            vm.registers[0] = Value::Int(10);
+            print.execute(&mut vm).unwrap();
+
+            vm.registers[0] = Value::Bool(true);
+            print.execute(&mut vm).unwrap();
+
+            vm.registers[0] = Value::Bool(false);
+            print.execute(&mut vm).unwrap();
+        }
     }
 
     #[test]
     fn jump_ops() {
         let mut vm = Vm::new(
             Vec::new(),
-            &crate::OptionBuilder::new("./variable_tests").build(),
+            &crate::OptionBuilder::new("./jump_ops").build(),
+            Box::new(stdout()),
         );
 
         // Each executed instruction increments the index by one, so take that into account
@@ -459,7 +548,8 @@ mod tests {
     fn bitwise_ops() {
         let mut vm = Vm::new(
             Vec::new(),
-            &crate::OptionBuilder::new("./variable_tests").build(),
+            &crate::OptionBuilder::new("./bitwise_ops").build(),
+            Box::new(stdout()),
         );
 
         vm.registers[0] = Value::Int(10);
@@ -486,7 +576,8 @@ mod tests {
     fn eq_ops() {
         let mut vm = Vm::new(
             Vec::new(),
-            &crate::OptionBuilder::new("./variable_tests").build(),
+            &crate::OptionBuilder::new("./eq_ops").build(),
+            Box::new(stdout()),
         );
 
         vm.registers[0] = Value::Int(10);
@@ -517,7 +608,8 @@ mod tests {
     fn misc_ops() {
         let mut vm = Vm::new(
             Vec::new(),
-            &crate::OptionBuilder::new("./variable_tests").build(),
+            &crate::OptionBuilder::new("./misc_ops").build(),
+            Box::new(stdout()),
         );
 
         let collect = Instruction::Collect;
@@ -542,7 +634,8 @@ mod tests {
     fn illegal_op() {
         let mut vm = Vm::new(
             Vec::new(),
-            &crate::OptionBuilder::new("./variable_tests").build(),
+            &crate::OptionBuilder::new("./illegal_ops").build(),
+            Box::new(stdout()),
         );
 
         let illegal = Instruction::Illegal;

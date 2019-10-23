@@ -44,7 +44,7 @@ pub(crate) fn page_size() -> usize {
 }
 
 /// The options for an initialized GC
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct GcOptions {
     /// Activates a GC collect at every opportunity
     pub burn_gc: bool,
@@ -59,7 +59,7 @@ impl From<&crate::Options> for GcOptions {
 }
 
 /// The Crunch Garbage Collector
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Gc {
     /// The current root objects
     roots: Vec<GcValue>,
@@ -568,7 +568,7 @@ mod tests {
     fn alloc_value() {
         use crate::Value;
 
-        let mut gc = Gc::new(&crate::OptionBuilder::new("./alloc_val").build());
+        let mut gc = Gc::new(&crate::OptionBuilder::new("./alloc_value").build());
 
         let (int, int_id) = gc.allocate(size_of::<Value>()).unwrap();
         unsafe {

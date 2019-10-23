@@ -1,8 +1,7 @@
 use super::{
     decode_program, disassemble, encode_program, interpreter::Interpreter, Bytecode, Instruction,
-    Vm,
+    Options, Vm,
 };
-use crate::Options;
 
 /// The main interface to the crunch language
 #[allow(missing_debug_implementations)]
@@ -178,7 +177,7 @@ impl From<(Vec<Instruction>, Vec<Vec<Instruction>>, Options)> for Crunch {
     ) -> Self {
         Self {
             instructions,
-            vm: Vm::new(functions, &options),
+            vm: Vm::new(functions, &options, Box::new(std::io::stdout())),
             _options: options,
         }
     }
