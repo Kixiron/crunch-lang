@@ -1,15 +1,19 @@
+use super::TokenType;
+use crate::Value;
 use codespan::{FileId, Span};
 use std::{borrow::Cow, fmt};
 
 #[derive(Clone)]
 pub enum Node<'a> {
     Func(Func<'a>),
+    Import(Import<'a>),
 }
 
 impl<'a> fmt::Debug for Node<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Func(func) => write!(f, "{:#?}", func),
+            Self::Import(import) => write!(f, "{:#?}", import),
         }
     }
 }
@@ -77,6 +81,32 @@ impl<'a> Ident<'a> {
             },
         }
     }
+}
+
+// #[derive(Debug, Clone)]
+// pub struct TypeDecl<'a> {
+//     pub name: Ident<'a>,
+//     pub members: Vec<TypeMember<'a>>,
+//     pub methods: Vec<TypeMethod<'a>>,
+// }
+//
+// #[derive(Debug, Clone)]
+// pub enum TypeMemberOrMethod<'a> {
+//     Member(TypeMember<'a>),
+//     Method(TypeMethod<'a>),
+// }
+
+#[derive(Debug, Clone)]
+pub struct Import<'a> {
+    pub file: std::path::PathBuf,
+    pub exposes: Exposes<'a>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Exposes<'a> {
+    All,
+    File,
+    Some(Vec<(Ident<'a>, Option<Ident<'a>>)>),
 }
 
 #[derive(Debug, Clone)]
@@ -166,6 +196,20 @@ pub struct BinOp<'a> {
 pub enum Op {
     Add,
     Sub,
+    Div,
+    Mult,
+}
+
+impl From<TokenType> for Op {
+    fn from(token: TokenType) -> Self {
+        match token {
+            TokenType::Plus => Self::Add,
+            TokenType::Minus => Self::Sub,
+            TokenType::Divide => Self::Div,
+            TokenType::Star => Self::Mult,
+            _ => unimplemented!(),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -225,6 +269,17 @@ pub enum LiteralInner<'a> {
     Int(i32),
     Float(f32),
     Bool(bool),
+}
+
+impl<'a> Into<Value> for LiteralInner<'a> {
+    fn into(self) -> Value {
+        match self {
+            Self::String(s) => Value::String(s.to_string()),
+            Self::Int(i) => Value::Int(i),
+            Self::Float(_f) => unimplemented!(),
+            Self::Bool(b) => Value::Bool(b),
+        }
+    }
 }
 
 impl<'a> fmt::Debug for LiteralInner<'a> {

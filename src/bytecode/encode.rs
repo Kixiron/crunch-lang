@@ -245,6 +245,14 @@ fn encode_instruction(instruction: Instruction) -> ([u8; INSTRUCTION_LENGTH], Op
         Instruction::Halt => {
             bytes[0] = 0x16;
         }
+        Instruction::Syscall(offset, output, p1, p2, p3) => {
+            bytes[0] = 0x19;
+            bytes[1..size_of::<u16>() + 1].copy_from_slice(&offset.to_be_bytes());
+            bytes[size_of::<u16>() + 2] = *output;
+            bytes[size_of::<u16>() + 3] = *p1;
+            bytes[size_of::<u16>() + 4] = *p2;
+            bytes[size_of::<u16>() + 5] = *p3;
+        }
 
         Instruction::Illegal => unreachable!(
             "I mean, why are you *purposefully* making an Illegal Instruction? Just... Why?"

@@ -114,15 +114,15 @@ type Syven
         }
 
     fn greet(self) -> void
-        println("Hello {}! You are {} years old!", self.name, self.age)
+        @print "Hello {}! You are {} years old!\n", self.name, self.age
 
 :: Functions can also be untyped
 fn hello(name, age)
-    println("Hello {}! You are {} years old!", name, age)
+    @print "Hello {}! You are {} years old!\n", name, age
     
 :: This untyped function will be desugared into a generic function like this
 fn hello<T, E>(name: T, age E) -> void
-    println("Hello {}! You are {} years old!", name, age)
+    @print "Hello {}! You are {} years old!\n", name, age
 
 :: Functions that do not specify a return type default to `void`
 fn main()
@@ -142,9 +142,36 @@ fn main()
     syv.greet()
 ```
 
+For imports, follow this structure
+
+```crunch
+:: Importing a file (Note: Uses a relative path delimited by `.`)
+import 'directory.file'
+:: This will expose `file`, allowing usage like `file.foo()`
+
+:: Aliasing imports
+import 'directory.file' as Bar
+:: Access is now aliased into `Bar`, allowing usage like `Bar.foo()`
+
+:: Importing from a file
+import 'directory.file' exposing Fizz
+:: Now the only thing exposed from `file` is `Fizz`
+
+:: Importing multiple things from a file
+import 'directory.file' exposing Fizz, Buzz, Bar
+:: This also allows aliasing
+import 'directory.file' exposing Fizz as MyFizz, Buzz as MyBuzz, Bar as MyBar
+
+:: Importing everything from a file
+import 'directory.file' exposing *
+:: Now everything from `file` is exposed
+```
+
 To specify information about your package, use the `Compacter.crunch` file in the root of the project
 
 ```crunch
+import build exposing *
+
 :: Specify package information
 let package: Package = {
     name: "package-name",                   :: The name of the package
@@ -173,6 +200,12 @@ let dependencies: [Dependency] = [
     dependency,                                    :: Previously declared dependency
 ]
 ```
+
+String Escapes:  
+
+Unicode Escape Codes: `\u{0000}`  
+Byte Escape Codes: `\x{00}`  
+Bit Escape Codes: `\b{00000000}`
 
 ## Primitive types
 

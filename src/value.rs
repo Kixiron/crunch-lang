@@ -3,7 +3,7 @@ use derive_more::Display;
 use std::ops;
 
 /// The length of an encoded Value
-pub const VALUE_LENGTH: usize = 6;
+pub const VALUE_LENGTH: usize = 9;
 
 /// A value contained in the GC
 #[derive(Debug, Clone, Eq, Display)]
@@ -14,6 +14,8 @@ pub enum Value {
     Bool(bool),
     #[display(fmt = "{}", _0)]
     String(String),
+    #[display(fmt = "0x{:04X}", _0)]
+    Pointer(usize),
     #[display(fmt = "null")]
     None,
 }
@@ -26,6 +28,7 @@ impl Value {
             Self::Int(_) => "int",
             Self::Bool(_) => "bool",
             Self::String(_) => "str",
+            Self::Pointer(_) => "ptr",
             Self::None => "none",
         }
     }
@@ -55,6 +58,10 @@ impl Value {
                 bytes[0] = 0x03;
                 string_bytes = Some(s.as_bytes());
             }
+            Self::Pointer(p) => {
+                bytes[0] = 0x04;
+                bytes[1..size_of::<usize>() + 1].copy_from_slice(&p.to_be_bytes());
+            }
         }
 
         (bytes, string_bytes)
@@ -82,6 +89,12 @@ impl Value {
                 Some(s) => s,
                 None => return Err("Not enough strings supplied"),
             }),
+            0x04 => Self::Pointer(usize::from_be_bytes(
+                match value[1..size_of::<usize>() + 1].try_into() {
+                    Ok(val) => val,
+                    Err(_) => return Err("Invalid integer"),
+                },
+            )),
 
             _ => return Err("Invalid Value Header"),
         })
@@ -274,6 +287,7 @@ impl std::cmp::PartialOrd for Value {
             (Self::Int(left), Self::Int(right)) => Some(left.cmp(right)),
             (Self::Bool(left), Self::Bool(right)) => Some(left.cmp(right)),
             (Self::String(left), Self::String(right)) => Some(left.cmp(right)),
+            (Self::Pointer(left), Self::Pointer(right)) => Some(left.cmp(right)),
 
             (_, _) => None,
         }
@@ -287,6 +301,7 @@ impl std::cmp::PartialEq for Value {
             (Self::Int(left), Self::Int(right)) => left == right,
             (Self::Bool(left), Self::Bool(right)) => left == right,
             (Self::String(left), Self::String(right)) => left == right,
+            (Self::Pointer(left), Self::Pointer(right)) => left == right,
             (Self::None, Self::None) => true,
 
             (_, _) => false,

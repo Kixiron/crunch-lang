@@ -51,6 +51,7 @@ pub enum TokenType {
     Ident,
     #[regex = "[1234567890]+"]
     Int,
+    #[regex = "\"[^\"]*\""]
     #[regex = "'[^']*'"]
     String,
     #[token = " "]
@@ -72,6 +73,16 @@ pub enum TokenType {
     Print,
     #[token = "@collect"]
     Collect,
+    #[token = "@halt"]
+    Halt,
+    #[token = "import"]
+    Import,
+    #[token = "exposing"]
+    Exposing,
+    #[token = "export"]
+    Export,
+    #[token = "as"]
+    As,
 }
 
 #[allow(missing_debug_implementations)]

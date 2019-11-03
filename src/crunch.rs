@@ -1,6 +1,6 @@
 use super::{
     decode_program, disassemble, encode_program, interpreter::Interpreter, Bytecode, Instruction,
-    Options, Vm,
+    Options, Result, RuntimeError, RuntimeErrorTy, Vm,
 };
 
 /// The main interface to the crunch language
@@ -108,7 +108,7 @@ impl Crunch {
 
     /// Run a byte file in the `.crunched` format
     #[inline]
-    pub fn run_byte_file<'a>(options: Options) {
+    pub fn run_byte_file<'a>(options: Options) -> Result<()> {
         trace!("Running Compiled File: {}", options.file.display());
 
         let source = {
@@ -118,15 +118,19 @@ impl Crunch {
 
             let mut file = match File::open(&options.file) {
                 Ok(file) => file,
-                Err(err) => {
-                    println!("Error Opening File: {:?}", err);
-                    return;
+                Err(_err) => {
+                    return Err(RuntimeError {
+                        ty: RuntimeErrorTy::FileError,
+                        message: format!("Error Opening {}", options.file.display()),
+                    });
                 }
             };
 
-            if let Err(err) = file.read_to_end(&mut buf) {
-                println!("Error Reading File: {:?}", err);
-                return;
+            if let Err(_err) = file.read_to_end(&mut buf) {
+                return Err(RuntimeError {
+                    ty: RuntimeErrorTy::FileError,
+                    message: format!("Error Reading {}", options.file.display()),
+                });
             }
 
             buf
@@ -134,26 +138,32 @@ impl Crunch {
 
         let bytes = match Self::validate(&source) {
             Ok(bytes) => bytes,
-            Err(err) => {
-                println!("Invalid Bytecode: {:?}", err);
-                return;
+            Err(_err) => {
+                return Err(RuntimeError {
+                    ty: RuntimeErrorTy::BytecodeError,
+                    message: "Invalid Bytecode".to_string(),
+                });
             }
         };
 
-        let instructions = Self::parse_bytecode(bytes);
+        let instructions = Self::parse_bytecode(bytes)?;
 
-        Self::from((instructions.0, instructions.1, options)).execute()
+        Self::from((instructions.0, instructions.1, options)).execute();
+
+        Ok(())
     }
 
     /// Parse validated bytecode into the Main Function and Function Table
     #[inline]
-    fn parse_bytecode<'a>(bytes: Bytecode<'a>) -> (Vec<Instruction>, Vec<Vec<Instruction>>) {
+    fn parse_bytecode<'a>(
+        bytes: Bytecode<'a>,
+    ) -> Result<(Vec<Instruction>, Vec<Vec<Instruction>>)> {
         decode_program(*bytes)
     }
 
     /// Validate raw bytes as valid [`Bytecode`]
     #[inline]
-    pub fn validate<'a>(bytes: &'a [u8]) -> Result<Bytecode<'a>, &'static str> {
+    pub fn validate<'a>(bytes: &'a [u8]) -> std::result::Result<Bytecode<'a>, &'static str> {
         Bytecode::validate(bytes)
     }
 

@@ -36,6 +36,12 @@ pub enum RuntimeErrorTy {
     NullVar,
     /// Thrown when an illegal instruction is executed
     IllegalInstruction,
+    InvalidJump,
+    MissingValue,
+    MissingString,
+    InvalidString,
+    FileError,
+    BytecodeError,
 }
 
 /// Instructions for the VM
@@ -76,6 +82,7 @@ pub enum Instruction {
     // TODO: Flesh this instruction out
     Return,
     Halt,
+    Syscall(u16, Register, Register, Register, Register),
 
     Illegal,
 }
@@ -98,6 +105,8 @@ impl Instruction {
                         });
                     }
                 };
+
+                trace!("Loading {:?} into {}", &val, reg);
 
                 vm.registers[**reg as usize] = val;
 
@@ -139,8 +148,10 @@ impl Instruction {
             }
             Instruction::OpToReg(reg) => {
                 trace!("Loading previous operation into {}", reg);
+                trace!("Previous Operation Value: {:?}", &vm.prev_op);
 
                 std::mem::swap(&mut vm.registers[**reg as usize], &mut vm.prev_op);
+
                 vm.index += Index(1);
             }
             Instruction::Save(heap_loc, reg) => {
@@ -208,22 +219,50 @@ impl Instruction {
             Instruction::Jump(index) => {
                 trace!("Jumping by offset {}", index);
 
-                let index = Index((*vm.index as i32 + index + 1) as u32);
-                vm.index = index;
+                println!("Jumping by {} on index {}", index, vm.index);
+
+                let index = if index.is_negative() {
+                    let (index, overflowed) = vm.index.overflowing_sub(index.abs() as u32);
+
+                    if overflowed {
+                        return Err(RuntimeError {
+                            ty: RuntimeErrorTy::InvalidJump,
+                            message: "Jump overflowed".to_string(),
+                        });
+                    }
+
+                    index + 1
+                } else {
+                    *vm.index + *index as u32 + 1
+                };
+
+                vm.index = Index(index);
             }
             Instruction::JumpComp(index) => {
                 trace!(
-                    "Comparison Jump: Prev Comp is {}, jump amount {}",
+                    "Comparison Jump: Prev Comp is {}, jump amount is {}",
                     vm.prev_comp,
                     index
                 );
 
-                if vm.prev_comp {
-                    let index = Index((*vm.index as i32 + index + 1) as u32);
-                    vm.index = index;
+                let index = if vm.prev_comp && index.is_negative() {
+                    let (index, overflowed) = vm.index.overflowing_sub(index.abs() as u32);
+
+                    if overflowed {
+                        return Err(RuntimeError {
+                            ty: RuntimeErrorTy::InvalidJump,
+                            message: "Jump overflowed".to_string(),
+                        });
+                    }
+
+                    index + 1
+                } else if vm.prev_comp {
+                    *vm.index + *index as u32 + 1
                 } else {
-                    vm.index += Index(1);
-                }
+                    *vm.index + 1
+                };
+
+                vm.index = Index(index);
             }
 
             Instruction::And(left, right) => {
@@ -299,6 +338,23 @@ impl Instruction {
                 vm.cleanup();
                 vm.finished_execution = true;
             }
+            Instruction::Syscall(offset, output, param_1, param_2, param_3) => {
+                let p = [param_1, param_2, param_3];
+                let func = (*super::syscall::SYSCALL_TABLE)[*offset as usize];
+                let func: unsafe extern "C" fn(usize, usize, usize) -> usize =
+                    unsafe { std::mem::transmute(func) };
+
+                let mut params = [0_usize; 3];
+                for i in 0..3 {
+                    if let Value::Pointer(p) = vm.registers[**p[i] as usize] {
+                        params[i] = p;
+                    }
+                }
+
+                let result = unsafe { func(params[0], params[1], params[2]) };
+
+                vm.registers[**output as usize] = Value::Pointer(result);
+            }
 
             Instruction::Illegal => {
                 return Err(RuntimeError {
@@ -345,6 +401,7 @@ impl Instruction {
             Self::Collect => "coll",
             Self::Return => "ret",
             Self::Halt => "halt",
+            Self::Syscall(_, _, _, _, _) => "syscall",
 
             Self::Illegal => "illegal",
         }
@@ -364,47 +421,159 @@ mod tests {
             Box::new(stdout()),
         );
 
-        let cache = Instruction::Cache(0, Value::Int(10));
-        cache.execute(&mut vm).unwrap();
-        assert!(vm.gc.contains(0));
-        assert_eq!(vm.gc.fetch(0), Some(Value::Int(10)));
+        let values = {
+            use rand::Rng;
+            use std::thread;
 
-        let load = Instruction::Load(0, 0.into());
-        load.execute(&mut vm).unwrap();
-        assert_eq!(vm.registers[0], Value::Int(10));
+            let mut rng = rand::thread_rng();
+            let (num_ints, num_strs) = (rng.gen_range(200, 1000), rng.gen_range(300, 1500));
+            let mut vec = Vec::with_capacity(num_ints + num_strs);
 
-        let comp_to_reg = Instruction::CompToReg(1.into());
+            let ints = thread::spawn(move || {
+                let mut rng = rand::thread_rng();
+                let mut vec = Vec::with_capacity(num_ints);
+
+                for _ in 0..num_ints {
+                    vec.push(Value::Int(rng.gen_range(0, i32::max_value())));
+                }
+
+                vec
+            });
+
+            let first_strings = thread::spawn(move || {
+                let mut rng = rand::thread_rng();
+                let mut vec = Vec::with_capacity(num_strs / 2);
+
+                for _ in 0..num_strs / 2 {
+                    let len = rng.gen_range(10, 200);
+                    let mut string = String::with_capacity(len);
+
+                    for _ in 0..len {
+                        string.push(rand::random::<char>());
+                    }
+
+                    vec.push(Value::String(string));
+                }
+
+                vec
+            });
+
+            let second_strings = thread::spawn(move || {
+                let mut rng = rand::thread_rng();
+                let mut vec = Vec::with_capacity(num_strs / 2);
+
+                for _ in num_strs / 2..num_strs {
+                    let len = rng.gen_range(10, 200);
+                    let mut string = String::with_capacity(len);
+
+                    for _ in 0..len {
+                        string.push(rand::random::<char>());
+                    }
+
+                    vec.push(Value::String(string));
+                }
+
+                vec
+            });
+
+            vec.push(Value::Bool(true));
+            vec.push(Value::Bool(false));
+
+            vec.extend_from_slice(&ints.join().unwrap());
+            vec.extend_from_slice(&first_strings.join().unwrap());
+            vec.extend_from_slice(&second_strings.join().unwrap());
+
+            vec
+        };
+
+        for (id, val) in values.clone().into_iter().enumerate() {
+            let cache = Instruction::Cache(id as u32, val.clone());
+            cache.execute(&mut vm).unwrap();
+            assert!(vm.gc.contains(id));
+            assert_eq!(vm.gc.fetch(id), Some(val));
+        }
+
+        // Do a VM Reset
+        vm.gc = crate::Gc::new(&crate::OptionBuilder::new("./variable_ops").build());
+
+        for (id, val) in values.clone().into_iter().enumerate() {
+            let load = Instruction::Load(id as u32, 0.into());
+
+            let (alloc_val, alloc_id) =
+                vm.gc.allocate_id(std::mem::size_of::<Value>(), id).unwrap();
+            unsafe {
+                vm.gc
+                    .write(alloc_id, val.clone(), Some(&alloc_val))
+                    .unwrap();
+            }
+            vm.gc.add_root(alloc_val);
+
+            vm.registers[0] = val.clone();
+            load.execute(&mut vm).unwrap();
+            assert_eq!(vm.registers[0], val);
+        }
+
+        // Do a VM Reset
+        vm.gc = crate::Gc::new(&crate::OptionBuilder::new("./variable_ops").build());
+
+        let comp_to_reg = Instruction::CompToReg(0.into());
         vm.prev_comp = true;
         comp_to_reg.execute(&mut vm).unwrap();
-        assert_eq!(vm.registers[1], Value::Bool(true));
+        assert_eq!(vm.registers[0], Value::Bool(true));
         vm.prev_comp = false;
         comp_to_reg.execute(&mut vm).unwrap();
-        assert_eq!(vm.registers[1], Value::Bool(false));
+        assert_eq!(vm.registers[0], Value::Bool(false));
 
         let op_to_reg = Instruction::OpToReg(2.into());
-        vm.prev_op = Value::Int(10);
-        op_to_reg.execute(&mut vm).unwrap();
-        assert_eq!(vm.registers[2], Value::Int(10));
-        vm.prev_op = Value::Int(20);
-        op_to_reg.execute(&mut vm).unwrap();
-        assert_eq!(vm.registers[2], Value::Int(20));
+        for val in values.clone() {
+            vm.prev_op = val.clone();
+            op_to_reg.execute(&mut vm).unwrap();
+            assert_eq!(vm.registers[2], val);
+        }
 
-        let save = Instruction::Save(0, 2.into());
-        save.execute(&mut vm).unwrap();
-        assert!(vm.gc.contains(0));
-        assert_eq!(vm.gc.fetch(0), Some(Value::Int(20)));
+        for (id, val) in values.clone().into_iter().enumerate() {
+            let (alloc_val, alloc_id) =
+                vm.gc.allocate_id(std::mem::size_of::<Value>(), id).unwrap();
+            unsafe {
+                vm.gc
+                    .write(alloc_id, val.clone(), Some(&alloc_val))
+                    .unwrap();
+            }
+            vm.gc.add_root(alloc_val);
 
-        let drop_reg = Instruction::DropReg(1.into());
+            vm.registers[0] = val.clone();
+            let save = Instruction::Save(id as u32, 0.into());
+            save.execute(&mut vm).unwrap();
+            assert!(vm.gc.contains(id));
+            assert_eq!(vm.gc.fetch(id), Some(val));
+        }
+
+        let drop_reg = Instruction::DropReg(0.into());
         drop_reg.execute(&mut vm).unwrap();
         assert_eq!(vm.registers[1], Value::None);
 
-        let drop = Instruction::Drop(0);
-        assert!(vm.gc.contains(0));
-        assert_eq!(vm.gc.fetch(0), Some(Value::Int(20)));
-        drop.execute(&mut vm).unwrap();
-        vm.gc.collect();
-        assert!(!vm.gc.contains(0));
-        assert_eq!(vm.gc.fetch(0), <Option<usize>>::None);
+        // Do a VM Reset
+        vm.gc = crate::Gc::new(&crate::OptionBuilder::new("./variable_ops").build());
+
+        for (id, val) in values.clone().into_iter().enumerate() {
+            let drop = Instruction::Drop(id as u32);
+
+            let (alloc_val, alloc_id) =
+                vm.gc.allocate_id(std::mem::size_of::<Value>(), id).unwrap();
+            unsafe {
+                vm.gc
+                    .write(alloc_id, val.clone(), Some(&alloc_val))
+                    .unwrap();
+            }
+            vm.gc.add_root(alloc_val);
+
+            assert!(vm.gc.contains(id));
+            assert_eq!(vm.gc.fetch(id), Some(val.clone()));
+            drop.execute(&mut vm).unwrap();
+            vm.gc.collect();
+            assert!(!vm.gc.contains(id));
+            assert_eq!(vm.gc.fetch(id), <Option<Value>>::None);
+        }
     }
 
     #[test]
@@ -535,13 +704,19 @@ mod tests {
         let jump = Instruction::Jump(10);
         jump.execute(&mut vm).unwrap();
         assert_eq!(vm.index, 11.into());
+        let jump = Instruction::Jump(-10);
+        jump.execute(&mut vm).unwrap();
+        assert_eq!(vm.index, 2.into());
 
         let jump_comp = Instruction::JumpComp(10);
         jump_comp.execute(&mut vm).unwrap();
-        assert_eq!(vm.index, 12.into());
+        assert_eq!(vm.index, 3.into());
         vm.prev_comp = true;
         jump_comp.execute(&mut vm).unwrap();
-        assert_eq!(vm.index, 23.into());
+        assert_eq!(vm.index, 14.into());
+        let jump_comp = Instruction::JumpComp(-10);
+        jump_comp.execute(&mut vm).unwrap();
+        assert_eq!(vm.index, 5.into());
     }
 
     #[test]

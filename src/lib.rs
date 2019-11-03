@@ -183,6 +183,8 @@ mod interpreter;
 mod newtypes;
 /// Front-end language parsing
 mod parser;
+/// Syscalls
+mod syscall;
 /// Values contained within the VM
 mod value;
 /// The main VM
@@ -200,15 +202,19 @@ pub use vm::*;
 use std::path::PathBuf;
 
 #[derive(Debug, structopt::StructOpt, Clone)]
+#[structopt(rename_all = "kebab")]
 pub struct Options {
     /// The target file
     #[structopt(parse(from_os_str))]
     pub file: PathBuf,
     /// Activates a GC Collection cycle at every opportunity
+    #[structopt(long = "--burn-gc")]
     pub burn_gc: bool,
     /// Activates detailed debug logging
+    #[structopt(long = "--debug-log")]
     pub debug_log: bool,
     /// Allows some runtime errors to be ignored
+    #[structopt(long = "--fault-tolerant")]
     pub fault_tolerant: bool,
 }
 

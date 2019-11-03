@@ -22,7 +22,7 @@ fn main() {
             match options.file.as_path().extension() {
                 Some(ext) => match ext.to_os_string() {
                     ref a if &*a == "crunch" => Crunch::run_source_file(options),
-                    ref b if &*b == "crunched" => Crunch::run_byte_file(options),
+                    ref b if &*b == "crunched" => Crunch::run_byte_file(options).unwrap(),
                     _ => {
                         println!("Please choose a valid .crunch or .crunched file");
                     }
