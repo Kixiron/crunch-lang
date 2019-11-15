@@ -9,17 +9,9 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - name: Install
-      run: |
-        rustup component add clippy
-        rustup component add rustfmt
-    - name: Build
-      run: cargo build --release --verbose
-    - name: Run tests
-      run: cargo test --release --verbose
-    - name: Clippy
-      run: cargo clippy --all-targets --all-features -- -D warnings
-    - name: Rustfmt
-      run: cargo fmt --all -- --check
+      run: cargo install cargo-make
+    - name: Make
+      run: cargo make cli-flow
   
   windows:
     runs-on: windows-latest
@@ -27,14 +19,6 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - name: Install
-      run: |
-        rustup component add clippy
-        rustup component add rustfmt
-    - name: Build
-      run: cargo build --release --verbose
-    - name: Run tests
-      run: cargo test --release --verbose
-    - name: Clippy
-      run: cargo clippy --all-targets --all-features -- -D warnings
-    - name: Rustfmt
-      run: cargo fmt --all -- --check
+      run: cargo install cargo-make
+    - name: Make
+      run: cargo make cli-flow
