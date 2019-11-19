@@ -406,6 +406,123 @@ impl<'a> Interpreter<'a> {
                         self.add_to_current(&[Instruction::Halt]);
                     }
 
+                    Builtin::SyscallExit(exit_code) => {
+                        unimplemented!();
+
+                        match exit_code {
+                            // For literals fed into the print function, load them, print them, and drop them
+                            IdentLiteral::Literal(literal) => {
+                                let (val, gc_id) = (literal.val.into(), self.get_next_gc_id());
+
+                                let reg_addr = self.reserve_reg(Some(Location::Gc(gc_id)), None);
+
+                                self.add_to_current(&[
+                                    Instruction::Cache(gc_id, val),
+                                    Instruction::Load(gc_id, reg_addr),
+                                    Instruction::Print(reg_addr),
+                                    Instruction::DropReg(reg_addr),
+                                    Instruction::Drop(gc_id),
+                                ]);
+
+                                self.current_scope.registers[*reg_addr as usize] = None;
+                            }
+
+                            // For existing variables, fetch them and print them
+                            IdentLiteral::Variable(ident) => {
+                                // Get the gc address, variable type, and fault status of fetching the requested variable
+                                // If a fault occurs and fault_tolerant is true, then a null value will be used in place of
+                                // the requested variable. If fault_tolerant is false, then a Runtime Error will be thrown
+                                let (var_id, _var_type, faulted) = if let Some(var) =
+                                    self.current_scope.variables.get(&*ident.name)
+                                {
+                                    (var.0, var.1.clone(), false)
+                                } else {
+                                    // If fault tolerant, a fault just occurred, so pretend it didn't
+                                    if self.options.fault_tolerant {
+                                        let gc_id = self.get_next_gc_id();
+
+                                        self.add_to_current(&[Instruction::Cache(
+                                            gc_id,
+                                            Value::None,
+                                        )]);
+
+                                        (Location::Gc(gc_id), Type::Void, true)
+
+                                    // If we aren't fault tolerant, scream
+                                    } else {
+                                        return Err(RuntimeError {
+                                            ty: RuntimeErrorTy::NullVar,
+                                            message: format!(
+                                                "The variable {:?} does not exist",
+                                                &*ident.name
+                                            ),
+                                        });
+                                    }
+                                };
+
+                                // If the value is currently loaded into a register, print it directly
+                                if let Some(reg_addr) =
+                                    self.current_scope.registers.iter().position(|reg| {
+                                        *reg == Some(var_id) || {
+                                            if let Some(Location::Register(_, loc)) = *reg {
+                                                if let Location::Gc(__loc) = var_id {
+                                                    loc == Some(__loc)
+                                                } else {
+                                                    false
+                                                }
+                                            } else {
+                                                false
+                                            }
+                                        }
+                                    })
+                                {
+                                    let reg_addr = (reg_addr as u8).into();
+                                    self.add_to_current(&[Instruction::Print(reg_addr)]);
+
+                                    // Note: If the value was already loaded, we probably don't want to drop it yet
+
+                                    // If the value was magically loaded in fault-tolerant mode with a fault,
+                                    // drop it from the registers
+                                    if self.options.fault_tolerant && faulted {
+                                        self.add_to_current(&[Instruction::DropReg(reg_addr)]);
+
+                                        self.current_scope.registers[*reg_addr as usize] = None;
+                                    }
+
+                                // If the value is not currently loaded, load, print, and drop it from the registers
+                                } else {
+                                    let reg_addr = self.reserve_reg(Some(var_id), None);
+
+                                    self.add_to_current(&[
+                                        Instruction::Load(
+                                            if let Location::Gc(loc) = var_id {
+                                                loc
+                                            } else {
+                                                unimplemented!()
+                                            },
+                                            reg_addr,
+                                        ),
+                                        // Instruction::Syscall(reg_addr),
+                                        Instruction::DropReg(reg_addr),
+                                    ]);
+
+                                    self.current_scope.registers[*reg_addr as usize] = None;
+                                }
+
+                                // Drop the null value from the registers if a fault occurred
+                                if self.options.fault_tolerant && faulted {
+                                    self.add_to_current(&[Instruction::Drop(
+                                        if let Location::Gc(loc) = var_id {
+                                            loc
+                                        } else {
+                                            unimplemented!()
+                                        },
+                                    )]);
+                                }
+                            }
+                        }
+                    }
+
                     // Print values
                     Builtin::Print(params) => {
                         for param in params {

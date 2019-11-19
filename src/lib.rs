@@ -169,6 +169,9 @@ macro_rules! trace {
     }
 }
 
+#[macro_use]
+extern crate log;
+
 /// Encoding and decoding bytecode
 mod bytecode;
 /// The main Crunch interface
@@ -216,6 +219,9 @@ pub struct Options {
     /// Allows some runtime errors to be ignored
     #[structopt(long = "--fault-tolerant")]
     pub fault_tolerant: bool,
+    /// Overwrites the heap on a side swap
+    #[structopt(long = "--overwrite-heap")]
+    pub overwrite_heap: bool,
 }
 
 // TODO: Document the option builder
@@ -226,6 +232,7 @@ pub struct OptionBuilder {
     burn_gc: bool,
     debug_log: bool,
     fault_tolerant: bool,
+    overwrite_heap: bool,
 }
 
 impl OptionBuilder {
@@ -235,19 +242,28 @@ impl OptionBuilder {
             burn_gc: false,
             debug_log: false,
             fault_tolerant: false,
+            overwrite_heap: false,
         }
     }
 
-    pub fn burn_gc(&mut self, b: bool) {
-        self.burn_gc = b
+    pub fn burn_gc(&mut self, b: bool) -> &mut Self {
+        self.burn_gc = b;
+        self
     }
 
-    pub fn debug_log(&mut self, b: bool) {
-        self.debug_log = b
+    pub fn debug_log(&mut self, b: bool) -> &mut Self {
+        self.debug_log = b;
+        self
     }
 
-    pub fn fault_tolerant(&mut self, b: bool) {
-        self.fault_tolerant = b
+    pub fn fault_tolerant(&mut self, b: bool) -> &mut Self {
+        self.fault_tolerant = b;
+        self
+    }
+
+    pub fn overwrite_heap(&mut self, b: bool) -> &mut Self {
+        self.overwrite_heap = b;
+        self
     }
 
     pub fn build(self) -> Options {
@@ -256,6 +272,32 @@ impl OptionBuilder {
             burn_gc: self.burn_gc,
             debug_log: self.debug_log,
             fault_tolerant: self.fault_tolerant,
+            overwrite_heap: self.overwrite_heap,
+        }
+    }
+}
+
+// TODO: Add disassembly and maybe a GC view? Debugging capabilities?
+#[derive(structopt::StructOpt, Debug, Copy, Clone, PartialEq, Eq)]
+pub enum ReplOutput {
+    Ast,
+    Bytecode,
+    None,
+}
+
+impl Default for ReplOutput {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+impl From<&str> for ReplOutput {
+    fn from(string: &str) -> Self {
+        match &*string.to_lowercase() {
+            "ast" => Self::Ast,
+            "bytecode" => Self::Bytecode,
+            "none" => Self::None,
+            _ => Self::None,
         }
     }
 }

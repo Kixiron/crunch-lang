@@ -83,6 +83,7 @@ impl<'a> Parser<'a> {
                         continue;
                     }
                     TokenType::Error => {
+                        self.error = true;
                         self.diagnostics.push(Diagnostic::new(
                             Severity::Error,
                             "Invalid token",
@@ -94,6 +95,7 @@ impl<'a> Parser<'a> {
                         ));
                     }
                     _ => {
+                        self.error = true;
                         self.diagnostics.push(Diagnostic::new(
                             Severity::Error,
                             "Invalid top-level token",
@@ -267,6 +269,8 @@ impl<'a> Parser<'a> {
             if token.ty == TokenType::Indent {
                 body.push(self.parse_func_body(token.range.0)?);
                 span_end = token.range.1;
+            } else if [TokenType::Newline, TokenType::Space].contains(&token.ty) {
+                continue;
             } else {
                 break;
             }
@@ -338,6 +342,7 @@ impl<'a> Parser<'a> {
                             self.current_file,
                         )),
                         t => {
+                            self.error = true;
                             return Err(Diagnostic::new(
                                 Severity::Error,
                                 "Invalid Function Parameter",
@@ -350,9 +355,13 @@ impl<'a> Parser<'a> {
                         }
                     });
 
+                    self.eat_w()?;
+
                     if self.peek()?.ty == TokenType::Comma {
                         self.eat(TokenType::Comma)?;
                     }
+
+                    self.eat_w()?;
 
                     peek = self.peek()?;
                 }
@@ -366,6 +375,54 @@ impl<'a> Parser<'a> {
             }
             TokenType::Collect => (FuncExpr::Builtin(Builtin::Collect), token.range.1),
             TokenType::Halt => (FuncExpr::Builtin(Builtin::Halt), token.range.1),
+            TokenType::SyscallExit => {
+                self.eat_w()?;
+
+                let peek = self.peek()?;
+                let exit_code = if peek.ty != TokenType::Newline && peek.ty != TokenType::Comma {
+                    self.eat_w()?;
+
+                    match peek.ty {
+                        TokenType::String | TokenType::Bool | TokenType::Int => {
+                            IdentLiteral::Literal(self.parse_variable()?)
+                        }
+                        TokenType::Ident => IdentLiteral::Variable(Ident::from_token(
+                            self.eat(TokenType::Ident)?,
+                            self.current_file,
+                        )),
+                        t => {
+                            self.error = true;
+                            return Err(Diagnostic::new(
+                                Severity::Error,
+                                "Invalid Function Parameter",
+                                Label::new(
+                                    self.files[0],
+                                    self.codespan.source_span(self.files[0]),
+                                    format!("Expected Ident or Literal, got {:?}", t),
+                                ),
+                            ));
+                        }
+                    }
+                } else {
+                    self.error = true;
+                    return Err(Diagnostic::new(
+                        Severity::Error,
+                        "Invalid Function Parameters",
+                        Label::new(
+                            self.files[0],
+                            self.codespan.source_span(self.files[0]),
+                            format!("Exit takes one parameter"),
+                        ),
+                    ));
+                };
+
+                let span_end = self
+                    .eat_of(&[TokenType::Newline, TokenType::Comment])?
+                    .range
+                    .1;
+
+                (FuncExpr::Builtin(Builtin::SyscallExit(exit_code)), span_end)
+            }
             _ => unimplemented!(),
         };
 
@@ -441,7 +498,7 @@ impl<'a> Parser<'a> {
     }
 
     #[inline]
-    fn escape_string(&self, string: &str) -> Result<String> {
+    fn escape_string(&mut self, string: &str) -> Result<String> {
         let mut queue: VecDeque<_> = String::from(string).chars().collect();
         let mut s = String::new();
         let error = Diagnostic::new(
@@ -469,17 +526,29 @@ impl<'a> Parser<'a> {
                 Some('\\') => s.push('\\'),
                 Some('u') => s.push(match unescape_unicode(&mut queue) {
                     Some(c) => c,
-                    None => return Err(error),
+                    None => {
+                        self.error = true;
+                        return Err(error);
+                    }
                 }),
                 Some('x') => s.push(match unescape_byte(&mut queue) {
                     Some(c) => c,
-                    None => return Err(error),
+                    None => {
+                        self.error = true;
+                        return Err(error);
+                    }
                 }),
                 Some('b') => s.push(match unescape_bits(&mut queue) {
                     Some(c) => c,
-                    None => return Err(error),
+                    None => {
+                        self.error = true;
+                        return Err(error);
+                    }
                 }),
-                _ => return Err(error),
+                _ => {
+                    self.error = true;
+                    return Err(error);
+                }
             };
         }
 
@@ -621,6 +690,7 @@ impl<'a> Parser<'a> {
                 token.ty
             );
 
+            self.error = true;
             Err(Diagnostic::new(
                 Severity::Error,
                 format!(
@@ -651,10 +721,11 @@ impl<'a> Parser<'a> {
                 token.ty
             );
 
+            self.error = true;
             Err(Diagnostic::new(
                 Severity::Error,
                 format!(
-                    "Unexpected Token: Expected one of {}, got {:?}",
+                    "Unexpected Token: Expected one of [{}], got {:?}",
                     expected
                         .iter()
                         .map(|t| format!("{:?}", t))

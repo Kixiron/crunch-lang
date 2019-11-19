@@ -17,6 +17,7 @@ fn main() {
         Opt::Run { options } => {
             if options.debug_log {
                 simple_logger::init().unwrap();
+                color_backtrace::install();
             }
 
             match options.file.as_path().extension() {
@@ -27,19 +28,24 @@ fn main() {
                         println!("Please choose a valid .crunch or .crunched file");
                     }
                 },
+
                 None => {
                     println!("Please choose a valid .crunch or .crunched file");
                 }
             }
         }
+
         Opt::Build { options } => {
             if options.debug_log {
                 simple_logger::init().unwrap();
+                color_backtrace::install();
             }
         }
+
         Opt::Verify { options } => {
             if options.debug_log {
                 simple_logger::init().unwrap();
+                color_backtrace::install();
             }
 
             if let Some(ext) = options.file.as_path().extension() {
@@ -73,15 +79,31 @@ fn main() {
                 }
             }
         }
+
+        Opt::Repl {
+            repl_options,
+            burn_gc,
+            debug_log,
+            fault_tolerant,
+            overwrite_heap,
+        } => {
+            if debug_log {
+                simple_logger::init().unwrap();
+                color_backtrace::install();
+            }
+
+            let options = Options {
+                file: std::path::PathBuf::from("CrunchRepl"),
+                burn_gc,
+                debug_log,
+                fault_tolerant,
+                overwrite_heap,
+            };
+
+            Crunch::repl(options, repl_options);
+        }
     }
 }
-
-// #[derive(Debug, StructOpt)]
-// #[structopt(name = "crunch", about = "The command-line interface for Crunch")]
-// struct Opt {
-//     #[structopt(parse(from_os_str))]
-//     file: std::path::PathBuf,
-// }
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -106,5 +128,22 @@ enum Opt {
     Verify {
         #[structopt(flatten)]
         options: Options,
+    },
+
+    /// Runs a repl
+    Repl {
+        #[structopt(long = "--output", parse(from_str))]
+        repl_options: Vec<ReplOutput>,
+        #[structopt(long = "--burn-gc")]
+        burn_gc: bool,
+        /// Activates detailed debug logging
+        #[structopt(long = "--debug-log")]
+        debug_log: bool,
+        /// Allows some runtime errors to be ignored
+        #[structopt(long = "--fault-tolerant")]
+        fault_tolerant: bool,
+        /// Overwrites the heap on a side swap
+        #[structopt(long = "--overwrite-heap")]
+        overwrite_heap: bool,
     },
 }

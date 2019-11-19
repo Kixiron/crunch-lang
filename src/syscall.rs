@@ -4,6 +4,8 @@ lazy_static::lazy_static! {
     ];
 }
 
+// Can have 5 parameters at most
+
 pub unsafe extern "C" fn sys_exit(exit_code: i32) -> ! {
     std::process::exit(exit_code)
 }

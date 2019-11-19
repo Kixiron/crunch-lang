@@ -7,3 +7,4 @@ example.crunched
 /examples/parse_test.crunch
 OUTPUT.md
 utility_commands
+gc_dump-*

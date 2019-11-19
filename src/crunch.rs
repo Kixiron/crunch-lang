@@ -1,6 +1,6 @@
 use super::{
     decode_program, disassemble, encode_program, interpreter::Interpreter, Bytecode, Instruction,
-    Options, Result, RuntimeError, RuntimeErrorTy, Vm,
+    Options, ReplOutput, Result, RuntimeError, RuntimeErrorTy, Vm,
 };
 
 /// The main interface to the crunch language
@@ -151,6 +151,107 @@ impl Crunch {
         Self::from((instructions.0, instructions.1, options)).execute();
 
         Ok(())
+    }
+
+    pub fn repl(options: Options, repl_outputs: Vec<ReplOutput>) {
+        use std::io::{self, Write};
+
+        info!("Starting Crunch REPL");
+
+        'repl: loop {
+            print!(">>> ");
+            if let Err(_) = io::stdout().flush() {
+                println!("[Repl Flush Error]");
+                continue;
+            }
+
+            let (mut input, mut curr_input, mut number_empty_lines) =
+                (String::new(), String::new(), 0_u8);
+
+            while number_empty_lines < 2 {
+                input.push_str(&curr_input);
+                curr_input = String::new();
+
+                if let Err(_) = io::stdout().read_line(&mut curr_input) {
+                    println!("[Repl Read Error]");
+                    break;
+                }
+
+                if !curr_input.trim().is_empty() {
+                    number_empty_lines = 0;
+                } else {
+                    number_empty_lines += 1;
+                }
+
+                if curr_input.trim() == "exit" {
+                    break 'repl;
+                }
+
+                print!("... ");
+                if let Err(_) = io::stdout().flush() {
+                    println!("[Repl Flush Error]");
+                    break;
+                }
+            }
+            println!();
+
+            trace!("REPL Input: {:?}", &input);
+
+            let mut parser = super::parser::Parser::new(Some("CrunchRepl"), &input);
+
+            match parser.parse() {
+                Ok(ast) => {
+                    trace!("Parsing successful");
+
+                    if repl_outputs.contains(&ReplOutput::Ast) {
+                        println!("[Program AST]: {:#?}", &ast);
+                    }
+
+                    match Interpreter::new(ast.0.clone(), &options).interpret() {
+                        Ok((main, funcs)) => {
+                            if repl_outputs.contains(&ReplOutput::Bytecode) {
+                                println!(
+                                    "[Program Bytecode]:\n  [Main]: {:?}\n  [Functions]: {:#?}",
+                                    &main,
+                                    funcs
+                                        .iter()
+                                        .map(|f| format!("{:?}", f))
+                                        .collect::<Vec<String>>()
+                                );
+                            }
+
+                            println!("[Output]:");
+                            Self::from((main, funcs, options.clone())).execute()
+                        }
+                        Err(err) => err.emit(),
+                    }
+                }
+
+                // Emit parsing errors
+                Err(err) => {
+                    trace!("Parsing unsuccessful");
+
+                    let writer = codespan_reporting::term::termcolor::StandardStream::stderr(
+                        codespan_reporting::term::termcolor::ColorChoice::Auto,
+                    );
+
+                    let config = codespan_reporting::term::Config::default();
+
+                    let mut files = codespan::Files::new();
+                    files.add("CrunchRepl", &input);
+
+                    for e in err {
+                        if let Err(err) =
+                            codespan_reporting::term::emit(&mut writer.lock(), &config, &files, &e)
+                        {
+                            println!("Error Emitting Error: {:?}", err);
+                        }
+                    }
+                }
+            }
+
+            println!();
+        }
     }
 
     /// Parse validated bytecode into the Main Function and Function Table

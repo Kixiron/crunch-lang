@@ -117,8 +117,8 @@ pub fn disassemble(bytes: &[u8]) -> String {
                         }
                     ),
 
-                    Syscall(offset, output, param1, param2, param3) => format!(
-                        "0x{:X} => [{}, {}, {}] => {}",
+                    Syscall(offset, output, param1, param2, param3, param4, param5) => format!(
+                        "0x{:X} ({}, {}, {}, {}, {}) -> {}",
                         crate::syscall::SYSCALL_TABLE[*offset as usize],
                         if registers[**param1 as usize] != Value::None {
                             format!("{}: {:?}", param1, registers[**param1 as usize].to_string())
@@ -134,6 +134,16 @@ pub fn disassemble(bytes: &[u8]) -> String {
                             format!("{}: {:?}", param3, registers[**param3 as usize].to_string())
                         } else {
                             format!("{}", param3)
+                        },
+                        if registers[**param4 as usize] != Value::None {
+                            format!("{}: {:?}", param4, registers[**param4 as usize].to_string())
+                        } else {
+                            format!("{}", param4)
+                        },
+                        if registers[**param5 as usize] != Value::None {
+                            format!("{}: {:?}", param5, registers[**param5 as usize].to_string())
+                        } else {
+                            format!("{}", param5)
                         },
                         output,
                     ),
@@ -185,7 +195,15 @@ mod tests {
                 Cache(0, Value::Pointer(0)),
                 Load(0, 0.into()),
                 Print(0.into()),
-                Syscall(0, 1.into(), 0.into(), 1.into(), 1.into()),
+                Syscall(
+                    0,
+                    1.into(),
+                    0.into(),
+                    1.into(),
+                    1.into(),
+                    1.into(),
+                    1.into(),
+                ),
                 Halt,
             ],
             Vec::new(),

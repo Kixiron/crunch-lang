@@ -165,6 +165,10 @@ import 'directory.file' exposing Fizz as MyFizz, Buzz as MyBuzz, Bar as MyBar
 :: Importing everything from a file
 import 'directory.file' exposing *
 :: Now everything from `file` is exposed
+
+:: Importing a dynamic library
+:: The syntax is the same as for importing files, except the keyword `lib` is used after `import`
+import lib 'my_library'
 ```
 
 To specify information about your package, use the `Compacter.crunch` file in the root of the project

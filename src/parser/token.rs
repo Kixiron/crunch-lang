@@ -59,8 +59,10 @@ pub enum TokenType {
     #[regex = "::.*\n"]
     Comment,
     #[token = "    "]
+    #[token = "\t"]
     Indent,
     #[token = "\n"]
+    #[token = "\r\n"]
     Newline,
     #[token = "->"]
     RightArrow,
@@ -83,6 +85,8 @@ pub enum TokenType {
     Export,
     #[token = "as"]
     As,
+    #[token = "exit"]
+    SyscallExit,
 }
 
 #[allow(missing_debug_implementations)]

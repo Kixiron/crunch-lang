@@ -153,6 +153,7 @@ impl<'a> fmt::Debug for FuncExpr<'a> {
 #[derive(Debug, Clone)]
 pub enum Builtin<'a> {
     Print(Vec<IdentLiteral<'a>>),
+    SyscallExit(IdentLiteral<'a>),
     Collect,
     Halt,
 }
@@ -285,7 +286,7 @@ impl<'a> Into<Value> for LiteralInner<'a> {
 impl<'a> fmt::Debug for LiteralInner<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::String(s) => write!(f, "String({:?})", &s[1..s.len() - 1]),
+            Self::String(s) => write!(f, "String({:?})", s),
             Self::Int(i) => write!(f, "Int({:?})", i),
             Self::Float(fl) => write!(f, "Float({:?})", fl),
             Self::Bool(b) => write!(f, "Bool({:?})", b),

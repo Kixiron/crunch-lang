@@ -3,7 +3,7 @@ use shrinkwraprs::Shrinkwrap;
 use std::{alloc, mem, ptr, slice};
 
 /// 64mb per half of heap
-const HEAP_HALF_SIZE: usize = 1000 * 1000 * 64;
+const HEAP_HALF_SIZE: usize = 1000;
 
 /// Gets the memory page size
 #[inline]
@@ -48,12 +48,15 @@ pub(crate) fn page_size() -> usize {
 pub struct GcOptions {
     /// Activates a GC collect at every opportunity
     pub burn_gc: bool,
+    /// Overwrites the heap on a side swap
+    pub overwrite_heap: bool,
 }
 
 impl From<&crate::Options> for GcOptions {
     fn from(options: &crate::Options) -> Self {
         Self {
             burn_gc: options.burn_gc,
+            overwrite_heap: options.overwrite_heap,
         }
     }
 }
@@ -255,9 +258,13 @@ impl Gc {
 
         trace!("Allocations after collect: {}", self.allocations.len());
 
-        // Overwrite old heap
-        unsafe {
-            ptr::write_bytes(*self.get_side(), 0, HEAP_HALF_SIZE);
+        if self.options.overwrite_heap {
+            trace!("Overwriting old heap side: {:?}", self.current_side);
+
+            // Overwrite old heap
+            unsafe {
+                ptr::write_bytes(*self.get_side(), 0, HEAP_HALF_SIZE);
+            }
         }
 
         // Change the current side
@@ -414,6 +421,12 @@ impl Gc {
     #[inline]
     pub fn contains<Id: Into<AllocId> + Copy>(&self, id: Id) -> bool {
         self.allocations.iter().any(|(__id, _)| *__id == id.into())
+    }
+}
+
+impl Drop for Gc {
+    fn drop(&mut self) {
+        // TODO: This should do things
     }
 }
 

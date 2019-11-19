@@ -68,9 +68,6 @@ impl Vm {
     }
 
     #[inline]
-    pub fn cleanup(&mut self) {}
-
-    #[inline]
     pub fn clear(&mut self, reg: Register) {
         self.registers[*reg as usize] = Value::None;
     }
@@ -98,5 +95,11 @@ impl Vm {
             .push((self.index, self.current_func, old_regs));
 
         // TODO: Clear registers after saving?
+    }
+}
+
+impl Drop for Vm {
+    fn drop(&mut self) {
+        // TODO: This should do things
     }
 }

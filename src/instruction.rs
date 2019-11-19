@@ -52,6 +52,7 @@ pub enum Instruction {
     Load(u32, Register),
     /// Cache a Value into the GC
     Cache(u32, Value),
+    // TODO: Have a direct load to a register
     CompToReg(Register),
     OpToReg(Register),
     Save(u32, Register),
@@ -82,8 +83,22 @@ pub enum Instruction {
     // TODO: Flesh this instruction out
     Return,
     Halt,
-    Syscall(u16, Register, Register, Register, Register),
+    // TODO: Use a `Value::ParamBuf` instead
+    Syscall(
+        u8,
+        Register,
+        Register,
+        Register,
+        Register,
+        Register,
+        Register,
+    ),
 
+    // TODO: Handle FFI with the following instructions
+    // LoadLib(&'static str), // Loads a dynamic library
+    // CallLib(&'static str, input: Value::ParamBuf, output: Value::ParamBuf),
+
+    // An illegal instruction
     Illegal,
 }
 
@@ -327,7 +342,6 @@ impl Instruction {
                     if let Some(location) = vm.return_stack.pop() {
                         vm.index = location;
                     } else {
-                        vm.cleanup();
                         vm.finished_execution = true;
                     }
                 }
@@ -335,23 +349,24 @@ impl Instruction {
                 vm.index += Index(1);
             }
             Instruction::Halt => {
-                vm.cleanup();
                 vm.finished_execution = true;
             }
-            Instruction::Syscall(offset, output, param_1, param_2, param_3) => {
-                let p = [param_1, param_2, param_3];
+            Instruction::Syscall(offset, output, param_1, param_2, param_3, param_4, param_5) => {
+                let p = [param_1, param_2, param_3, param_4, param_5];
                 let func = (*super::syscall::SYSCALL_TABLE)[*offset as usize];
-                let func: unsafe extern "C" fn(usize, usize, usize) -> usize =
+                let func: unsafe extern "C" fn(usize, usize, usize, usize, usize) -> usize =
                     unsafe { std::mem::transmute(func) };
 
-                let mut params = [0_usize; 3];
-                for i in 0..3 {
-                    if let Value::Pointer(p) = vm.registers[**p[i] as usize] {
-                        params[i] = p;
+                let mut params = [0_usize; 5];
+                for i in 0..5 {
+                    match vm.registers[**p[i] as usize] {
+                        Value::Pointer(p) => params[i] = p,
+                        Value::Int(int) => params[i] = int as usize,
+                        _ => {}
                     }
                 }
 
-                let result = unsafe { func(params[0], params[1], params[2]) };
+                let result = unsafe { func(params[0], params[1], params[2], params[3], params[4]) };
 
                 vm.registers[**output as usize] = Value::Pointer(result);
             }
@@ -401,7 +416,7 @@ impl Instruction {
             Self::Collect => "coll",
             Self::Return => "ret",
             Self::Halt => "halt",
-            Self::Syscall(_, _, _, _, _) => "syscall",
+            Self::Syscall(_, _, _, _, _, _, _) => "sysc",
 
             Self::Illegal => "illegal",
         }
@@ -606,89 +621,57 @@ mod tests {
 
     #[test]
     fn print_op() {
-        // Have to construct a new one every time because box::into_raw consumes vm.stdout
+        use std::mem;
 
         let print = Instruction::Print(0.into());
+        let mut vm = Vm::new(
+            Vec::new(),
+            &crate::OptionBuilder::new("./print_op").build(),
+            Box::new(Vec::<u8>::new()),
+        );
 
-        {
-            let mut vm = Vm::new(
-                Vec::new(),
-                &crate::OptionBuilder::new("./print_op").build(),
-                Box::new(Vec::<u8>::new()),
-            );
+        vm.registers[0] = Value::String("Test".to_string());
+        print.execute(&mut vm).unwrap();
 
-            vm.registers[0] = Value::String("Test".to_string());
-            print.execute(&mut vm).unwrap();
-            assert_eq!(
-                unsafe { *(Box::into_raw(vm.stdout) as *const &str) },
-                "Test"
-            );
-        }
+        // Have to do some monkeying with stdout because of Vm's drop implementation
+        let mut stdout: Box<dyn std::io::Write + 'static> = Box::new(Vec::<u8>::new());
+        mem::swap(&mut vm.stdout, &mut stdout);
+        assert_eq!(unsafe { *(Box::into_raw(stdout) as *const &str) }, "Test");
 
-        {
-            let mut vm = Vm::new(
-                Vec::new(),
-                &crate::OptionBuilder::new("./print_op").build(),
-                Box::new(Vec::<u8>::new()),
-            );
+        vm.registers[0] = Value::Int(10);
+        print.execute(&mut vm).unwrap();
 
-            vm.registers[0] = Value::Int(10);
-            print.execute(&mut vm).unwrap();
-            assert_eq!(unsafe { *(Box::into_raw(vm.stdout) as *const &str) }, "10");
-        }
+        let mut stdout: Box<dyn std::io::Write + 'static> = Box::new(Vec::<u8>::new());
+        mem::swap(&mut vm.stdout, &mut stdout);
+        assert_eq!(unsafe { *(Box::into_raw(stdout) as *const &str) }, "10");
 
-        {
-            let mut vm = Vm::new(
-                Vec::new(),
-                &crate::OptionBuilder::new("./print_op").build(),
-                Box::new(Vec::<u8>::new()),
-            );
+        vm.registers[0] = Value::Bool(true);
+        print.execute(&mut vm).unwrap();
 
-            vm.registers[0] = Value::Bool(true);
-            print.execute(&mut vm).unwrap();
-            assert_eq!(
-                unsafe { *(Box::into_raw(vm.stdout) as *const &str) },
-                "true"
-            );
-        }
+        let mut stdout: Box<dyn std::io::Write + 'static> = Box::new(Vec::<u8>::new());
+        mem::swap(&mut vm.stdout, &mut stdout);
+        assert_eq!(unsafe { *(Box::into_raw(stdout) as *const &str) }, "true");
 
-        {
-            let mut vm = Vm::new(
-                Vec::new(),
-                &crate::OptionBuilder::new("./F").build(),
-                Box::new(Vec::<u8>::new()),
-            );
+        vm.registers[0] = Value::Bool(false);
+        print.execute(&mut vm).unwrap();
 
-            vm.registers[0] = Value::Bool(false);
-            print.execute(&mut vm).unwrap();
-            assert_eq!(
-                unsafe { *(Box::into_raw(vm.stdout) as *const &str) },
-                "false"
-            );
-        }
+        let mut stdout: Box<dyn std::io::Write + 'static> = Box::new(std::io::stdout()); //  Load stdout into vm.stdout for the printing portion
+        mem::swap(&mut vm.stdout, &mut stdout);
+        assert_eq!(unsafe { *(Box::into_raw(stdout) as *const &str) }, "false");
 
-        {
-            // Test that writing to stdout works too, can only verify that it does,
-            // not that it is correct
+        // Test that writing to stdout works too, can only verify that it does, not that it is correct
 
-            let mut vm = Vm::new(
-                Vec::new(),
-                &crate::OptionBuilder::new("./F").build(),
-                Box::new(stdout()),
-            );
+        vm.registers[0] = Value::String("Test".to_string());
+        print.execute(&mut vm).unwrap();
 
-            vm.registers[0] = Value::String("Test".to_string());
-            print.execute(&mut vm).unwrap();
+        vm.registers[0] = Value::Int(10);
+        print.execute(&mut vm).unwrap();
 
-            vm.registers[0] = Value::Int(10);
-            print.execute(&mut vm).unwrap();
+        vm.registers[0] = Value::Bool(true);
+        print.execute(&mut vm).unwrap();
 
-            vm.registers[0] = Value::Bool(true);
-            print.execute(&mut vm).unwrap();
-
-            vm.registers[0] = Value::Bool(false);
-            print.execute(&mut vm).unwrap();
-        }
+        vm.registers[0] = Value::Bool(false);
+        print.execute(&mut vm).unwrap();
     }
 
     #[test]

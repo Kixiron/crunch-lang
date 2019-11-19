@@ -250,15 +250,13 @@ fn decode_instruction(
         ),
         0x18 => Instruction::Collect,
         0x19 => Instruction::Syscall(
-            u16::from_be_bytes(
-                instruction[1..size_of::<u16>() + 1]
-                    .try_into()
-                    .unwrap_or_else(|_| unreachable!()),
-            ),
-            instruction[size_of::<u16>() + 2].into(),
-            instruction[size_of::<u16>() + 3].into(),
-            instruction[size_of::<u16>() + 4].into(),
-            instruction[size_of::<u16>() + 5].into(),
+            instruction[1],
+            instruction[2].into(),
+            instruction[3].into(),
+            instruction[4].into(),
+            instruction[5].into(),
+            instruction[6].into(),
+            instruction[7].into(),
         ),
 
         _ => Instruction::Illegal,

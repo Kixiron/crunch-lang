@@ -1,0 +1,24 @@
+[tasks.check]
+dependencies = [
+    "test",
+    "fmt-check",
+    "clippy-check",
+]
+
+[tasks.cli]
+dependencies = [
+    "build-release",
+    "test",
+    "fmt-check",
+    "clippy-check",
+]
+
+[tasks.fmt-check]
+install_crate = { rustup_component_name = "rustfmt" }
+command = "cargo"
+args = ["fmt", "--all", "--", "--check"]
+
+[tasks.clippy-check]
+install_crate = { rustup_component_name = "clippy" }
+command = "cargo"
+args = ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings"]
