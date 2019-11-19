@@ -172,7 +172,7 @@ impl Crunch {
                 input.push_str(&curr_input);
                 curr_input = String::new();
 
-                if let Err(_) = io::stdout().read_line(&mut curr_input) {
+                if let Err(_) = io::stdin().read_line(&mut curr_input) {
                     println!("[Repl Read Error]");
                     break;
                 }

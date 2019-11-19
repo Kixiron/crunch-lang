@@ -9,15 +9,12 @@ fn main() {
         homepage: "https://github.com/Kixiron/crunch-lang".into(),
     });
 
-    color_backtrace::install();
-
     let opt = Opt::from_args();
 
     match opt {
         Opt::Run { options } => {
             if options.debug_log {
-                simple_logger::init().unwrap();
-                color_backtrace::install();
+                set_debug_hooks();
             }
 
             match options.file.as_path().extension() {
@@ -37,15 +34,13 @@ fn main() {
 
         Opt::Build { options } => {
             if options.debug_log {
-                simple_logger::init().unwrap();
-                color_backtrace::install();
+                set_debug_hooks();
             }
         }
 
         Opt::Verify { options } => {
             if options.debug_log {
-                simple_logger::init().unwrap();
-                color_backtrace::install();
+                set_debug_hooks();
             }
 
             if let Some(ext) = options.file.as_path().extension() {
@@ -88,8 +83,7 @@ fn main() {
             overwrite_heap,
         } => {
             if debug_log {
-                simple_logger::init().unwrap();
-                color_backtrace::install();
+                set_debug_hooks();
             }
 
             let options = Options {
@@ -103,6 +97,11 @@ fn main() {
             Crunch::repl(options, repl_options);
         }
     }
+}
+
+fn set_debug_hooks() {
+    simple_logger::init().unwrap();
+    color_backtrace::install();
 }
 
 #[derive(Debug, StructOpt)]

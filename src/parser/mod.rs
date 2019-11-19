@@ -24,7 +24,10 @@ pub struct Parser<'a> {
 
 impl<'a> Parser<'a> {
     pub fn new(filename: Option<&'a str>, input: &'a str) -> Self {
-        let mut token_stream = TokenStream::new(input);
+        let mut token_stream = TokenStream::new(input.trim_start()); // The trim_start is a sketchy solution to the weird problem
+                                                                     //  of a `\r\n` precluding a function decl causing everything
+                                                                     // to break. Smallest reproducible set:
+                                                                     // "\r\nfn main()\r\n\t@print \"Welp.\\n\"\r\n"
         let peek = token_stream.next();
         let next = token_stream.next();
         let (codespan, files) = {
@@ -68,6 +71,7 @@ impl<'a> Parser<'a> {
                             }
                         }));
                     }
+
                     TokenType::Import => ast.push(Node::Import(match self.parse_import() {
                         Ok(node) => node,
                         Err(err) => {
@@ -75,13 +79,17 @@ impl<'a> Parser<'a> {
                             continue;
                         }
                     })),
+
                     TokenType::End => break,
+
+                    // This is apparently kinda flawed
                     TokenType::Space | TokenType::Comment | TokenType::Newline => {
                         if let Err(err) = self.next(line!()) {
                             self.diagnostics.push(err);
                         }
                         continue;
                     }
+
                     TokenType::Error => {
                         self.error = true;
                         self.diagnostics.push(Diagnostic::new(
@@ -94,6 +102,7 @@ impl<'a> Parser<'a> {
                             ),
                         ));
                     }
+
                     _ => {
                         self.error = true;
                         self.diagnostics.push(Diagnostic::new(
@@ -151,64 +160,163 @@ impl<'a> Parser<'a> {
 
         self.eat_w()?;
 
-        let exposes = if self.peek()?.ty == TokenType::Exposing {
-            self.eat(TokenType::Exposing)?;
-            self.eat_w()?;
+        let (exposes, alias) = match self.peek()?.ty {
+            TokenType::Exposing => {
+                self.eat(TokenType::Exposing)
+                    .unwrap_or_else(|_| unreachable!("Peek was Exposing"));
+                self.eat_w()?;
 
-            let peek = self.peek()?;
-            if peek.ty == TokenType::Star {
-                self.eat(TokenType::Star)?;
+                let peek = self.peek()?;
+                if peek.ty == TokenType::Star {
+                    self.eat(TokenType::Star)
+                        .unwrap_or_else(|_| unreachable!("Peek was Star"));
 
-                Exposes::All
-            } else if peek.ty == TokenType::Ident {
-                let mut imports = Vec::new();
-                let mut peek = self.peek()?;
+                    (Exposes::All, None)
+                } else if peek.ty == TokenType::Ident {
+                    let mut imports = Vec::new();
+                    let mut peek = self.peek()?;
 
-                while peek.ty != TokenType::Newline {
-                    let ident = Ident::from_token(self.eat(TokenType::Ident)?, self.current_file);
-
-                    self.eat_w()?;
-
-                    let token = self.peek()?;
-                    let alias = if token.ty == TokenType::As {
-                        self.eat(TokenType::As)?;
+                    while peek.ty != TokenType::Newline {
+                        let ident =
+                            Ident::from_token(self.eat(TokenType::Ident)?, self.current_file);
 
                         self.eat_w()?;
 
-                        Some(Ident::from_token(
-                            self.eat(TokenType::Ident)?,
-                            self.current_file,
-                        ))
-                    } else {
-                        None
-                    };
+                        let token = self.peek()?;
+                        let alias = if token.ty == TokenType::As {
+                            self.eat(TokenType::As)
+                                .unwrap_or_else(|_| unreachable!("Peek was As"));
 
-                    imports.push((ident, alias));
+                            self.eat_w()?;
 
-                    self.eat_w()?;
-                    peek = self.peek()?;
+                            Some(Ident::from_token(
+                                self.eat(TokenType::Ident)?,
+                                self.current_file,
+                            ))
+                        } else {
+                            None
+                        };
 
-                    if peek.ty == TokenType::Comma {
-                        self.eat(TokenType::Comma)?;
-                    } else {
-                        break;
+                        imports.push((ident, alias));
+
+                        self.eat_w()?;
+                        peek = self.peek()?;
+
+                        if peek.ty == TokenType::Comma {
+                            self.eat(TokenType::Comma)
+                                .unwrap_or_else(|_| unreachable!("Peek was Comma"));
+                        } else {
+                            break;
+                        }
                     }
-                }
 
+                    self.eat(TokenType::Newline)?;
+
+                    (Exposes::Some(imports), None)
+                } else {
+                    self.error = true;
+                    return Err(Diagnostic::new(
+                        Severity::Error,
+                        "Expected exposed members",
+                        Label::new(
+                            self.files[0],
+                            self.codespan.source_span(self.files[0]),
+                            format!("You must expose something when using the `exposing` keyword"),
+                        ),
+                    ));
+                }
+            }
+
+            TokenType::As => {
+                self.eat(TokenType::As)
+                    .unwrap_or_else(|_| unreachable!("Peek was As"));
+
+                let alias = Ident::from_token(self.eat(TokenType::Ident)?, self.current_file);
+
+                if self.peek()?.ty == TokenType::Exposing {
+                    self.eat(TokenType::Exposing)
+                        .unwrap_or_else(|_| unreachable!("Peek was Exposing"));
+                    self.eat_w()?;
+
+                    let peek = self.peek()?;
+                    if peek.ty == TokenType::Star {
+                        self.eat(TokenType::Star)
+                            .unwrap_or_else(|_| unreachable!("Peek was Star"));
+
+                        (Exposes::All, Some(alias))
+                    } else if peek.ty == TokenType::Ident {
+                        let mut imports = Vec::new();
+                        let mut peek = self.peek()?;
+
+                        while peek.ty != TokenType::Newline {
+                            let ident =
+                                Ident::from_token(self.eat(TokenType::Ident)?, self.current_file);
+
+                            self.eat_w()?;
+
+                            let token = self.peek()?;
+                            let alias = if token.ty == TokenType::As {
+                                self.eat(TokenType::As)
+                                    .unwrap_or_else(|_| unreachable!("Peek was As"));
+
+                                self.eat_w()?;
+
+                                Some(Ident::from_token(
+                                    self.eat(TokenType::Ident)?,
+                                    self.current_file,
+                                ))
+                            } else {
+                                None
+                            };
+
+                            imports.push((ident, alias));
+
+                            self.eat_w()?;
+                            peek = self.peek()?;
+
+                            if peek.ty == TokenType::Comma {
+                                self.eat(TokenType::Comma)
+                                    .unwrap_or_else(|_| unreachable!("Peek was Comma"));
+                            } else {
+                                break;
+                            }
+                        }
+
+                        self.eat(TokenType::Newline)?;
+
+                        (Exposes::Some(imports), Some(alias))
+                    } else {
+                        self.error = true;
+                        return Err(Diagnostic::new(
+                            Severity::Error,
+                            "Expected exposed members",
+                            Label::new(
+                                self.files[0],
+                                self.codespan.source_span(self.files[0]),
+                                format!(
+                                    "You must expose something when using the `exposing` keyword"
+                                ),
+                            ),
+                        ));
+                    }
+                } else {
+                    (Exposes::All, Some(alias))
+                }
+            }
+
+            _ => {
+                self.eat_w()?;
                 self.eat(TokenType::Newline)?;
 
-                Exposes::Some(imports)
-            } else {
-                unimplemented!() // Error
+                (Exposes::File, None)
             }
-        } else {
-            self.eat_w()?;
-            self.eat(TokenType::Newline)?;
-
-            Exposes::File
         };
 
-        Ok(Import { file, exposes })
+        Ok(Import {
+            file,
+            alias,
+            exposes,
+        })
     }
 
     // fn parse_type_decl(&mut self, span_start: u32) -> Result<TypeDecl<'a>> {
@@ -243,19 +351,24 @@ impl<'a> Parser<'a> {
 
         self.eat(TokenType::LeftParen)?;
 
+        self.eat_w()?;
         let mut params = Vec::new();
         while self.peek()?.ty != TokenType::RightParen {
             params.push(self.parse_named_parameter()?);
+            self.eat_w()?;
 
             if self.peek()?.ty == TokenType::Comma {
-                self.eat(TokenType::Comma)?;
+                self.eat(TokenType::Comma)
+                    .unwrap_or_else(|_| unreachable!("Peek was Comma"));
             }
         }
 
         self.eat(TokenType::RightParen)?;
 
         self.eat_w()?;
-        let returns = if self.next(line!())?.ty == TokenType::RightArrow {
+        let returns = if self.peek()?.ty == TokenType::RightArrow {
+            self.eat(TokenType::RightArrow)
+                .unwrap_or_else(|_| unreachable!("Peek was RightArrow"));
             self.parse_type()?.0
         } else {
             Type::Infer
@@ -263,6 +376,7 @@ impl<'a> Parser<'a> {
 
         self.eat_of(&[TokenType::Newline, TokenType::Comment])?;
 
+        self.eat_w()?;
         let mut body = Vec::new();
         let mut span_end = span_start;
         while let Ok(token) = self.next(line!()) {
@@ -297,7 +411,8 @@ impl<'a> Parser<'a> {
                 let name = Ident::from_token(self.eat(TokenType::Ident)?, self.current_file);
 
                 let ty = if self.peek().unwrap().ty == TokenType::Colon {
-                    self.eat(TokenType::Colon)?;
+                    self.eat(TokenType::Colon)
+                        .unwrap_or_else(|_| unreachable!("Peek was Colon"));;
                     self.parse_type()?.0
                 } else {
                     Type::Infer
@@ -358,7 +473,8 @@ impl<'a> Parser<'a> {
                     self.eat_w()?;
 
                     if self.peek()?.ty == TokenType::Comma {
-                        self.eat(TokenType::Comma)?;
+                        self.eat(TokenType::Comma)
+                            .unwrap_or_else(|_| unreachable!("Peek was Comma"));
                     }
 
                     self.eat_w()?;
@@ -628,6 +744,7 @@ impl<'a> Parser<'a> {
         self.next = next.clone();
 
         if let Some(next) = next {
+            trace!("Got token: {:?}", next);
             Ok(next)
         } else {
             trace!("Failed to get next token on line {}", line);
@@ -669,9 +786,26 @@ impl<'a> Parser<'a> {
             if token.ty != TokenType::Space {
                 break;
             } else {
+                trace!("Ate {:?} as whitespace", token);
                 self.next(line!())?;
             }
         }
+
+        Ok(())
+    }
+
+    #[inline]
+    fn eat_all_of(&mut self, set: &[TokenType]) -> Result<()> {
+        while let Some(token) = &self.peek {
+            println!("{:?}, {}", token, set.contains(&token.ty));
+            if !set.contains(&token.ty) {
+                break;
+            } else {
+                trace!("Ate {:?} as part of set", token);
+                self.next(line!())?;
+            }
+        }
+
         Ok(())
     }
 
@@ -682,12 +816,14 @@ impl<'a> Parser<'a> {
         let token = self.next(line!())?;
 
         if token.ty == expected {
+            trace!("Ate {:?}", token);
             Ok(token)
         } else {
             trace!(
-                "Failed to eat token, expected {:?} got {:?}",
+                "Failed to eat token, expected {:?} got {:?}. Token: {:?}",
                 expected,
-                token.ty
+                token.ty,
+                token
             );
 
             self.error = true;
@@ -713,12 +849,14 @@ impl<'a> Parser<'a> {
         let token = self.next(line!())?;
 
         if expected.contains(&token.ty) {
+            trace!("Ate {:?}", token);
             Ok(token)
         } else {
             trace!(
-                "Failed to eat token, expected {:?}, got {:?}",
+                "Failed to eat token, expected {:?}, got {:?}. Token: {:?}",
                 expected,
-                token.ty
+                token.ty,
+                token,
             );
 
             self.error = true;

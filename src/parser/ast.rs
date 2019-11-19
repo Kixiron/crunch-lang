@@ -99,6 +99,7 @@ impl<'a> Ident<'a> {
 #[derive(Debug, Clone)]
 pub struct Import<'a> {
     pub file: std::path::PathBuf,
+    pub alias: Option<Ident<'a>>,
     pub exposes: Exposes<'a>,
 }
 
