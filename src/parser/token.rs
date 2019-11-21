@@ -56,7 +56,7 @@ pub enum TokenType {
     String,
     #[token = " "]
     Space,
-    #[regex = "::.*\n"]
+    #[regex = "::[^\r\n]*"]
     Comment,
     #[token = "    "]
     #[token = "\t"]

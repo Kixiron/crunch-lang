@@ -255,7 +255,6 @@ impl<'a> fmt::Debug for IdentLiteral<'a> {
 pub struct Assign<'a> {
     pub name: Ident<'a>,
     pub val: IdentLiteral<'a>,
-    pub ty: Type<'a>,
     pub info: LocInfo,
 }
 

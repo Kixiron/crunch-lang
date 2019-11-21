@@ -166,6 +166,10 @@ import 'directory.file' exposing Fizz as MyFizz, Buzz as MyBuzz, Bar as MyBar
 import 'directory.file' exposing *
 :: Now everything from `file` is exposed
 
+:: Importing a package/dependency
+:: The syntax is the same as for importing files, except the keyword `pkg` is used after `import`
+import pkg 'rand'
+
 :: Importing a dynamic library
 :: The syntax is the same as for importing files, except the keyword `lib` is used after `import`
 import lib 'my_library'

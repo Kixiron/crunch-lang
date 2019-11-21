@@ -572,6 +572,34 @@ impl GcValue {
     }
 }
 
+pub trait CrunchGc {
+    type Ident;
+    type Error;
+
+    fn alloc(&mut self, size: usize) -> Result<Self::Ident, Self::Error>;
+    fn alloc_id(
+        &mut self,
+        size: usize,
+        id: impl Into<Self::Ident>,
+    ) -> Result<Self::Ident, Self::Error>;
+    fn contains(&self, id: impl Into<Self::Ident>) -> Result<bool, Self::Error>;
+    fn add_root(&mut self, id: impl Into<Self::Ident>) -> Result<(), Self::Error>;
+    fn remove_root(&mut self, id: impl Into<Self::Ident>) -> Result<(), Self::Error>;
+    fn add_child(
+        &mut self,
+        parent: impl Into<Self::Ident>,
+        child: impl Into<Self::Ident>,
+    ) -> Result<(), Self::Error>;
+    fn remove_child(
+        &mut self,
+        parent: impl Into<Self::Ident>,
+        child: impl Into<Self::Ident>,
+    ) -> Result<(), Self::Error>;
+    fn collect(&mut self) -> Result<(), Self::Error>;
+    fn write<T>(&mut self, id: impl Into<Self::Ident>, data: &T) -> Result<(), Self::Error>;
+    fn read<T>(&self, id: impl Into<Self::Ident>) -> Result<T, Self::Error>;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
