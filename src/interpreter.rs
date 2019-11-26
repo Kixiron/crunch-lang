@@ -191,6 +191,7 @@ impl<'a> Interpreter<'a> {
 
                             // Insert the variable into the gc
                             let gc_id = self.get_next_gc_id();
+                            let addr = self.reserve_reg(None, Some(gc_id));
 
                             // Add the variable to the current scope
                             self.current_scope.variables.insert(
@@ -199,7 +200,7 @@ impl<'a> Interpreter<'a> {
                             );
 
                             // Add the cache instruction to the current function
-                            self.add_to_current(&[Instruction::Cache(gc_id, val)]);
+                            self.add_to_current(&[Instruction::Cache(gc_id, val, addr)]);
                         }
 
                         BindingVal::BinOp(bin_op) => match (bin_op.left, bin_op.right) {
@@ -207,8 +208,13 @@ impl<'a> Interpreter<'a> {
                                 let left: Value = left.val.into();
                                 let right = right.val.into();
                                 let gc_id = self.get_next_gc_id();
+                                let addr = self.reserve_reg(None, Some(gc_id));
 
-                                self.add_to_current(&[Instruction::Cache(gc_id, (left + right)?)]);
+                                self.add_to_current(&[Instruction::Cache(
+                                    gc_id,
+                                    (left + right)?,
+                                    addr,
+                                )]);
 
                                 self.current_scope.variables.insert(
                                     binding.name.name.to_string(),
@@ -220,10 +226,9 @@ impl<'a> Interpreter<'a> {
                                 let (left, left_id) = (left.val.into(), self.get_next_gc_id());
                                 let left_addr = self.reserve_reg(None, Some(left_id));
 
-                                self.add_to_current(&[
-                                    Instruction::Cache(left_id, left),
-                                    Instruction::Load(left_id, left_addr),
-                                ]);
+                                self.add_to_current(&[Instruction::Cache(
+                                    left_id, left, left_addr,
+                                )]);
 
                                 let (right_id, faulted) = {
                                     if let Some(var) =
@@ -234,10 +239,12 @@ impl<'a> Interpreter<'a> {
                                         // If fault tolerant, a fault just occurred, so pretend it didn't
                                         if self.options.fault_tolerant {
                                             let gc_id = self.get_next_gc_id();
+                                            let addr = self.reserve_reg(None, Some(gc_id));
 
                                             self.add_to_current(&[Instruction::Cache(
                                                 gc_id,
                                                 Value::None,
+                                                addr,
                                             )]);
 
                                             (Location::Gc(gc_id), true)
@@ -274,17 +281,7 @@ impl<'a> Interpreter<'a> {
                                 } else {
                                     let right_addr = self.reserve_reg(Some(right_id), None);
 
-                                    self.add_to_current(&[
-                                        Instruction::Load(
-                                            if let Location::Gc(loc) = right_id {
-                                                loc
-                                            } else {
-                                                unimplemented!()
-                                            },
-                                            right_addr,
-                                        ),
-                                        Instruction::Add(left_addr, right_addr),
-                                    ]);
+                                    self.add_to_current(&[Instruction::Add(left_addr, right_addr)]);
 
                                     self.current_scope.registers[*right_addr as usize] = None;
                                     self.current_scope.registers[*left_addr as usize] = None;
@@ -312,10 +309,12 @@ impl<'a> Interpreter<'a> {
                                         // If fault tolerant, a fault just occurred, so pretend it didn't
                                         if self.options.fault_tolerant {
                                             let gc_id = self.get_next_gc_id();
+                                            let addr = self.reserve_reg(None, Some(gc_id));
 
                                             self.add_to_current(&[Instruction::Cache(
                                                 gc_id,
                                                 Value::None,
+                                                addr,
                                             )]);
 
                                             (Location::Gc(gc_id), true)
@@ -336,10 +335,9 @@ impl<'a> Interpreter<'a> {
                                 let (right, right_id) = (right.val.into(), self.get_next_gc_id());
                                 let right_addr = self.reserve_reg(None, Some(right_id));
 
-                                self.add_to_current(&[
-                                    Instruction::Cache(right_id, right),
-                                    Instruction::Load(right_id, right_addr),
-                                ]);
+                                self.add_to_current(&[Instruction::Cache(
+                                    right_id, right, right_addr,
+                                )]);
 
                                 if let Some(left_addr) = self
                                     .current_scope
@@ -360,17 +358,7 @@ impl<'a> Interpreter<'a> {
                                 } else {
                                     let left_addr = self.reserve_reg(Some(left_id), None);
 
-                                    self.add_to_current(&[
-                                        Instruction::Load(
-                                            if let Location::Gc(loc) = left_id {
-                                                loc
-                                            } else {
-                                                unimplemented!()
-                                            },
-                                            left_addr,
-                                        ),
-                                        Instruction::Add(left_addr, right_addr),
-                                    ]);
+                                    self.add_to_current(&[Instruction::Add(left_addr, right_addr)]);
 
                                     self.current_scope.registers[*right_addr as usize] = None;
                                     self.current_scope.registers[*left_addr as usize] = None;
@@ -417,8 +405,7 @@ impl<'a> Interpreter<'a> {
                                 let reg_addr = self.reserve_reg(Some(Location::Gc(gc_id)), None);
 
                                 self.add_to_current(&[
-                                    Instruction::Cache(gc_id, val),
-                                    Instruction::Load(gc_id, reg_addr),
+                                    Instruction::Cache(gc_id, val, reg_addr),
                                     Instruction::Print(reg_addr),
                                     Instruction::DropReg(reg_addr),
                                     Instruction::Drop(gc_id),
@@ -440,10 +427,12 @@ impl<'a> Interpreter<'a> {
                                     // If fault tolerant, a fault just occurred, so pretend it didn't
                                     if self.options.fault_tolerant {
                                         let gc_id = self.get_next_gc_id();
+                                        let addr = self.reserve_reg(None, Some(gc_id));
 
                                         self.add_to_current(&[Instruction::Cache(
                                             gc_id,
                                             Value::None,
+                                            addr,
                                         )]);
 
                                         (Location::Gc(gc_id), Type::Void, true)
@@ -494,14 +483,6 @@ impl<'a> Interpreter<'a> {
                                     let reg_addr = self.reserve_reg(Some(var_id), None);
 
                                     self.add_to_current(&[
-                                        Instruction::Load(
-                                            if let Location::Gc(loc) = var_id {
-                                                loc
-                                            } else {
-                                                unimplemented!()
-                                            },
-                                            reg_addr,
-                                        ),
                                         // Instruction::Syscall(reg_addr),
                                         Instruction::DropReg(reg_addr),
                                     ]);
@@ -535,8 +516,7 @@ impl<'a> Interpreter<'a> {
                                         self.reserve_reg(Some(Location::Gc(gc_id)), None);
 
                                     self.add_to_current(&[
-                                        Instruction::Cache(gc_id, val),
-                                        Instruction::Load(gc_id, reg_addr),
+                                        Instruction::Cache(gc_id, val, reg_addr),
                                         Instruction::Print(reg_addr),
                                         Instruction::DropReg(reg_addr),
                                         Instruction::Drop(gc_id),
@@ -558,10 +538,12 @@ impl<'a> Interpreter<'a> {
                                         // If fault tolerant, a fault just occurred, so pretend it didn't
                                         if self.options.fault_tolerant {
                                             let gc_id = self.get_next_gc_id();
+                                            let addr = self.reserve_reg(None, Some(gc_id));
 
                                             self.add_to_current(&[Instruction::Cache(
                                                 gc_id,
                                                 Value::None,
+                                                addr,
                                             )]);
 
                                             (Location::Gc(gc_id), Type::Void, true)
@@ -612,14 +594,6 @@ impl<'a> Interpreter<'a> {
                                         let reg_addr = self.reserve_reg(Some(var_id), None);
 
                                         self.add_to_current(&[
-                                            Instruction::Load(
-                                                if let Location::Gc(loc) = var_id {
-                                                    loc
-                                                } else {
-                                                    unimplemented!()
-                                                },
-                                                reg_addr,
-                                            ),
                                             Instruction::Print(reg_addr),
                                             Instruction::DropReg(reg_addr),
                                         ]);

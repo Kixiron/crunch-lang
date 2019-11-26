@@ -1,3 +1,4 @@
+use crate::{Result, RuntimeError, RuntimeErrorTy};
 use derive_more::{Add, AddAssign, Constructor, From, Into, Mul, MulAssign, Sub, SubAssign};
 use shrinkwraprs::Shrinkwrap;
 use std::{alloc, mem, ptr, slice};
@@ -118,11 +119,11 @@ impl Gc {
     }
 
     /// Allocate the space for an object
-    pub fn allocate(&mut self, size: usize) -> Option<(GcValue, AllocId)> {
+    pub fn allocate(&mut self, size: usize) -> Result<(GcValue, AllocId)> {
         trace!("Allocating size {}", size);
 
         if self.options.burn_gc {
-            self.collect();
+            self.collect()?;
         }
 
         let (block_end, block_start) = (
@@ -133,8 +134,11 @@ impl Gc {
 
         // If the object is too large return None
         if block_end - *heap as usize > HEAP_HALF_SIZE {
-            self.collect(); // Collect garbage
-            return None;
+            self.collect()?; // Collect garbage
+            return Err(RuntimeError {
+                ty: RuntimeErrorTy::GcError,
+                message: "The heap is full".to_string(),
+            });
         }
 
         // Generate the Id of the new allocation based off of its pointer
@@ -159,7 +163,7 @@ impl Gc {
         // end = self.latest + size
         self.latest = HeapPointer::new(block_end as *mut u8);
 
-        Some((value, new_id))
+        Ok((value, new_id))
     }
 
     /// Allocate the space for an object
@@ -167,13 +171,13 @@ impl Gc {
         &mut self,
         size: usize,
         id: Id,
-    ) -> Option<(GcValue, AllocId)> {
+    ) -> Result<(GcValue, AllocId)> {
         let id = id.into();
 
         trace!("Allocating for size {} and id {}", size, id.0);
 
         if self.options.burn_gc {
-            self.collect();
+            self.collect()?;
         }
 
         let (block_end, block_start) = (
@@ -185,8 +189,11 @@ impl Gc {
         // If the object is too large return None
         if block_end - *heap as usize > HEAP_HALF_SIZE {
             trace!("Object too large, failing allocation");
-            self.collect(); // Collect garbage
-            return None;
+            self.collect()?; // Collect garbage
+            return Err(RuntimeError {
+                ty: RuntimeErrorTy::GcError,
+                message: "The heap is full".to_string(),
+            });
         }
 
         if !self.allocations.iter().any(|(i, _)| *i == id) {
@@ -194,7 +201,10 @@ impl Gc {
         } else {
             trace!("Requested Id {:?} already exists, failing allocation", id);
             trace!("Gc Dump: {:?}", self);
-            return None;
+            return Err(RuntimeError {
+                ty: RuntimeErrorTy::GcError,
+                message: "The requested ID already exists".to_string(),
+            });
         }
 
         // Create the GcValue
@@ -208,11 +218,11 @@ impl Gc {
         // end = self.latest + size
         self.latest = HeapPointer::new(block_end as *mut u8);
 
-        Some((value, id))
+        Ok((value, id))
     }
 
     /// Collect all unused objects and shift to the other heap half
-    pub fn collect(&mut self) {
+    pub fn collect(&mut self) -> Result<()> {
         trace!("GC Collecting");
 
         // The allocations to be transferred over to the new heap
@@ -238,7 +248,7 @@ impl Gc {
         // Iterate over allocations to keep to move them onto the new heap
         for (id, size) in keep {
             // Get the pointer to the location on the old heap
-            let ptr = self.get_ptr(id).unwrap();
+            let ptr = self.get_ptr(id)?;
 
             // Unsafe Usage: Get the bytes from the object on the old heap and copy them onto the new heap
             unsafe {
@@ -276,30 +286,44 @@ impl Gc {
                 root.unmark();
             }
         }
+
+        Ok(())
     }
 
     /// Fetch a currently allocated value
-    fn fetch_value<Id: Into<AllocId> + Copy>(&self, id: Id) -> Option<&GcValue> {
+    fn fetch_value<Id: Into<AllocId> + Copy>(&self, id: Id) -> Result<&GcValue> {
         for root in &self.roots {
             if root.id == id.into() {
-                return Some(root);
+                return Ok(root);
             } else {
                 if let Some(value) = root.fetch_child(id) {
-                    return Some(value);
+                    return Ok(value);
                 }
             }
         }
 
-        None
+        Err(RuntimeError {
+            ty: RuntimeErrorTy::GcError,
+            message: "Requested value does not exist".to_string(),
+        })
     }
 
     /// Fetches the current pointer associated with an id
     #[inline]
-    pub(crate) fn get_ptr<Id: Into<AllocId> + Copy>(&self, id: Id) -> Option<HeapPointer> {
-        self.allocations
+    pub(crate) fn get_ptr<Id: Into<AllocId> + Copy>(&self, id: Id) -> Result<HeapPointer> {
+        if let Some(ptr) = self
+            .allocations
             .iter()
             .find(|alloc| alloc.0 == id.into())
             .map(|alloc| alloc.1)
+        {
+            Ok(ptr)
+        } else {
+            Err(RuntimeError {
+                ty: RuntimeErrorTy::GcError,
+                message: "Requested heap pointer does not exist".to_string(),
+            })
+        }
     }
 
     /// Add a root object
@@ -310,7 +334,7 @@ impl Gc {
     }
 
     /// Remove a root object
-    pub fn remove_root(&mut self, id: impl Into<AllocId> + Copy) -> Result<(), ()> {
+    pub fn remove_root(&mut self, id: impl Into<AllocId> + Copy) -> Result<()> {
         let id = id.into();
 
         trace!("Removing GC Root: {:?}", id);
@@ -319,13 +343,16 @@ impl Gc {
             self.roots.remove(index);
 
             if self.options.burn_gc {
-                self.collect();
+                self.collect()?;
             }
 
             return Ok(());
         }
 
-        Err(())
+        Err(RuntimeError {
+            ty: RuntimeErrorTy::GcError,
+            message: "The object to be unrooted does not exist".to_string(),
+        })
     }
 
     /// Write to an object
@@ -335,50 +362,58 @@ impl Gc {
         id: impl Into<AllocId> + Copy,
         data: T,
         concrete_value: Option<&GcValue>,
-    ) -> Result<(), String> {
+    ) -> Result<()> {
         match (self.get_ptr(id), self.fetch_value(id), concrete_value) {
-            (Some(ptr), Some(value), _) => {
+            (Ok(ptr), Ok(value), _) => {
                 if !mem::size_of::<T>() > value.size {
                     ptr::write(*ptr as *mut T, data);
 
                     Ok(())
                 } else {
-                    Err(format!(
-                        "Size Misalign: {} != {}",
-                        value.size,
-                        mem::size_of::<T>()
-                    ))
+                    Err(RuntimeError {
+                        ty: RuntimeErrorTy::GcError,
+                        message: format!(
+                            "Size Misalign: {} != {}",
+                            value.size,
+                            mem::size_of::<T>()
+                        ),
+                    })
                 }
             }
 
-            (Some(ptr), None, Some(value)) => {
+            (Ok(ptr), Err(_), Some(value)) => {
                 if !mem::size_of::<T>() > value.size {
                     ptr::write(*ptr as *mut T, data);
 
                     Ok(())
                 } else {
-                    Err(format!(
-                        "Size Misalign: {} != {}",
-                        value.size,
-                        mem::size_of::<T>()
-                    ))
+                    Err(RuntimeError {
+                        ty: RuntimeErrorTy::GcError,
+                        message: format!(
+                            "Size Misalign: {} != {}",
+                            value.size,
+                            mem::size_of::<T>()
+                        ),
+                    })
                 }
             }
 
-            _ => Err(format!(
-                "Id {:?} could not be fetched.\nSelf: {:?}",
-                id.into(),
-                self
-            )),
+            _ => Err(RuntimeError {
+                ty: RuntimeErrorTy::GcError,
+                message: "Object to be written to does not exist".to_string(),
+            }),
         }
     }
 
     /// Fetch an object's value
-    pub fn fetch<T, Id: Into<AllocId> + Copy>(&self, id: Id) -> Option<T> {
+    pub fn fetch<T, Id: Into<AllocId> + Copy>(&self, id: Id) -> Result<T> {
         if let Some((_, ptr)) = self.allocations.iter().find(|(i, _)| *i == id.into()) {
-            Some(unsafe { ptr::read(**ptr as *const T) })
+            Ok(unsafe { ptr::read(**ptr as *const T) })
         } else {
-            None
+            Err(RuntimeError {
+                ty: RuntimeErrorTy::GcError,
+                message: "Requested value does not exist".to_string(),
+            })
         }
 
         // TODO: Investigate this
@@ -572,32 +607,39 @@ impl GcValue {
     }
 }
 
-pub trait CrunchGc {
-    type Ident;
-    type Error;
+#[derive(Debug, Clone, Copy)]
+pub struct GcStr {
+    id: AllocId,
+    len: usize,
+    capacity: usize,
+}
 
-    fn alloc(&mut self, size: usize) -> Result<Self::Ident, Self::Error>;
-    fn alloc_id(
-        &mut self,
-        size: usize,
-        id: impl Into<Self::Ident>,
-    ) -> Result<Self::Ident, Self::Error>;
-    fn contains(&self, id: impl Into<Self::Ident>) -> Result<bool, Self::Error>;
-    fn add_root(&mut self, id: impl Into<Self::Ident>) -> Result<(), Self::Error>;
-    fn remove_root(&mut self, id: impl Into<Self::Ident>) -> Result<(), Self::Error>;
-    fn add_child(
-        &mut self,
-        parent: impl Into<Self::Ident>,
-        child: impl Into<Self::Ident>,
-    ) -> Result<(), Self::Error>;
-    fn remove_child(
-        &mut self,
-        parent: impl Into<Self::Ident>,
-        child: impl Into<Self::Ident>,
-    ) -> Result<(), Self::Error>;
-    fn collect(&mut self) -> Result<(), Self::Error>;
-    fn write<T>(&mut self, id: impl Into<Self::Ident>, data: &T) -> Result<(), Self::Error>;
-    fn read<T>(&self, id: impl Into<Self::Ident>) -> Result<T, Self::Error>;
+impl GcStr {
+    pub fn new<'a>(string: impl AsRef<str>, gc: &mut Gc) -> Result<Self> {
+        let string = string.as_ref();
+
+        let (obj, id) = gc.allocate(string.len())?;
+        unsafe {
+            gc.write(id, string.as_bytes(), Some(&obj))?;
+        }
+        gc.add_root(obj);
+
+        Ok(Self {
+            id,
+            len: string.len(),
+            capacity: string.len(),
+        })
+    }
+
+    pub fn to_str<'a>(&self, gc: &'a Gc) -> Result<&'a str> {
+        unsafe { Ok(std::str::from_utf8_unchecked(gc.fetch(self.id)?)) }
+    }
+
+    pub fn drop(self, gc: &mut Gc) -> Result<()> {
+        gc.remove_root(self.id)?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -617,7 +659,7 @@ mod tests {
         }
         gc.add_root(int);
         assert!(gc.contains(int_id));
-        assert!(gc.fetch(int_id) == Some(Value::Int(10)));
+        assert!(gc.fetch(int_id) == Ok(Value::Int(10)));
 
         let (int_2, int_2_id) = dbg!(gc.allocate_id(size_of::<Value>(), 0).unwrap());
         unsafe {
@@ -626,7 +668,7 @@ mod tests {
         gc.add_root(int_2);
         assert_eq!(AllocId(0), int_2_id);
         assert!(gc.contains(int_2_id));
-        assert!(gc.fetch(int_2_id) == Some(Value::Int(20)));
+        assert!(gc.fetch(int_2_id) == Ok(Value::Int(20)));
     }
 
     #[test]
@@ -639,7 +681,7 @@ mod tests {
         }
         gc.add_root(keep);
         assert!(gc.contains(keep_id));
-        assert!(gc.fetch(keep_id) == Some(usize::max_value()));
+        assert!(gc.fetch(keep_id) == Ok(usize::max_value()));
 
         let (discard, discard_id) = gc.allocate(size_of::<usize>()).unwrap();
         unsafe {
@@ -647,35 +689,35 @@ mod tests {
                 .unwrap();
         }
         assert!(gc.contains(discard_id));
-        assert!(gc.fetch(discard_id) == Some(usize::max_value() - 1));
+        assert!(gc.fetch(discard_id) == Ok(usize::max_value() - 1));
 
-        gc.collect();
-
-        assert!(gc.contains(keep_id));
-        assert!(gc.fetch(keep_id) == Some(usize::max_value()));
-
-        assert!(!gc.contains(discard_id));
-        assert!(gc.fetch(discard_id) == <Option<usize>>::None);
-
-        gc.collect();
+        gc.collect().unwrap();
 
         assert!(gc.contains(keep_id));
-        assert!(gc.fetch(keep_id) == Some(usize::max_value()));
+        assert!(gc.fetch(keep_id) == Ok(usize::max_value()));
 
         assert!(!gc.contains(discard_id));
-        assert!(gc.fetch(discard_id) == <Option<usize>>::None);
+        assert!(gc.fetch::<usize, AllocId>(discard_id).is_err());
+
+        gc.collect().unwrap();
+
+        assert!(gc.contains(keep_id));
+        assert!(gc.fetch(keep_id) == Ok(usize::max_value()));
+
+        assert!(!gc.contains(discard_id));
+        assert!(gc.fetch::<usize, AllocId>(discard_id).is_err());
 
         assert!(gc.remove_root(keep_id).is_ok());
 
-        gc.collect();
+        gc.collect().unwrap();
 
         assert!(!gc.contains(keep_id));
-        assert!(gc.fetch(keep_id) == <Option<usize>>::None);
+        assert!(gc.fetch::<usize, AllocId>(keep_id).is_err());
 
-        gc.collect();
+        gc.collect().unwrap();
 
         assert!(!gc.contains(keep_id));
-        assert!(gc.fetch(keep_id) == <Option<usize>>::None);
+        assert!(gc.fetch::<usize, AllocId>(keep_id).is_err());
     }
 
     #[test]
@@ -709,31 +751,31 @@ mod tests {
         println!("\n=> Before Collect\n{}\n", gc.data());
 
         {
-            let ten: Option<usize> = gc.fetch(ten_id);
-            let eleven: Option<usize> = gc.fetch(eleven_id);
-            let twelve: Option<usize> = gc.fetch(twelve_id);
+            let ten = gc.fetch::<usize, AllocId>(ten_id);
+            let eleven = gc.fetch::<usize, AllocId>(eleven_id);
+            let twelve = gc.fetch::<usize, AllocId>(twelve_id);
 
             println!("Ten: {:?}, Eleven: {:?}, Twelve: {:?}", ten, eleven, twelve);
         }
 
-        gc.collect();
+        gc.collect().unwrap();
         println!("\n=> After Collect\n{}\n", gc.data());
 
         {
-            let ten: Option<usize> = gc.fetch(ten_id);
-            let eleven: Option<usize> = gc.fetch(eleven_id);
-            let twelve: Option<usize> = gc.fetch(twelve_id);
+            let ten = gc.fetch::<usize, AllocId>(ten_id);
+            let eleven = gc.fetch::<usize, AllocId>(eleven_id);
+            let twelve = gc.fetch::<usize, AllocId>(twelve_id);
 
             println!("Ten: {:?}, Eleven: {:?}, Twelve: {:?}", ten, eleven, twelve);
         }
 
-        gc.collect();
+        gc.collect().unwrap();
         println!("\n=> After Second Collect\n{}\n", gc.data());
 
         {
-            let ten: Option<usize> = gc.fetch(ten_id);
-            let eleven: Option<usize> = gc.fetch(eleven_id);
-            let twelve: Option<usize> = gc.fetch(twelve_id);
+            let ten = gc.fetch::<usize, AllocId>(ten_id);
+            let eleven = gc.fetch::<usize, AllocId>(eleven_id);
+            let twelve = gc.fetch::<usize, AllocId>(twelve_id);
 
             println!("Ten: {:?}, Eleven: {:?}, Twelve: {:?}", ten, eleven, twelve);
         }

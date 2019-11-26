@@ -1,4 +1,4 @@
-use super::instruction::{Result, RuntimeError, RuntimeErrorTy};
+use super::{AllocId, Gc, GcStr, Result, RuntimeError, RuntimeErrorTy};
 use derive_more::Display;
 use std::ops;
 
@@ -305,6 +305,443 @@ impl std::cmp::PartialEq for Value {
             (Self::None, Self::None) => true,
 
             (_, _) => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Display)]
+pub enum RuntimeValue {
+    #[display(fmt = "{}", _0)]
+    Cached(CachedValue),
+    #[display(fmt = "{}", _0)]
+    Register(RegisterValue),
+    #[display(fmt = "NoneType")]
+    None,
+}
+
+impl RuntimeValue {
+    pub fn from_val(val: Value) -> Self {
+        if val == Value::None {
+            Self::None
+        } else {
+            Self::Register(RegisterValue::from_val(val))
+        }
+    }
+
+    pub fn eq(&self, other: &Self, gc: &Gc) -> Result<bool> {
+        Ok(match (self, other) {
+            (Self::Register(left), Self::Register(right)) => left == right,
+            (Self::Cached(left), Self::Cached(right)) => left.eq(right, gc)?,
+            (Self::Cached(cached), Self::Register(reg))
+            | (Self::Register(reg), Self::Cached(cached)) => cached.eq_reg(reg, gc)?,
+            (Self::None, Self::None) => true,
+            (_, _) => false,
+        })
+    }
+
+    pub fn not(self, gc: &Gc) -> Result<Self> {
+        match self {
+            Self::Cached(c) => Ok(Self::Cached(c.not(gc)?)),
+            Self::Register(r) => Ok(Self::Register((!r)?)),
+            Self::None => Err(RuntimeError {
+                ty: RuntimeErrorTy::IncompatibleTypes,
+                message: "Cannot apply not NoneType".to_string(),
+            }),
+        }
+    }
+
+    pub fn cmp(&self, other: &Self, gc: &Gc) -> Result<Option<std::cmp::Ordering>> {
+        Ok(match (self, other) {
+            (Self::Cached(l), Self::Cached(r)) => l.cmp(r, &gc)?,
+            (Self::Register(l), Self::Register(r)) => l.partial_cmp(&r),
+            (Self::Cached(l), Self::Register(r)) => l.get_val(&gc)?.partial_cmp(&r),
+            (Self::Register(l), Self::Cached(r)) => l.partial_cmp(&r.get_val(&gc)?),
+            (Self::None, Self::None) => None,
+            (_, _) => {
+                return Err(RuntimeError {
+                    ty: RuntimeErrorTy::IncompatibleTypes,
+                    message: "Those two types cannot be operated on".to_string(),
+                })
+            }
+        })
+    }
+}
+
+macro_rules! generate_op {
+    ($( [$t:ty, $token:tt, $name:tt] ),*) => {
+        $(
+            impl $t {
+                pub fn $name(&self, other: &Self, gc: &Gc) -> Result<Self> {
+                    Ok(Self::Register(match (self, other) {
+                        (Self::Cached(l), Self::Cached(r)) => (l.get_val(&gc)? $token r.get_val(&gc)?)?,
+                        (Self::Register(l), Self::Register(r)) => (*l $token *r)?,
+                        (Self::Cached(l), Self::Register(r)) => (l.get_val(&gc)? $token *r)?,
+                        (Self::Register(l), Self::Cached(r)) => (*l $token r.get_val(&gc)?)?,
+                        (Self::None, Self::None) => return Ok(Self::None),
+                        (_, _) => return Err(RuntimeError {
+                            ty: RuntimeErrorTy::IncompatibleTypes,
+                            message: "Those two types cannot be operated on".to_string(),
+                        })
+                    }))
+                }
+            }
+        )*
+    }
+}
+
+generate_op! {
+    [RuntimeValue, +, add],
+    [RuntimeValue, -, sub],
+    [RuntimeValue, *, mult],
+    [RuntimeValue, /, div],
+    [RuntimeValue, |, bit_or],
+    [RuntimeValue, ^, bit_xor],
+    [RuntimeValue, &, bit_and]
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display)]
+pub enum RegisterValue {
+    #[display(fmt = "{}", _0)]
+    String(&'static str),
+    #[display(fmt = "{}", _0)]
+    Int(i32),
+    #[display(fmt = "{}", _0)]
+    Bool(bool),
+    #[display(fmt = "{:#p}", _0)]
+    Pointer(usize),
+}
+
+impl RegisterValue {
+    #[inline]
+    pub fn ty(&self) -> &'static str {
+        match self {
+            Self::Int(_) => "int",
+            Self::Bool(_) => "bool",
+            Self::String(_) => "str",
+            Self::Pointer(_) => "ptr",
+        }
+    }
+
+    pub fn from_val(val: Value) -> Self {
+        match val {
+            Value::Int(i) => Self::Int(i),
+            Value::Bool(b) => Self::Bool(b),
+            Value::String(s) => Self::String(unsafe { std::mem::transmute(&*s) }),
+            Value::Pointer(p) => Self::Pointer(p),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl ops::Add for RegisterValue {
+    type Output = Result<Self>;
+
+    #[inline]
+    fn add(self, other: Self) -> Self::Output {
+        match (self, other) {
+            (Self::Int(left), Self::Int(right)) => Ok(Self::Int(right + left)),
+            (Self::String(left), Self::String(right)) => {
+                let mut output = Vec::with_capacity(left.as_bytes().len() + right.as_bytes().len());
+                output.extend_from_slice(left.as_bytes());
+                output.extend_from_slice(right.as_bytes());
+
+                Ok(Self::String(unsafe {
+                    std::mem::transmute(std::str::from_utf8_unchecked(&output))
+                }))
+            }
+
+            (left, right) => Err(RuntimeError {
+                ty: RuntimeErrorTy::IncompatibleTypes,
+                message: format!(
+                    "Cannot add variables of types {} and {}",
+                    left.ty(),
+                    right.ty()
+                ),
+            }),
+        }
+    }
+}
+
+impl ops::Sub for RegisterValue {
+    type Output = Result<Self>;
+
+    #[inline]
+    fn sub(self, other: Self) -> Self::Output {
+        match (self, other) {
+            (Self::Int(left), Self::Int(right)) => Ok(Self::Int(right - left)),
+
+            (left, right) => Err(RuntimeError {
+                ty: RuntimeErrorTy::IncompatibleTypes,
+                message: format!(
+                    "Cannot subtract variables of types {} and {}",
+                    left.ty(),
+                    right.ty()
+                ),
+            }),
+        }
+    }
+}
+
+impl ops::Mul for RegisterValue {
+    type Output = Result<Self>;
+
+    #[inline]
+    fn mul(self, other: Self) -> Self::Output {
+        match (self, other) {
+            (Self::Int(left), Self::Int(right)) => Ok(Self::Int(right * left)),
+
+            (left, right) => Err(RuntimeError {
+                ty: RuntimeErrorTy::IncompatibleTypes,
+                message: format!(
+                    "Cannot multiply variables of types {} and {}",
+                    left.ty(),
+                    right.ty()
+                ),
+            }),
+        }
+    }
+}
+
+impl ops::Div for RegisterValue {
+    type Output = Result<Self>;
+
+    #[inline]
+    fn div(self, other: Self) -> Self::Output {
+        match (self, other) {
+            (Self::Int(left), Self::Int(right)) => {
+                if right == 0 {
+                    Err(RuntimeError {
+                        ty: RuntimeErrorTy::DivideByZero,
+                        message: "Cannot divide by zero".to_string(),
+                    })
+                } else {
+                    Ok(Self::Int(left / right))
+                }
+            }
+
+            (left, right) => Err(RuntimeError {
+                ty: RuntimeErrorTy::IncompatibleTypes,
+                message: format!(
+                    "Cannot divide variables of types {} and {}",
+                    left.ty(),
+                    right.ty()
+                ),
+            }),
+        }
+    }
+}
+
+impl ops::BitAnd for RegisterValue {
+    type Output = Result<Self>;
+
+    #[inline]
+    fn bitand(self, other: Self) -> Self::Output {
+        match (self, other) {
+            (Self::Int(left), Self::Int(right)) => Ok(Self::Int(right & left)),
+            (Self::Bool(left), Self::Bool(right)) => Ok(Self::Bool(right & left)),
+
+            (left, right) => Err(RuntimeError {
+                ty: RuntimeErrorTy::IncompatibleTypes,
+                message: format!(
+                    "Cannot bitwise and variables of types {} and {}",
+                    left.ty(),
+                    right.ty()
+                ),
+            }),
+        }
+    }
+}
+
+impl ops::BitOr for RegisterValue {
+    type Output = Result<Self>;
+
+    #[inline]
+    fn bitor(self, other: Self) -> Self::Output {
+        match (self, other) {
+            (Self::Int(left), Self::Int(right)) => Ok(Self::Int(right | left)),
+            (Self::Bool(left), Self::Bool(right)) => Ok(Self::Bool(right | left)),
+
+            (left, right) => Err(RuntimeError {
+                ty: RuntimeErrorTy::IncompatibleTypes,
+                message: format!(
+                    "Cannot bitwise or variables of types {} and {}",
+                    left.ty(),
+                    right.ty()
+                ),
+            }),
+        }
+    }
+}
+
+impl ops::BitXor for RegisterValue {
+    type Output = Result<Self>;
+
+    #[inline]
+    fn bitxor(self, other: Self) -> Self::Output {
+        match (self, other) {
+            (Self::Int(left), Self::Int(right)) => Ok(Self::Int(right ^ left)),
+            (Self::Bool(left), Self::Bool(right)) => Ok(Self::Bool(right ^ left)),
+
+            (left, right) => Err(RuntimeError {
+                ty: RuntimeErrorTy::IncompatibleTypes,
+                message: format!(
+                    "Cannot bitwise xor variables of types {} and {}",
+                    left.ty(),
+                    right.ty()
+                ),
+            }),
+        }
+    }
+}
+
+impl ops::Not for RegisterValue {
+    type Output = Result<Self>;
+
+    #[inline]
+    fn not(self) -> Self::Output {
+        match self {
+            Self::Int(int) => Ok(Self::Int(!int)),
+            Self::Bool(boolean) => Ok(Self::Bool(!boolean)),
+
+            val => Err(RuntimeError {
+                ty: RuntimeErrorTy::IncompatibleTypes,
+                message: format!("Cannot apply not to variable of type {}", val.ty()),
+            }),
+        }
+    }
+}
+
+impl std::cmp::PartialOrd for RegisterValue {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match (self, other) {
+            (Self::Int(left), Self::Int(right)) => Some(left.cmp(right)),
+            (Self::Bool(left), Self::Bool(right)) => Some(left.cmp(right)),
+            (Self::String(left), Self::String(right)) => Some(left.cmp(right)),
+            (Self::Pointer(left), Self::Pointer(right)) => Some(left.cmp(right)),
+
+            (_, _) => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Display)]
+pub enum CachedValue {
+    #[display(fmt = "{:?}", _0)]
+    String(GcStr),
+    #[display(fmt = "{:#p}", _0)]
+    Int(AllocId),
+    #[display(fmt = "{:#p}", _0)]
+    Bool(AllocId),
+    #[display(fmt = "{:#p}", _0)]
+    Pointer(AllocId),
+}
+
+impl CachedValue {
+    pub fn get_val(&self, gc: &Gc) -> Result<RegisterValue> {
+        Ok(match self {
+            Self::String(l) => RegisterValue::String(unsafe { std::mem::transmute(l.to_str(gc)?) }),
+            Self::Int(l) => RegisterValue::Int(gc.fetch::<i32, AllocId>(*l)?),
+            Self::Bool(l) => RegisterValue::Bool(gc.fetch::<bool, AllocId>(*l)?),
+            Self::Pointer(l) => RegisterValue::Pointer(gc.fetch::<usize, AllocId>(*l)?),
+        })
+    }
+
+    pub fn eq(&self, other: &Self, gc: &Gc) -> Result<bool> {
+        Ok(match (self, other) {
+            (Self::String(l), Self::String(r)) => l.to_str(gc)? == r.to_str(gc)?,
+            (Self::Int(l), Self::Int(r)) => {
+                gc.fetch::<i32, AllocId>(*l)? == gc.fetch::<i32, AllocId>(*r)?
+            }
+            (Self::Bool(l), Self::Bool(r)) => {
+                gc.fetch::<bool, AllocId>(*l)? == gc.fetch::<bool, AllocId>(*r)?
+            }
+            (Self::Pointer(l), Self::Pointer(r)) => {
+                gc.fetch::<usize, AllocId>(*l)? == gc.fetch::<usize, AllocId>(*r)?
+            }
+            (_, _) => false,
+        })
+    }
+
+    pub fn eq_reg(&self, other: &RegisterValue, gc: &Gc) -> Result<bool> {
+        Ok(match (self, other) {
+            (Self::String(l), RegisterValue::String(r)) => l.to_str(gc)? == *r,
+            (Self::Int(l), RegisterValue::Int(r)) => gc.fetch::<i32, AllocId>(*l)? == *r,
+            (Self::Bool(l), RegisterValue::Bool(r)) => gc.fetch::<bool, AllocId>(*l)? == *r,
+            (Self::Pointer(l), RegisterValue::Pointer(r)) => gc.fetch::<usize, AllocId>(*l)? == *r,
+            (_, _) => false,
+        })
+    }
+
+    pub fn not(self, gc: &Gc) -> Result<Self> {
+        match self {
+            Self::Int(id) => {
+                let int = gc.fetch::<i32, AllocId>(id)?;
+                unsafe {
+                    gc.write(id, !int, None)?;
+                }
+            }
+            Self::Bool(id) => {
+                let boolean = gc.fetch::<bool, AllocId>(id)?;
+                unsafe {
+                    gc.write(id, !boolean, None)?;
+                }
+            }
+            Self::Pointer(id) => {
+                let ptr = gc.fetch::<i32, AllocId>(id)?;
+                unsafe {
+                    gc.write(id, !ptr, None)?;
+                }
+            }
+
+            val => {
+                return Err(RuntimeError {
+                    ty: RuntimeErrorTy::IncompatibleTypes,
+                    message: format!("Cannot apply not to variable of type {}", val.ty()),
+                })
+            }
+        }
+
+        Ok(self)
+    }
+
+    pub fn ty(&self) -> &'static str {
+        match self {
+            Self::Int(_) => "int",
+            Self::Bool(_) => "bool",
+            Self::String(_) => "str",
+            Self::Pointer(_) => "ptr",
+        }
+    }
+
+    fn cmp(&self, other: &Self, gc: &Gc) -> Result<Option<std::cmp::Ordering>> {
+        match (self, other) {
+            (Self::Int(left), Self::Int(right)) => {
+                let left = gc.fetch::<i32, AllocId>(*left)?;
+                let right = gc.fetch::<i32, AllocId>(*right)?;
+
+                Ok(Some(left.cmp(&right)))
+            }
+            (Self::Bool(left), Self::Bool(right)) => {
+                let left = gc.fetch::<bool, AllocId>(*left)?;
+                let right = gc.fetch::<bool, AllocId>(*right)?;
+
+                Ok(Some(left.cmp(&right)))
+            }
+            (Self::String(left), Self::String(right)) => {
+                let left = left.to_str(gc)?;
+                let right = right.to_str(gc)?;
+
+                Ok(Some(left.cmp(&right)))
+            }
+            (Self::Pointer(left), Self::Pointer(right)) => {
+                let left = gc.fetch::<usize, AllocId>(*left)?;
+                let right = gc.fetch::<usize, AllocId>(*right)?;
+
+                Ok(Some(left.cmp(&right)))
+            }
+
+            (_, _) => Ok(None),
         }
     }
 }

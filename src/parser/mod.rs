@@ -73,7 +73,7 @@ impl<'a> Parser<'a> {
                         ast.push(Node::Func(match self.parse_function(token.range.0) {
                             Ok(node) => node,
                             Err(err) => {
-                                self.error = true;
+                                // self.error = true;
                                 self.diagnostics.push(err);
                                 continue;
                             }
@@ -85,7 +85,7 @@ impl<'a> Parser<'a> {
                         ast.push(Node::Import(match self.parse_import() {
                             Ok(node) => node,
                             Err(err) => {
-                                self.error = true;
+                                // self.error = true;
                                 self.diagnostics.push(err);
                                 continue;
                             }
@@ -104,7 +104,7 @@ impl<'a> Parser<'a> {
                     }
 
                     TokenType::Error => {
-                        self.error = true;
+                        // self.error = true;
                         self.diagnostics.push(Diagnostic::new(
                             Severity::Error,
                             "Invalid token",
@@ -117,7 +117,7 @@ impl<'a> Parser<'a> {
                     }
 
                     _ => {
-                        self.error = true;
+                        // self.error = true;
                         self.diagnostics.push(Diagnostic::new(
                             Severity::Error,
                             "Invalid top-level token",
@@ -160,6 +160,10 @@ impl<'a> Parser<'a> {
         use std::path::PathBuf;
 
         info!("Parsing Import");
+
+        self.eat_w()?;
+
+        let ty = self.parse_import_type()?;
 
         self.eat_w()?;
 
@@ -226,7 +230,7 @@ impl<'a> Parser<'a> {
 
                     (Exposes::Some(imports), None)
                 } else {
-                    self.error = true;
+                    // self.error = true;
                     return Err(Diagnostic::new(
                         Severity::Error,
                         "Expected exposed members",
@@ -298,7 +302,7 @@ impl<'a> Parser<'a> {
 
                         (Exposes::Some(imports), Some(alias))
                     } else {
-                        self.error = true;
+                        // self.error = true;
                         return Err(Diagnostic::new(
                             Severity::Error,
                             "Expected exposed members",
@@ -325,7 +329,16 @@ impl<'a> Parser<'a> {
             file,
             alias,
             exposes,
+            ty,
         })
+    }
+
+    fn parse_import_type(&mut self) -> Result<ImportType> {
+        match self.peek()?.ty {
+            TokenType::Library => Ok(ImportType::Library),
+            TokenType::Package => Ok(ImportType::Package),
+            _ => Ok(ImportType::File),
+        }
     }
 
     fn parse_function(&mut self, span_start: u32) -> Result<Func<'a>> {
@@ -427,7 +440,7 @@ impl<'a> Parser<'a> {
                                 }
 
                                 t => {
-                                    self.error = true;
+                                    // self.error = true;
                                     return Err(Diagnostic::new(
                                         Severity::Error,
                                         "Unexpected token",
@@ -561,7 +574,7 @@ impl<'a> Parser<'a> {
 
                     self.ident_literal()?
                 } else {
-                    self.error = true;
+                    // self.error = true;
                     return Err(Diagnostic::new(
                         Severity::Error,
                         "Invalid Function Parameters",
@@ -602,7 +615,7 @@ impl<'a> Parser<'a> {
                 self.current_file,
             ))),
             t => {
-                self.error = true;
+                // self.error = true;
                 Err(Diagnostic::new(
                     Severity::Error,
                     "Invalid Function Parameter",
@@ -873,7 +886,7 @@ impl<'a> Parser<'a> {
                 token
             );
 
-            self.error = true;
+            // self.error = true;
             Err(Diagnostic::new(
                 Severity::Error,
                 format!(
@@ -905,7 +918,7 @@ impl<'a> Parser<'a> {
                 token,
             );
 
-            self.error = true;
+            // self.error = true;
             Err(Diagnostic::new(
                 Severity::Error,
                 format!(
@@ -991,26 +1004,26 @@ impl<'a> Parser<'a> {
                 Some('u') => s.push(match unescape_unicode(&mut queue) {
                     Some(c) => c,
                     None => {
-                        self.error = true;
+                        // self.error = true;
                         return Err(error);
                     }
                 }),
                 Some('x') => s.push(match unescape_byte(&mut queue) {
                     Some(c) => c,
                     None => {
-                        self.error = true;
+                        // self.error = true;
                         return Err(error);
                     }
                 }),
                 Some('b') => s.push(match unescape_bits(&mut queue) {
                     Some(c) => c,
                     None => {
-                        self.error = true;
+                        // self.error = true;
                         return Err(error);
                     }
                 }),
                 _ => {
-                    self.error = true;
+                    // self.error = true;
                     return Err(error);
                 }
             };

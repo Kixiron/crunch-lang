@@ -1,4 +1,4 @@
-use super::{Gc, Index, Instruction, Register, Value, NUMBER_REGISTERS};
+use super::{Gc, Index, Instruction, Register, RuntimeValue, NUMBER_REGISTERS};
 
 /// The initialized options for the VM
 #[derive(Debug, Copy, Clone)]
@@ -14,9 +14,9 @@ impl From<&crate::Options> for VmOptions {
 #[allow(missing_debug_implementations)]
 pub struct Vm {
     /// The active VM Registers
-    pub registers: [Value; NUMBER_REGISTERS],
+    pub registers: [RuntimeValue; NUMBER_REGISTERS],
     /// The register snapshots (For moving functions)
-    pub snapshots: Vec<(Index, Option<Index>, [Value; NUMBER_REGISTERS])>,
+    pub snapshots: Vec<(Index, Option<Index>, [RuntimeValue; NUMBER_REGISTERS])>,
     /// The index of the current function, None if the current function is the main
     pub current_func: Option<Index>,
     /// The functions of the program
@@ -31,7 +31,7 @@ pub struct Vm {
     // TODO: Needed?
     pub returning: bool,
     /// The value of the previous operation
-    pub prev_op: Value,
+    pub prev_op: RuntimeValue,
     /// The status of the previous comparison
     pub prev_comp: bool,
     /// The Garbage Collector
@@ -51,7 +51,7 @@ impl Vm {
         stdout: Box<dyn std::io::Write>,
     ) -> Self {
         Self {
-            registers: array_init::array_init(|_| Value::None),
+            registers: [RuntimeValue::None; NUMBER_REGISTERS],
             snapshots: Vec::new(),
             current_func: None,
             functions,
@@ -59,7 +59,7 @@ impl Vm {
             index: Index(0),
             finished_execution: false,
             returning: false,
-            prev_op: Value::None,
+            prev_op: RuntimeValue::None,
             prev_comp: false,
             gc: Gc::new(options),
             options: VmOptions::from(options),
@@ -69,27 +69,27 @@ impl Vm {
 
     #[inline]
     pub fn clear(&mut self, reg: Register) {
-        self.registers[*reg as usize] = Value::None;
+        self.registers[*reg as usize] = RuntimeValue::None;
     }
 
     #[inline]
-    pub fn load(&mut self, value: Value, reg: Register) {
+    pub fn load(&mut self, value: RuntimeValue, reg: Register) {
         self.registers[*reg as usize] = value;
     }
 
     #[inline]
-    pub fn get(&self, reg: Register) -> &Value {
+    pub fn get(&self, reg: Register) -> &RuntimeValue {
         &self.registers[*reg as usize]
     }
 
     #[inline]
-    pub fn get_mut(&mut self, reg: Register) -> &mut Value {
+    pub fn get_mut(&mut self, reg: Register) -> &mut RuntimeValue {
         &mut self.registers[*reg as usize]
     }
 
     #[inline]
     pub fn snapshot(&mut self) {
-        let mut old_regs = array_init::array_init(|_| Value::None);
+        let mut old_regs = [RuntimeValue::None; NUMBER_REGISTERS];
         std::mem::swap(&mut old_regs, &mut self.registers);
         self.snapshots
             .push((self.index, self.current_func, old_regs));

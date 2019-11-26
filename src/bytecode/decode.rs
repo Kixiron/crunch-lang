@@ -51,7 +51,7 @@ fn decode_function<'a>(
             .try_into()
             .unwrap_or_else(|_| unreachable!());
 
-        let value = if bytes[0] == 0x01 {
+        let value = if bytes[0] == 0x01 || bytes[0] == 0x00 {
             Some(match values.pop_front() {
                 Some(value) => value,
                 None => {
@@ -176,12 +176,17 @@ fn decode_instruction(
     value: Option<Value>,
 ) -> Result<Instruction> {
     let instruction = match instruction[0] {
+        // TODO: Shift all the values up by one, having zero be important is probably bad
         0x00 => Instruction::Load(
-            u32::from_be_bytes(
-                instruction[1..size_of::<u32>() + 1]
-                    .try_into()
-                    .unwrap_or_else(|_| unreachable!()),
-            ),
+            match value {
+                Some(value) => value,
+                None => {
+                    return Err(RuntimeError {
+                        ty: RuntimeErrorTy::MissingValue,
+                        message: "Not enough values were encoded".to_string(),
+                    });
+                }
+            },
             instruction[size_of::<u32>() + 2].into(),
         ),
         0x01 => Instruction::Cache(
@@ -195,10 +200,11 @@ fn decode_instruction(
                 None => {
                     return Err(RuntimeError {
                         ty: RuntimeErrorTy::MissingValue,
-                        message: "Not enough strings were encoded".to_string(),
+                        message: "Not enough values were encoded".to_string(),
                     });
                 }
             },
+            instruction[size_of::<u32>() + 2].into(),
         ),
         0x02 => Instruction::CompToReg(instruction[1].into()),
         0x03 => Instruction::OpToReg(instruction[1].into()),

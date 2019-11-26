@@ -209,7 +209,7 @@ let dependencies: [Dependency] = [
 ]
 ```
 
-String Escapes:  
+## String Escapes:  
 
 Unicode Escape Codes: `\u{0000}`  
 Byte Escape Codes: `\x{00}`  
@@ -217,22 +217,26 @@ Bit Escape Codes: `\b{00000000}`
 
 ## Primitive types
 
-`str`: A dynamically growable string stored on the Heap
-`int`: A semi-dynamically sized signed integer of up to 128 bits
-`float`: A semi-dynamically sized float of up to 64 bits
-`void`: Nothing. The void consumes all foolish enough to attempt usage, for it is naught, zilch, nada. A purely typesystem-sided construct that is clobbered by the compiler
-`nullable<ty>`: Makes a type able to be null. `ty` is the contained type. The contained value can be `ty` or `null`
-`bool`: A boolean value of either `true` or `false`
-`vector<ty>`: A vector of values. `ty` is the contained type
+`str`: A dynamically growable string stored on the Heap  
+`int`: A semi-dynamically sized signed integer of up to 128 bits  
+`float`: A semi-dynamically sized float of up to 64 bits  
+`void`: Nothing. The void consumes all foolish enough to attempt usage, for it is naught, zilch, nada. A purely typesystem-sided construct that is clobbered by the compiler  
+`nullable<ty>`: Makes a type able to be null. `ty` is the contained type.   The contained value can be `ty` or `null`  
+`bool`: A boolean value of either `true` or `false`  
+`vector<ty>`: A vector of values. `ty` is the contained type  
 
 ## Language Builtins
 
-`@print` Prints to stdout
-`@collect` Forces a GC collection cycle
-`@halt` Halts program execution
+`@print` Prints to stdout  
+`@collect` Forces a GC collection cycle  
+`@halt` Halts program execution  
 
-## CLI Options
+## Syntax TODOs
 
-`--burn-gc` Preforms a GC collect at every opportunity
-`--debug-log` Activates verbose logging
-`--fault-tolerant` Allows minor errors to occur without triggering runtime errors
+`<expr -> bool> ? <ret> : <ret>`  
+
+### CLI Options
+
+`--burn-gc` Preforms a GC collect at every opportunity  
+`--debug-log` Activates verbose logging  
+`--fault-tolerant` Allows minor errors to occur without triggering program shutdown  

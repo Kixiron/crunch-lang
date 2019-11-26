@@ -128,14 +128,15 @@ fn encode_instruction(instruction: Instruction) -> ([u8; INSTRUCTION_LENGTH], Op
     let mut value = None;
 
     match instruction {
-        Instruction::Load(heap_loc, reg) => {
+        Instruction::Load(val, reg) => {
             bytes[0] = 0x00;
-            bytes[1..size_of::<u32>() + 1].copy_from_slice(&heap_loc.to_be_bytes());
             bytes[size_of::<u32>() + 2] = *reg;
+            value = Some(val);
         }
-        Instruction::Cache(heap_loc, val) => {
+        Instruction::Cache(heap_loc, val, reg) => {
             bytes[0] = 0x01;
             bytes[1..size_of::<u32>() + 1].copy_from_slice(&heap_loc.to_be_bytes());
+            bytes[size_of::<u32>() + 2] = *reg;
             value = Some(val);
         }
         Instruction::Save(heap_loc, reg) => {

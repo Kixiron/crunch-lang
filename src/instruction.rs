@@ -1,11 +1,11 @@
-use super::{Index, Register, Value, Vm};
+use super::{AllocId, CachedValue, GcStr, Index, Register, RegisterValue, RuntimeValue, Value, Vm};
 
 /// A type alias for results that could be a [`RuntimeError`]
 pub type Result<T> = std::result::Result<T, RuntimeError>;
 
 /// A Crunch Runtime Error
 // TODO: Make this more detailed
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq)]
 pub struct RuntimeError {
     /// The type of error
     pub ty: RuntimeErrorTy,
@@ -18,6 +18,12 @@ impl RuntimeError {
     // TODO: Make this fancy, and more detailed
     pub fn emit(&self) {
         println!("[Crunch Runtime Error: {:?}] {}", self.ty, self.message);
+    }
+}
+
+impl PartialEq for RuntimeError {
+    fn eq(&self, other: &Self) -> bool {
+        self.ty == other.ty
     }
 }
 
@@ -48,10 +54,10 @@ pub enum RuntimeErrorTy {
 // TODO: Document all Instructions
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Instruction {
-    /// Load a Value from the GC into a register
-    Load(u32, Register),
-    /// Cache a Value into the GC
-    Cache(u32, Value),
+    /// Load a Value directly into a register
+    Load(Value, Register),
+    /// Cache a Value into the GC and load it
+    Cache(u32, Value, Register),
     // TODO: Have a direct load to a register
     CompToReg(Register),
     OpToReg(Register),
@@ -108,57 +114,61 @@ impl Instruction {
     #[inline]
     pub fn execute(&self, mut vm: &mut Vm) -> Result<()> {
         match self {
-            Instruction::Load(heap_loc, reg) => {
-                trace!("Loading val at {} into {}", heap_loc, reg);
+            Instruction::Load(val, reg) => {
+                trace!("Loading val into {}", reg);
 
-                let val: Value = match vm.gc.fetch(*heap_loc as usize) {
-                    Some(val) => val,
-                    None => {
-                        return Err(RuntimeError {
-                            ty: RuntimeErrorTy::GcError,
-                            message: "Failed to retrieve error value from GC".to_string(),
-                        });
+                let val = RuntimeValue::Register(match val {
+                    Value::Bool(b) => RegisterValue::Bool(*b),
+                    Value::Int(i) => RegisterValue::Int(*i),
+                    Value::Pointer(p) => RegisterValue::Pointer(*p),
+                    Value::String(s) => {
+                        // Hella unsafe buckaroo
+                        RegisterValue::String(unsafe { std::mem::transmute(s.as_str()) })
                     }
-                };
-
-                trace!("Loading {:?} into {}", &val, reg);
+                    Value::None => unreachable!(), // Is None really unreachable?
+                });
 
                 vm.registers[**reg as usize] = val;
 
                 vm.index += Index(1);
             }
-            Instruction::Cache(heap_loc, val) => {
+            Instruction::Cache(heap_loc, val, reg) => {
                 trace!("Loading value onto heap at {}, Val: {:?}", heap_loc, val);
 
-                if let Some((alloc_val, alloc_id)) = vm
-                    .gc
-                    .allocate_id(std::mem::size_of::<Value>(), *heap_loc as usize)
-                {
+                let reg_val = RuntimeValue::Cached(if let Value::String(string) = val {
+                    let string = GcStr::new(string, &mut vm.gc)?;
+
+                    CachedValue::String(string)
+                } else {
+                    let (alloc_val, alloc_id) = vm
+                        .gc
+                        .allocate_id(std::mem::size_of::<Value>(), *heap_loc as usize)?;
+
                     unsafe {
-                        if let Err(err) = vm.gc.write(alloc_id, val.to_owned(), Some(&alloc_val)) {
-                            return Err(RuntimeError {
-                                ty: RuntimeErrorTy::GcError,
-                                message: err,
-                            });
-                        }
+                        vm.gc.write(alloc_id, val.to_owned(), Some(&alloc_val))?;
                     }
 
                     vm.gc.add_root(alloc_val);
 
-                    vm.index += Index(1);
+                    debug_assert_eq!(*heap_loc as usize, *alloc_id);
 
-                    assert_eq!(*heap_loc as usize, *alloc_id);
-                } else {
-                    return Err(RuntimeError {
-                        ty: RuntimeErrorTy::GcError,
-                        message: "Failed to allocate value to GC".to_string(),
-                    });
-                }
+                    match val {
+                        Value::Bool(_) => CachedValue::Bool(alloc_id),
+                        Value::Int(_) => CachedValue::Int(alloc_id),
+                        Value::Pointer(_) => CachedValue::Pointer(alloc_id),
+                        Value::String(_) | Value::None => unreachable!(), // Is None really unreachable?
+                    }
+                });
+
+                vm.registers[**reg as usize] = reg_val;
+
+                vm.index += Index(1);
             }
             Instruction::CompToReg(reg) => {
                 trace!("Loading previous comparison into {}", reg);
 
-                vm.registers[**reg as usize] = Value::Bool(vm.prev_comp);
+                vm.registers[**reg as usize] =
+                    RuntimeValue::Register(RegisterValue::Bool(vm.prev_comp));
                 vm.index += Index(1);
             }
             Instruction::OpToReg(reg) => {
@@ -173,16 +183,11 @@ impl Instruction {
                 trace!("Saving register {} to {}", reg, heap_loc);
 
                 unsafe {
-                    if let Err(err) = vm.gc.write(
+                    vm.gc.write(
                         *heap_loc as usize,
                         vm.registers[**reg as usize].clone(),
                         None,
-                    ) {
-                        return Err(RuntimeError {
-                            ty: RuntimeErrorTy::GcError,
-                            message: err,
-                        });
-                    }
+                    )?;
                 }
 
                 vm.index += Index(1);
@@ -190,34 +195,29 @@ impl Instruction {
             Instruction::DropReg(reg) => {
                 trace!("Clearing register {}", reg);
 
-                vm.registers[**reg as usize] = Value::None;
+                vm.registers[**reg as usize] = RuntimeValue::None;
                 vm.index += Index(1);
             }
             Instruction::Drop(id) => {
                 trace!("Dropping {:?}", id);
-                if vm.gc.remove_root(*id as usize).is_err() {
-                    return Err(RuntimeError {
-                        ty: RuntimeErrorTy::GcError,
-                        message: "Attempted to drop non-existant value".to_string(),
-                    });
-                }
+                vm.gc.remove_root(*id as usize)?;
                 vm.index += Index(1);
             }
 
             Instruction::Add(left, right) => {
-                vm.prev_op = ((*vm).get(*left).to_owned() + (*vm).get(*right).to_owned())?;
+                vm.prev_op = (*vm).get(*left).add((*vm).get(*right), &vm.gc)?;
                 vm.index += Index(1);
             }
             Instruction::Sub(left, right) => {
-                vm.prev_op = ((*vm).get(*left).to_owned() - (*vm).get(*right).to_owned())?;
+                vm.prev_op = (*vm).get(*left).sub((*vm).get(*right), &vm.gc)?;
                 vm.index += Index(1);
             }
             Instruction::Mult(left, right) => {
-                vm.prev_op = ((*vm).get(*left).to_owned() * (*vm).get(*right).to_owned())?;
+                vm.prev_op = (*vm).get(*left).mult((*vm).get(*right), &vm.gc)?;
                 vm.index += Index(1);
             }
             Instruction::Div(left, right) => {
-                vm.prev_op = ((*vm).get(*left).to_owned() / (*vm).get(*right).to_owned())?;
+                vm.prev_op = (*vm).get(*left).div((*vm).get(*right), &vm.gc)?;
                 vm.index += Index(1);
             }
 
@@ -281,43 +281,45 @@ impl Instruction {
             }
 
             Instruction::And(left, right) => {
-                vm.prev_op = ((*vm).get(*left).to_owned() & (*vm).get(*right).to_owned())?;
+                vm.prev_op = (*vm).get(*left).bit_and((*vm).get(*right), &vm.gc)?;
                 vm.index += Index(1);
             }
             Instruction::Or(left, right) => {
-                vm.prev_op = ((*vm).get(*left).to_owned() | (*vm).get(*right).to_owned())?;
+                vm.prev_op = (*vm).get(*left).bit_or((*vm).get(*right), &vm.gc)?;
                 vm.index += Index(1);
             }
             Instruction::Xor(left, right) => {
-                vm.prev_op = ((*vm).get(*left).to_owned() ^ (*vm).get(*right).to_owned())?;
+                vm.prev_op = (*vm).get(*left).bit_xor((*vm).get(*right), &vm.gc)?;
                 vm.index += Index(1);
             }
             Instruction::Not(reg) => {
-                vm.prev_op = (!(*vm).get(*reg).to_owned())?;
+                vm.prev_op = (*vm).get(*reg).not(&vm.gc)?;
                 vm.index += Index(1);
             }
 
             Instruction::Eq(left, right) => {
-                vm.prev_comp = (*vm).get(*left).to_owned() == (*vm).get(*right).to_owned();
+                vm.prev_comp = (*vm).get(*left).eq((*vm).get(*right), &vm.gc)?;
                 vm.index += Index(1);
             }
             Instruction::NotEq(left, right) => {
-                vm.prev_comp = (*vm).get(*left).to_owned() != (*vm).get(*right).to_owned();
+                vm.prev_comp = !(*vm).get(*left).eq((*vm).get(*right), &vm.gc)?;
                 vm.index += Index(1);
             }
             Instruction::GreaterThan(left, right) => {
-                vm.prev_comp = (*vm).get(*left).to_owned() > (*vm).get(*right).to_owned();
+                vm.prev_comp = (*vm).get(*left).cmp((*vm).get(*right), &vm.gc)?
+                    == Some(std::cmp::Ordering::Greater);
                 vm.index += Index(1);
             }
             Instruction::LessThan(left, right) => {
-                vm.prev_comp = (*vm).get(*left).to_owned() < (*vm).get(*right).to_owned();
+                vm.prev_comp = (*vm).get(*left).cmp((*vm).get(*right), &vm.gc)?
+                    == Some(std::cmp::Ordering::Less);
                 vm.index += Index(1);
             }
 
             Instruction::Collect => {
                 trace!("Forcing a GC collect");
 
-                vm.gc.collect();
+                vm.gc.collect()?;
                 vm.index += Index(1);
             }
             Instruction::Return => {
@@ -358,17 +360,26 @@ impl Instruction {
                     unsafe { std::mem::transmute(func) };
 
                 let mut params = [0_usize; 5];
-                for i in 0..5 {
-                    match vm.registers[**p[i] as usize] {
-                        Value::Pointer(p) => params[i] = p,
-                        Value::Int(int) => params[i] = int as usize,
+                for index in 0..5 {
+                    match vm.registers[**p[index] as usize] {
+                        RuntimeValue::Cached(CachedValue::Pointer(p)) => {
+                            let i = vm.gc.fetch::<usize, AllocId>(p)?;
+                            params[index] = i;
+                        }
+                        RuntimeValue::Register(RegisterValue::Pointer(p)) => params[index] = p,
+                        RuntimeValue::Cached(CachedValue::Int(i)) => {
+                            let i = vm.gc.fetch::<i32, AllocId>(i)?;
+                            params[index] = i as usize;
+                        }
+                        RuntimeValue::Register(RegisterValue::Int(i)) => params[index] = i as usize,
                         _ => {}
                     }
                 }
 
                 let result = unsafe { func(params[0], params[1], params[2], params[3], params[4]) };
 
-                vm.registers[**output as usize] = Value::Pointer(result);
+                vm.registers[**output as usize] =
+                    RuntimeValue::Register(RegisterValue::Pointer(result));
             }
 
             Instruction::Illegal => {
@@ -386,7 +397,7 @@ impl Instruction {
     pub fn to_str(&self) -> &'static str {
         match self {
             Self::Load(_, _) => "ld",
-            Self::Cache(_, _) => "cache",
+            Self::Cache(_, _, _) => "cache",
             Self::CompToReg(_) => "compr",
             Self::OpToReg(_) => "opr",
             Self::Save(_, _) => "save",
@@ -502,7 +513,7 @@ mod tests {
         };
 
         for (id, val) in values.clone().into_iter().enumerate() {
-            let cache = Instruction::Cache(id as u32, val.clone());
+            let cache = Instruction::Cache(id as u32, val.clone(), 0.into());
             cache.execute(&mut vm).unwrap();
             assert!(vm.gc.contains(id));
             assert_eq!(vm.gc.fetch(id), Some(val));
@@ -511,19 +522,9 @@ mod tests {
         // Do a VM Reset
         vm.gc = crate::Gc::new(&crate::OptionBuilder::new("./variable_ops").build());
 
-        for (id, val) in values.clone().into_iter().enumerate() {
-            let load = Instruction::Load(id as u32, 0.into());
+        for (_id, val) in values.clone().into_iter().enumerate() {
+            let load = Instruction::Load(val, 0.into());
 
-            let (alloc_val, alloc_id) =
-                vm.gc.allocate_id(std::mem::size_of::<Value>(), id).unwrap();
-            unsafe {
-                vm.gc
-                    .write(alloc_id, val.clone(), Some(&alloc_val))
-                    .unwrap();
-            }
-            vm.gc.add_root(alloc_val);
-
-            vm.registers[0] = val.clone();
             load.execute(&mut vm).unwrap();
             assert_eq!(vm.registers[0], val);
         }
@@ -534,14 +535,20 @@ mod tests {
         let comp_to_reg = Instruction::CompToReg(0.into());
         vm.prev_comp = true;
         comp_to_reg.execute(&mut vm).unwrap();
-        assert_eq!(vm.registers[0], Value::Bool(true));
+        assert_eq!(
+            vm.registers[0],
+            RuntimeValue::Register(RegisterValue::Bool(true))
+        );
         vm.prev_comp = false;
         comp_to_reg.execute(&mut vm).unwrap();
-        assert_eq!(vm.registers[0], Value::Bool(false));
+        assert_eq!(
+            vm.registers[0],
+            RuntimeValue::Register(RegisterValue::Bool(false))
+        );
 
         let op_to_reg = Instruction::OpToReg(2.into());
         for val in values.clone() {
-            vm.prev_op = val.clone();
+            vm.prev_op = RuntimeValue::from_val(val);
             op_to_reg.execute(&mut vm).unwrap();
             assert_eq!(vm.registers[2], val);
         }
@@ -550,13 +557,11 @@ mod tests {
             let (alloc_val, alloc_id) =
                 vm.gc.allocate_id(std::mem::size_of::<Value>(), id).unwrap();
             unsafe {
-                vm.gc
-                    .write(alloc_id, val.clone(), Some(&alloc_val))
-                    .unwrap();
+                vm.gc.write(alloc_id, val, Some(&alloc_val)).unwrap();
             }
             vm.gc.add_root(alloc_val);
 
-            vm.registers[0] = val.clone();
+            vm.registers[0] = RuntimeValue::from_val(val);
             let save = Instruction::Save(id as u32, 0.into());
             save.execute(&mut vm).unwrap();
             assert!(vm.gc.contains(id));
@@ -599,8 +604,8 @@ mod tests {
             Box::new(stdout()),
         );
 
-        vm.registers[0] = Value::Int(10);
-        vm.registers[1] = Value::Int(10);
+        vm.registers[0] = RuntimeValue::Register(RegisterValue::Int(10));
+        vm.registers[1] = RuntimeValue::Register(RegisterValue::Int(10));
 
         let add = Instruction::Add(0.into(), 1.into());
         add.execute(&mut vm).unwrap();
@@ -630,7 +635,7 @@ mod tests {
             Box::new(Vec::<u8>::new()),
         );
 
-        vm.registers[0] = Value::String("Test".to_string());
+        vm.registers[0] = RuntimeValue::Register(RegisterValue::String("Test"));
         print.execute(&mut vm).unwrap();
 
         // Have to do some monkeying with stdout because of Vm's drop implementation
@@ -638,21 +643,21 @@ mod tests {
         mem::swap(&mut vm.stdout, &mut stdout);
         assert_eq!(unsafe { *(Box::into_raw(stdout) as *const &str) }, "Test");
 
-        vm.registers[0] = Value::Int(10);
+        vm.registers[0] = RuntimeValue::Register(RegisterValue::Int(10));
         print.execute(&mut vm).unwrap();
 
         let mut stdout: Box<dyn std::io::Write + 'static> = Box::new(Vec::<u8>::new());
         mem::swap(&mut vm.stdout, &mut stdout);
         assert_eq!(unsafe { *(Box::into_raw(stdout) as *const &str) }, "10");
 
-        vm.registers[0] = Value::Bool(true);
+        vm.registers[0] = RuntimeValue::Register(RegisterValue::Bool(true));
         print.execute(&mut vm).unwrap();
 
         let mut stdout: Box<dyn std::io::Write + 'static> = Box::new(Vec::<u8>::new());
         mem::swap(&mut vm.stdout, &mut stdout);
         assert_eq!(unsafe { *(Box::into_raw(stdout) as *const &str) }, "true");
 
-        vm.registers[0] = Value::Bool(false);
+        vm.registers[0] = RuntimeValue::Register(RegisterValue::Bool(false));
         print.execute(&mut vm).unwrap();
 
         let mut stdout: Box<dyn std::io::Write + 'static> = Box::new(std::io::stdout()); //  Load stdout into vm.stdout for the printing portion
@@ -661,16 +666,16 @@ mod tests {
 
         // Test that writing to stdout works too, can only verify that it does, not that it is correct
 
-        vm.registers[0] = Value::String("Test".to_string());
+        vm.registers[0] = RuntimeValue::Register(RegisterValue::String("Test"));
         print.execute(&mut vm).unwrap();
 
-        vm.registers[0] = Value::Int(10);
+        vm.registers[0] = RuntimeValue::Register(RegisterValue::Int(10));
         print.execute(&mut vm).unwrap();
 
-        vm.registers[0] = Value::Bool(true);
+        vm.registers[0] = RuntimeValue::Register(RegisterValue::Bool(true));
         print.execute(&mut vm).unwrap();
 
-        vm.registers[0] = Value::Bool(false);
+        vm.registers[0] = RuntimeValue::Register(RegisterValue::Bool(false));
         print.execute(&mut vm).unwrap();
     }
 
@@ -710,24 +715,33 @@ mod tests {
             Box::new(stdout()),
         );
 
-        vm.registers[0] = Value::Int(10);
-        vm.registers[1] = Value::Int(10);
+        vm.registers[0] = RuntimeValue::Register(RegisterValue::Int(10));
+        vm.registers[1] = RuntimeValue::Register(RegisterValue::Int(10));
 
         let and = Instruction::And(0.into(), 1.into());
         and.execute(&mut vm).unwrap();
-        assert_eq!(vm.prev_op, Value::Int(10 & 10));
+        assert_eq!(
+            vm.prev_op,
+            RuntimeValue::Register(RegisterValue::Int(10 & 10))
+        );
 
         let or = Instruction::Or(0.into(), 1.into());
         or.execute(&mut vm).unwrap();
-        assert_eq!(vm.prev_op, Value::Int(10 | 10));
+        assert_eq!(
+            vm.prev_op,
+            RuntimeValue::Register(RegisterValue::Int(10 | 10))
+        );
 
         let xor = Instruction::Xor(0.into(), 1.into());
         xor.execute(&mut vm).unwrap();
-        assert_eq!(vm.prev_op, Value::Int(10 ^ 10));
+        assert_eq!(
+            vm.prev_op,
+            RuntimeValue::Register(RegisterValue::Int(10 ^ 10))
+        );
 
         let not = Instruction::Not(0.into());
         not.execute(&mut vm).unwrap();
-        assert_eq!(vm.prev_op, Value::Int(!10));
+        assert_eq!(vm.prev_op, RuntimeValue::Register(RegisterValue::Int(!10)));
     }
 
     #[test]
@@ -738,14 +752,14 @@ mod tests {
             Box::new(stdout()),
         );
 
-        vm.registers[0] = Value::Int(10);
-        vm.registers[1] = Value::Int(10);
+        vm.registers[0] = RuntimeValue::Register(RegisterValue::Int(10));
+        vm.registers[1] = RuntimeValue::Register(RegisterValue::Int(10));
 
         let eq = Instruction::Eq(0.into(), 1.into());
         eq.execute(&mut vm).unwrap();
         assert_eq!(vm.prev_comp, true);
 
-        vm.registers[0] = Value::Int(20);
+        vm.registers[0] = RuntimeValue::Register(RegisterValue::Int(20));
 
         let not_eq = Instruction::NotEq(0.into(), 1.into());
         not_eq.execute(&mut vm).unwrap();
@@ -755,7 +769,7 @@ mod tests {
         greater_than.execute(&mut vm).unwrap();
         assert_eq!(vm.prev_comp, true);
 
-        vm.registers[0] = Value::Int(0);
+        vm.registers[0] = RuntimeValue::Register(RegisterValue::Int(0));
 
         let less_than = Instruction::LessThan(0.into(), 1.into());
         less_than.execute(&mut vm).unwrap();
@@ -779,7 +793,7 @@ mod tests {
                 .unwrap();
         }
         assert!(vm.gc.contains(discard_id));
-        assert!(vm.gc.fetch(discard_id) == Some(Value::Int(10)));
+        assert!(vm.gc.fetch(discard_id) == Ok(Value::Int(10)));
         collect.execute(&mut vm).unwrap();
         assert!(!vm.gc.contains(discard_id));
 

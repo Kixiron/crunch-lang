@@ -101,6 +101,14 @@ pub struct Import<'a> {
     pub file: std::path::PathBuf,
     pub alias: Option<Ident<'a>>,
     pub exposes: Exposes<'a>,
+    pub ty: ImportType,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ImportType {
+    File,
+    Package,
+    Library,
 }
 
 #[derive(Debug, Clone)]

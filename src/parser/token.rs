@@ -87,6 +87,10 @@ pub enum TokenType {
     As,
     #[token = "exit"]
     SyscallExit,
+    #[token = "lib"]
+    Library,
+    #[token = "pkg"]
+    Package,
 }
 
 #[allow(missing_debug_implementations)]

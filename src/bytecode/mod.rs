@@ -44,11 +44,12 @@ pub fn disassemble(bytes: &[u8]) -> String {
 
         for (instruction_index, instruction) in function.into_iter().enumerate() {
             match &instruction {
-                Instruction::Load(heap_loc, reg) => {
-                    registers[**reg as usize] = heap.get(&heap_loc).unwrap_or(&Value::None).clone();
+                Instruction::Load(val, reg) => {
+                    registers[**reg as usize] = val.clone();
                 }
-                Instruction::Cache(heap_loc, val) => {
+                Instruction::Cache(heap_loc, val, reg) => {
                     heap.insert(*heap_loc, val.clone());
+                    registers[**reg as usize] = val.clone();
                 }
                 Instruction::Drop(heap_loc) => {
                     heap.remove(&heap_loc);
@@ -67,10 +68,11 @@ pub fn disassemble(bytes: &[u8]) -> String {
                 use super::Instruction::*;
 
                 match &instruction {
-                    Load(heap, reg) | Save(heap, reg) => {
-                        format!("{:p}, {}", *heap as *const u8, reg)
+                    Load(val, reg) => format!("{}, {:?}", reg, val),
+                    Save(heap, reg) => format!("{:p}, {}", *heap as *const u8, reg),
+                    Cache(heap, ref val, reg) => {
+                        format!("{:p}, {}, {}", *heap as *const u8, val, reg)
                     }
-                    Cache(heap, ref val) => format!("{:p}, {}", *heap as *const u8, val),
                     CompToReg(reg) | OpToReg(reg) | DropReg(reg) => format!("{}", reg),
                     Drop(reg) => format!("{}", reg),
 
@@ -180,11 +182,9 @@ mod tests {
 
         let (instructions, functions) = (
             vec![
-                Cache(0, Value::Int(10)),
-                Load(0, 0.into()),
+                Cache(0, Value::Int(10), 0.into()),
                 Print(0.into()),
-                Cache(1, Value::Int(5)),
-                Load(1, 1.into()),
+                Cache(1, Value::Int(5), 1.into()),
                 Print(1.into()),
                 Div(0.into(), 1.into()),
                 OpToReg(3.into()),
@@ -192,8 +192,7 @@ mod tests {
                 Drop(0),
                 Drop(1),
                 Collect,
-                Cache(0, Value::Pointer(0)),
-                Load(0, 0.into()),
+                Cache(0, Value::Pointer(0), 0.into()),
                 Print(0.into()),
                 Syscall(
                     0,
