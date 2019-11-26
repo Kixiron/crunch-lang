@@ -28,7 +28,7 @@ impl PartialEq for RuntimeError {
 }
 
 /// The type of [`RuntimeError`] that occurred
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeErrorTy {
     /// An error in the [`GC`]
     GcError,
@@ -56,9 +56,7 @@ pub enum RuntimeErrorTy {
 pub enum Instruction {
     /// Load a Value directly into a register
     Load(Value, Register),
-    /// Cache a Value into the GC and load it
     Cache(u32, Value, Register),
-    // TODO: Have a direct load to a register
     CompToReg(Register),
     OpToReg(Register),
     Save(u32, Register),
@@ -136,30 +134,11 @@ impl Instruction {
             Instruction::Cache(heap_loc, val, reg) => {
                 trace!("Loading value onto heap at {}, Val: {:?}", heap_loc, val);
 
-                let reg_val = RuntimeValue::Cached(if let Value::String(string) = val {
-                    let string = GcStr::new_id(string, *heap_loc as usize, &mut vm.gc)?;
-
-                    CachedValue::String(string)
-                } else {
-                    let (alloc_val, alloc_id) = vm
-                        .gc
-                        .allocate_id(std::mem::size_of::<Value>(), *heap_loc as usize)?;
-
-                    unsafe {
-                        vm.gc.write(alloc_id, val.to_owned(), Some(&alloc_val))?;
-                    }
-
-                    vm.gc.add_root(alloc_val);
-
-                    assert_eq!(*heap_loc as usize, *alloc_id);
-
-                    match val {
-                        Value::Bool(_) => CachedValue::Bool(alloc_id),
-                        Value::Int(_) => CachedValue::Int(alloc_id),
-                        Value::Pointer(_) => CachedValue::Pointer(alloc_id),
-                        Value::String(_) | Value::None => unreachable!(), // Is None really unreachable?
-                    }
-                });
+                let reg_val = RuntimeValue::Cached(CachedValue::allocate_id(
+                    val.clone(),
+                    *heap_loc as usize,
+                    &mut vm.gc,
+                )?);
 
                 vm.registers[**reg as usize] = reg_val;
 
@@ -236,7 +215,7 @@ impl Instruction {
             Instruction::Print(reg) => {
                 trace!("Printing reg {:?}", reg);
 
-                if let Err(_err) = write!(vm.stdout, "{}", vm.get(*reg).clone()) {
+                if let Err(_err) = write!(vm.stdout, "{}", vm.get(*reg).fetch(&vm.gc)?) {
                     panic!("Handle this sometime");
                 }
 
