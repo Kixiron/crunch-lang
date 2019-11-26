@@ -460,9 +460,6 @@ mod tests {
 
     #[test]
     fn variable_ops() {
-        simple_logger::init().unwrap();
-        color_backtrace::install();
-
         let mut vm = Vm::new(
             Vec::new(),
             &crate::OptionBuilder::new("./variable_ops").build(),
