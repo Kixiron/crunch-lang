@@ -365,6 +365,30 @@ impl RuntimeValue {
             }
         })
     }
+
+    pub fn is_register(&self) -> bool {
+        if let Self::Register(_) = self {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn is_cached(&self) -> bool {
+        if let Self::Cached(_) = self {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn is_none(&self) -> bool {
+        if let Self::None = self {
+            true
+        } else {
+            false
+        }
+    }
 }
 
 macro_rules! generate_op {
@@ -429,6 +453,15 @@ impl RegisterValue {
             Value::String(s) => Self::String(unsafe { std::mem::transmute(&*s) }),
             Value::Pointer(p) => Self::Pointer(p),
             _ => unreachable!(),
+        }
+    }
+
+    pub fn to_value(self) -> Value {
+        match self {
+            Self::Int(i) => Value::Int(i),
+            Self::Bool(b) => Value::Bool(b),
+            Self::String(s) => Value::String(s.to_string()),
+            Self::Pointer(p) => Value::Pointer(p),
         }
     }
 }
