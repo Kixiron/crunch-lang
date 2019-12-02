@@ -174,6 +174,7 @@ extern crate log;
 
 /// Encoding and decoding bytecode
 mod bytecode;
+mod code_builder;
 /// The main Crunch interface
 mod crunch;
 /// The Garbage Collector
@@ -246,22 +247,22 @@ impl OptionBuilder {
         }
     }
 
-    pub fn burn_gc(&mut self, b: bool) -> &mut Self {
+    pub fn burn_gc(mut self, b: bool) -> Self {
         self.burn_gc = b;
         self
     }
 
-    pub fn debug_log(&mut self, b: bool) -> &mut Self {
+    pub fn debug_log(mut self, b: bool) -> Self {
         self.debug_log = b;
         self
     }
 
-    pub fn fault_tolerant(&mut self, b: bool) -> &mut Self {
+    pub fn fault_tolerant(mut self, b: bool) -> Self {
         self.fault_tolerant = b;
         self
     }
 
-    pub fn overwrite_heap(&mut self, b: bool) -> &mut Self {
+    pub fn overwrite_heap(mut self, b: bool) -> Self {
         self.overwrite_heap = b;
         self
     }

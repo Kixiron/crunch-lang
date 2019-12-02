@@ -128,126 +128,129 @@ fn encode_instruction(instruction: Instruction) -> ([u8; INSTRUCTION_LENGTH], Op
     let mut value = None;
 
     match instruction {
-        Instruction::Load(val, reg) => {
+        Instruction::NoOp => {
             bytes[0] = 0x00;
+        }
+        Instruction::Load(val, reg) => {
+            bytes[0] = 0x01;
             bytes[size_of::<u32>() + 2] = *reg;
             value = Some(val);
         }
         Instruction::Cache(heap_loc, val, reg) => {
-            bytes[0] = 0x01;
+            bytes[0] = 0x02;
             bytes[1..size_of::<u32>() + 1].copy_from_slice(&heap_loc.to_be_bytes());
             bytes[size_of::<u32>() + 2] = *reg;
             value = Some(val);
         }
         Instruction::Save(heap_loc, reg) => {
-            bytes[0] = 0x17;
+            bytes[0] = 0x18;
             bytes[1..size_of::<u32>() + 1].copy_from_slice(&heap_loc.to_be_bytes());
             bytes[size_of::<u32>() + 2] = *reg;
         }
         Instruction::CompToReg(reg) => {
-            bytes[0] = 0x02;
-            bytes[1] = *reg;
-        }
-        Instruction::OpToReg(reg) => {
             bytes[0] = 0x03;
             bytes[1] = *reg;
         }
-        Instruction::DropReg(reg) => {
+        Instruction::OpToReg(reg) => {
             bytes[0] = 0x04;
             bytes[1] = *reg;
         }
-        Instruction::Drop(reg) => {
+        Instruction::DropReg(reg) => {
             bytes[0] = 0x05;
+            bytes[1] = *reg;
+        }
+        Instruction::Drop(reg) => {
+            bytes[0] = 0x06;
             bytes[1..size_of::<u32>() + 1].copy_from_slice(&reg.to_be_bytes());
         }
 
         Instruction::Add(left, right) => {
-            bytes[0] = 0x06;
-            bytes[1] = *left;
-            bytes[2] = *right;
-        }
-        Instruction::Sub(left, right) => {
             bytes[0] = 0x07;
             bytes[1] = *left;
             bytes[2] = *right;
         }
-        Instruction::Mult(left, right) => {
+        Instruction::Sub(left, right) => {
             bytes[0] = 0x08;
             bytes[1] = *left;
             bytes[2] = *right;
         }
-        Instruction::Div(left, right) => {
+        Instruction::Mult(left, right) => {
             bytes[0] = 0x09;
+            bytes[1] = *left;
+            bytes[2] = *right;
+        }
+        Instruction::Div(left, right) => {
+            bytes[0] = 0x0A;
             bytes[1] = *left;
             bytes[2] = *right;
         }
 
         Instruction::Print(reg) => {
-            bytes[0] = 0x0A;
+            bytes[0] = 0x0B;
             bytes[1] = *reg;
         }
 
         Instruction::Jump(loc) => {
-            bytes[0] = 0x0B;
+            bytes[0] = 0x0C;
             bytes[1..size_of::<i32>() + 1].copy_from_slice(&loc.to_be_bytes());
         }
         Instruction::JumpComp(loc) => {
-            bytes[0] = 0x0C;
+            bytes[0] = 0x0D;
             bytes[1..size_of::<i32>() + 1].copy_from_slice(&loc.to_be_bytes());
         }
 
         Instruction::And(left, right) => {
-            bytes[0] = 0x0D;
-            bytes[1] = *left;
-            bytes[2] = *right;
-        }
-        Instruction::Or(left, right) => {
             bytes[0] = 0x0E;
             bytes[1] = *left;
             bytes[2] = *right;
         }
-        Instruction::Xor(left, right) => {
+        Instruction::Or(left, right) => {
             bytes[0] = 0x0F;
             bytes[1] = *left;
             bytes[2] = *right;
         }
-        Instruction::Not(reg) => {
+        Instruction::Xor(left, right) => {
             bytes[0] = 0x10;
+            bytes[1] = *left;
+            bytes[2] = *right;
+        }
+        Instruction::Not(reg) => {
+            bytes[0] = 0x11;
             bytes[1] = *reg;
         }
 
         Instruction::Eq(left, right) => {
-            bytes[0] = 0x11;
-            bytes[1] = *left;
-            bytes[2] = *right;
-        }
-        Instruction::NotEq(left, right) => {
             bytes[0] = 0x12;
             bytes[1] = *left;
             bytes[2] = *right;
         }
-        Instruction::GreaterThan(left, right) => {
+        Instruction::NotEq(left, right) => {
             bytes[0] = 0x13;
             bytes[1] = *left;
             bytes[2] = *right;
         }
-        Instruction::LessThan(left, right) => {
+        Instruction::GreaterThan(left, right) => {
             bytes[0] = 0x14;
+            bytes[1] = *left;
+            bytes[2] = *right;
+        }
+        Instruction::LessThan(left, right) => {
+            bytes[0] = 0x15;
             bytes[1] = *left;
             bytes[2] = *right;
         }
 
         Instruction::Collect => {
-            bytes[0] = 0x18;
+            bytes[0] = 0x19;
         }
         Instruction::Return => {
-            bytes[0] = 0x15;
-        }
-        Instruction::Halt => {
             bytes[0] = 0x16;
         }
+        Instruction::Halt => {
+            bytes[0] = 0x17;
+        }
         Instruction::Syscall(offset, output, p1, p2, p3, p4, p5) => {
-            bytes[0] = 0x19;
+            bytes[0] = 0x1A;
             bytes[1] = offset;
             bytes[2] = *output;
             bytes[3] = *p1;
@@ -257,8 +260,9 @@ fn encode_instruction(instruction: Instruction) -> ([u8; INSTRUCTION_LENGTH], Op
             bytes[7] = *p5;
         }
 
-        Instruction::Illegal => {
+        Instruction::Illegal | Instruction::JumpPoint(_) => {
             // TODO: Should this be allowed? What should an illegal instruction be legally encoded as?
+            error!("Tried to encode {:?}", instruction);
             panic!(
                 "I mean, why are you *purposefully* making an Illegal Instruction? Just... Why?"
             );

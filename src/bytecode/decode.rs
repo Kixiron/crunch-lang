@@ -177,7 +177,8 @@ fn decode_instruction(
 ) -> Result<Instruction> {
     let instruction = match instruction[0] {
         // TODO: Shift all the values up by one, having zero be important is probably bad
-        0x00 => Instruction::Load(
+        0x01 => Instruction::NoOp,
+        0x01 => Instruction::Load(
             match value {
                 Some(value) => value,
                 None => {
@@ -189,7 +190,7 @@ fn decode_instruction(
             },
             instruction[size_of::<u32>() + 2].into(),
         ),
-        0x01 => Instruction::Cache(
+        0x02 => Instruction::Cache(
             u32::from_be_bytes(
                 instruction[1..size_of::<u32>() + 1]
                     .try_into()
@@ -206,47 +207,47 @@ fn decode_instruction(
             },
             instruction[size_of::<u32>() + 2].into(),
         ),
-        0x02 => Instruction::CompToReg(instruction[1].into()),
-        0x03 => Instruction::OpToReg(instruction[1].into()),
-        0x04 => Instruction::DropReg(instruction[1].into()),
-        0x05 => Instruction::Drop(u32::from_be_bytes(
+        0x03 => Instruction::CompToReg(instruction[1].into()),
+        0x04 => Instruction::OpToReg(instruction[1].into()),
+        0x05 => Instruction::DropReg(instruction[1].into()),
+        0x06 => Instruction::Drop(u32::from_be_bytes(
             instruction[1..size_of::<u32>() + 1]
                 .try_into()
                 .unwrap_or_else(|_| unreachable!()),
         )),
 
-        0x06 => Instruction::Add(instruction[1].into(), instruction[2].into()),
-        0x07 => Instruction::Sub(instruction[1].into(), instruction[2].into()),
-        0x08 => Instruction::Mult(instruction[1].into(), instruction[2].into()),
-        0x09 => Instruction::Div(instruction[1].into(), instruction[2].into()),
+        0x07 => Instruction::Add(instruction[1].into(), instruction[2].into()),
+        0x08 => Instruction::Sub(instruction[1].into(), instruction[2].into()),
+        0x09 => Instruction::Mult(instruction[1].into(), instruction[2].into()),
+        0x0A => Instruction::Div(instruction[1].into(), instruction[2].into()),
 
-        0x0A => Instruction::Print(instruction[1].into()),
+        0x0B => Instruction::Print(instruction[1].into()),
 
-        0x0B => Instruction::Jump(i32::from_be_bytes(
+        0x0C => Instruction::Jump(i32::from_be_bytes(
             instruction[1..size_of::<i32>() + 1]
                 .try_into()
                 .unwrap_or_else(|_| unreachable!()),
         )),
-        0x0C => Instruction::JumpComp(i32::from_be_bytes(
+        0x0D => Instruction::JumpComp(i32::from_be_bytes(
             instruction[1..size_of::<i32>() + 1]
                 .try_into()
                 .unwrap_or_else(|_| unreachable!()),
         )),
 
-        0x0D => Instruction::And(instruction[1].into(), instruction[2].into()),
-        0x0E => Instruction::Or(instruction[1].into(), instruction[2].into()),
-        0x0F => Instruction::Xor(instruction[1].into(), instruction[2].into()),
-        0x10 => Instruction::Not(instruction[1].into()),
+        0x0E => Instruction::And(instruction[1].into(), instruction[2].into()),
+        0x0F => Instruction::Or(instruction[1].into(), instruction[2].into()),
+        0x10 => Instruction::Xor(instruction[1].into(), instruction[2].into()),
+        0x11 => Instruction::Not(instruction[1].into()),
 
-        0x11 => Instruction::Eq(instruction[1].into(), instruction[2].into()),
-        0x12 => Instruction::NotEq(instruction[1].into(), instruction[2].into()),
-        0x13 => Instruction::GreaterThan(instruction[1].into(), instruction[2].into()),
-        0x14 => Instruction::LessThan(instruction[1].into(), instruction[2].into()),
+        0x12 => Instruction::Eq(instruction[1].into(), instruction[2].into()),
+        0x13 => Instruction::NotEq(instruction[1].into(), instruction[2].into()),
+        0x14 => Instruction::GreaterThan(instruction[1].into(), instruction[2].into()),
+        0x15 => Instruction::LessThan(instruction[1].into(), instruction[2].into()),
 
-        0x15 => Instruction::Return,
-        0x16 => Instruction::Halt,
+        0x16 => Instruction::Return,
+        0x17 => Instruction::Halt,
 
-        0x17 => Instruction::Save(
+        0x18 => Instruction::Save(
             u32::from_be_bytes(
                 instruction[1..size_of::<u32>() + 1]
                     .try_into()
@@ -254,8 +255,8 @@ fn decode_instruction(
             ),
             instruction[size_of::<u32>() + 2].into(),
         ),
-        0x18 => Instruction::Collect,
-        0x19 => Instruction::Syscall(
+        0x19 => Instruction::Collect,
+        0x1A => Instruction::Syscall(
             instruction[1],
             instruction[2].into(),
             instruction[3].into(),

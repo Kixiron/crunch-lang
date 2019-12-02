@@ -73,6 +73,7 @@ pub enum Instruction {
 
     Jump(i32),
     JumpComp(i32),
+    JumpPoint(u32),
 
     And(Register, Register),
     Or(Register, Register),
@@ -105,6 +106,7 @@ pub enum Instruction {
 
     // An illegal instruction
     Illegal,
+    NoOp,
 }
 
 impl Instruction {
@@ -250,24 +252,11 @@ impl Instruction {
                     index
                 );
 
-                let index = if vm.prev_comp && index.is_negative() {
-                    let (index, overflowed) = vm.index.overflowing_sub(index.abs() as u32);
-
-                    if overflowed {
-                        return Err(RuntimeError {
-                            ty: RuntimeErrorTy::InvalidJump,
-                            message: "Jump overflowed".to_string(),
-                        });
-                    }
-
-                    index + 1
-                } else if vm.prev_comp {
-                    *vm.index + *index as u32 + 1
+                if vm.prev_comp {
+                    vm.index = Index((*vm.index as i32 + *index + 1) as u32);
                 } else {
-                    *vm.index + 1
-                };
-
-                vm.index = Index(index);
+                    vm.index += Index(1);
+                }
             }
 
             Instruction::And(left, right) => {
@@ -370,9 +359,15 @@ impl Instruction {
 
                 vm.registers[**output as usize] =
                     RuntimeValue::Register(RegisterValue::Pointer(result));
+
+                vm.index += Index(1);
             }
 
-            Instruction::Illegal => {
+            Instruction::NoOp => {
+                vm.index += Index(1);
+            }
+
+            Instruction::Illegal | Instruction::JumpPoint(_) => {
                 return Err(RuntimeError {
                     ty: RuntimeErrorTy::IllegalInstruction,
                     message: "Illegal Instruction".to_string(),
@@ -403,6 +398,7 @@ impl Instruction {
 
             Self::Jump(_) => "jmp",
             Self::JumpComp(_) => "jmpcmp",
+            Self::JumpPoint(_) => "jmppt",
 
             Self::And(_, _) => "and",
             Self::Or(_, _) => "or",
@@ -420,6 +416,7 @@ impl Instruction {
             Self::Syscall(_, _, _, _, _, _, _) => "sysc",
 
             Self::Illegal => "illegal",
+            Self::NoOp => "nop",
         }
     }
 }
@@ -650,7 +647,7 @@ mod tests {
             Box::new(stdout()),
         );
 
-        vm.registers[0] = RuntimeValue::Register(RegisterValue::Int(10));
+        vm.registers[0] = RuntimeValue::Register(RegisterValue::Int(50));
         vm.registers[1] = RuntimeValue::Register(RegisterValue::Int(10));
 
         // Testing the Add instruction
