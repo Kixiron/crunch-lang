@@ -74,6 +74,7 @@ pub enum Instruction {
 
     Jump(i32),
     JumpComp(i32),
+    JumpPoint(u32),
 
     And(Register, Register),
     Or(Register, Register),
@@ -106,6 +107,7 @@ pub enum Instruction {
 
     // An illegal instruction
     Illegal,
+    NoOp,
 }
 
 impl Instruction {
@@ -260,24 +262,11 @@ impl Instruction {
                     index
                 );
 
-                let index = if vm.prev_comp && index.is_negative() {
-                    let (index, overflowed) = vm.index.overflowing_sub(index.abs() as u32);
-
-                    if overflowed {
-                        return Err(RuntimeError {
-                            ty: RuntimeErrorTy::InvalidJump,
-                            message: "Jump overflowed".to_string(),
-                        });
-                    }
-
-                    index + 1
-                } else if vm.prev_comp {
-                    *vm.index + *index as u32 + 1
+                if vm.prev_comp {
+                    vm.index = Index((*vm.index as i32 + *index + 1) as u32);
                 } else {
-                    *vm.index + 1
-                };
-
-                vm.index = Index(index);
+                    vm.index += Index(1);
+                }
             }
 
             Instruction::And(left, right) => {
@@ -380,9 +369,15 @@ impl Instruction {
 
                 vm.registers[**output as usize] =
                     RuntimeValue::Register(RegisterValue::Pointer(result));
+
+                vm.index += Index(1);
             }
 
-            Instruction::Illegal => {
+            Instruction::NoOp => {
+                vm.index += Index(1);
+            }
+
+            Instruction::Illegal | Instruction::JumpPoint(_) => {
                 return Err(RuntimeError {
                     ty: RuntimeErrorTy::IllegalInstruction,
                     message: "Illegal Instruction".to_string(),
@@ -413,6 +408,7 @@ impl Instruction {
 
             Self::Jump(_) => "jmp",
             Self::JumpComp(_) => "jmpcmp",
+            Self::JumpPoint(_) => "jmppt",
 
             Self::And(_, _) => "and",
             Self::Or(_, _) => "or",
@@ -430,6 +426,7 @@ impl Instruction {
             Self::Syscall(_, _, _, _, _, _, _) => "sysc",
 
             Self::Illegal => "illegal",
+            Self::NoOp => "nop",
         }
     }
 }
@@ -516,61 +513,74 @@ mod tests {
             let cache = Instruction::Cache(id as u32, val.clone(), 0.into());
             cache.execute(&mut vm).unwrap();
             assert!(vm.gc.contains(id));
-            assert_eq!(vm.gc.fetch(id), Some(val));
+            assert_eq!(vm.gc.fetch(id), Ok(val));
         }
 
         // Do a VM Reset
         vm.gc = crate::Gc::new(&crate::OptionBuilder::new("./variable_ops").build());
 
         for (_id, val) in values.clone().into_iter().enumerate() {
-            let load = Instruction::Load(val, 0.into());
+            let load = Instruction::Load(val.clone(), 0.into());
 
             load.execute(&mut vm).unwrap();
-            assert_eq!(vm.registers[0], val);
+            assert!(vm.registers[0]
+                .eq(&RuntimeValue::from_val(val), &vm.gc)
+                .ok()
+                .unwrap());
         }
 
         // Do a VM Reset
         vm.gc = crate::Gc::new(&crate::OptionBuilder::new("./variable_ops").build());
 
         let comp_to_reg = Instruction::CompToReg(0.into());
+
         vm.prev_comp = true;
         comp_to_reg.execute(&mut vm).unwrap();
-        assert_eq!(
-            vm.registers[0],
-            RuntimeValue::Register(RegisterValue::Bool(true))
-        );
+        assert!(vm.registers[0]
+            .eq(&RuntimeValue::Register(RegisterValue::Bool(true)), &vm.gc)
+            .ok()
+            .unwrap());
+
         vm.prev_comp = false;
         comp_to_reg.execute(&mut vm).unwrap();
-        assert_eq!(
-            vm.registers[0],
-            RuntimeValue::Register(RegisterValue::Bool(false))
-        );
+        assert!(vm.registers[0]
+            .eq(&RuntimeValue::Register(RegisterValue::Bool(false)), &vm.gc)
+            .ok()
+            .unwrap());
 
         let op_to_reg = Instruction::OpToReg(2.into());
         for val in values.clone() {
-            vm.prev_op = RuntimeValue::from_val(val);
+            vm.prev_op = RuntimeValue::from_val(val.clone());
             op_to_reg.execute(&mut vm).unwrap();
-            assert_eq!(vm.registers[2], val);
+            assert!(vm.registers[2]
+                .eq(&RuntimeValue::from_val(val), &vm.gc)
+                .ok()
+                .unwrap());
         }
 
         for (id, val) in values.clone().into_iter().enumerate() {
             let (alloc_val, alloc_id) =
                 vm.gc.allocate_id(std::mem::size_of::<Value>(), id).unwrap();
             unsafe {
-                vm.gc.write(alloc_id, val, Some(&alloc_val)).unwrap();
+                vm.gc
+                    .write(alloc_id, val.clone(), Some(&alloc_val))
+                    .unwrap();
             }
             vm.gc.add_root(alloc_val);
 
-            vm.registers[0] = RuntimeValue::from_val(val);
+            vm.registers[0] = RuntimeValue::from_val(val.clone());
             let save = Instruction::Save(id as u32, 0.into());
             save.execute(&mut vm).unwrap();
             assert!(vm.gc.contains(id));
-            assert_eq!(vm.gc.fetch(id), Some(val));
+            assert_eq!(vm.gc.fetch(id), Ok(val));
         }
 
         let drop_reg = Instruction::DropReg(0.into());
         drop_reg.execute(&mut vm).unwrap();
-        assert_eq!(vm.registers[1], Value::None);
+        assert!(vm.registers[0]
+            .eq(&RuntimeValue::from_val(Value::None), &vm.gc)
+            .ok()
+            .unwrap());
 
         // Do a VM Reset
         vm.gc = crate::Gc::new(&crate::OptionBuilder::new("./variable_ops").build());
@@ -588,11 +598,11 @@ mod tests {
             vm.gc.add_root(alloc_val);
 
             assert!(vm.gc.contains(id));
-            assert_eq!(vm.gc.fetch(id), Some(val.clone()));
+            assert_eq!(vm.gc.fetch(id), Ok(val.clone()));
             drop.execute(&mut vm).unwrap();
-            vm.gc.collect();
+            vm.gc.collect().unwrap();
             assert!(!vm.gc.contains(id));
-            assert_eq!(vm.gc.fetch(id), <Option<Value>>::None);
+            assert!(vm.gc.fetch::<Value, usize>(id).is_err());
         }
     }
 
@@ -604,24 +614,40 @@ mod tests {
             Box::new(stdout()),
         );
 
-        vm.registers[0] = RuntimeValue::Register(RegisterValue::Int(10));
+        vm.registers[0] = RuntimeValue::Register(RegisterValue::Int(50));
         vm.registers[1] = RuntimeValue::Register(RegisterValue::Int(10));
 
         let add = Instruction::Add(0.into(), 1.into());
         add.execute(&mut vm).unwrap();
-        assert_eq!(vm.prev_op, Value::Int(10 + 10));
+        assert!(vm
+            .prev_op
+            .eq(&RuntimeValue::from_val(Value::Int(50 + 10)), &vm.gc)
+            .ok()
+            .unwrap());
 
         let sub = Instruction::Sub(0.into(), 1.into());
         sub.execute(&mut vm).unwrap();
-        assert_eq!(vm.prev_op, Value::Int(10 - 10));
+        assert!(vm
+            .prev_op
+            .eq(&RuntimeValue::from_val(Value::Int(50 - 10)), &vm.gc)
+            .ok()
+            .unwrap());
 
         let mult = Instruction::Mult(0.into(), 1.into());
         mult.execute(&mut vm).unwrap();
-        assert_eq!(vm.prev_op, Value::Int(10 * 10));
+        assert!(vm
+            .prev_op
+            .eq(&RuntimeValue::from_val(Value::Int(50 * 10)), &vm.gc)
+            .ok()
+            .unwrap());
 
         let div = Instruction::Div(0.into(), 1.into());
         div.execute(&mut vm).unwrap();
-        assert_eq!(vm.prev_op, Value::Int(10 / 10));
+        assert!(vm
+            .prev_op
+            .eq(&RuntimeValue::from_val(Value::Int(50 / 10)), &vm.gc)
+            .ok()
+            .unwrap());
     }
 
     #[test]
@@ -720,28 +746,35 @@ mod tests {
 
         let and = Instruction::And(0.into(), 1.into());
         and.execute(&mut vm).unwrap();
-        assert_eq!(
-            vm.prev_op,
-            RuntimeValue::Register(RegisterValue::Int(10 & 10))
-        );
+        assert!(vm
+            .prev_op
+            .eq(&RuntimeValue::from_val(Value::Int(10 & 10)), &vm.gc)
+            .ok()
+            .unwrap());
 
         let or = Instruction::Or(0.into(), 1.into());
         or.execute(&mut vm).unwrap();
-        assert_eq!(
-            vm.prev_op,
-            RuntimeValue::Register(RegisterValue::Int(10 | 10))
-        );
+        assert!(vm
+            .prev_op
+            .eq(&RuntimeValue::from_val(Value::Int(10 | 10)), &vm.gc)
+            .ok()
+            .unwrap());
 
         let xor = Instruction::Xor(0.into(), 1.into());
         xor.execute(&mut vm).unwrap();
-        assert_eq!(
-            vm.prev_op,
-            RuntimeValue::Register(RegisterValue::Int(10 ^ 10))
-        );
+        assert!(vm
+            .prev_op
+            .eq(&RuntimeValue::from_val(Value::Int(10 ^ 10)), &vm.gc)
+            .ok()
+            .unwrap());
 
         let not = Instruction::Not(0.into());
         not.execute(&mut vm).unwrap();
-        assert_eq!(vm.prev_op, RuntimeValue::Register(RegisterValue::Int(!10)));
+        assert!(vm
+            .prev_op
+            .eq(&RuntimeValue::Register(RegisterValue::Int(!10)), &vm.gc)
+            .ok()
+            .unwrap());
     }
 
     #[test]

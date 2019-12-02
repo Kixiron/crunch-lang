@@ -394,10 +394,10 @@ impl<'a> Interpreter<'a> {
                         self.add_to_current(&[Instruction::Halt]);
                     }
 
-                    Builtin::SyscallExit(exit_code) => {
+                    Builtin::SyscallExit(_exit_code) => {
                         unimplemented!();
 
-                        match exit_code {
+                        match _exit_code {
                             // For literals fed into the print function, load them, print them, and drop them
                             IdentLiteral::Literal(literal) => {
                                 let (val, gc_id) = (literal.val.into(), self.get_next_gc_id());

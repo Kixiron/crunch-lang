@@ -37,6 +37,7 @@ codespan = "0.5.0"
 codespan-reporting = "0.5.0"
 human-panic = "1.0.1"
 lazy_static = "1.4.0"
+string-interner = "0.7.1"
 
 [target.'cfg(target_family = "windows")'.dependencies]
 winapi = "0.3.8"

@@ -93,7 +93,6 @@ pub enum TokenType {
     Package,
 }
 
-#[allow(missing_debug_implementations)]
 pub struct TokenStream<'a> {
     lexer: Lexer<TokenType, &'a str>,
     current: Token<'a>,
