@@ -607,6 +607,8 @@ impl GcValue {
     }
 }
 
+// TODO: String interning
+
 #[derive(Debug, Clone, Copy)]
 pub struct GcStr {
     id: AllocId,
@@ -619,6 +621,26 @@ impl GcStr {
         let string = string.as_ref();
 
         let (obj, id) = gc.allocate(string.len())?;
+        unsafe {
+            gc.write(id, string.as_bytes(), Some(&obj))?;
+        }
+        gc.add_root(obj);
+
+        Ok(Self {
+            id,
+            len: string.len(),
+            capacity: string.len(),
+        })
+    }
+
+    pub fn new_id<'a>(
+        string: impl AsRef<str>,
+        id: impl Into<AllocId>,
+        gc: &mut Gc,
+    ) -> Result<Self> {
+        let string = string.as_ref();
+
+        let (obj, id) = gc.allocate_id(string.len(), id)?;
         unsafe {
             gc.write(id, string.as_bytes(), Some(&obj))?;
         }

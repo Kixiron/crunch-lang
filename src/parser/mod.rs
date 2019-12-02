@@ -105,6 +105,11 @@ impl<'a> Parser<'a> {
 
                     TokenType::Error => {
                         // self.error = true;
+                        error!(
+                            "[Parsing error on {}:{}]: Invalid token",
+                            line!(),
+                            column!(),
+                        );
                         self.diagnostics.push(Diagnostic::new(
                             Severity::Error,
                             "Invalid token",
@@ -116,8 +121,14 @@ impl<'a> Parser<'a> {
                         ));
                     }
 
-                    _ => {
+                    t => {
                         // self.error = true;
+                        error!(
+                            "[Parsing error on {}:{}]: Invalid top-level token: {:?}",
+                            line!(),
+                            column!(),
+                            &t
+                        );
                         self.diagnostics.push(Diagnostic::new(
                             Severity::Error,
                             "Invalid top-level token",
@@ -231,6 +242,11 @@ impl<'a> Parser<'a> {
                     (Exposes::Some(imports), None)
                 } else {
                     // self.error = true;
+                    error!(
+                        "[Parsing error on {}:{}]: Expected exposed members",
+                        line!(),
+                        column!(),
+                    );
                     return Err(Diagnostic::new(
                         Severity::Error,
                         "Expected exposed members",
@@ -303,6 +319,11 @@ impl<'a> Parser<'a> {
                         (Exposes::Some(imports), Some(alias))
                     } else {
                         // self.error = true;
+                        error!(
+                            "[Parsing error on {}:{}]: Expected exposed members",
+                            line!(),
+                            column!(),
+                        );
                         return Err(Diagnostic::new(
                             Severity::Error,
                             "Expected exposed members",
@@ -324,6 +345,8 @@ impl<'a> Parser<'a> {
                 (Exposes::File, None)
             }
         };
+
+        info!("Finished parsing Import");
 
         Ok(Import {
             file,
@@ -389,8 +412,14 @@ impl<'a> Parser<'a> {
             span_end = token.range.1;
 
             self.eat_until(TokenType::Newline, true)?;
-            token = self.peek()?;
+            if let Ok(peek) = self.peek() {
+                token = peek;
+            } else {
+                break;
+            }
         }
+
+        info!("Finished parsing Function");
 
         Ok(Func {
             name,
@@ -441,6 +470,12 @@ impl<'a> Parser<'a> {
 
                                 t => {
                                     // self.error = true;
+                                    error!(
+                                        "[Parsing error on {}:{}]: Unexpected token: {:?}",
+                                        line!(),
+                                        column!(),
+                                        &t
+                                    );
                                     return Err(Diagnostic::new(
                                         Severity::Error,
                                         "Unexpected token",
@@ -535,6 +570,8 @@ impl<'a> Parser<'a> {
             }
 
             TokenType::Print => {
+                self.eat(TokenType::Print)?;
+
                 self.eat_w()?;
                 let mut params = Vec::new();
 
@@ -561,11 +598,18 @@ impl<'a> Parser<'a> {
                 (FuncExpr::Builtin(Builtin::Print(params)), span_end)
             }
 
-            TokenType::Collect => (FuncExpr::Builtin(Builtin::Collect), token.range.1),
+            TokenType::Collect => {
+                self.eat(TokenType::Collect)?;
+                (FuncExpr::Builtin(Builtin::Collect), token.range.1)
+            }
 
-            TokenType::Halt => (FuncExpr::Builtin(Builtin::Halt), token.range.1),
+            TokenType::Halt => {
+                self.eat(TokenType::Halt)?;
+                (FuncExpr::Builtin(Builtin::Halt), token.range.1)
+            }
 
             TokenType::SyscallExit => {
+                self.eat(TokenType::SyscallExit)?;
                 self.eat_w()?;
 
                 let peek = self.peek()?;
@@ -575,6 +619,11 @@ impl<'a> Parser<'a> {
                     self.ident_literal()?
                 } else {
                     // self.error = true;
+                    error!(
+                        "[Parsing error on {}:{}]: Invalid function parameter",
+                        line!(),
+                        column!(),
+                    );
                     return Err(Diagnostic::new(
                         Severity::Error,
                         "Invalid Function Parameters",
@@ -593,6 +642,8 @@ impl<'a> Parser<'a> {
 
             _ => unimplemented!(),
         };
+
+        info!("Finished parsing Func Body");
 
         Ok(FuncBody {
             expr,
@@ -616,6 +667,12 @@ impl<'a> Parser<'a> {
             ))),
             t => {
                 // self.error = true;
+                error!(
+                    "[Parsing error on {}:{}]: Invalid function parameter: {:?}",
+                    line!(),
+                    column!(),
+                    &t
+                );
                 Err(Diagnostic::new(
                     Severity::Error,
                     "Invalid Function Parameter",
@@ -634,7 +691,7 @@ impl<'a> Parser<'a> {
 
         self.eat_w()?;
 
-        Ok(match self.peek()?.ty {
+        let val = match self.peek()?.ty {
             TokenType::String | TokenType::Bool | TokenType::Int | TokenType::Ident => {
                 let left = self.parse_bin_op_side()?;
                 self.eat_w()?;
@@ -682,7 +739,11 @@ impl<'a> Parser<'a> {
                 }
             }
             _ => crate::unreachable!("Impossible Token: {:?}", self.peek()),
-        })
+        };
+
+        info!("Finished parsing Binding Value");
+
+        Ok(val)
     }
 
     fn parse_bin_op_side(&mut self) -> Result<BinOpSide<'a>> {
@@ -691,21 +752,22 @@ impl<'a> Parser<'a> {
         self.eat_w()?;
 
         let token = self.peek()?;
-        match token.ty {
+        let side = match token.ty {
             TokenType::Ident => {
                 let token = self.eat(TokenType::Ident)?;
-                Ok(BinOpSide::Variable(Ident::from_token(
-                    token,
-                    self.current_file,
-                )))
+                BinOpSide::Variable(Ident::from_token(token, self.current_file))
             }
 
             TokenType::String | TokenType::Bool | TokenType::Int => {
-                Ok(BinOpSide::Literal(self.parse_variable()?))
+                BinOpSide::Literal(self.parse_variable()?)
             }
 
             _ => unimplemented!(),
-        }
+        };
+
+        info!("Finished parsing Bin Op Side");
+
+        Ok(side)
     }
 
     #[inline]
@@ -724,6 +786,8 @@ impl<'a> Parser<'a> {
             TokenType::Bool => LiteralInner::Bool(token.source.parse().unwrap()),
             _ => unimplemented!("{:?}", token.ty),
         };
+
+        info!("Finished parsing Variable");
 
         Ok(Literal {
             val,
@@ -745,6 +809,8 @@ impl<'a> Parser<'a> {
 
         let (ty, span_end) = self.parse_type()?;
 
+        info!("Finished parsing Named Param");
+
         Ok(FuncParam {
             name,
             ty,
@@ -761,6 +827,8 @@ impl<'a> Parser<'a> {
 
         let ident = self.eat(TokenType::Ident)?;
         let (range_start, range_end) = ident.range;
+
+        info!("Finished parsing Type");
 
         Ok((
             match ident.source {
@@ -793,8 +861,12 @@ impl<'a> Parser<'a> {
             trace!("Got token: {:?}", next);
             Ok(next)
         } else {
-            trace!("Failed to get next token on line {}", line);
-
+            error!(
+                "[Parsing error on {}:{}]: Unexpected EOF while calling next at line {}",
+                line!(),
+                column!(),
+                line,
+            );
             Err(Diagnostic::new(
                 Severity::Error,
                 "Unexpected End Of File",
@@ -812,8 +884,11 @@ impl<'a> Parser<'a> {
         if let Some(next) = self.peek.clone() {
             Ok(next)
         } else {
-            trace!("Failed to peek next token");
-
+            error!(
+                "[Parsing error on {}:{}]: Unexpected EOF while peeking",
+                line!(),
+                column!(),
+            );
             Err(Diagnostic::new(
                 Severity::Error,
                 "Unexpected End Of File",
@@ -879,14 +954,15 @@ impl<'a> Parser<'a> {
         if token.ty == expected {
             Ok(token)
         } else {
-            trace!(
-                "Failed to eat token, expected {:?} got {:?}. Token: {:?}",
+            // self.error = true;
+            error!(
+                "[Parsing error on {}:{}]: Failed to eat token, expected {:?} got {:?}. Token: {:?}",
+                line!(),
+                column!(),
                 expected,
                 token.ty,
                 token
             );
-
-            // self.error = true;
             Err(Diagnostic::new(
                 Severity::Error,
                 format!(
@@ -911,14 +987,15 @@ impl<'a> Parser<'a> {
         if expected.contains(&token.ty) {
             Ok(token)
         } else {
-            trace!(
-                "Failed to eat token, expected {:?}, got {:?}. Token: {:?}",
+            // self.error = true;
+            error!(
+                "[Parsing error on {}:{}]: Unexpected token, expected {:?}, got {:?}. Token: {:?}",
+                line!(),
+                column!(),
                 expected,
                 token.ty,
                 token,
             );
-
-            // self.error = true;
             Err(Diagnostic::new(
                 Severity::Error,
                 format!(
@@ -944,6 +1021,7 @@ impl<'a> Parser<'a> {
         self.eat_until(TokenType::Newline, true)
     }
 
+    #[inline]
     fn eat_line_end_returning(&mut self) -> Result<Token<'a>> {
         let mut returned_token = None;
         while let Some(token) = &self.peek {
@@ -960,6 +1038,13 @@ impl<'a> Parser<'a> {
         if let Some(token) = returned_token {
             Ok(token)
         } else {
+            error!(
+                "[Parsing error on {}:{}]: Failed to eat line end returning one of {:?}, got {:?}",
+                line!(),
+                column!(),
+                &[TokenType::Space, TokenType::Comment, TokenType::Newline],
+                returned_token
+            );
             Err(Diagnostic::new(
                 Severity::Error,
                 "Failed to get token",

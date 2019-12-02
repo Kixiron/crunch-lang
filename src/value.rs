@@ -320,6 +320,17 @@ pub enum RuntimeValue {
 }
 
 impl RuntimeValue {
+    pub fn fetch(&self, gc: &Gc) -> Result<RegisterValue> {
+        match self {
+            Self::Cached(cached) => cached.get_val(&gc),
+            Self::Register(register) => Ok(*register),
+            Self::None => Err(RuntimeError {
+                ty: RuntimeErrorTy::NullVar,
+                message: "The requested variable does not exist".to_string(),
+            }),
+        }
+    }
+
     pub fn from_val(val: Value) -> Self {
         if val == Value::None {
             Self::None
@@ -364,6 +375,30 @@ impl RuntimeValue {
                 })
             }
         })
+    }
+
+    pub fn is_register(&self) -> bool {
+        if let Self::Register(_) = self {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn is_cached(&self) -> bool {
+        if let Self::Cached(_) = self {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn is_none(&self) -> bool {
+        if let Self::None = self {
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -429,6 +464,15 @@ impl RegisterValue {
             Value::String(s) => Self::String(unsafe { std::mem::transmute(&*s) }),
             Value::Pointer(p) => Self::Pointer(p),
             _ => unreachable!(),
+        }
+    }
+
+    pub fn to_value(self) -> Value {
+        match self {
+            Self::Int(i) => Value::Int(i),
+            Self::Bool(b) => Value::Bool(b),
+            Self::String(s) => Value::String(s.to_string()),
+            Self::Pointer(p) => Value::Pointer(p),
         }
     }
 }
@@ -638,12 +682,47 @@ pub enum CachedValue {
 }
 
 impl CachedValue {
+    // TODO: Make this compacting
+    pub fn allocate_id(val: Value, id: impl Into<AllocId>, gc: &mut Gc) -> Result<Self> {
+        let id = id.into();
+
+        Ok(match val {
+            Value::Bool(b) => Self::Bool(Self::alloc(id, gc, b, std::mem::size_of::<bool>())?),
+            Value::String(s) => Self::String({ GcStr::new_id(s, id, gc)? }),
+            Value::Int(i) => Self::Int(Self::alloc(id, gc, i, std::mem::size_of::<i32>())?),
+            Value::Pointer(p) => {
+                Self::Pointer(Self::alloc(id, gc, p, std::mem::size_of::<usize>())?)
+            }
+            _ => unreachable!("Shouldn't be allocating a null space?"),
+        })
+    }
+
+    fn alloc<T>(
+        id: impl Into<AllocId> + Copy,
+        gc: &mut Gc,
+        val: T,
+        size: usize,
+    ) -> Result<AllocId> {
+        let id = id.into();
+
+        let (alloc_val, alloc_id) = gc.allocate_id(size, id)?;
+        assert_eq!(id, alloc_id);
+
+        unsafe {
+            gc.write(id, val, Some(&alloc_val))?;
+        }
+
+        gc.add_root(alloc_val);
+
+        Ok(id)
+    }
+
     pub fn get_val(&self, gc: &Gc) -> Result<RegisterValue> {
         Ok(match self {
             Self::String(l) => RegisterValue::String(unsafe { std::mem::transmute(l.to_str(gc)?) }),
             Self::Int(l) => RegisterValue::Int(gc.fetch::<i32, AllocId>(*l)?),
-            Self::Bool(l) => RegisterValue::Bool(gc.fetch::<bool, AllocId>(*l)?),
             Self::Pointer(l) => RegisterValue::Pointer(gc.fetch::<usize, AllocId>(*l)?),
+            Self::Bool(l) => RegisterValue::Bool(gc.fetch::<bool, AllocId>(*l)?),
         })
     }
 
