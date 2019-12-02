@@ -611,9 +611,9 @@ impl GcValue {
 
 #[derive(Debug, Clone, Copy)]
 pub struct GcStr {
-    id: AllocId,
-    len: usize,
-    capacity: usize,
+    pub id: AllocId,
+    pub len: usize,
+    pub capacity: usize,
 }
 
 impl GcStr {

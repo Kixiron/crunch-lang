@@ -1,5 +1,8 @@
 use super::TokenType;
-use crate::Value;
+use crate::{
+    interpreter::{Interpreter, Location},
+    Instruction, Result, RuntimeError, RuntimeErrorTy, Value,
+};
 use codespan::{FileId, Span};
 use std::{borrow::Cow, fmt};
 
@@ -18,7 +21,7 @@ impl<'a> fmt::Debug for Node<'a> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type<'a> {
     Int,
     Float,
@@ -27,6 +30,22 @@ pub enum Type<'a> {
     Void,
     Infer,
     Custom(Ident<'a>),
+}
+
+impl<'a> fmt::Display for Type<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let string = match self {
+            Self::Int => "int",
+            Self::Float => "float",
+            Self::String => "str",
+            Self::Bool => "bool",
+            Self::Void => "void",
+            Self::Infer => "infer",
+            Self::Custom(ident) => &*ident.name,
+        };
+
+        write!(f, "{}", string)
+    }
 }
 
 #[derive(Clone)]
@@ -71,6 +90,14 @@ pub struct Ident<'a> {
     pub info: LocInfo,
 }
 
+impl<'a> PartialEq for Ident<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        &*self.name == &*other.name
+    }
+}
+
+impl<'a> Eq for Ident<'a> {}
+
 impl<'a> Ident<'a> {
     pub fn from_token(token: super::Token<'a>, file: FileId) -> Self {
         Self {
@@ -104,7 +131,7 @@ pub struct Import<'a> {
     pub ty: ImportType,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ImportType {
     File,
     Package,
@@ -272,12 +299,122 @@ pub struct Literal<'a> {
     pub info: LocInfo,
 }
 
+impl<'a> Literal<'a> {
+    pub fn cache(
+        self,
+        ident: impl Into<String>,
+        interpreter: &mut Interpreter<'a>,
+    ) -> Result<Vec<Instruction>> {
+        let (ident, value) = (ident.into(), self.val.into());
+
+        if let Some((mut location, ty)) = interpreter.current_scope.variables.get(&ident) {
+            let id = match location {
+                Location::Gc(id) => id,
+                Location::Register(_reg, id) => match id {
+                    Some(id) => id,
+                    None => interpreter.get_next_gc_id(),
+                },
+            };
+
+            let register = interpreter.reserve_reg(Some(location), Some(id))?;
+
+            if self.val.to_type() != *ty {
+                return Err(RuntimeError {
+                    ty: RuntimeErrorTy::IncompatibleTypes,
+                    message: format!(
+                        "A variable by the type of '{}' cannot be given a value of type '{}'",
+                        ty,
+                        self.val.to_type()
+                    ),
+                });
+            }
+
+            if let Location::Register(reg, None) = location {
+                location = Location::Register(reg, Some(id));
+            }
+
+            interpreter
+                .current_scope
+                .variables
+                .insert(ident, (location, *ty));
+
+            Ok(vec![Instruction::Cache(id, value, register)])
+        } else {
+            let id = interpreter.get_next_gc_id();
+            let register = interpreter.reserve_reg(None, Some(id))?;
+
+            interpreter.current_scope.variables.insert(
+                ident,
+                (Location::Register(register, Some(id)), self.val.to_type()),
+            );
+
+            Ok(vec![Instruction::Cache(id, value, register)])
+        }
+    }
+
+    pub fn register(
+        self,
+        ident: impl Into<String>,
+        interpreter: &mut Interpreter<'a>,
+    ) -> Result<Vec<Instruction>> {
+        let (ident, value) = (ident.into(), self.val.into());
+
+        if let Some((location, ty)) = interpreter.current_scope.variables.get(&ident) {
+            let id = if let Location::Gc(id) = location {
+                Some(*id)
+            } else {
+                None
+            };
+
+            let register = interpreter.reserve_reg(Some(*location), id)?;
+
+            if self.val.to_type() != *ty {
+                return Err(RuntimeError {
+                    ty: RuntimeErrorTy::IncompatibleTypes,
+                    message: format!(
+                        "A variable by the type of '{}' cannot be given a value of type '{}'",
+                        ty,
+                        self.val.to_type()
+                    ),
+                });
+            }
+
+            interpreter
+                .current_scope
+                .variables
+                .insert(ident, (*location, *ty));
+
+            Ok(vec![Instruction::Load(value, register)])
+        } else {
+            let register = interpreter.reserve_reg(None, None)?;
+
+            interpreter.current_scope.variables.insert(
+                ident,
+                (Location::Register(register, None), self.val.to_type()),
+            );
+
+            Ok(vec![Instruction::Load(value, register)])
+        }
+    }
+}
+
 #[derive(Clone)]
 pub enum LiteralInner<'a> {
     String(Cow<'a, str>),
     Int(i32),
     Float(f32),
     Bool(bool),
+}
+
+impl<'a> LiteralInner<'a> {
+    pub fn to_type(&self) -> Type<'a> {
+        match self {
+            Self::String(_) => Type::String,
+            Self::Int(_) => Type::Int,
+            Self::Float(_) => Type::Float,
+            Self::Bool(_) => Type::Bool,
+        }
+    }
 }
 
 impl<'a> Into<Value> for LiteralInner<'a> {

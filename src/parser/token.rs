@@ -85,12 +85,63 @@ pub enum TokenType {
     Export,
     #[token = "as"]
     As,
-    #[token = "exit"]
+    #[token = "@exit"]
     SyscallExit,
     #[token = "lib"]
     Library,
     #[token = "pkg"]
     Package,
+}
+
+impl std::fmt::Display for TokenType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let string = match self {
+            Self::End => "EOF",
+            Self::Error => "Error",
+            Self::Comma => ",",
+            Self::Let => "let",
+            Self::Plus => "+",
+            Self::Colon => ":",
+            Self::Minus => "-",
+            Self::Equal => "=",
+            Self::IsEqual => "==",
+            Self::LeftBrace => "[",
+            Self::RightBrace => "]",
+            Self::Divide => "/",
+            Self::Star => "*",
+            Self::Loop => "loop",
+            Self::While => "while",
+            Self::If => "if",
+            Self::Else => "else",
+            Self::Function => "fn",
+            Self::LeftParen => "(",
+            Self::RightParen => ")",
+            Self::LeftBracket => "{",
+            Self::RightBracket => "}",
+            Self::Ident => "Ident",
+            Self::Int => "int",
+            Self::String => "str",
+            Self::Space => " ",
+            Self::Comment => "Comment",
+            Self::Indent => "Indent",
+            Self::Newline => "Newline",
+            Self::RightArrow => "->",
+            Self::LeftArrow => "<-",
+            Self::Bool => "bool",
+            Self::Print => "@print",
+            Self::Collect => "@collect",
+            Self::Halt => "@halt",
+            Self::Import => "import",
+            Self::Exposing => "exposing",
+            Self::Export => "export",
+            Self::As => "as",
+            Self::SyscallExit => "@exit",
+            Self::Library => "lib",
+            Self::Package => "pkg",
+        };
+
+        write!(f, "{}", string)
+    }
 }
 
 #[allow(missing_debug_implementations)]

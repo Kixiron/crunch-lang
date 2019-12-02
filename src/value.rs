@@ -400,6 +400,22 @@ impl RuntimeValue {
             false
         }
     }
+
+    pub fn register(&self) -> Option<RegisterValue> {
+        if let Self::Register(r) = self {
+            Some(*r)
+        } else {
+            None
+        }
+    }
+
+    pub fn cached(&self) -> Option<CachedValue> {
+        if let Self::Cached(c) = self {
+            Some(*c)
+        } else {
+            None
+        }
+    }
 }
 
 macro_rules! generate_op {

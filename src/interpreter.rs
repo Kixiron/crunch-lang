@@ -8,12 +8,12 @@ use std::collections::HashMap;
 
 #[derive(Clone)]
 struct Scope<'a> {
-    variables: HashMap<String, (Location, Type<'a>)>,
-    registers: [Option<Location>; NUMBER_REGISTERS],
+    pub variables: HashMap<String, (Location, Type<'a>)>,
+    pub registers: [Option<Location>; NUMBER_REGISTERS],
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-enum Location {
+pub enum Location {
     Register(Register, Option<u32>),
     Gc(u32),
 }
@@ -37,7 +37,7 @@ impl<'a> std::fmt::Debug for Scope<'a> {
 
 #[derive(Debug, Copy, Clone)]
 struct InterpOptions {
-    fault_tolerant: bool,
+    pub fault_tolerant: bool,
 }
 
 impl From<&Options> for InterpOptions {
@@ -50,14 +50,14 @@ impl From<&Options> for InterpOptions {
 
 #[derive(Debug, Clone)]
 pub struct Interpreter<'a> {
-    ast: Vec<Node<'a>>,
-    scopes: Vec<Scope<'a>>,
-    current_scope: Scope<'a>,
-    gc: u32,
-    functions: HashMap<String, (Vec<Instruction>, Option<usize>)>,
-    current_function: Vec<Instruction>,
-    options: InterpOptions,
-    func_index: usize,
+    pub ast: Vec<Node<'a>>,
+    pub scopes: Vec<Scope<'a>>,
+    pub current_scope: Scope<'a>,
+    pub gc: u32,
+    pub functions: HashMap<String, (Vec<Instruction>, Option<usize>)>,
+    pub current_function: Vec<Instruction>,
+    pub options: InterpOptions,
+    pub func_index: usize,
 }
 
 impl<'a> Interpreter<'a> {
@@ -77,17 +77,25 @@ impl<'a> Interpreter<'a> {
     /// Interpret the contained ast and return the instructions
     pub fn interpret(mut self) -> Result<(Vec<Instruction>, Vec<Vec<Instruction>>)> {
         for node_index in 0..self.ast.len() {
-            // UNSAFE: Safe because node_index will never be greater than ast.len() - 1
-            // or less than zero, and therefore should never be out of bounds
-            match unsafe { self.ast.get_unchecked(node_index) } {
+            match &self.ast[node_index] {
                 Node::Func(_) => {
-                    let (name, index) = self.interp_func(node_index)?;
+                    // Interpret the function
+                    let (name, index) = unsafe { self.interp_func(node_index)? };
+
+                    // Will contain the newly created function
                     let mut func = Vec::new();
+
+                    // Switch the current function and the function just created
                     std::mem::swap(&mut self.current_function, &mut func);
+
+                    // Insert the function
                     self.functions.insert(name, (func, index));
                 }
 
-                _ => unimplemented!(),
+                n => {
+                    error!("Top level node can not yet be interpreted: {:?}", n);
+                    continue;
+                }
             }
         }
 
@@ -152,32 +160,102 @@ impl<'a> Interpreter<'a> {
         Ok((main_func, functions))
     }
 
-    fn reserve_reg(&mut self, location: Option<Location>, gc_loc: Option<u32>) -> Register {
-        let pos = self
+    pub fn reserve_reg(
+        &mut self,
+        location: Option<Location>,
+        gc_id: Option<u32>,
+    ) -> Result<Register> {
+        if let Some(pos) = self
             .current_scope
             .registers
             .iter()
             .position(Option::is_none)
-            .unwrap();
+        {
+            trace!("Found Available Register: {}", Register(pos as u8));
 
-        trace!("Found Available Register: {}", Register(pos as u8));
+            if let Some(location) = location {
+                self.current_scope.registers[pos] = Some(location);
+            } else {
+                self.current_scope.registers[pos] =
+                    Some(Location::Register((pos as u8).into(), gc_id))
+            }
 
-        if let Some(location) = location {
-            self.current_scope.registers[pos] = Some(location);
+            Ok((pos as u8).into())
         } else {
-            self.current_scope.registers[pos] = Some(Location::Register((pos as u8).into(), gc_loc))
+            Err(RuntimeError {
+                ty: RuntimeErrorTy::CompilationError,
+                message: "Failed to fetch avaliable register".to_string(),
+            })
         }
-
-        (pos as u8).into()
     }
 
+    /*
+    unsafe fn interpret_external_file(
+        &mut self,
+        node_index: usize,
+    ) -> Result<(Vec<Node<'a>>, Vec<codespan_reporting::diagnostic::Diagnostic>), Vec<codespan_reporting::diagnostic::Diagnostic>> {
+        let import = if let Node::Import(import) = self.ast.remove(node_index) {
+            import
+        } else {
+            unreachable!("Should be an already confirmed import");
+        };
+
+        // pub struct Import<'a> {
+        //     pub file: std::path::PathBuf,
+        //     pub alias: Option<Ident<'a>>,
+        //     pub exposes: Exposes<'a>,
+        //     pub ty: ImportType,
+        // }
+
+        if import.ty == ImportType::File {
+            // Opens the imported file and reads it's contents to a string
+            let contents = {
+                use std::{fs::File, io::Read};
+
+                let mut file = match File::open(&import.file) {
+                    Ok(file) => file,
+                    Err(err) => {
+                        error!("Error opening imported file: {:?}", err);
+
+                        return Err(RuntimeError {
+                            ty: RuntimeErrorTy::FileError,
+                            message: format!("The file '{}' does not exist", import.file.display()),
+                        });
+                    }
+                };
+
+                let mut contents = String::new();
+
+                if let Err(err) = file.read_to_string(&mut contents) {
+                    error!("Error reading imported file: {:?}", err);
+
+                    return Err(RuntimeError {
+                        ty: RuntimeErrorTy::FileError,
+                        message: format!("Cannot read the file '{}'", import.file.display()),
+                    });
+                }
+
+                contents
+            };
+
+            let parser = Parser::new(Some(&import.file), &contents);
+
+            let parsed
+        } else {
+            unimplemented!(
+                "The import type {:?} has not been implemented yet",
+                import.ty
+            );
+        }
+    }
+    */
+
     /// Interpret a function
-    fn interp_func(&mut self, node_index: usize) -> Result<(String, Option<usize>)> {
-        #[allow(irrefutable_let_patterns)] // Note: Will not always be irrefutable
+    unsafe fn interp_func(&mut self, node_index: usize) -> Result<(String, Option<usize>)> {
         let func = if let Node::Func(func) = self.ast.remove(node_index) {
             func
         } else {
-            unreachable!("Already a confirmed function");
+            unreachable!("Should be an already a confirmed function");
         };
 
         // For each expression in the function, evaluate it into instructions
@@ -187,48 +265,42 @@ impl<'a> Interpreter<'a> {
                 FuncExpr::Binding(binding) => {
                     match binding.val {
                         BindingVal::Literal(literal) => {
-                            let val = literal.val.into();
+                            let value = literal.val.into();
 
                             // Insert the variable into the gc
-                            let gc_id = self.get_next_gc_id();
-                            let addr = self.reserve_reg(None, Some(gc_id));
+                            let id = self.get_next_gc_id();
+                            let addr = self.reserve_reg(None, Some(id))?;
 
                             // Add the variable to the current scope
                             self.current_scope.variables.insert(
                                 binding.name.name.to_string(),
-                                (Location::Gc(gc_id), binding.ty.clone()),
+                                (Location::Gc(id), binding.ty.clone()),
                             );
 
                             // Add the cache instruction to the current function
-                            self.add_to_current(&[Instruction::Cache(gc_id, val, addr)]);
+                            self.add_to_current(&[Instruction::Cache(id, value, addr)]);
                         }
 
                         BindingVal::BinOp(bin_op) => match (bin_op.left, bin_op.right) {
                             (BinOpSide::Literal(left), BinOpSide::Literal(right)) => {
                                 let left: Value = left.val.into();
                                 let right = right.val.into();
-                                let gc_id = self.get_next_gc_id();
-                                let addr = self.reserve_reg(None, Some(gc_id));
+                                let addr = self.reserve_reg(None, None)?;
 
-                                self.add_to_current(&[Instruction::Cache(
-                                    gc_id,
-                                    (left + right)?,
-                                    addr,
-                                )]);
+                                // Do the math here, instead of at runtime
+                                self.add_to_current(&[Instruction::Load((left + right)?, addr)]);
 
                                 self.current_scope.variables.insert(
                                     binding.name.name.to_string(),
-                                    (Location::Gc(gc_id), binding.ty.clone()),
+                                    (Location::Register(addr, None), binding.ty.clone()),
                                 );
                             }
 
                             (BinOpSide::Literal(left), BinOpSide::Variable(right)) => {
-                                let (left, left_id) = (left.val.into(), self.get_next_gc_id());
-                                let left_addr = self.reserve_reg(None, Some(left_id));
+                                let left_value = left.val.into();
+                                let left_addr = self.reserve_reg(None, None);
 
-                                self.add_to_current(&[Instruction::Cache(
-                                    left_id, left, left_addr,
-                                )]);
+                                self.add_to_current(&[Instruction::Load(left_value, left_addr)]);
 
                                 let (right_id, faulted) = {
                                     if let Some(var) =
@@ -290,7 +362,6 @@ impl<'a> Interpreter<'a> {
                                 let output = self.reserve_reg(None, None);
                                 self.add_to_current(&[
                                     Instruction::DropReg(left_addr),
-                                    Instruction::Drop(left_id),
                                     Instruction::OpToReg(output),
                                 ]);
 
@@ -394,10 +465,11 @@ impl<'a> Interpreter<'a> {
                         self.add_to_current(&[Instruction::Halt]);
                     }
 
-                    Builtin::SyscallExit(exit_code) => {
-                        unimplemented!();
+                    Builtin::SyscallExit(_exit_code) => {
+                        unimplemented!("Syscalls have not been implemented");
 
-                        match exit_code {
+                        #[allow(unreachable_code)]
+                        match _exit_code {
                             // For literals fed into the print function, load them, print them, and drop them
                             IdentLiteral::Literal(literal) => {
                                 let (val, gc_id) = (literal.val.into(), self.get_next_gc_id());
@@ -510,16 +582,14 @@ impl<'a> Interpreter<'a> {
                             match param {
                                 // For literals fed into the print function, load them, print them, and drop them
                                 IdentLiteral::Literal(literal) => {
-                                    let (val, gc_id) = (literal.val.into(), self.get_next_gc_id());
+                                    let (val, reg_addr) =
+                                        (literal.val.into(), self.reserve_reg(None, None));
 
-                                    let reg_addr =
-                                        self.reserve_reg(Some(Location::Gc(gc_id)), None);
-
+                                    // Literals can just be moved into a register
                                     self.add_to_current(&[
-                                        Instruction::Cache(gc_id, val, reg_addr),
+                                        Instruction::Load(val, reg_addr),
                                         Instruction::Print(reg_addr),
                                         Instruction::DropReg(reg_addr),
-                                        Instruction::Drop(gc_id),
                                     ]);
 
                                     self.current_scope.registers[*reg_addr as usize] = None;
@@ -617,6 +687,30 @@ impl<'a> Interpreter<'a> {
                     }
                 },
 
+                // FuncExpr::Assign(assign) => {
+                //     // pub struct Assign<'a> {
+                //     //     pub name: Ident<'a>,
+                //     //     pub val: IdentLiteral<'a>,
+                //     //     pub info: LocInfo,
+                //     // }
+                //
+                //     // variables: HashMap<String, (Location, Type<'a>)>,
+                //
+                //     let var = if let Some(var) =
+                //         self.current_scope.variables.get(&*assign.name.name)
+                //     {
+                //         var
+                //     } else {
+                //         return Err(RuntimeError {
+                //             ty: RuntimeErrorTy::MissingValue,
+                //             message: "The variable being assigned to does not exist".to_string(),
+                //         });
+                //     };
+                //
+                //     let reg = self.reserve_reg(Some(var.0), None);
+                //
+                //     self.add_to_current(&[Instruction::Load( )]);
+                // }
                 FuncExpr::FuncCall(_) | FuncExpr::Assign(_) => unimplemented!(),
             }
         }
@@ -637,14 +731,14 @@ impl<'a> Interpreter<'a> {
         trace!("Adding Instructions to function: {:?}", instructions);
     }
 
-    fn get_next_gc_id(&mut self) -> u32 {
+    pub fn get_next_gc_id(&mut self) -> u32 {
         let id = self.gc;
         trace!("Got GC ID: {}", id);
         self.gc += 1;
         id
     }
 
-    fn get_next_func_id(&mut self) -> usize {
+    pub fn get_next_func_id(&mut self) -> usize {
         self.func_index += 1;
         self.func_index
     }

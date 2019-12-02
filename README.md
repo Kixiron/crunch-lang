@@ -3,96 +3,59 @@
 ## Checklist
 -----
 
+- [ ] FFI with Rust toolkit for developing native plugins
+- [ ] JIT
+- [ ] Type System
+    - [ ] Custom Types
+    - [ ] Type Safe
+- [ ] Tooling
+    - [ ] Package Manager
+    - [ ] Formatter
+    - [ ] Documenter
+        - [ ] Doc Comments
+    - [ ] Linter
+    - [ ] Tester
+        - [ ] Unit Testing integration
+    - [ ] Benchmarking
+- [ ] Better Error Messages
+    - [ ] Friendly messages with compiler 'personality'
+    - [ ] Specific errors
+    - [ ] Possible solutions
+    - [ ] Error codes with lookups that explain the error code
+- [ ] Standard Library
+    - [ ] Importing Files
+        - [ ] Source Code Files
+        - [ ] Native Files
+        - [ ] Packages
+- [ ] Semantics/Syntax
+    - [ ] Explicit Mutability
+    - [ ] Types
+        - [ ] Type Variables
+        - [ ] Type Methods
+    - [ ] Logic
+    - [ ] Operands
+        - [ ] Overloadable?
+- [ ] Runtime Reflection
 - [ ] Variables
     - [ ] Scoping
-    - [ ] Support for typing
-    - [ ] Naming
-    - [ ] Values
-        - [ ] Strings
-        - [ ] Integers
-            - [ ] Signed
-            - [ ] Floats
-            - [ ] Dynamic re-sizing when needed
-                - [ ] When parsing
-                - [ ] When operating on
-        - [ ] Vectors
-            - [ ] Indexing
-            - [ ] Iteration
-                - [ ] For loop integration
-        - [ ] Booleans
+    - [X] Strings
+    - [ ] Integers
+        - [ ] Signed
+        - [ ] Floats
+    - [ ] Vectors
+        - [ ] Indexing
+        - [ ] Iteration
+            - [ ] For loop integration
+    - [X] Booleans
     - [ ] Uninitialized variables
     - [ ] Global Variables
-    - [ ] Semi-static typing
     - [ ] Manipulation (Adding, indexing, removing, type info, etc.)
-    - [ ] Runtime reflection and metaprogramming?
     - [ ] Constants
         - Strictly enforced to be unchanging
     - [ ] Calling variables
-- [ ] Comments
-    - [ ] Single Line
-    - [ ] Multiline
-    - [ ] Documentation Comments
-- [ ] Vet user input
-    - [ ] Make sure files exist
-    - [ ] Make sure files are valid crunch files
-        - [ ] Valid extension
-        - [ ] Valid encoding
-- [ ] Methods
-    - [ ] Scoping
-        - Spaces and tabs supported
-    - [ ] Naming
-    - [ ] Parameters
-    - [ ] Method Calls
-- [ ] Loops
-    - [ ] For
-    - [ ] While
-    - [ ] Loops
-- [ ] Logic
-    - [ ] If
-    - [ ] Else
-    - [ ] Else If
-    - [ ] And
-    - [ ] Or
-    - [ ] Not
-- [ ] Errors
-    - [ ] Ergonomic Error Messages
-    - [ ] Full Error Reporting
-    - [ ] Better Error Handling
-- [ ] Classes
-    - [ ] Class Methods
-    - [ ] Class Variables
-    - [ ] Class instance comparison
-- [ ] Custom Lexer
-    - Focus on speed and correctness
-- [ ] Standard Library
-- [ ] Allow imports
-    - [ ] Import system
-    - [ ] Import functions/variables/classes from other files
-    - [ ] Public/Private access
-- [ ] Mutability with `mut` keyword
-- [ ] Static analysis
-- [ ] Static(er) typing
-- [X] Bytecode
-- [ ] Optimization for bytecode compilation
-- [ ] JIT
-- [ ] Tooling
-    - [ ] All commandline-friendly tools
-    - [ ] Package Manager
-    - [ ] Build Manager
-    - [ ] Formatter
-    - [ ] Documenter
-    - Names
-        - Cruncher
-        - Compacter
-- [ ] Comprehensive Testing
-- [ ] Comprehensive Benchmarking
-- [ ] Stabilize and assure using `no-panic`
-- [ ] Add better user experience using `human-panic`
-- [ ] Custom, randomized friendly error messages
-- [ ] Standardize and comment codebase
-- [ ] FFI
 
 # Crunch
+-----
 
 ## Target Syntax
 
@@ -213,17 +176,18 @@ let dependencies: [Dependency] = [
 
 Unicode Escape Codes: `\u{0000}`  
 Byte Escape Codes: `\x{00}`  
-Bit Escape Codes: `\b{00000000}`
+Bit Escape Codes: `\b{00000000}`  
 
 ## Primitive types
 
 `str`: A dynamically growable string stored on the Heap  
-`int`: A semi-dynamically sized signed integer of up to 128 bits  
-`float`: A semi-dynamically sized float of up to 64 bits  
+`int`: A semi-dynamically sized signed integer ~~of up to 128 bits~~  
+`float`: A semi-dynamically sized float ~~of up to 64 bits~~  
 `void`: Nothing. The void consumes all foolish enough to attempt usage, for it is naught, zilch, nada. A purely typesystem-sided construct that is clobbered by the compiler  
-`nullable<ty>`: Makes a type able to be null. `ty` is the contained type.   The contained value can be `ty` or `null`  
+`nullable<ty>`: Makes a type able to be null. `ty` is the contained type. The contained value can be `ty` or `null`  
 `bool`: A boolean value of either `true` or `false`  
 `vector<ty>`: A vector of values. `ty` is the contained type  
+`NoneType`: An immediate error, it means that the compiler broke somewhere  
 
 ## Language Builtins
 
@@ -234,9 +198,11 @@ Bit Escape Codes: `\b{00000000}`
 ## Syntax TODOs
 
 `<expr -> bool> ? <ret> : <ret>`  
+`::: Doc Comments`  
 
 ### CLI Options
 
 `--burn-gc` Preforms a GC collect at every opportunity  
 `--debug-log` Activates verbose logging  
 `--fault-tolerant` Allows minor errors to occur without triggering program shutdown  
+`--output [ast|bytecode]` Outputs the produced ast and bytecode  

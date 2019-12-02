@@ -2,6 +2,7 @@ use crunch::*;
 use structopt::StructOpt;
 
 fn main() {
+    #[cfg(not(debug_assertions))]
     human_panic::setup_panic!(human_panic::Metadata {
         name: "Crunch".into(),
         version: env!("CARGO_PKG_VERSION").into(),

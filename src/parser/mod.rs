@@ -64,6 +64,8 @@ impl<'a> Parser<'a> {
         // TODO: Make this loop operate off of peeks, and change all the top-level parsers
         // to consume their first token
 
+        const TOP_LEVEL_TOKENS: [TokenType; 2] = [TokenType::Import, TokenType::Function];
+
         loop {
             if let Some(token) = self.next.clone() {
                 match token.ty {
@@ -73,7 +75,7 @@ impl<'a> Parser<'a> {
                         ast.push(Node::Func(match self.parse_function(token.range.0) {
                             Ok(node) => node,
                             Err(err) => {
-                                // self.error = true;
+                                self.error = true;
                                 self.diagnostics.push(err);
                                 continue;
                             }
@@ -85,7 +87,7 @@ impl<'a> Parser<'a> {
                         ast.push(Node::Import(match self.parse_import() {
                             Ok(node) => node,
                             Err(err) => {
-                                // self.error = true;
+                                self.error = true;
                                 self.diagnostics.push(err);
                                 continue;
                             }
@@ -104,7 +106,7 @@ impl<'a> Parser<'a> {
                     }
 
                     TokenType::Error => {
-                        // self.error = true;
+                        self.error = true;
                         error!(
                             "[Parsing error on {}:{}]: Invalid token",
                             line!(),
@@ -122,7 +124,7 @@ impl<'a> Parser<'a> {
                     }
 
                     t => {
-                        // self.error = true;
+                        self.error = true;
                         error!(
                             "[Parsing error on {}:{}]: Invalid top-level token: {:?}",
                             line!(),
@@ -135,7 +137,15 @@ impl<'a> Parser<'a> {
                             Label::new(
                                 self.files[0],
                                 token.range.0 as u32..token.range.1 as u32,
-                                format!("Expected Function, got {:?}", token.ty),
+                                format!(
+                                    "Found {:?}, expected one of {}",
+                                    token.ty,
+                                    TOP_LEVEL_TOKENS
+                                        .iter()
+                                        .map(|t| format!("'{}'", t))
+                                        .collect::<Vec<String>>()
+                                        .join(", "),
+                                ),
                             ),
                         ));
                     }
@@ -172,11 +182,7 @@ impl<'a> Parser<'a> {
 
         info!("Parsing Import");
 
-        self.eat_w()?;
-
         let ty = self.parse_import_type()?;
-
-        self.eat_w()?;
 
         let file: PathBuf = {
             let source = self.eat(TokenType::String)?.source;
@@ -241,7 +247,7 @@ impl<'a> Parser<'a> {
 
                     (Exposes::Some(imports), None)
                 } else {
-                    // self.error = true;
+                    self.error = true;
                     error!(
                         "[Parsing error on {}:{}]: Expected exposed members",
                         line!(),
@@ -270,8 +276,8 @@ impl<'a> Parser<'a> {
                         .unwrap_or_else(|_| unreachable!("Peek was Exposing"));
 
                     self.eat_w()?;
-
                     let peek = self.peek()?;
+
                     if peek.ty == TokenType::Star {
                         self.eat(TokenType::Star)
                             .unwrap_or_else(|_| unreachable!("Peek was Star"));
@@ -285,13 +291,11 @@ impl<'a> Parser<'a> {
                                 Ident::from_token(self.eat(TokenType::Ident)?, self.current_file);
 
                             self.eat_w()?;
-
                             let token = self.peek()?;
+
                             let alias = if token.ty == TokenType::As {
                                 self.eat(TokenType::As)
                                     .unwrap_or_else(|_| unreachable!("Peek was As"));
-
-                                self.eat_w()?;
 
                                 Some(Ident::from_token(
                                     self.eat(TokenType::Ident)?,
@@ -318,7 +322,7 @@ impl<'a> Parser<'a> {
 
                         (Exposes::Some(imports), Some(alias))
                     } else {
-                        // self.error = true;
+                        self.error = true;
                         error!(
                             "[Parsing error on {}:{}]: Expected exposed members",
                             line!(),
@@ -370,13 +374,13 @@ impl<'a> Parser<'a> {
         let name = Ident::from_token(self.eat(TokenType::Ident)?, self.current_file);
 
         self.eat(TokenType::LeftParen)?;
-        self.eat_w()?;
 
+        self.eat_w()?;
         let mut params = Vec::new();
         while self.peek()?.ty != TokenType::RightParen {
             params.push(self.parse_named_parameter()?);
-            self.eat_w()?;
 
+            self.eat_w()?;
             if self.peek()?.ty == TokenType::Comma {
                 self.eat(TokenType::Comma)
                     .unwrap_or_else(|_| unreachable!("Peek was Comma"));
@@ -384,8 +388,8 @@ impl<'a> Parser<'a> {
         }
 
         self.eat(TokenType::RightParen)?;
-        self.eat_w()?;
 
+        self.eat_w()?;
         let returns = if self.peek()?.ty == TokenType::RightArrow {
             self.eat(TokenType::RightArrow)
                 .unwrap_or_else(|_| unreachable!("Peek was RightArrow"));
@@ -398,10 +402,13 @@ impl<'a> Parser<'a> {
         self.eat_line_end()?;
 
         let (mut body, mut span_end) = (Vec::new(), span_start);
+
+        self.eat_w()?;
         let mut token = self.peek()?;
         while token.ty == TokenType::Indent {
             self.eat(TokenType::Indent)?;
 
+            self.eat_w()?;
             if self.peek()?.ty == TokenType::Comment {
                 self.eat_line_end()?;
                 token = self.peek()?;
@@ -469,7 +476,15 @@ impl<'a> Parser<'a> {
                                 }
 
                                 t => {
-                                    // self.error = true;
+                                    const EXPECTED_TOKENS: [TokenType; 5] = [
+                                        TokenType::String,
+                                        TokenType::Bool,
+                                        TokenType::Int,
+                                        TokenType::Ident,
+                                        TokenType::Comma,
+                                    ];
+
+                                    self.error = true;
                                     error!(
                                         "[Parsing error on {}:{}]: Unexpected token: {:?}",
                                         line!(),
@@ -483,8 +498,13 @@ impl<'a> Parser<'a> {
                                             self.files[0],
                                             self.codespan.source_span(self.files[0]),
                                             format!(
-                                                "Expected an Ident, Literal or a Comma, got {:?}",
-                                                t
+                                                "Found {}, expected one of {}",
+                                                t,
+                                                EXPECTED_TOKENS
+                                                    .iter()
+                                                    .map(|t| format!("'{}'", t))
+                                                    .collect::<Vec<String>>()
+                                                    .join(", "),
                                             ),
                                         ),
                                     ));
@@ -512,9 +532,10 @@ impl<'a> Parser<'a> {
 
                     TokenType::Equal => {
                         self.eat(TokenType::Equal)?;
-                        self.eat_w()?;
 
+                        self.eat_w()?;
                         let span_end = self.peek()?.range.1;
+
                         let assignment = self.ident_literal()?;
 
                         self.eat_line_end()?;
@@ -544,6 +565,7 @@ impl<'a> Parser<'a> {
                 let ty = if self.peek().unwrap().ty == TokenType::Colon {
                     self.eat(TokenType::Colon)
                         .unwrap_or_else(|_| unreachable!("Peek was Colon"));
+
                     self.parse_type()?.0
                 } else {
                     Type::Infer
@@ -552,7 +574,6 @@ impl<'a> Parser<'a> {
                 self.eat(TokenType::Equal)?;
 
                 let val = self.parse_binding_val()?;
-
                 let span_end = self.eat_line_end_returning()?.range.1;
 
                 (
@@ -573,23 +594,18 @@ impl<'a> Parser<'a> {
                 self.eat(TokenType::Print)?;
 
                 self.eat_w()?;
-                let mut params = Vec::new();
+                let (mut params, mut peek) = (Vec::new(), self.peek()?);
 
-                let mut peek = self.peek()?;
                 while peek.ty != TokenType::Newline && peek.ty != TokenType::Comma {
-                    self.eat_w()?;
-
                     params.push(self.ident_literal()?);
 
                     self.eat_w()?;
-
                     if self.peek()?.ty == TokenType::Comma {
                         self.eat(TokenType::Comma)
                             .unwrap_or_else(|_| unreachable!("Peek was Comma"));
                     }
 
                     self.eat_w()?;
-
                     peek = self.peek()?;
                 }
 
@@ -610,15 +626,14 @@ impl<'a> Parser<'a> {
 
             TokenType::SyscallExit => {
                 self.eat(TokenType::SyscallExit)?;
+
                 self.eat_w()?;
-
                 let peek = self.peek()?;
-                let exit_code = if peek.ty != TokenType::Newline && peek.ty != TokenType::Comma {
-                    self.eat_w()?;
 
+                let exit_code = if peek.ty != TokenType::Newline && peek.ty != TokenType::Comma {
                     self.ident_literal()?
                 } else {
-                    // self.error = true;
+                    self.error = true;
                     error!(
                         "[Parsing error on {}:{}]: Invalid function parameter",
                         line!(),
@@ -640,7 +655,7 @@ impl<'a> Parser<'a> {
                 (FuncExpr::Builtin(Builtin::SyscallExit(exit_code)), span_end)
             }
 
-            _ => unimplemented!(),
+            _ => unimplemented!("Haven't implemented all possible function body expressions"),
         };
 
         info!("Finished parsing Func Body");
@@ -657,16 +672,19 @@ impl<'a> Parser<'a> {
     fn ident_literal(&mut self) -> Result<IdentLiteral<'a>> {
         info!("Parsing Ident or Literal");
 
+        self.eat_w()?;
         match self.peek()?.ty {
             TokenType::String | TokenType::Bool | TokenType::Int => {
                 Ok(IdentLiteral::Literal(self.parse_variable()?))
             }
+
             TokenType::Ident => Ok(IdentLiteral::Variable(Ident::from_token(
                 self.eat(TokenType::Ident)?,
                 self.current_file,
             ))),
+
             t => {
-                // self.error = true;
+                self.error = true;
                 error!(
                     "[Parsing error on {}:{}]: Invalid function parameter: {:?}",
                     line!(),
@@ -679,7 +697,7 @@ impl<'a> Parser<'a> {
                     Label::new(
                         self.files[0],
                         self.codespan.source_span(self.files[0]),
-                        format!("Expected Ident or Literal, got {:?}", t),
+                        format!("Expected Ident or Literal, got '{}'", t),
                     ),
                 ))
             }
@@ -690,7 +708,6 @@ impl<'a> Parser<'a> {
         info!("Parsing Binding Value");
 
         self.eat_w()?;
-
         let val = match self.peek()?.ty {
             TokenType::String | TokenType::Bool | TokenType::Int | TokenType::Ident => {
                 let left = self.parse_bin_op_side()?;
@@ -750,8 +767,8 @@ impl<'a> Parser<'a> {
         info!("Parsing BinOp Side");
 
         self.eat_w()?;
-
         let token = self.peek()?;
+
         let side = match token.ty {
             TokenType::Ident => {
                 let token = self.eat(TokenType::Ident)?;
@@ -948,13 +965,12 @@ impl<'a> Parser<'a> {
     #[inline]
     fn eat(&mut self, expected: TokenType) -> Result<Token<'a>> {
         self.eat_w()?;
-
         let token = self.next(line!())?;
 
         if token.ty == expected {
             Ok(token)
         } else {
-            // self.error = true;
+            self.error = true;
             error!(
                 "[Parsing error on {}:{}]: Failed to eat token, expected {:?} got {:?}. Token: {:?}",
                 line!(),
@@ -966,13 +982,13 @@ impl<'a> Parser<'a> {
             Err(Diagnostic::new(
                 Severity::Error,
                 format!(
-                    "Unexpected Token: Expected {:?}, got {:?}",
+                    "Unexpected Token: Expected '{}', found '{}'",
                     expected, token.ty
                 ),
                 Label::new(
                     self.files[0],
                     token.range.0 as u32..token.range.1 as u32,
-                    format!("Expected {:?}", expected),
+                    format!("Expected {}", expected),
                 ),
             ))
         }
@@ -987,7 +1003,7 @@ impl<'a> Parser<'a> {
         if expected.contains(&token.ty) {
             Ok(token)
         } else {
-            // self.error = true;
+            self.error = true;
             error!(
                 "[Parsing error on {}:{}]: Unexpected token, expected {:?}, got {:?}. Token: {:?}",
                 line!(),
@@ -999,10 +1015,10 @@ impl<'a> Parser<'a> {
             Err(Diagnostic::new(
                 Severity::Error,
                 format!(
-                    "Unexpected Token: Expected one of [{}], got {:?}",
+                    "Unexpected Token: Expected one of {}, got '{}'",
                     expected
                         .iter()
-                        .map(|t| format!("{:?}", t))
+                        .map(|t| format!("'{}'", t))
                         .collect::<Vec<String>>()
                         .join(", "),
                     token.ty
@@ -1045,13 +1061,14 @@ impl<'a> Parser<'a> {
                 &[TokenType::Space, TokenType::Comment, TokenType::Newline],
                 returned_token
             );
+
             Err(Diagnostic::new(
                 Severity::Error,
                 "Failed to get token",
                 Label::new(
                     self.files[0],
                     self.codespan.source_span(self.files[0]),
-                    "Expected a line end, but got none",
+                    "Expected a Newline, but got None",
                 ),
             ))
         }
@@ -1089,26 +1106,26 @@ impl<'a> Parser<'a> {
                 Some('u') => s.push(match unescape_unicode(&mut queue) {
                     Some(c) => c,
                     None => {
-                        // self.error = true;
+                        self.error = true;
                         return Err(error);
                     }
                 }),
                 Some('x') => s.push(match unescape_byte(&mut queue) {
                     Some(c) => c,
                     None => {
-                        // self.error = true;
+                        self.error = true;
                         return Err(error);
                     }
                 }),
                 Some('b') => s.push(match unescape_bits(&mut queue) {
                     Some(c) => c,
                     None => {
-                        // self.error = true;
+                        self.error = true;
                         return Err(error);
                     }
                 }),
                 _ => {
-                    // self.error = true;
+                    self.error = true;
                     return Err(error);
                 }
             };

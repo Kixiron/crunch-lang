@@ -1,4 +1,4 @@
-use super::{AllocId, CachedValue, GcStr, Index, Register, RegisterValue, RuntimeValue, Value, Vm};
+use super::{AllocId, CachedValue, Index, Register, RegisterValue, RuntimeValue, Value, Vm};
 
 /// A type alias for results that could be a [`RuntimeError`]
 pub type Result<T> = std::result::Result<T, RuntimeError>;
@@ -48,6 +48,7 @@ pub enum RuntimeErrorTy {
     InvalidString,
     FileError,
     BytecodeError,
+    CompilationError,
 }
 
 /// Instructions for the VM
@@ -509,22 +510,11 @@ mod tests {
             let cache = Instruction::Cache(id as u32, val.clone(), 0.into());
             cache.execute(&mut vm).unwrap();
 
-            if let RuntimeValue::Cached(CachedValue::String(string)) = vm.registers[0] {
-                assert!(vm.gc.contains(id));
-
-                assert_eq!(
-                    string.to_str(&vm.gc).unwrap(),
-                    if let Value::String(s) = val.clone() {
-                        s
-                    } else {
-                        unreachable!()
-                    }
-                );
-            } else {
-                // Assert that the gc contains the correct value
-                assert!(vm.gc.contains(id));
-                assert_eq!(vm.gc.fetch::<Value, usize>(id).unwrap(), val.clone());
-            }
+            assert!(vm.gc.contains(id));
+            assert_eq!(
+                vm.registers[0].cached().unwrap().get_val(&vm.gc).unwrap(),
+                RegisterValue::from_val(val.clone())
+            );
 
             // Drop the value so we don't overflow the stack
             Instruction::Drop(id as u32).execute(&mut vm).unwrap();
@@ -723,48 +713,100 @@ mod tests {
             Box::new(Vec::<u8>::new()),
         );
 
-        vm.registers[0] = RuntimeValue::Register(RegisterValue::String("Test"));
-        print.execute(&mut vm).unwrap();
+        let swap_assert = |vm: &mut Vm, expected: &str| {
+            // Have to do some monkeying with stdout because of Vm's drop implementation
+            let mut stdout: Box<dyn std::io::Write + 'static> = Box::new(Vec::<u8>::new());
+            mem::swap(&mut vm.stdout, &mut stdout);
 
-        // Have to do some monkeying with stdout because of Vm's drop implementation
-        let mut stdout: Box<dyn std::io::Write + 'static> = Box::new(Vec::<u8>::new());
-        mem::swap(&mut vm.stdout, &mut stdout);
-        assert_eq!(unsafe { *(Box::into_raw(stdout) as *const &str) }, "Test");
+            // Assert that the printed value and the expected are the same
+            assert_eq!(unsafe { *(Box::into_raw(stdout) as *const &str) }, expected);
+        };
 
-        vm.registers[0] = RuntimeValue::Register(RegisterValue::Int(10));
-        print.execute(&mut vm).unwrap();
+        // Test printing register values
+        {
+            vm.registers[0] = RuntimeValue::Register(RegisterValue::String("Test"));
+            print.execute(&mut vm).unwrap();
+            swap_assert(&mut vm, "Test");
 
-        let mut stdout: Box<dyn std::io::Write + 'static> = Box::new(Vec::<u8>::new());
-        mem::swap(&mut vm.stdout, &mut stdout);
-        assert_eq!(unsafe { *(Box::into_raw(stdout) as *const &str) }, "10");
+            vm.registers[0] = RuntimeValue::Register(RegisterValue::Int(10));
+            print.execute(&mut vm).unwrap();
+            swap_assert(&mut vm, "10");
 
-        vm.registers[0] = RuntimeValue::Register(RegisterValue::Bool(true));
-        print.execute(&mut vm).unwrap();
+            vm.registers[0] = RuntimeValue::Register(RegisterValue::Bool(true));
+            print.execute(&mut vm).unwrap();
+            swap_assert(&mut vm, "true");
 
-        let mut stdout: Box<dyn std::io::Write + 'static> = Box::new(Vec::<u8>::new());
-        mem::swap(&mut vm.stdout, &mut stdout);
-        assert_eq!(unsafe { *(Box::into_raw(stdout) as *const &str) }, "true");
+            vm.registers[0] = RuntimeValue::Register(RegisterValue::Bool(false));
+            print.execute(&mut vm).unwrap();
+            swap_assert(&mut vm, "false");
 
-        vm.registers[0] = RuntimeValue::Register(RegisterValue::Bool(false));
-        print.execute(&mut vm).unwrap();
+            // Test that writing to stdout works too, can only verify that it does, not that it is correct
+            vm.stdout = Box::new(std::io::stdout());
 
-        let mut stdout: Box<dyn std::io::Write + 'static> = Box::new(std::io::stdout()); //  Load stdout into vm.stdout for the printing portion
-        mem::swap(&mut vm.stdout, &mut stdout);
-        assert_eq!(unsafe { *(Box::into_raw(stdout) as *const &str) }, "false");
+            vm.registers[0] = RuntimeValue::Register(RegisterValue::String("Test"));
+            print.execute(&mut vm).unwrap();
 
-        // Test that writing to stdout works too, can only verify that it does, not that it is correct
+            vm.registers[0] = RuntimeValue::Register(RegisterValue::Int(10));
+            print.execute(&mut vm).unwrap();
 
-        vm.registers[0] = RuntimeValue::Register(RegisterValue::String("Test"));
-        print.execute(&mut vm).unwrap();
+            vm.registers[0] = RuntimeValue::Register(RegisterValue::Bool(true));
+            print.execute(&mut vm).unwrap();
 
-        vm.registers[0] = RuntimeValue::Register(RegisterValue::Int(10));
-        print.execute(&mut vm).unwrap();
+            vm.registers[0] = RuntimeValue::Register(RegisterValue::Bool(false));
+            print.execute(&mut vm).unwrap();
+        }
 
-        vm.registers[0] = RuntimeValue::Register(RegisterValue::Bool(true));
-        print.execute(&mut vm).unwrap();
+        // Test printing gc values
+        {
+            vm.stdout = Box::new(Vec::<u8>::new());
 
-        vm.registers[0] = RuntimeValue::Register(RegisterValue::Bool(false));
-        print.execute(&mut vm).unwrap();
+            vm.registers[0] = RuntimeValue::Cached(
+                CachedValue::allocate_id(Value::String("Test".to_string()), 0, &mut vm.gc).unwrap(),
+            );
+            print.execute(&mut vm).unwrap();
+            swap_assert(&mut vm, "Test");
+
+            vm.registers[0] = RuntimeValue::Cached(
+                CachedValue::allocate_id(Value::Int(10), 1, &mut vm.gc).unwrap(),
+            );
+            print.execute(&mut vm).unwrap();
+            swap_assert(&mut vm, "10");
+
+            vm.registers[0] = RuntimeValue::Cached(
+                CachedValue::allocate_id(Value::Bool(true), 2, &mut vm.gc).unwrap(),
+            );
+            print.execute(&mut vm).unwrap();
+            swap_assert(&mut vm, "true");
+
+            vm.registers[0] = RuntimeValue::Cached(
+                CachedValue::allocate_id(Value::Bool(false), 3, &mut vm.gc).unwrap(),
+            );
+            print.execute(&mut vm).unwrap();
+            swap_assert(&mut vm, "false");
+
+            // Test that writing to stdout works too, can only verify that it does, not that it is correct
+            vm.stdout = Box::new(std::io::stdout());
+
+            vm.registers[0] = RuntimeValue::Cached(
+                CachedValue::allocate_id(Value::String("Test".to_string()), 4, &mut vm.gc).unwrap(),
+            );
+            print.execute(&mut vm).unwrap();
+
+            vm.registers[0] = RuntimeValue::Cached(
+                CachedValue::allocate_id(Value::Int(10), 5, &mut vm.gc).unwrap(),
+            );
+            print.execute(&mut vm).unwrap();
+
+            vm.registers[0] = RuntimeValue::Cached(
+                CachedValue::allocate_id(Value::Bool(true), 6, &mut vm.gc).unwrap(),
+            );
+            print.execute(&mut vm).unwrap();
+
+            vm.registers[0] = RuntimeValue::Cached(
+                CachedValue::allocate_id(Value::Bool(false), 7, &mut vm.gc).unwrap(),
+            );
+            print.execute(&mut vm).unwrap();
+        }
     }
 
     #[test]
