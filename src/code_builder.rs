@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::{Instruction, Register, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use string_interner::{StringInterner, Sym};
 
 pub trait Ident: Into<String> + AsRef<str> {}
@@ -10,7 +10,7 @@ impl<T: Into<String> + AsRef<str>> Ident for T {}
 pub struct CodeBuilder {
     functions: HashMap<Sym, (Function, Option<u32>)>,
     interner: StringInterner<Sym>,
-    gc_ids: HashMap<u32, u32>,
+    gc_ids: HashSet<u32>,
     local_symbols: HashMap<Sym, u32>,
 }
 
@@ -19,7 +19,7 @@ impl CodeBuilder {
         Self {
             functions: HashMap::new(),
             interner: StringInterner::new(),
-            gc_ids: HashMap::new(),
+            gc_ids: HashSet::new(),
             local_symbols: HashMap::new(),
         }
     }
@@ -43,7 +43,7 @@ impl CodeBuilder {
         let mut id = old_id;
         loop {
             if self.gc_ids.get(&id).is_none() {
-                self.gc_ids.insert(old_id, id);
+                self.gc_ids.insert(id);
                 break;
             }
 
@@ -102,12 +102,12 @@ impl PartialInstruction {
         match self.uninit_inst {
             Instruction::Cache(start_id, value, register) => {
                 let concrete_id = builder.solidify_id(start_id);
-                builder.local_symbols.insert(
-                    builder
-                        .interner
-                        .get_or_intern(self.local_sym.expect("No Local Symbol Provided")),
-                    concrete_id,
-                );
+                let symbol = builder
+                    .interner
+                    .get_or_intern(self.local_sym.expect("Expected a local Symbol"));
+
+                builder.local_symbols.insert(symbol, concrete_id);
+
                 Instruction::Cache(concrete_id, value, register)
             }
 
@@ -408,7 +408,7 @@ mod tests {
                 .inst_load(3, Value::Int(1))
                 .inst_jump_point(77)
                 .inst_print(0)
-                .inst_sub(3, 1) // This does things backwards, why?
+                .inst_sub(1, 3)
                 .inst_op_to_reg(1)
                 .inst_greater_than(1, 2)
                 .inst_jump_comp(77)

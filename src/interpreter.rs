@@ -7,7 +7,7 @@ use crate::{
 use std::collections::HashMap;
 
 #[derive(Clone)]
-struct Scope<'a> {
+pub struct Scope<'a> {
     pub variables: HashMap<String, (Location, Type<'a>)>,
     pub registers: [Option<Location>; NUMBER_REGISTERS],
 }
@@ -36,7 +36,7 @@ impl<'a> std::fmt::Debug for Scope<'a> {
 }
 
 #[derive(Debug, Copy, Clone)]
-struct InterpOptions {
+pub struct InterpOptions {
     pub fault_tolerant: bool,
 }
 
@@ -298,7 +298,7 @@ impl<'a> Interpreter<'a> {
 
                             (BinOpSide::Literal(left), BinOpSide::Variable(right)) => {
                                 let left_value = left.val.into();
-                                let left_addr = self.reserve_reg(None, None);
+                                let left_addr = self.reserve_reg(None, None)?;
 
                                 self.add_to_current(&[Instruction::Load(left_value, left_addr)]);
 
@@ -311,7 +311,7 @@ impl<'a> Interpreter<'a> {
                                         // If fault tolerant, a fault just occurred, so pretend it didn't
                                         if self.options.fault_tolerant {
                                             let gc_id = self.get_next_gc_id();
-                                            let addr = self.reserve_reg(None, Some(gc_id));
+                                            let addr = self.reserve_reg(None, Some(gc_id))?;
 
                                             self.add_to_current(&[Instruction::Cache(
                                                 gc_id,
@@ -351,7 +351,7 @@ impl<'a> Interpreter<'a> {
                                         self.current_scope.registers[*left_addr as usize] = None;
                                     }
                                 } else {
-                                    let right_addr = self.reserve_reg(Some(right_id), None);
+                                    let right_addr = self.reserve_reg(Some(right_id), None)?;
 
                                     self.add_to_current(&[Instruction::Add(left_addr, right_addr)]);
 
@@ -359,7 +359,7 @@ impl<'a> Interpreter<'a> {
                                     self.current_scope.registers[*left_addr as usize] = None;
                                 }
 
-                                let output = self.reserve_reg(None, None);
+                                let output = self.reserve_reg(None, None)?;
                                 self.add_to_current(&[
                                     Instruction::DropReg(left_addr),
                                     Instruction::OpToReg(output),
@@ -380,7 +380,7 @@ impl<'a> Interpreter<'a> {
                                         // If fault tolerant, a fault just occurred, so pretend it didn't
                                         if self.options.fault_tolerant {
                                             let gc_id = self.get_next_gc_id();
-                                            let addr = self.reserve_reg(None, Some(gc_id));
+                                            let addr = self.reserve_reg(None, Some(gc_id))?;
 
                                             self.add_to_current(&[Instruction::Cache(
                                                 gc_id,
@@ -404,7 +404,7 @@ impl<'a> Interpreter<'a> {
                                 };
 
                                 let (right, right_id) = (right.val.into(), self.get_next_gc_id());
-                                let right_addr = self.reserve_reg(None, Some(right_id));
+                                let right_addr = self.reserve_reg(None, Some(right_id))?;
 
                                 self.add_to_current(&[Instruction::Cache(
                                     right_id, right, right_addr,
@@ -427,7 +427,7 @@ impl<'a> Interpreter<'a> {
                                         self.current_scope.registers[*left_addr as usize] = None;
                                     }
                                 } else {
-                                    let left_addr = self.reserve_reg(Some(left_id), None);
+                                    let left_addr = self.reserve_reg(Some(left_id), None)?;
 
                                     self.add_to_current(&[Instruction::Add(left_addr, right_addr)]);
 
@@ -435,7 +435,7 @@ impl<'a> Interpreter<'a> {
                                     self.current_scope.registers[*left_addr as usize] = None;
                                 }
 
-                                let output = self.reserve_reg(None, None);
+                                let output = self.reserve_reg(None, None)?;
                                 self.add_to_current(&[
                                     Instruction::DropReg(right_addr),
                                     Instruction::Drop(right_id),
@@ -474,7 +474,7 @@ impl<'a> Interpreter<'a> {
                             IdentLiteral::Literal(literal) => {
                                 let (val, gc_id) = (literal.val.into(), self.get_next_gc_id());
 
-                                let reg_addr = self.reserve_reg(Some(Location::Gc(gc_id)), None);
+                                let reg_addr = self.reserve_reg(Some(Location::Gc(gc_id)), None)?;
 
                                 self.add_to_current(&[
                                     Instruction::Cache(gc_id, val, reg_addr),
@@ -499,7 +499,7 @@ impl<'a> Interpreter<'a> {
                                     // If fault tolerant, a fault just occurred, so pretend it didn't
                                     if self.options.fault_tolerant {
                                         let gc_id = self.get_next_gc_id();
-                                        let addr = self.reserve_reg(None, Some(gc_id));
+                                        let addr = self.reserve_reg(None, Some(gc_id))?;
 
                                         self.add_to_current(&[Instruction::Cache(
                                             gc_id,
@@ -552,7 +552,7 @@ impl<'a> Interpreter<'a> {
 
                                 // If the value is not currently loaded, load, print, and drop it from the registers
                                 } else {
-                                    let reg_addr = self.reserve_reg(Some(var_id), None);
+                                    let reg_addr = self.reserve_reg(Some(var_id), None)?;
 
                                     self.add_to_current(&[
                                         // Instruction::Syscall(reg_addr),
@@ -583,7 +583,7 @@ impl<'a> Interpreter<'a> {
                                 // For literals fed into the print function, load them, print them, and drop them
                                 IdentLiteral::Literal(literal) => {
                                     let (val, reg_addr) =
-                                        (literal.val.into(), self.reserve_reg(None, None));
+                                        (literal.val.into(), self.reserve_reg(None, None)?);
 
                                     // Literals can just be moved into a register
                                     self.add_to_current(&[
@@ -608,7 +608,7 @@ impl<'a> Interpreter<'a> {
                                         // If fault tolerant, a fault just occurred, so pretend it didn't
                                         if self.options.fault_tolerant {
                                             let gc_id = self.get_next_gc_id();
-                                            let addr = self.reserve_reg(None, Some(gc_id));
+                                            let addr = self.reserve_reg(None, Some(gc_id))?;
 
                                             self.add_to_current(&[Instruction::Cache(
                                                 gc_id,
@@ -661,7 +661,7 @@ impl<'a> Interpreter<'a> {
 
                                     // If the value is not currently loaded, load, print, and drop it from the registers
                                     } else {
-                                        let reg_addr = self.reserve_reg(Some(var_id), None);
+                                        let reg_addr = self.reserve_reg(Some(var_id), None)?;
 
                                         self.add_to_current(&[
                                             Instruction::Print(reg_addr),

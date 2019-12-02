@@ -305,20 +305,23 @@ impl<'a> Literal<'a> {
         ident: impl Into<String>,
         interpreter: &mut Interpreter<'a>,
     ) -> Result<Vec<Instruction>> {
-        let (ident, value) = (ident.into(), self.val.into());
+        let (ident, value) = (ident.into(), self.val.clone().into());
 
-        if let Some((mut location, ty)) = interpreter.current_scope.variables.get(&ident) {
+        let fallback_id = interpreter.get_next_gc_id();
+        let var = interpreter.current_scope.variables.get(&ident).clone();
+        if let Some((mut location, ty)) = var {
+            let ty = ty.to_owned();
             let id = match location {
                 Location::Gc(id) => id,
                 Location::Register(_reg, id) => match id {
                     Some(id) => id,
-                    None => interpreter.get_next_gc_id(),
+                    None => fallback_id,
                 },
             };
 
             let register = interpreter.reserve_reg(Some(location), Some(id))?;
 
-            if self.val.to_type() != *ty {
+            if self.val.to_type() != ty {
                 return Err(RuntimeError {
                     ty: RuntimeErrorTy::IncompatibleTypes,
                     message: format!(
@@ -336,7 +339,7 @@ impl<'a> Literal<'a> {
             interpreter
                 .current_scope
                 .variables
-                .insert(ident, (location, *ty));
+                .insert(ident, (location, ty.clone()));
 
             Ok(vec![Instruction::Cache(id, value, register)])
         } else {
@@ -357,18 +360,20 @@ impl<'a> Literal<'a> {
         ident: impl Into<String>,
         interpreter: &mut Interpreter<'a>,
     ) -> Result<Vec<Instruction>> {
-        let (ident, value) = (ident.into(), self.val.into());
+        let (ident, value) = (ident.into(), self.val.clone().into());
 
-        if let Some((location, ty)) = interpreter.current_scope.variables.get(&ident) {
+        let var = interpreter.current_scope.variables.get(&ident).clone();
+        if let Some((location, ty)) = var {
+            let (location, ty) = (location.to_owned(), ty.to_owned());
             let id = if let Location::Gc(id) = location {
-                Some(*id)
+                Some(id)
             } else {
                 None
             };
 
-            let register = interpreter.reserve_reg(Some(*location), id)?;
+            let register = interpreter.reserve_reg(Some(location), id)?;
 
-            if self.val.to_type() != *ty {
+            if self.val.to_type() != ty {
                 return Err(RuntimeError {
                     ty: RuntimeErrorTy::IncompatibleTypes,
                     message: format!(
@@ -382,7 +387,7 @@ impl<'a> Literal<'a> {
             interpreter
                 .current_scope
                 .variables
-                .insert(ident, (*location, *ty));
+                .insert(ident, (location, ty));
 
             Ok(vec![Instruction::Load(value, register)])
         } else {

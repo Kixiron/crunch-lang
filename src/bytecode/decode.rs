@@ -177,7 +177,7 @@ fn decode_instruction(
 ) -> Result<Instruction> {
     let instruction = match instruction[0] {
         // TODO: Shift all the values up by one, having zero be important is probably bad
-        0x01 => Instruction::NoOp,
+        0x00 => Instruction::NoOp,
         0x01 => Instruction::Load(
             match value {
                 Some(value) => value,

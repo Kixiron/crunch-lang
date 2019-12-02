@@ -93,7 +93,6 @@ pub enum TokenType {
     Package,
 }
 
-<<<<<<< HEAD
 impl std::fmt::Display for TokenType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let string = match self {
@@ -145,9 +144,6 @@ impl std::fmt::Display for TokenType {
     }
 }
 
-#[allow(missing_debug_implementations)]
-=======
->>>>>>> b4b8c13d728205d6e5bdbbc90a843a0de2a26ce6
 pub struct TokenStream<'a> {
     lexer: Lexer<TokenType, &'a str>,
     current: Token<'a>,

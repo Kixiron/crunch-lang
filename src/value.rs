@@ -499,7 +499,7 @@ impl ops::Add for RegisterValue {
     #[inline]
     fn add(self, other: Self) -> Self::Output {
         match (self, other) {
-            (Self::Int(left), Self::Int(right)) => Ok(Self::Int(right + left)),
+            (Self::Int(left), Self::Int(right)) => Ok(Self::Int(left + right)),
             (Self::String(left), Self::String(right)) => {
                 let mut output = Vec::with_capacity(left.as_bytes().len() + right.as_bytes().len());
                 output.extend_from_slice(left.as_bytes());
@@ -528,7 +528,7 @@ impl ops::Sub for RegisterValue {
     #[inline]
     fn sub(self, other: Self) -> Self::Output {
         match (self, other) {
-            (Self::Int(left), Self::Int(right)) => Ok(Self::Int(right - left)),
+            (Self::Int(left), Self::Int(right)) => Ok(Self::Int(left - right)),
 
             (left, right) => Err(RuntimeError {
                 ty: RuntimeErrorTy::IncompatibleTypes,
@@ -548,7 +548,7 @@ impl ops::Mul for RegisterValue {
     #[inline]
     fn mul(self, other: Self) -> Self::Output {
         match (self, other) {
-            (Self::Int(left), Self::Int(right)) => Ok(Self::Int(right * left)),
+            (Self::Int(left), Self::Int(right)) => Ok(Self::Int(left * right)),
 
             (left, right) => Err(RuntimeError {
                 ty: RuntimeErrorTy::IncompatibleTypes,
@@ -597,8 +597,8 @@ impl ops::BitAnd for RegisterValue {
     #[inline]
     fn bitand(self, other: Self) -> Self::Output {
         match (self, other) {
-            (Self::Int(left), Self::Int(right)) => Ok(Self::Int(right & left)),
-            (Self::Bool(left), Self::Bool(right)) => Ok(Self::Bool(right & left)),
+            (Self::Int(left), Self::Int(right)) => Ok(Self::Int(left & right)),
+            (Self::Bool(left), Self::Bool(right)) => Ok(Self::Bool(left & right)),
 
             (left, right) => Err(RuntimeError {
                 ty: RuntimeErrorTy::IncompatibleTypes,
@@ -618,8 +618,8 @@ impl ops::BitOr for RegisterValue {
     #[inline]
     fn bitor(self, other: Self) -> Self::Output {
         match (self, other) {
-            (Self::Int(left), Self::Int(right)) => Ok(Self::Int(right | left)),
-            (Self::Bool(left), Self::Bool(right)) => Ok(Self::Bool(right | left)),
+            (Self::Int(left), Self::Int(right)) => Ok(Self::Int(left | right)),
+            (Self::Bool(left), Self::Bool(right)) => Ok(Self::Bool(left | right)),
 
             (left, right) => Err(RuntimeError {
                 ty: RuntimeErrorTy::IncompatibleTypes,
@@ -639,8 +639,8 @@ impl ops::BitXor for RegisterValue {
     #[inline]
     fn bitxor(self, other: Self) -> Self::Output {
         match (self, other) {
-            (Self::Int(left), Self::Int(right)) => Ok(Self::Int(right ^ left)),
-            (Self::Bool(left), Self::Bool(right)) => Ok(Self::Bool(right ^ left)),
+            (Self::Int(left), Self::Int(right)) => Ok(Self::Int(left ^ right)),
+            (Self::Bool(left), Self::Bool(right)) => Ok(Self::Bool(left ^ right)),
 
             (left, right) => Err(RuntimeError {
                 ty: RuntimeErrorTy::IncompatibleTypes,
