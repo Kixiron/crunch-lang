@@ -13,6 +13,30 @@ dependencies = [
     "clippy-check",
 ]
 
+[tasks.dist]
+dependencies = [
+    "test",
+    "fmt-check",
+    "clippy-check",
+    "build-release",
+    "move-dist",
+    "strip",
+]
+
+[tasks.move-dist]
+script_runner = "@shell"
+script = [
+'''
+mkdir ${CARGO_MAKE_WORKING_DIRECTORY}/pkg/
+cp ${CARGO_MAKE_WORKING_DIRECTORY}/target/release/${CARGO_MAKE_CRATE_NAME}.exe ${CARGO_MAKE_WORKING_DIRECTORY}/pkg/${CARGO_MAKE_CRATE_NAME}.exe
+'''
+]
+
+[tasks.strip]
+install_crate = { rustup_component_name = "llvm-tools-preview", crate_name = "cargo-binutils", binary = "strip", test_arg = ["strip", "--help"] }
+command = "cargo"
+args = ["strip", "${CARGO_MAKE_WORKING_DIRECTORY}/pkg/${CARGO_MAKE_CRATE_NAME}.exe", "--", "--strip-all"]
+
 [tasks.fmt-check]
 install_crate = { rustup_component_name = "rustfmt" }
 command = "cargo"

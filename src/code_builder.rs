@@ -154,37 +154,21 @@ impl Function {
             instructions.push(inst.solidify(builder));
         }
 
-        let mut jumps: HashMap<u32, Option<u32>> = HashMap::new(); // HashMap<JumpId, Option<JumpIndex>>
-        for (index, instruction) in instructions.iter_mut().enumerate() {
-            match instruction {
-                Instruction::Jump(id) | Instruction::JumpComp(id) => {
-                    if let Some(Some(loc)) = jumps.get(&(*id as u32)) {
-                        *id = *loc as i32 - index as i32;
-                    } else {
-                        jumps.insert(*id as u32, None);
+        let mut jumps: HashMap<u32, u32> = HashMap::new(); // JumpId, JumpIndex
+        for _ in 0..2 {
+            for (index, instruction) in instructions.iter_mut().enumerate() {
+                match instruction {
+                    Instruction::Jump(id) | Instruction::JumpComp(id) => {
+                        if let Some(loc) = jumps.get(&(*id as u32)) {
+                            *id = *loc as i32 - index as i32;
+                        }
                     }
-                }
-                Instruction::JumpPoint(id) => {
-                    jumps.insert(*id, Some(index as u32));
-                }
-
-                _ => {}
-            }
-        }
-        for (index, instruction) in instructions.iter_mut().enumerate() {
-            match instruction {
-                Instruction::Jump(id) | Instruction::JumpComp(id) => {
-                    if let Some(Some(loc)) = jumps.get(&(*id as u32)) {
-                        *id = *loc as i32 - index as i32;
-                    } else {
-                        jumps.insert(*id as u32, None);
+                    Instruction::JumpPoint(id) => {
+                        jumps.insert(*id, index as u32);
                     }
-                }
-                Instruction::JumpPoint(id) => {
-                    jumps.insert(*id, Some(index as u32));
-                }
 
-                _ => {}
+                    _ => {}
+                }
             }
         }
 
