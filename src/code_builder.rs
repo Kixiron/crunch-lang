@@ -1,17 +1,23 @@
 #![allow(dead_code)]
 
-use crate::{Instruction, Register, Value};
-use std::collections::{HashMap, HashSet};
+use crate::{Instruction, Register, Result, RuntimeError, RuntimeErrorTy, Value, NUMBER_REGISTERS};
+use rand::{rngs::SmallRng, SeedableRng};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+};
 use string_interner::{StringInterner, Sym};
 
 pub trait Ident: Into<String> + AsRef<str> {}
 impl<T: Into<String> + AsRef<str>> Ident for T {}
 
+#[derive(Debug, Clone)]
 pub struct CodeBuilder {
-    functions: HashMap<Sym, (Function, Option<u32>)>,
+    functions: HashMap<Sym, (Vec<Instruction>, Option<u32>)>,
     interner: StringInterner<Sym>,
     gc_ids: HashSet<u32>,
     local_symbols: HashMap<Sym, u32>,
+    rng: SmallRng,
 }
 
 impl CodeBuilder {
@@ -21,22 +27,33 @@ impl CodeBuilder {
             interner: StringInterner::new(),
             gc_ids: HashSet::new(),
             local_symbols: HashMap::new(),
+            rng: SmallRng::from_entropy(),
         }
     }
 
-    pub fn function<N, F>(&mut self, name: N, function: F)
+    pub fn function<N, F>(&mut self, name: N, mut function: F) -> Result<()>
     where
         N: Ident,
-        F: Fn(&mut Self, &mut BuilderContext),
+        F: FnMut(&mut Self, &mut FunctionContext) -> Result<()>,
     {
         let name = self.interner.get_or_intern(name);
-        let mut context = BuilderContext::new();
+        let mut context = FunctionContext::new();
 
-        (function)(self, &mut context);
+        (function)(self, &mut context)?;
 
         let built_function = context.build(self);
 
         self.functions.insert(name, (built_function, None));
+
+        Ok(())
+    }
+
+    #[inline]
+    pub fn intern<T>(&mut self, string: T) -> Sym
+    where
+        T: Into<String> + AsRef<str>,
+    {
+        self.interner.get_or_intern(string)
     }
 
     pub fn solidify_id(&mut self, old_id: u32) -> u32 {
@@ -53,99 +70,112 @@ impl CodeBuilder {
         id
     }
 
-    pub fn build(mut self) -> (Vec<Instruction>, Vec<Vec<Instruction>>) {
+    #[inline]
+    pub fn gen_clobber_str(&mut self, len: usize) -> String {
+        use rand::distributions::{Alphanumeric, Distribution};
+
+        Alphanumeric.sample_iter(&mut self.rng).take(len).collect()
+    }
+
+    pub fn build(self) -> (Vec<Instruction>, Vec<Vec<Instruction>>) {
         let mut main = Vec::new();
         let mut functions = Vec::new();
 
-        for (sym, (func, _index)) in self.functions.clone().into_iter() {
+        for (sym, (mut func, _index)) in self.functions.clone().into_iter() {
             if let Some(ident) = self.interner.resolve(sym) {
                 if ident == "main" {
-                    main = func.build(&mut self);
+                    if func[func.len() - 1] != Instruction::Halt {
+                        func.push(Instruction::Halt);
+                    }
+                    main = func;
                     continue;
                 }
             }
 
-            functions.push(func.build(&mut self));
+            functions.push(func);
         }
 
         (main, functions)
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct BuilderContext {
-    block: Function,
-}
+#[derive(Debug, Clone)]
+pub struct Scope {}
 
-impl BuilderContext {
+impl Scope {
+    #[inline]
     pub fn new() -> Self {
-        Self {
-            block: Function::new(),
-        }
-    }
-
-    pub fn build(self, _builder: &mut CodeBuilder) -> Function {
-        self.block
+        Self {}
     }
 }
 
-#[derive(Clone, Debug)]
-struct PartialInstruction {
-    uninit_inst: Instruction,
-    func_sym: Option<String>,
-    global_sym: Option<String>,
-    local_sym: Option<String>,
-}
-
-impl PartialInstruction {
-    pub fn solidify(self, builder: &mut CodeBuilder) -> Instruction {
-        match self.uninit_inst {
-            Instruction::Cache(start_id, value, register) => {
-                let concrete_id = builder.solidify_id(start_id);
-                let symbol = builder
-                    .interner
-                    .get_or_intern(self.local_sym.expect("Expected a local Symbol"));
-
-                builder.local_symbols.insert(symbol, concrete_id);
-
-                Instruction::Cache(concrete_id, value, register)
-            }
-
-            Instruction::Drop(_) => Instruction::Drop(
-                *builder
-                    .local_symbols
-                    .get(
-                        &builder
-                            .interner
-                            .get_or_intern(self.local_sym.expect("No Local Symbol Provided")),
-                    )
-                    .expect("No Registered Local Symbol"),
-            ),
-
-            _ => self.uninit_inst,
-        }
-    }
-}
-
-impl From<Instruction> for PartialInstruction {
-    fn from(inst: Instruction) -> Self {
-        Self {
-            uninit_inst: inst,
-            func_sym: None,
-            global_sym: None,
-            local_sym: None,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Function {
+#[derive(Clone)]
+pub struct FunctionContext {
+    registers: [Option<Option<Sym>>; NUMBER_REGISTERS],
+    variables: HashSet<Sym>,
     block: Vec<PartialInstruction>,
+    pub scope: Scope,
 }
 
-impl Function {
+impl FunctionContext {
+    #[inline]
     pub fn new() -> Self {
-        Self { block: Vec::new() }
+        Self {
+            registers: [None; NUMBER_REGISTERS],
+            variables: HashSet::new(),
+            block: Vec::new(),
+            scope: Scope::new(),
+        }
+    }
+
+    #[inline]
+    pub fn free_reg(&mut self, reg: impl Into<Register>) -> &mut Self {
+        self.registers[*reg.into() as usize] = None;
+
+        self
+    }
+
+    #[inline]
+    pub fn reserve_reg(&mut self) -> Result<Register> {
+        match self.registers.iter().position(|r| r.is_none()) {
+            Some(pos) => {
+                self.registers[pos] = Some(None);
+                Ok((pos as u8).into())
+            }
+            None => Err(RuntimeError {
+                ty: RuntimeErrorTy::CompilationError,
+                message: "Failed to fetch available register".to_string(),
+            }),
+        }
+    }
+
+    #[inline]
+    pub fn reserve_reg_sym(&mut self, sym: Sym) -> Result<Register> {
+        match self.registers.iter().position(|r| r.is_none()) {
+            Some(pos) => {
+                self.registers[pos] = Some(Some(sym));
+                Ok((pos as u8).into())
+            }
+            None => Err(RuntimeError {
+                ty: RuntimeErrorTy::CompilationError,
+                message: "Failed to fetch available register".to_string(),
+            }),
+        }
+    }
+
+    pub fn get_cached_reg(&mut self, sym: Sym) -> Result<Register> {
+        match self.registers.iter().position(|r| *r == Some(Some(sym))) {
+            Some(pos) => Ok((pos as u8).into()),
+            None => Err(RuntimeError {
+                ty: RuntimeErrorTy::CompilationError,
+                message: "Failed to fetch cached register".to_string(),
+            }),
+        }
+    }
+
+    #[inline]
+    pub fn add_var(&mut self, sym: Sym) {
+        self.variables.insert(sym);
     }
 
     pub fn build(self, builder: &mut CodeBuilder) -> Vec<Instruction> {
@@ -194,18 +224,20 @@ impl Function {
         &mut self,
         register: impl Into<Register>,
         value: Value,
-        name: impl Ident,
-    ) -> &mut Self {
+        name: Sym,
+    ) -> Result<&mut Self> {
         let gc_id = &value as *const _ as u32;
 
         self.block.push(PartialInstruction {
             uninit_inst: Instruction::Cache(gc_id, value, register.into()),
             func_sym: None,
             global_sym: None,
-            local_sym: Some(name.into()),
+            local_sym: Some(name),
         });
 
-        self
+        self.reserve_reg_sym(name)?;
+
+        Ok(self)
     }
 
     pub fn inst_comp_to_reg(&mut self, register: impl Into<Register>) -> &mut Self {
@@ -222,20 +254,25 @@ impl Function {
     }
 
     pub fn inst_drop_reg(&mut self, register: impl Into<Register>) -> &mut Self {
-        self.block
-            .push(Instruction::DropReg(register.into()).into());
+        let register = register.into();
+
+        self.block.push(Instruction::DropReg(register).into());
+        self.free_reg(register);
 
         self
     }
-    pub fn inst_drop(&mut self, name: impl Ident) -> &mut Self {
+    pub fn inst_drop(&mut self, name: Sym) -> Result<&mut Self> {
         self.block.push(PartialInstruction {
             uninit_inst: Instruction::Drop(0).into(),
             func_sym: None,
             global_sym: None,
-            local_sym: Some(name.into()),
+            local_sym: Some(name),
         });
 
-        self
+        let register = self.get_cached_reg(name)?;
+        self.free_reg(register);
+
+        Ok(self)
     }
 
     pub fn inst_add(&mut self, left: impl Into<Register>, right: impl Into<Register>) -> &mut Self {
@@ -373,6 +410,71 @@ impl Function {
     }
 }
 
+impl fmt::Debug for FunctionContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FunctionContext")
+            .field("block", &self.block)
+            .field(
+                "registers",
+                &("[".to_string()
+                    + &self
+                        .registers
+                        .iter()
+                        .map(|v| format!("{:?}", v))
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                    + "]"),
+            )
+            .field("variables", &self.variables)
+            .field("block", &self.block)
+            .finish()
+    }
+}
+
+#[derive(Clone, Debug)]
+struct PartialInstruction {
+    uninit_inst: Instruction,
+    func_sym: Option<Sym>,
+    global_sym: Option<Sym>,
+    local_sym: Option<Sym>,
+}
+
+impl PartialInstruction {
+    pub fn solidify(self, builder: &mut CodeBuilder) -> Instruction {
+        match self.uninit_inst {
+            Instruction::Cache(start_id, value, register) => {
+                let concrete_id = builder.solidify_id(start_id);
+
+                builder
+                    .local_symbols
+                    .insert(self.local_sym.expect("Expected Local Symbol"), concrete_id);
+
+                Instruction::Cache(concrete_id, value, register)
+            }
+
+            Instruction::Drop(_) => Instruction::Drop(
+                *builder
+                    .local_symbols
+                    .get(&self.local_sym.expect("Expected Local Symbol"))
+                    .expect("No Registered Local Symbol"),
+            ),
+
+            _ => self.uninit_inst,
+        }
+    }
+}
+
+impl From<Instruction> for PartialInstruction {
+    fn from(inst: Instruction) -> Self {
+        Self {
+            uninit_inst: inst,
+            func_sym: None,
+            global_sym: None,
+            local_sym: None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -384,20 +486,23 @@ mod tests {
 
         let mut builder = CodeBuilder::new();
 
-        builder.function("main", |_builder, ctx| {
-            ctx.block
-                .inst_load(0, Value::String("Hello World!\n".to_string()))
-                .inst_load(1, Value::Int(10))
-                .inst_load(2, Value::Int(0))
-                .inst_load(3, Value::Int(1))
-                .inst_jump_point(77)
-                .inst_print(0)
-                .inst_sub(1, 3)
-                .inst_op_to_reg(1)
-                .inst_greater_than(1, 2)
-                .inst_jump_comp(77)
-                .inst_halt();
-        });
+        builder
+            .function("main", |_builder, ctx| {
+                ctx.inst_load(0, Value::String("Hello World!\n".to_string()))
+                    .inst_load(1, Value::Int(10))
+                    .inst_load(2, Value::Int(0))
+                    .inst_load(3, Value::Int(1))
+                    .inst_jump_point(77)
+                    .inst_print(0)
+                    .inst_sub(1, 3)
+                    .inst_op_to_reg(1)
+                    .inst_greater_than(1, 2)
+                    .inst_jump_comp(77)
+                    .inst_halt();
+
+                Ok(())
+            })
+            .unwrap();
 
         let (main, functions) = builder.build();
         let crunch = (

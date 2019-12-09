@@ -66,103 +66,85 @@ impl<'a> Parser<'a> {
 
         const TOP_LEVEL_TOKENS: [TokenType; 2] = [TokenType::Import, TokenType::Function];
 
-        loop {
-            if let Some(token) = self.next.clone() {
-                match token.ty {
-                    TokenType::Function => {
-                        info!("Top Level Loop: Function");
+        while let Ok(token) = self.next(line!()) {
+            match token.ty {
+                TokenType::Function => {
+                    info!("Top Level Loop: Function");
 
-                        ast.push(Node::Func(match self.parse_function(token.range.0) {
-                            Ok(node) => node,
-                            Err(err) => {
-                                self.error = true;
-                                self.diagnostics.push(err);
-                                continue;
-                            }
-                        }));
-                    }
-
-                    TokenType::Import => {
-                        info!("Top Level Loop: Import");
-                        ast.push(Node::Import(match self.parse_import() {
-                            Ok(node) => node,
-                            Err(err) => {
-                                self.error = true;
-                                self.diagnostics.push(err);
-                                continue;
-                            }
-                        }))
-                    }
-
-                    TokenType::End => break,
-
-                    // This is apparently kinda flawed
-                    TokenType::Space | TokenType::Comment | TokenType::Newline => {
-                        if self.next(line!()).is_err() {
-                            break;
-                        } else {
+                    ast.push(Node::Func(match self.parse_function(token.range.0) {
+                        Ok(node) => node,
+                        Err(err) => {
+                            self.error = true;
+                            self.diagnostics.push(err);
                             continue;
                         }
-                    }
-
-                    TokenType::Error => {
-                        self.error = true;
-                        error!(
-                            "[Parsing error on {}:{}]: Invalid token",
-                            line!(),
-                            column!(),
-                        );
-                        self.diagnostics.push(Diagnostic::new(
-                            Severity::Error,
-                            "Invalid token",
-                            Label::new(
-                                self.files[0],
-                                token.range.0 as u32..token.range.1 as u32,
-                                format!("{:?} is not a valid token", token.source),
-                            ),
-                        ));
-                    }
-
-                    t => {
-                        self.error = true;
-                        error!(
-                            "[Parsing error on {}:{}]: Invalid top-level token: {:?}",
-                            line!(),
-                            column!(),
-                            &t
-                        );
-                        self.diagnostics.push(Diagnostic::new(
-                            Severity::Error,
-                            "Invalid top-level token",
-                            Label::new(
-                                self.files[0],
-                                token.range.0 as u32..token.range.1 as u32,
-                                format!(
-                                    "Found {:?}, expected one of {}",
-                                    token.ty,
-                                    TOP_LEVEL_TOKENS
-                                        .iter()
-                                        .map(|t| format!("'{}'", t))
-                                        .collect::<Vec<String>>()
-                                        .join(", "),
-                                ),
-                            ),
-                        ));
-                    }
+                    }));
                 }
-            } else {
-                break;
-            }
 
-            if self.next(line!()).is_err() {
-                let mut diagnostics = Vec::new();
-                std::mem::swap(&mut diagnostics, &mut self.diagnostics);
+                TokenType::Import => {
+                    info!("Top Level Loop: Import");
+                    ast.push(Node::Import(match self.parse_import() {
+                        Ok(node) => node,
+                        Err(err) => {
+                            self.error = true;
+                            self.diagnostics.push(err);
+                            continue;
+                        }
+                    }))
+                }
 
-                return if self.error {
-                    Err(diagnostics)
-                } else {
-                    Ok((ast, diagnostics))
-                };
+                TokenType::End => break,
+
+                // This is apparently kinda flawed
+                TokenType::Space | TokenType::Comment | TokenType::Newline => {
+                    self.eat_of(&[TokenType::Space, TokenType::Comment, TokenType::Newline])
+                        .expect("Shouldn't be able to fail");
+                }
+
+                TokenType::Error => {
+                    self.error = true;
+                    error!(
+                        "[Parsing error on {}:{}]: Invalid token",
+                        line!(),
+                        column!(),
+                    );
+                    self.diagnostics.push(Diagnostic::new(
+                        Severity::Error,
+                        "Invalid token",
+                        Label::new(
+                            self.files[0],
+                            token.range.0 as u32..token.range.1 as u32,
+                            format!("{:?} is not a valid token", token.source),
+                        ),
+                    ));
+                }
+
+                t => {
+                    self.error = true;
+                    error!(
+                        "[Parsing error on {}:{}]: Invalid top-level token: {:?}",
+                        line!(),
+                        column!(),
+                        &t
+                    );
+                    self.diagnostics.push(Diagnostic::new(
+                        Severity::Error,
+                        "Invalid top-level token",
+                        Label::new(
+                            self.files[0],
+                            token.range.0 as u32..token.range.1 as u32,
+                            format!(
+                                "Found {:?}, expected one of {}",
+                                token.ty,
+                                TOP_LEVEL_TOKENS
+                                    .iter()
+                                    .map(|t| format!("'{}'", t))
+                                    .collect::<Vec<String>>()
+                                    .join(", "),
+                            ),
+                        ),
+                    ));
+                }
             }
         }
 
@@ -191,14 +173,14 @@ impl<'a> Parser<'a> {
 
         self.eat_w()?;
 
-        let (exposes, alias) = match self.peek()?.ty {
+        let (exposes, alias) = match self.peek(line!())?.ty {
             TokenType::Exposing => {
                 self.eat(TokenType::Exposing)
                     .unwrap_or_else(|_| unreachable!("Peek was Exposing"));
 
                 self.eat_w()?;
 
-                let peek = self.peek()?;
+                let peek = self.peek(line!())?;
                 if peek.ty == TokenType::Star {
                     self.eat(TokenType::Star)
                         .unwrap_or_else(|_| unreachable!("Peek was Star"));
@@ -207,7 +189,7 @@ impl<'a> Parser<'a> {
 
                     (Exposes::All, None)
                 } else if peek.ty == TokenType::Ident {
-                    let (mut imports, mut peek) = (Vec::new(), self.peek()?);
+                    let (mut imports, mut peek) = (Vec::new(), self.peek(line!())?);
 
                     while peek.ty != TokenType::Newline {
                         let ident =
@@ -215,7 +197,7 @@ impl<'a> Parser<'a> {
 
                         self.eat_w()?;
 
-                        let token = self.peek()?;
+                        let token = self.peek(line!())?;
                         let alias = if token.ty == TokenType::As {
                             self.eat(TokenType::As)
                                 .unwrap_or_else(|_| unreachable!("Peek was As"));
@@ -233,7 +215,7 @@ impl<'a> Parser<'a> {
                         imports.push((ident, alias));
 
                         self.eat_w()?;
-                        peek = self.peek()?;
+                        peek = self.peek(line!())?;
 
                         if peek.ty == TokenType::Comma {
                             self.eat(TokenType::Comma)
@@ -271,12 +253,12 @@ impl<'a> Parser<'a> {
 
                 let alias = Ident::from_token(self.eat(TokenType::Ident)?, self.current_file);
 
-                if self.peek()?.ty == TokenType::Exposing {
+                if self.peek(line!())?.ty == TokenType::Exposing {
                     self.eat(TokenType::Exposing)
                         .unwrap_or_else(|_| unreachable!("Peek was Exposing"));
 
                     self.eat_w()?;
-                    let peek = self.peek()?;
+                    let peek = self.peek(line!())?;
 
                     if peek.ty == TokenType::Star {
                         self.eat(TokenType::Star)
@@ -284,14 +266,14 @@ impl<'a> Parser<'a> {
 
                         (Exposes::All, Some(alias))
                     } else if peek.ty == TokenType::Ident {
-                        let (mut imports, mut peek) = (Vec::new(), self.peek()?);
+                        let (mut imports, mut peek) = (Vec::new(), self.peek(line!())?);
 
                         while peek.ty != TokenType::Newline {
                             let ident =
                                 Ident::from_token(self.eat(TokenType::Ident)?, self.current_file);
 
                             self.eat_w()?;
-                            let token = self.peek()?;
+                            let token = self.peek(line!())?;
 
                             let alias = if token.ty == TokenType::As {
                                 self.eat(TokenType::As)
@@ -308,7 +290,7 @@ impl<'a> Parser<'a> {
                             imports.push((ident, alias));
 
                             self.eat_w()?;
-                            peek = self.peek()?;
+                            peek = self.peek(line!())?;
 
                             if peek.ty == TokenType::Comma {
                                 self.eat(TokenType::Comma)
@@ -361,7 +343,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_import_type(&mut self) -> Result<ImportType> {
-        match self.peek()?.ty {
+        match self.peek(line!())?.ty {
             TokenType::Library => Ok(ImportType::Library),
             TokenType::Package => Ok(ImportType::Package),
             _ => Ok(ImportType::File),
@@ -377,11 +359,11 @@ impl<'a> Parser<'a> {
 
         self.eat_w()?;
         let mut params = Vec::new();
-        while self.peek()?.ty != TokenType::RightParen {
+        while self.peek(line!())?.ty != TokenType::RightParen {
             params.push(self.parse_named_parameter()?);
 
             self.eat_w()?;
-            if self.peek()?.ty == TokenType::Comma {
+            if self.peek(line!())?.ty == TokenType::Comma {
                 self.eat(TokenType::Comma)
                     .unwrap_or_else(|_| unreachable!("Peek was Comma"));
             }
@@ -390,7 +372,7 @@ impl<'a> Parser<'a> {
         self.eat(TokenType::RightParen)?;
 
         self.eat_w()?;
-        let returns = if self.peek()?.ty == TokenType::RightArrow {
+        let returns = if self.peek(line!())?.ty == TokenType::RightArrow {
             self.eat(TokenType::RightArrow)
                 .unwrap_or_else(|_| unreachable!("Peek was RightArrow"));
 
@@ -404,14 +386,14 @@ impl<'a> Parser<'a> {
         let (mut body, mut span_end) = (Vec::new(), span_start);
 
         self.eat_w()?;
-        let mut token = self.peek()?;
+        let mut token = self.peek(line!())?;
         while token.ty == TokenType::Indent {
             self.eat(TokenType::Indent)?;
 
             self.eat_w()?;
-            if self.peek()?.ty == TokenType::Comment {
+            if self.peek(line!())?.ty == TokenType::Comment {
                 self.eat_line_end()?;
-                token = self.peek()?;
+                token = self.peek(line!())?;
                 continue;
             }
 
@@ -419,7 +401,7 @@ impl<'a> Parser<'a> {
             span_end = token.range.1;
 
             self.eat_until(TokenType::Newline, true)?;
-            if let Ok(peek) = self.peek() {
+            if let Ok(peek) = self.peek(line!()) {
                 token = peek;
             } else {
                 break;
@@ -445,7 +427,7 @@ impl<'a> Parser<'a> {
 
         self.eat_all_of(&[TokenType::Space, TokenType::Comment, TokenType::Newline])?;
 
-        let token = self.peek()?;
+        let token = self.peek(line!())?;
         let (expr, span_end): (FuncExpr<'a>, u32) = match token.ty {
             TokenType::Ident => {
                 let ident = self.eat(TokenType::Ident)?;
@@ -454,12 +436,12 @@ impl<'a> Parser<'a> {
 
                 self.eat_w()?;
 
-                match self.peek()?.ty {
+                match self.peek(line!())?.ty {
                     TokenType::LeftParen => {
                         self.eat(TokenType::LeftParen)?;
                         self.eat_w()?;
 
-                        let (mut params, mut next) = (Vec::new(), self.peek()?);
+                        let (mut params, mut next) = (Vec::new(), self.peek(line!())?);
 
                         while next.ty != TokenType::RightParen {
                             match next.ty {
@@ -512,7 +494,7 @@ impl<'a> Parser<'a> {
                             }
 
                             self.eat_w()?;
-                            next = self.peek()?;
+                            next = self.peek(line!())?;
                         }
 
                         let span_end = self.eat(TokenType::RightParen)?.range.1;
@@ -534,7 +516,7 @@ impl<'a> Parser<'a> {
                         self.eat(TokenType::Equal)?;
 
                         self.eat_w()?;
-                        let span_end = self.peek()?.range.1;
+                        let span_end = self.peek(line!())?.range.1;
 
                         let assignment = self.ident_literal()?;
 
@@ -562,7 +544,7 @@ impl<'a> Parser<'a> {
 
                 let name = Ident::from_token(self.eat(TokenType::Ident)?, self.current_file);
 
-                let ty = if self.peek().unwrap().ty == TokenType::Colon {
+                let ty = if self.peek(line!()).unwrap().ty == TokenType::Colon {
                     self.eat(TokenType::Colon)
                         .unwrap_or_else(|_| unreachable!("Peek was Colon"));
 
@@ -594,19 +576,19 @@ impl<'a> Parser<'a> {
                 self.eat(TokenType::Print)?;
 
                 self.eat_w()?;
-                let (mut params, mut peek) = (Vec::new(), self.peek()?);
+                let (mut params, mut peek) = (Vec::new(), self.peek(line!())?);
 
                 while peek.ty != TokenType::Newline && peek.ty != TokenType::Comma {
                     params.push(self.ident_literal()?);
 
                     self.eat_w()?;
-                    if self.peek()?.ty == TokenType::Comma {
+                    if self.peek(line!())?.ty == TokenType::Comma {
                         self.eat(TokenType::Comma)
                             .unwrap_or_else(|_| unreachable!("Peek was Comma"));
                     }
 
                     self.eat_w()?;
-                    peek = self.peek()?;
+                    peek = self.peek(line!())?;
                 }
 
                 let span_end = self.eat_line_end_returning()?.range.1;
@@ -628,7 +610,7 @@ impl<'a> Parser<'a> {
                 self.eat(TokenType::SyscallExit)?;
 
                 self.eat_w()?;
-                let peek = self.peek()?;
+                let peek = self.peek(line!())?;
 
                 let exit_code = if peek.ty != TokenType::Newline && peek.ty != TokenType::Comma {
                     self.ident_literal()?
@@ -673,7 +655,7 @@ impl<'a> Parser<'a> {
         info!("Parsing Ident or Literal");
 
         self.eat_w()?;
-        match self.peek()?.ty {
+        match self.peek(line!())?.ty {
             TokenType::String | TokenType::Bool | TokenType::Int => {
                 Ok(IdentLiteral::Literal(self.parse_variable()?))
             }
@@ -708,11 +690,11 @@ impl<'a> Parser<'a> {
         info!("Parsing Binding Value");
 
         self.eat_w()?;
-        let val = match self.peek()?.ty {
+        let val = match self.peek(line!())?.ty {
             TokenType::String | TokenType::Bool | TokenType::Int | TokenType::Ident => {
                 let left = self.parse_bin_op_side()?;
                 self.eat_w()?;
-                let peek = self.peek()?;
+                let peek = self.peek(line!())?;
                 if [
                     TokenType::Plus,
                     TokenType::Minus,
@@ -755,7 +737,7 @@ impl<'a> Parser<'a> {
                     }
                 }
             }
-            _ => crate::unreachable!("Impossible Token: {:?}", self.peek()),
+            _ => crate::unreachable!("Impossible Token: {:?}", self.peek(line!())),
         };
 
         info!("Finished parsing Binding Value");
@@ -767,7 +749,7 @@ impl<'a> Parser<'a> {
         info!("Parsing BinOp Side");
 
         self.eat_w()?;
-        let token = self.peek()?;
+        let token = self.peek(line!())?;
 
         let side = match token.ty {
             TokenType::Ident => {
@@ -866,7 +848,7 @@ impl<'a> Parser<'a> {
     }
 }
 
-/// This block is parsing utilities
+/// Parsing utilities
 impl<'a> Parser<'a> {
     #[inline]
     fn next(&mut self, line: u32) -> Result<Token<'a>> {
@@ -897,14 +879,15 @@ impl<'a> Parser<'a> {
     }
 
     #[inline]
-    fn peek(&mut self) -> Result<Token<'a>> {
+    fn peek(&mut self, line: u32) -> Result<Token<'a>> {
         if let Some(next) = self.peek.clone() {
             Ok(next)
         } else {
             error!(
-                "[Parsing error on {}:{}]: Unexpected EOF while peeking",
+                "[Parsing error on {}:{}]: Unexpected EOF while peeking at line {}",
                 line!(),
                 column!(),
+                line,
             );
             Err(Diagnostic::new(
                 Severity::Error,
@@ -912,7 +895,7 @@ impl<'a> Parser<'a> {
                 Label::new(
                     self.files[0],
                     self.codespan.source_span(self.files[0]),
-                    format!("Unexpected End Of File"),
+                    "Unexpected End Of File".to_string(),
                 ),
             ))
         }
@@ -922,8 +905,11 @@ impl<'a> Parser<'a> {
     fn eat_w(&mut self) -> Result<()> {
         while let Some(token) = &self.peek {
             if token.ty == TokenType::Space || token.ty == TokenType::Comment {
-                self.next(line!())?;
-                continue;
+                if self.next(line!()).is_ok() {
+                    continue;
+                } else {
+                    break;
+                }
             }
 
             break;
@@ -932,15 +918,21 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    #[inline]
     fn eat_until(&mut self, target: TokenType, including: bool) -> Result<()> {
         while let Some(token) = &self.peek {
             if token.ty != target {
-                self.next(line!())?;
-                continue;
+                if self.next(line!()).is_ok() {
+                    continue;
+                } else {
+                    break;
+                }
             }
 
             if including {
-                self.eat(target)?;
+                if self.eat(target).is_err() {
+                    break;
+                }
             }
             break;
         }
@@ -952,8 +944,11 @@ impl<'a> Parser<'a> {
     fn eat_all_of(&mut self, tokens: &[TokenType]) -> Result<()> {
         while let Some(token) = &self.peek {
             if tokens.contains(&token.ty) {
-                self.next(line!())?;
-                continue;
+                if self.next(line!()).is_ok() {
+                    continue;
+                } else {
+                    break;
+                }
             }
 
             break;
@@ -1039,16 +1034,21 @@ impl<'a> Parser<'a> {
 
     #[inline]
     fn eat_line_end_returning(&mut self) -> Result<Token<'a>> {
-        let mut returned_token = None;
-        while let Some(token) = &self.peek {
-            if [TokenType::Space, TokenType::Comment, TokenType::Newline].contains(&token.ty) {
-                returned_token = Some(token.clone());
-                self.next(line!())?;
+        let (mut peek, mut returned_token) = (self.peek(line!())?, None);
+        loop {
+            if [TokenType::Space, TokenType::Comment, TokenType::Newline].contains(&peek.ty) {
+                returned_token = Some(peek.clone());
 
-                continue;
+                self.eat_of(&[TokenType::Space, TokenType::Comment, TokenType::Newline])?;
+
+                if let Ok(p) = self.peek(line!()) {
+                    peek = p;
+                } else {
+                    break;
+                }
+            } else {
+                break;
             }
-
-            break;
         }
 
         if let Some(token) = returned_token {
@@ -1245,19 +1245,63 @@ mod tests {
                     crate::bytecode::encode_program(bytecode.0.clone(), bytecode.1.clone());
 
                 println!(
-                "# Source Code  \n\n```\n{}\n```\n\n# AST  \n\n```\n{:#?}\n```\n\n# Bytecode IR  \n\n```\n(\n\t[\n{}\n\t],\n\t[\n{}\n\t]\n)\n```\n\n# Raw Bytecode  \n\n```\n{}\n```\n\n\n",
-                CODE,
-                ast,
-                bytecode.0.iter().map(|b| format!("\t\t{:?}", b)).collect::<Vec<String>>().join(",\n"), bytecode.1.iter().map(|b| b.iter().map(|a| format!("\t\t{:?}", a)).collect::<Vec<String>>().join(",\n")).collect::<Vec<String>>().join("],"),
-                encoded
-                    .iter()
-                    .map(|b| format!("{:02X}", b))
-                    .collect::<Vec<String>>()
-                    .chunks(16)
-                    .map(|c| c.join(" "))
-                    .collect::<Vec<String>>()
-                    .join("\n"),
-            );
+                    "# Source Code  \n\n\
+
+                    ```\n\
+                    {}\n\
+                    ```\n\n\
+
+                    # AST  \n\n\
+
+                    ```\n\
+                    {:#?}\n\
+                    ```\n\n\
+
+                    # Bytecode IR  \n\n\
+                    
+                    ```\n\
+                    (\n    \
+                        [\n        \
+                            {}\n    \
+                        ],\n    \
+                        [\n        \
+                                {}\n    \
+                        ]\n\
+                    )\n\
+                    ```\n\n\
+
+                    # Raw Bytecode  \n\n\
+
+                    ```\n\
+                    {}\n\
+                    ```\n\n\n",
+                    CODE,
+                    ast,
+                    bytecode
+                        .0
+                        .iter()
+                        .map(|b| format!("        {:?}", b))
+                        .collect::<Vec<String>>()
+                        .join(",\n"),
+                    bytecode
+                        .1
+                        .iter()
+                        .map(|b| b
+                            .iter()
+                            .map(|a| format!("\t\t{:?}", a))
+                            .collect::<Vec<String>>()
+                            .join(",\n"))
+                        .collect::<Vec<String>>()
+                        .join("],"),
+                    encoded
+                        .iter()
+                        .map(|b| format!("{:02X}", b))
+                        .collect::<Vec<String>>()
+                        .chunks(16)
+                        .map(|c| c.join(" "))
+                        .collect::<Vec<String>>()
+                        .join("\n"),
+                );
 
                 let mut file = File::create("./examples/hello_world.crunched").unwrap();
                 file.write_all(&encoded).unwrap();

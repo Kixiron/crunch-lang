@@ -1,4 +1,5 @@
 use crate::{
+    code_builder::CodeBuilder,
     instruction::Result,
     instruction::{RuntimeError, RuntimeErrorTy},
     parser::*,
@@ -58,6 +59,7 @@ pub struct Interpreter<'a> {
     pub current_function: Vec<Instruction>,
     pub options: InterpOptions,
     pub func_index: usize,
+    pub builder: CodeBuilder,
 }
 
 impl<'a> Interpreter<'a> {
@@ -71,6 +73,7 @@ impl<'a> Interpreter<'a> {
             current_function: Vec::new(),
             options: InterpOptions::from(options),
             func_index: 0,
+            builder: CodeBuilder::new(),
         }
     }
 
@@ -99,61 +102,7 @@ impl<'a> Interpreter<'a> {
             }
         }
 
-        // Create fresh functions hashmap
-        let mut functions = HashMap::new();
-
-        // Swap the filled and fresh functions
-        std::mem::swap(&mut self.functions, &mut functions);
-
-        // Turn the functions into a Vector of the instructions paired with their function indices,
-        // discarding the function names
-        let mut functions = functions
-            .into_iter()
-            .map(|(_key, val)| val)
-            .collect::<Vec<(Vec<Instruction>, Option<usize>)>>();
-
-        // Sort the functions by their indices
-        functions.sort_by_key(|(_, index)| *index);
-
-        // If there are no functions, just make one with only the Halt instruction
-        if functions.is_empty() {
-            let functions = (vec![Instruction::Halt], Vec::<Vec<Instruction>>::new());
-            trace!("Interp Output: {:?}", &functions);
-            return Ok(functions);
-        }
-
-        // Get the man function from functions
-        let main_func = {
-            let pos = if let Some(pos) = functions.iter().position(|(_, index)| index.is_none()) {
-                pos
-            } else {
-                return Err(RuntimeError {
-                    ty: RuntimeErrorTy::MissingMain,
-                    message: "Missing Main function".to_string(),
-                });
-            };
-
-            let mut main = functions.remove(pos).0;
-            if main.last() != Some(&Instruction::Halt) {
-                main.push(Instruction::Halt);
-            }
-            main
-        };
-
-        // Filter out the other functions named main, will cause issues
-        // FIXME: Handle extra main functions
-        let functions = functions
-            .into_iter()
-            .filter_map(
-                |(vec, index)| {
-                    if index.is_some() {
-                        Some(vec)
-                    } else {
-                        None
-                    }
-                },
-            )
-            .collect::<Vec<Vec<Instruction>>>();
+        let (main_func, functions) = self.builder.build();
 
         trace!("Interp Output: {:?}", (&main_func, &functions));
 
@@ -258,338 +207,149 @@ impl<'a> Interpreter<'a> {
             unreachable!("Should be an already a confirmed function");
         };
 
-        // For each expression in the function, evaluate it into instructions
-        for expr in func.body {
-            match expr.expr {
-                // Bind a variable to a value
-                FuncExpr::Binding(binding) => {
-                    match binding.val {
+        let mut builder = CodeBuilder::new();
+        std::mem::swap(&mut builder, &mut self.builder);
+
+        builder.function(&*func.name.name.clone(), |builder, ctx| {
+            // For each expression in the function, evaluate it into instructions
+            for expr in func.body.clone() {
+                match expr.expr {
+                    // Bind a variable to a value
+                    FuncExpr::Binding(binding) => match binding.val {
                         BindingVal::Literal(literal) => {
-                            let value = literal.val.into();
+                            let addr = ctx.reserve_reg()?;
 
-                            // Insert the variable into the gc
-                            let id = self.get_next_gc_id();
-                            let addr = self.reserve_reg(None, Some(id))?;
-
-                            // Add the variable to the current scope
-                            self.current_scope.variables.insert(
-                                binding.name.name.to_string(),
-                                (Location::Gc(id), binding.ty.clone()),
-                            );
-
-                            // Add the cache instruction to the current function
-                            self.add_to_current(&[Instruction::Cache(id, value, addr)]);
+                            ctx.inst_cache(
+                                addr,
+                                literal.val.into(),
+                                builder.intern(&*binding.name.name),
+                            )?;
                         }
 
                         BindingVal::BinOp(bin_op) => match (bin_op.left, bin_op.right) {
                             (BinOpSide::Literal(left), BinOpSide::Literal(right)) => {
-                                let left: Value = left.val.into();
-                                let right = right.val.into();
-                                let addr = self.reserve_reg(None, None)?;
+                                let (left, right): (Value, Value) =
+                                    (left.val.into(), right.val.into());
+                                let addr = ctx.reserve_reg()?;
 
-                                // Do the math here, instead of at runtime
-                                self.add_to_current(&[Instruction::Load((left + right)?, addr)]);
-
-                                self.current_scope.variables.insert(
-                                    binding.name.name.to_string(),
-                                    (Location::Register(addr, None), binding.ty.clone()),
-                                );
+                                ctx.inst_load(addr, (left + right)?);
                             }
 
                             (BinOpSide::Literal(left), BinOpSide::Variable(right)) => {
-                                let left_value = left.val.into();
-                                let left_addr = self.reserve_reg(None, None)?;
+                                let (left_reg, left_ident) = (ctx.reserve_reg()?, {
+                                    let clobber = builder.gen_clobber_str(15);
+                                    builder.intern(format!("___bin-op-literal-{}", clobber))
+                                });
+                                ctx.inst_cache(left_reg, left.val.into(), left_ident)?;
 
-                                self.add_to_current(&[Instruction::Load(left_value, left_addr)]);
+                                let right_ident = builder.intern(&*right.name);
+                                let (right_reg, faulted) =
+                                    if let Ok(reg) = ctx.get_cached_reg(right_ident) {
+                                        (reg, false)
+                                    } else if self.options.fault_tolerant {
+                                        let reg = ctx.reserve_reg()?;
 
-                                let (right_id, faulted) = {
-                                    if let Some(var) =
-                                        self.current_scope.variables.get(&*right.name)
-                                    {
-                                        (var.0, false)
-                                    } else {
-                                        // If fault tolerant, a fault just occurred, so pretend it didn't
-                                        if self.options.fault_tolerant {
-                                            let gc_id = self.get_next_gc_id();
-                                            let addr = self.reserve_reg(None, Some(gc_id))?;
+                                        ctx.inst_cache(reg, Value::None, right_ident)?;
 
-                                            self.add_to_current(&[Instruction::Cache(
-                                                gc_id,
-                                                Value::None,
-                                                addr,
-                                            )]);
-
-                                            (Location::Gc(gc_id), true)
-
-                                        // If we aren't fault tolerant, scream
-                                        } else {
-                                            return Err(RuntimeError {
-                                                ty: RuntimeErrorTy::NullVar,
-                                                message: format!(
-                                                    "The variable {:?} does not exist",
-                                                    &*right.name
-                                                ),
-                                            });
-                                        }
-                                    }
-                                };
-
-                                if let Some(right_addr) = self
-                                    .current_scope
-                                    .registers
-                                    .iter()
-                                    .position(|reg| *reg == Some(right_id))
-                                {
-                                    let right_addr = (right_addr as u8).into();
-
-                                    self.add_to_current(&[Instruction::Add(left_addr, right_addr)]);
-
-                                    if self.options.fault_tolerant && faulted {
-                                        self.add_to_current(&[Instruction::DropReg(right_addr)]);
-
-                                        self.current_scope.registers[*right_addr as usize] = None;
-                                        self.current_scope.registers[*left_addr as usize] = None;
-                                    }
-                                } else {
-                                    let right_addr = self.reserve_reg(Some(right_id), None)?;
-
-                                    self.add_to_current(&[Instruction::Add(left_addr, right_addr)]);
-
-                                    self.current_scope.registers[*right_addr as usize] = None;
-                                    self.current_scope.registers[*left_addr as usize] = None;
-                                }
-
-                                let output = self.reserve_reg(None, None)?;
-                                self.add_to_current(&[
-                                    Instruction::DropReg(left_addr),
-                                    Instruction::OpToReg(output),
-                                ]);
-
-                                self.current_scope.variables.insert(
-                                    binding.name.name.to_string(),
-                                    (Location::Register(output, None), binding.ty.clone()),
-                                );
-                            }
-
-                            (BinOpSide::Variable(left), BinOpSide::Literal(right)) => {
-                                let (left_id, faulted) = {
-                                    if let Some(var) = self.current_scope.variables.get(&*left.name)
-                                    {
-                                        (var.0, false)
-                                    } else {
-                                        // If fault tolerant, a fault just occurred, so pretend it didn't
-                                        if self.options.fault_tolerant {
-                                            let gc_id = self.get_next_gc_id();
-                                            let addr = self.reserve_reg(None, Some(gc_id))?;
-
-                                            self.add_to_current(&[Instruction::Cache(
-                                                gc_id,
-                                                Value::None,
-                                                addr,
-                                            )]);
-
-                                            (Location::Gc(gc_id), true)
-
-                                        // If we aren't fault tolerant, scream
-                                        } else {
-                                            return Err(RuntimeError {
-                                                ty: RuntimeErrorTy::NullVar,
-                                                message: format!(
-                                                    "The variable {:?} does not exist",
-                                                    &*left.name
-                                                ),
-                                            });
-                                        }
-                                    }
-                                };
-
-                                let (right, right_id) = (right.val.into(), self.get_next_gc_id());
-                                let right_addr = self.reserve_reg(None, Some(right_id))?;
-
-                                self.add_to_current(&[Instruction::Cache(
-                                    right_id, right, right_addr,
-                                )]);
-
-                                if let Some(left_addr) = self
-                                    .current_scope
-                                    .registers
-                                    .iter()
-                                    .position(|reg| *reg == Some(left_id))
-                                {
-                                    let left_addr = (left_addr as u8).into();
-
-                                    self.add_to_current(&[Instruction::Add(left_addr, right_addr)]);
-
-                                    if self.options.fault_tolerant && faulted {
-                                        self.add_to_current(&[Instruction::DropReg(right_addr)]);
-
-                                        self.current_scope.registers[*right_addr as usize] = None;
-                                        self.current_scope.registers[*left_addr as usize] = None;
-                                    }
-                                } else {
-                                    let left_addr = self.reserve_reg(Some(left_id), None)?;
-
-                                    self.add_to_current(&[Instruction::Add(left_addr, right_addr)]);
-
-                                    self.current_scope.registers[*right_addr as usize] = None;
-                                    self.current_scope.registers[*left_addr as usize] = None;
-                                }
-
-                                let output = self.reserve_reg(None, None)?;
-                                self.add_to_current(&[
-                                    Instruction::DropReg(right_addr),
-                                    Instruction::Drop(right_id),
-                                    Instruction::OpToReg(output),
-                                ]);
-
-                                self.current_scope.variables.insert(
-                                    binding.name.name.to_string(),
-                                    (Location::Register(output, None), binding.ty.clone()),
-                                );
-                            }
-                            _ => unimplemented!(),
-                        },
-                        _ => unimplemented!(),
-                    }
-                }
-
-                // Compiler builtin functions
-                FuncExpr::Builtin(builtin) => match builtin {
-                    // GC Collection cycle
-                    Builtin::Collect => {
-                        self.add_to_current(&[Instruction::Collect]);
-                    }
-
-                    // Halt execution
-                    Builtin::Halt => {
-                        self.add_to_current(&[Instruction::Halt]);
-                    }
-
-                    Builtin::SyscallExit(_exit_code) => {
-                        unimplemented!("Syscalls have not been implemented");
-
-                        #[allow(unreachable_code)]
-                        match _exit_code {
-                            // For literals fed into the print function, load them, print them, and drop them
-                            IdentLiteral::Literal(literal) => {
-                                let (val, gc_id) = (literal.val.into(), self.get_next_gc_id());
-
-                                let reg_addr = self.reserve_reg(Some(Location::Gc(gc_id)), None)?;
-
-                                self.add_to_current(&[
-                                    Instruction::Cache(gc_id, val, reg_addr),
-                                    Instruction::Print(reg_addr),
-                                    Instruction::DropReg(reg_addr),
-                                    Instruction::Drop(gc_id),
-                                ]);
-
-                                self.current_scope.registers[*reg_addr as usize] = None;
-                            }
-
-                            // For existing variables, fetch them and print them
-                            IdentLiteral::Variable(ident) => {
-                                // Get the gc address, variable type, and fault status of fetching the requested variable
-                                // If a fault occurs and fault_tolerant is true, then a null value will be used in place of
-                                // the requested variable. If fault_tolerant is false, then a Runtime Error will be thrown
-                                let (var_id, _var_type, faulted) = if let Some(var) =
-                                    self.current_scope.variables.get(&*ident.name)
-                                {
-                                    (var.0, var.1.clone(), false)
-                                } else {
-                                    // If fault tolerant, a fault just occurred, so pretend it didn't
-                                    if self.options.fault_tolerant {
-                                        let gc_id = self.get_next_gc_id();
-                                        let addr = self.reserve_reg(None, Some(gc_id))?;
-
-                                        self.add_to_current(&[Instruction::Cache(
-                                            gc_id,
-                                            Value::None,
-                                            addr,
-                                        )]);
-
-                                        (Location::Gc(gc_id), Type::Void, true)
-
-                                    // If we aren't fault tolerant, scream
+                                        (reg, true)
                                     } else {
                                         return Err(RuntimeError {
                                             ty: RuntimeErrorTy::NullVar,
                                             message: format!(
                                                 "The variable {:?} does not exist",
-                                                &*ident.name
+                                                &*right.name
                                             ),
                                         });
+                                    };
+
+                                if let Ok(right_reg) = ctx.get_cached_reg(right_ident) {
+                                    ctx.inst_add(right_reg, left_reg);
+
+                                    if self.options.fault_tolerant && faulted {
+                                        ctx.inst_drop_reg(left_reg).free_reg(right_reg);
                                     }
+                                } else {
+                                    let left_reg = ctx.reserve_reg()?;
+
+                                    ctx.inst_add(left_reg, right_reg)
+                                        .free_reg(right_reg)
+                                        .free_reg(left_reg);
+                                }
+
+                                let output = ctx.reserve_reg()?;
+                                ctx.inst_drop_reg(right_reg)
+                                    .inst_drop(right_ident)?
+                                    .inst_op_to_reg(output);
+                            }
+
+                            (BinOpSide::Variable(left), BinOpSide::Literal(right)) => {
+                                let left_ident = builder.intern(&*left.name);
+                                let left_reg = if let Ok(reg) = ctx.get_cached_reg(left_ident) {
+                                    reg
+                                } else if self.options.fault_tolerant {
+                                    let reg = ctx.reserve_reg()?;
+                                    ctx.inst_cache(reg, Value::None, left_ident)?;
+
+                                    reg
+                                } else {
+                                    return Err(RuntimeError {
+                                        ty: RuntimeErrorTy::NullVar,
+                                        message: format!(
+                                            "The variable {:?} does not exist",
+                                            &*left.name
+                                        ),
+                                    });
                                 };
 
-                                // If the value is currently loaded into a register, print it directly
-                                if let Some(reg_addr) =
-                                    self.current_scope.registers.iter().position(|reg| {
-                                        *reg == Some(var_id) || {
-                                            if let Some(Location::Register(_, loc)) = *reg {
-                                                if let Location::Gc(__loc) = var_id {
-                                                    loc == Some(__loc)
-                                                } else {
-                                                    false
-                                                }
-                                            } else {
-                                                false
-                                            }
-                                        }
-                                    })
-                                {
-                                    let reg_addr = (reg_addr as u8).into();
-                                    self.add_to_current(&[Instruction::Print(reg_addr)]);
+                                let (right_reg, right_ident) = (ctx.reserve_reg()?, {
+                                    let clobber = builder.gen_clobber_str(15);
+                                    builder.intern(format!("___bin-op-literal-{}", clobber))
+                                });
 
-                                    // Note: If the value was already loaded, we probably don't want to drop it yet
+                                ctx.inst_cache(right_reg, right.val.into(), right_ident)?
+                                    .inst_add(left_reg, right_reg)
+                                    .free_reg(right_reg)
+                                    .free_reg(left_reg);
 
-                                    // If the value was magically loaded in fault-tolerant mode with a fault,
-                                    // drop it from the registers
-                                    if self.options.fault_tolerant && faulted {
-                                        self.add_to_current(&[Instruction::DropReg(reg_addr)]);
-
-                                        self.current_scope.registers[*reg_addr as usize] = None;
-                                    }
-
-                                // If the value is not currently loaded, load, print, and drop it from the registers
-                                } else {
-                                    let reg_addr = self.reserve_reg(Some(var_id), None)?;
-
-                                    self.add_to_current(&[
-                                        // Instruction::Syscall(reg_addr),
-                                        Instruction::DropReg(reg_addr),
-                                    ]);
-
-                                    self.current_scope.registers[*reg_addr as usize] = None;
-                                }
-
-                                // Drop the null value from the registers if a fault occurred
-                                if self.options.fault_tolerant && faulted {
-                                    self.add_to_current(&[Instruction::Drop(
-                                        if let Location::Gc(loc) = var_id {
-                                            loc
-                                        } else {
-                                            unimplemented!()
-                                        },
-                                    )]);
-                                }
+                                let output = ctx.reserve_reg()?;
+                                ctx.inst_drop_reg(right_reg)
+                                    .inst_drop(right_ident)?
+                                    .inst_op_to_reg(output);
                             }
-                        }
-                    }
+                            _ => unimplemented!(),
+                        },
+                        _ => unimplemented!(),
+                    },
 
-                    // Print values
-                    Builtin::Print(params) => {
-                        for param in params {
-                            match param {
+                    // Compiler builtin functions
+                    FuncExpr::Builtin(builtin) => match builtin {
+                        // GC Collection cycle
+                        Builtin::Collect => {
+                            ctx.inst_collect();
+                        }
+
+                        // Halt execution
+                        Builtin::Halt => {
+                            ctx.inst_halt();
+                        }
+
+                        Builtin::SyscallExit(_exit_code) => {
+                            unimplemented!("Syscalls have not been implemented");
+
+                            #[allow(unreachable_code)]
+                            match _exit_code {
                                 // For literals fed into the print function, load them, print them, and drop them
                                 IdentLiteral::Literal(literal) => {
-                                    let (val, reg_addr) =
-                                        (literal.val.into(), self.reserve_reg(None, None)?);
+                                    let (val, gc_id) = (literal.val.into(), self.get_next_gc_id());
 
-                                    // Literals can just be moved into a register
+                                    let reg_addr =
+                                        self.reserve_reg(Some(Location::Gc(gc_id)), None)?;
+
                                     self.add_to_current(&[
-                                        Instruction::Load(val, reg_addr),
+                                        Instruction::Cache(gc_id, val, reg_addr),
                                         Instruction::Print(reg_addr),
                                         Instruction::DropReg(reg_addr),
+                                        Instruction::Drop(gc_id),
                                     ]);
 
                                     self.current_scope.registers[*reg_addr as usize] = None;
@@ -610,11 +370,7 @@ impl<'a> Interpreter<'a> {
                                             let gc_id = self.get_next_gc_id();
                                             let addr = self.reserve_reg(None, Some(gc_id))?;
 
-                                            self.add_to_current(&[Instruction::Cache(
-                                                gc_id,
-                                                Value::None,
-                                                addr,
-                                            )]);
+                                            ctx.inst_load(addr, Value::None);
 
                                             (Location::Gc(gc_id), Type::Void, true)
 
@@ -664,7 +420,7 @@ impl<'a> Interpreter<'a> {
                                         let reg_addr = self.reserve_reg(Some(var_id), None)?;
 
                                         self.add_to_current(&[
-                                            Instruction::Print(reg_addr),
+                                            // Instruction::Syscall(reg_addr),
                                             Instruction::DropReg(reg_addr),
                                         ]);
 
@@ -684,36 +440,91 @@ impl<'a> Interpreter<'a> {
                                 }
                             }
                         }
-                    }
-                },
 
-                // FuncExpr::Assign(assign) => {
-                //     // pub struct Assign<'a> {
-                //     //     pub name: Ident<'a>,
-                //     //     pub val: IdentLiteral<'a>,
-                //     //     pub info: LocInfo,
-                //     // }
-                //
-                //     // variables: HashMap<String, (Location, Type<'a>)>,
-                //
-                //     let var = if let Some(var) =
-                //         self.current_scope.variables.get(&*assign.name.name)
-                //     {
-                //         var
-                //     } else {
-                //         return Err(RuntimeError {
-                //             ty: RuntimeErrorTy::MissingValue,
-                //             message: "The variable being assigned to does not exist".to_string(),
-                //         });
-                //     };
-                //
-                //     let reg = self.reserve_reg(Some(var.0), None);
-                //
-                //     self.add_to_current(&[Instruction::Load( )]);
-                // }
-                FuncExpr::FuncCall(_) | FuncExpr::Assign(_) => unimplemented!(),
+                        // Print values
+                        Builtin::Print(params) => {
+                            for param in params {
+                                match param {
+                                    // For literals fed into the print function, load them, print them, and drop them
+                                    IdentLiteral::Literal(literal) => {
+                                        let reg = ctx.reserve_reg()?;
+
+                                        // Literals can just be moved into a register
+                                        ctx.inst_load(reg, literal.val.into())
+                                            .inst_print(reg)
+                                            .inst_drop_reg(reg)
+                                            .free_reg(reg);
+                                    }
+
+                                    // For existing variables, fetch them and print them
+                                    IdentLiteral::Variable(variable) => {
+                                        // Get the gc address, variable type, and fault status of fetching the requested variable
+                                        // If a fault occurs and fault_tolerant is true, then a null value will be used in place of
+                                        // the requested variable. If fault_tolerant is false, then a Runtime Error will be thrown
+
+                                        let ident = builder.intern(&*variable.name);
+                                        let (reg, faulted) =
+                                            if let Ok(reg) = ctx.get_cached_reg(ident) {
+                                                (reg, false)
+                                            } else if self.options.fault_tolerant {
+                                                let reg = ctx.reserve_reg()?;
+                                                ctx.inst_load(reg, Value::None);
+
+                                                (reg, true)
+                                            } else {
+                                                return Err(RuntimeError {
+                                                    ty: RuntimeErrorTy::NullVar,
+                                                    message: format!(
+                                                        "The variable {:?} does not exist",
+                                                        &*variable.name
+                                                    ),
+                                                });
+                                            };
+
+                                        ctx.inst_print(reg);
+
+                                        if faulted {
+                                            ctx.free_reg(reg);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+
+                    // FuncExpr::Assign(assign) => {
+                    //     // pub struct Assign<'a> {
+                    //     //     pub name: Ident<'a>,
+                    //     //     pub val: IdentLiteral<'a>,
+                    //     //     pub info: LocInfo,
+                    //     // }
+                    //
+                    //     // variables: HashMap<String, (Location, Type<'a>)>,
+                    //
+                    //     let var = if let Some(var) =
+                    //         self.current_scope.variables.get(&*assign.name.name)
+                    //     {
+                    //         var
+                    //     } else {
+                    //         return Err(RuntimeError {
+                    //             ty: RuntimeErrorTy::MissingValue,
+                    //             message: "The variable being assigned to does not exist".to_string(),
+                    //         });
+                    //     };
+                    //
+                    //     let reg = self.reserve_reg(Some(var.0), None);
+                    //
+                    //     self.add_to_current(&[Instruction::Load( )]);
+                    // }
+                    FuncExpr::FuncCall(_) | FuncExpr::Assign(_) => unimplemented!(),
+                }
             }
-        }
+
+            Ok(())
+        })?;
+
+        std::mem::swap(&mut builder, &mut self.builder);
+        drop(builder);
 
         // Enter a new scope for the next function
         self.enter_scope();

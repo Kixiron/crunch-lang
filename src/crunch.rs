@@ -74,12 +74,17 @@ impl Crunch {
 
         match parser.parse() {
             Ok(ast) => match Interpreter::new(ast.0.clone(), &options).interpret() {
-                Ok((main, funcs)) => Self::from((main, funcs, options)).execute(),
+                Ok((main, funcs)) => {
+                    info!("Executing Crunch Program");
+                    Self::from((main, funcs, options)).execute()
+                }
                 Err(err) => err.emit(),
             },
 
             // Emit parsing errors
             Err(err) => {
+                error!("Error Parsing Crunch Source File");
+
                 let writer = codespan_reporting::term::termcolor::StandardStream::stderr(
                     codespan_reporting::term::termcolor::ColorChoice::Auto,
                 );
