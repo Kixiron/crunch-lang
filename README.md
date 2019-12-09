@@ -1,5 +1,16 @@
 # Crunch
 
+## Overarching TODOs
+
+- [ ] Finish Parser
+- [ ] Finish Interpreter
+- [ ] FFI
+- [ ] WASM Backend
+- [ ] Tooling
+- [ ] Testing
+- [ ] CLI flow (Codecov, Clippy, Rustfmt, Windows & Linux Testing)
+- [ ] [Reduce Dependencies](#dependencies-overview)
+
 ## Checklist
 -----
 
@@ -200,9 +211,35 @@ Bit Escape Codes: `\b{00000000}`
 `<expr -> bool> ? <ret> : <ret>`  
 `::: Doc Comments`  
 
-### CLI Options
+## CLI Options
 
 `--burn-gc` Preforms a GC collect at every opportunity  
 `--debug-log` Activates verbose logging  
 `--fault-tolerant` Allows minor errors to occur without triggering program shutdown  
 `--output [ast|bytecode]` Outputs the produced ast and bytecode  
+
+## TODOs Waiting on Rust
+
+- [ ] Refractor `next()` and `peek()` in parser to use `#[track_caller]` when [Rust Issue #47809](https://github.com/rust-lang/rust/issues/47809) is merged
+- [ ] Remove lazy_static dependency once [Rust Issue #51910](https://github.com/rust-lang/rust/issues/51910) is merged
+
+## Dependencies Overview
+- log: Logging
+- simple_logger: Logger usage
+- color-backtrace: Readable backtraces
+- logos: Lexer generator
+- structopt: CLI interaction
+- codespan: Parser error construction
+- codespan_reporting: Parser error reporting
+- string-interner: String Interning
+- rand: Random number generation
+- winapi: Windows system interaction
+- libc: Unix system interaction
+- array_init: Initializing arrays with non-copy types, one usage
+- lazy_static: Only used for the syscall table until [Rust Issue #51910](https://github.com/rust-lang/rust/issues/51910) is merged
+- derive_more: Sugar, needs to be removed
+- shrinkwraprs: Sugar, needs to be removed
+- human-panic: Need to write own panic handler, because panics are an ICE
+
+## Dev Dependencies Overview
+- criterion: Benchmarking

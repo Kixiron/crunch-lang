@@ -1,7 +1,6 @@
 use derive_more::{
     Add, AddAssign, Constructor, Display, From, Into, Mul, MulAssign, Sub, SubAssign,
 };
-use serde::{Deserialize, Serialize};
 use shrinkwraprs::Shrinkwrap;
 
 // TODO: Are these types really needed?
@@ -21,8 +20,6 @@ use shrinkwraprs::Shrinkwrap;
     Display,
     From,
     Into,
-    Deserialize,
-    Serialize,
     Shrinkwrap,
     SubAssign,
     Sub,
@@ -44,8 +41,6 @@ pub struct Index(pub u32);
     Display,
     From,
     Into,
-    Deserialize,
-    Serialize,
     Shrinkwrap,
     SubAssign,
     Sub,
@@ -60,7 +55,7 @@ impl std::fmt::Debug for Register {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, From, Into, Deserialize, Serialize, Shrinkwrap)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, From, Into, Shrinkwrap)]
 pub struct Bytecode<'a>(&'a [u8]);
 
 impl<'a> Bytecode<'a> {

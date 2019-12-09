@@ -334,7 +334,7 @@ impl Instruction {
             }
             Instruction::Syscall(offset, output, param_1, param_2, param_3, param_4, param_5) => {
                 let p = [param_1, param_2, param_3, param_4, param_5];
-                let func = (*super::syscall::SYSCALL_TABLE)[*offset as usize];
+                let func = super::syscall::SYSCALL_TABLE[*offset as usize];
                 let func: unsafe extern "C" fn(usize, usize, usize, usize, usize) -> usize =
                     unsafe { std::mem::transmute(func) };
 
