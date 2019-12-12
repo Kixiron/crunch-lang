@@ -1,8 +1,35 @@
 mod decode;
 mod encode;
 
-pub use decode::decode_program;
-pub use encode::encode_program;
+pub use decode::Decoder;
+pub use encode::Encoder;
+
+// Bytecode Format
+//
+// ====    Meta Section     ====
+//
+// >    Number of Functions    <
+// Number of Functions: u32
+//
+// >      Encoded Strings      <
+// Number of Strings: u32
+// Strings: [
+//      String Length: u32,
+//      String Bytes: [u8; String Length],
+// ] * Number of Strings
+//
+// >       Encoded Values      <
+// Number of Values: u32
+// Values: [u8; VALUE_LENGTH] * Number of Values
+//
+// ==== Instruction Section ====
+//
+// >        Functions          <
+// Note: The number of functions is already known
+// Functions: [
+//      Number of Instructions: u32,
+//      Instructions: [u8; INSTRUCTION_LENGTH] * Number of Instructions
+// ] * Number of Functions
 
 /// The length of an encoded instruction, in bytes
 pub const INSTRUCTION_LENGTH: usize = 8;
@@ -25,7 +52,7 @@ pub fn disassemble(bytes: &[u8]) -> String {
     use std::{collections::HashMap, fmt::Write};
 
     let functions = {
-        let (main, functions) = decode_program(bytes).unwrap();
+        let (main, functions) = Decoder::new(bytes).decode().unwrap();
         let mut funcs = vec![main];
         funcs.extend_from_slice(&functions);
         funcs
@@ -208,8 +235,13 @@ mod tests {
             Vec::new(),
         );
 
-        let encoded_program = encode_program(instructions.clone(), functions.clone());
-        let decoded_program = decode_program(&encoded_program).unwrap();
+        let encoded_program = Encoder::new({
+            let mut func = functions.clone();
+            func.insert(0, instructions.clone());
+            func
+        })
+        .encode();
+        let decoded_program = Decoder::new(&encoded_program).decode().unwrap();
 
         let mut file = std::fs::File::create("./examples/hello_world.crunched").unwrap();
         file.write_all(&encoded_program).unwrap();

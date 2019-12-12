@@ -5,269 +5,229 @@ use std::{collections::VecDeque, convert::TryInto, mem::size_of};
 
 // TODO: Document & Test all functions
 
-pub fn decode_program(program: &[u8]) -> Result<(Vec<Instruction>, Vec<Vec<Instruction>>)> {
-    let (function_strings, main_strings, program) = decode_strings(program)?;
+macro_rules! take {
+    ($self:tt, $ty:tt) => {{
+        let int = $ty::from_be_bytes(
+            $self.bytes[$self.index..$self.index + size_of::<$ty>()]
+                .try_into()
+                .unwrap_or_else(|_| unreachable!()),
+        );
 
-    let (mut function_values, program) = decode_values(program, function_strings)?;
-    let (mut main_values, program) = decode_values(program, main_strings)?;
+        $self.index += size_of::<$ty>();
 
-    let number_functions = u32::from_be_bytes(
-        program[0..size_of::<u32>()]
-            .try_into()
-            .unwrap_or_else(|_| unreachable!()),
-    );
-    let mut functions = Vec::with_capacity(number_functions as usize);
-
-    let mut program = &program[size_of::<u32>()..];
-
-    for _ in 0..number_functions {
-        let (function, prog) = decode_function(program, &mut function_values)?;
-        functions.push(function);
-        program = prog;
-    }
-
-    let (main, _program) = decode_function(program, &mut main_values)?;
-
-    Ok((main, functions))
+        int
+    }};
 }
 
-fn decode_function<'a>(
-    program: &'a [u8],
-    values: &mut VecDeque<Value>,
-) -> Result<(Vec<Instruction>, &'a [u8])> {
-    let mut index = 0;
+#[derive(Debug, Clone)]
+struct FunctionMeta {
+    values: VecDeque<Value>,
+}
 
-    let number_instructions = u32::from_be_bytes(
-        program[index..index + size_of::<u32>()]
-            .try_into()
-            .unwrap_or_else(|_| unreachable!()),
-    );
-    index += size_of::<u32>();
+#[derive(Debug, Clone)]
+pub struct Decoder<'a> {
+    bytes: &'a [u8],
+    index: usize,
+    functions: Vec<Vec<Instruction>>,
+    function_meta: VecDeque<FunctionMeta>,
+    number_functions: usize,
+}
 
-    let mut instructions = Vec::with_capacity(number_instructions as usize);
+impl<'a> Decoder<'a> {
+    pub fn new(bytes: &'a [u8]) -> Self {
+        Self {
+            bytes,
+            index: 0,
+            functions: Vec::new(),
+            function_meta: VecDeque::new(),
+            number_functions: 0,
+        }
+    }
 
-    for _ in 0..number_instructions {
-        let bytes: [u8; INSTRUCTION_LENGTH] = program[index..index + INSTRUCTION_LENGTH]
-            .try_into()
-            .unwrap_or_else(|_| unreachable!());
+    pub fn decode(mut self) -> Result<(Vec<Instruction>, Vec<Vec<Instruction>>)> {
+        self.get_number_functions();
+        self.fill_meta()?;
+        self.fill_functions()?;
 
-        let value = if bytes[0] == 0x01 || bytes[0] == 0x00 {
-            Some(match values.pop_front() {
-                Some(value) => value,
-                None => {
-                    return Err(RuntimeError {
-                        ty: RuntimeErrorTy::MissingString,
-                        message: "Not enough strings were encoded".to_string(),
-                    });
-                }
-            })
-        } else {
-            None
+        dbg!(&self.functions);
+
+        Ok((self.functions.remove(0), self.functions))
+    }
+
+    fn fill_functions(&mut self) -> Result<()> {
+        let mut functions = Vec::with_capacity(self.number_functions);
+        for _ in 0..self.number_functions {
+            functions.push(self.decode_function()?);
+        }
+        self.functions = functions;
+
+        Ok(())
+    }
+
+    fn get_number_functions(&mut self) {
+        self.number_functions = take!(self, u32) as usize;
+    }
+
+    fn decode_function(&mut self) -> Result<Vec<Instruction>> {
+        let function_len = take!(self, u32) as usize;
+
+        let mut instructions = Vec::with_capacity(function_len);
+        let mut meta = &mut self
+            .function_meta
+            .pop_front()
+            .expect("Expected a FunctionMeta to decode a function");
+
+        for _ in 0..function_len {
+            instructions.push(self.decode_instruction(&mut meta)?);
+        }
+
+        Ok(instructions)
+    }
+
+    fn decode_instruction(&mut self, meta: &mut FunctionMeta) -> Result<Instruction> {
+        macro_rules! take_from {
+            ($self:tt, $offset:tt, $ty:tt) => {
+                $ty::from_be_bytes(
+                    $self.bytes[$self.index + $offset..$self.index + $offset + size_of::<$ty>()]
+                        .try_into()
+                        .unwrap_or_else(|_| unreachable!()),
+                )
+            };
+        }
+
+        let instruction = match self.bytes[self.index] {
+            0x00 => Instruction::NoOp,
+            0x01 => Instruction::Load(
+                match meta.values.pop_front() {
+                    Some(value) => value,
+                    None => {
+                        return Err(RuntimeError {
+                            ty: RuntimeErrorTy::MissingValue,
+                            message: "Not enough values were encoded".to_string(),
+                        });
+                    }
+                },
+                self.bytes[1].into(),
+            ),
+            0x02 => Instruction::Cache(
+                take_from!(self, 1, u32),
+                match meta.values.pop_front() {
+                    Some(value) => value,
+                    None => {
+                        return Err(RuntimeError {
+                            ty: RuntimeErrorTy::MissingValue,
+                            message: "Not enough values were encoded".to_string(),
+                        });
+                    }
+                },
+                self.bytes[1].into(),
+            ),
+            0x03 => Instruction::CompToReg(self.bytes[1].into()),
+            0x04 => Instruction::OpToReg(self.bytes[1].into()),
+            0x05 => Instruction::DropReg(self.bytes[1].into()),
+            0x06 => Instruction::Drop(take_from!(self, 1, u32)),
+
+            0x07 => Instruction::Add(self.bytes[1].into(), self.bytes[2].into()),
+            0x08 => Instruction::Sub(self.bytes[1].into(), self.bytes[2].into()),
+            0x09 => Instruction::Mult(self.bytes[1].into(), self.bytes[2].into()),
+            0x0A => Instruction::Div(self.bytes[1].into(), self.bytes[2].into()),
+
+            0x0B => Instruction::Print(self.bytes[1].into()),
+
+            0x0C => Instruction::Jump(take_from!(self, 1, i32)),
+            0x0D => Instruction::JumpComp(take_from!(self, 1, i32)),
+
+            0x0E => Instruction::And(self.bytes[1].into(), self.bytes[2].into()),
+            0x0F => Instruction::Or(self.bytes[1].into(), self.bytes[2].into()),
+            0x10 => Instruction::Xor(self.bytes[1].into(), self.bytes[2].into()),
+            0x11 => Instruction::Not(self.bytes[1].into()),
+
+            0x12 => Instruction::Eq(self.bytes[1].into(), self.bytes[2].into()),
+            0x13 => Instruction::NotEq(self.bytes[1].into(), self.bytes[2].into()),
+            0x14 => Instruction::GreaterThan(self.bytes[1].into(), self.bytes[2].into()),
+            0x15 => Instruction::LessThan(self.bytes[1].into(), self.bytes[2].into()),
+
+            0x16 => Instruction::Return,
+            0x17 => Instruction::Halt,
+
+            0x18 => Instruction::Save(
+                take_from!(self, 1, u32),
+                self.bytes[size_of::<u32>() + 2].into(),
+            ),
+            0x19 => Instruction::Collect,
+            0x1A => Instruction::Syscall(
+                self.bytes[1],
+                self.bytes[2].into(),
+                self.bytes[3].into(),
+                self.bytes[4].into(),
+                self.bytes[5].into(),
+                self.bytes[6].into(),
+                self.bytes[7].into(),
+            ),
+
+            _ => Instruction::Illegal,
         };
 
-        instructions.push(decode_instruction(bytes, value)?);
+        self.index += INSTRUCTION_LENGTH;
 
-        index += INSTRUCTION_LENGTH;
+        Ok(instruction)
     }
 
-    Ok((instructions, &program[index..]))
-}
+    fn fill_meta(&mut self) -> Result<()> {
+        let mut meta = VecDeque::with_capacity(self.number_functions);
+        for _ in 0..self.number_functions {
+            let strings = self.take_strings()?;
+            let values = self.take_values(strings)?;
 
-fn decode_values(
-    program: &[u8],
-    mut strings: VecDeque<String>,
-) -> Result<(VecDeque<Value>, &[u8])> {
-    let mut index = 0;
+            meta.push_back(FunctionMeta { values });
+        }
 
-    let number_values = u32::from_be_bytes(
-        program[index..index + size_of::<u32>()]
-            .try_into()
-            .unwrap_or_else(|_| unreachable!()),
-    );
-    index += size_of::<u32>();
+        self.function_meta = meta;
 
-    let mut values = VecDeque::with_capacity(number_values as usize);
+        Ok(())
+    }
 
-    if number_values != 0 {
+    fn take_values(&mut self, mut strings: VecDeque<String>) -> Result<VecDeque<Value>> {
+        let number_values = take!(self, u32) as usize;
+
+        let mut values = VecDeque::with_capacity(number_values);
         for _ in 0..number_values {
-            let bytes = program[index..index + VALUE_LENGTH]
+            let bytes = self.bytes[self.index..self.index + VALUE_LENGTH]
                 .try_into()
                 .unwrap_or_else(|_| unreachable!());
 
+            // TODO: Handle this error and make it a RuntimeError
             let value = Value::from_bytes(bytes, &mut strings).unwrap_or_else(|_| unreachable!());
 
             values.push_back(value);
 
-            index += VALUE_LENGTH;
+            self.index += VALUE_LENGTH;
         }
+
+        Ok(values)
     }
 
-    Ok((values, &program[index..]))
-}
+    fn take_strings(&mut self) -> Result<VecDeque<String>> {
+        let number_strings = take!(self, u32) as usize;
 
-fn decode_strings(program: &[u8]) -> Result<(VecDeque<String>, VecDeque<String>, &[u8])> {
-    let mut index = 0;
+        let mut strings = VecDeque::with_capacity(number_strings);
+        for _ in 0..number_strings {
+            let len = take!(self, u32) as usize;
 
-    let number_function_strings = u32::from_be_bytes(
-        program[index..index + size_of::<u32>()]
-            .try_into()
-            .unwrap_or_else(|_| unreachable!()),
-    );
-    index += size_of::<u32>();
-
-    let mut function_strings = VecDeque::with_capacity(number_function_strings as usize);
-
-    for _ in 0..number_function_strings {
-        let string_len = u32::from_be_bytes(
-            program[index..index + size_of::<u32>()]
-                .try_into()
-                .unwrap_or_else(|_| unreachable!()),
-        );
-        index += size_of::<u32>();
-
-        let string = match String::from_utf8(program[index..index + string_len as usize].to_vec()) {
-            Ok(string) => string,
-            Err(_) => {
-                return Err(RuntimeError {
-                    ty: RuntimeErrorTy::InvalidString,
-                    message: "Incorrectly encoded string".to_string(),
-                });
-            }
-        };
-
-        function_strings.push_back(string);
-    }
-
-    let number_main_strings = u32::from_be_bytes(
-        program[index..index + size_of::<u32>()]
-            .try_into()
-            .unwrap_or_else(|_| unreachable!()),
-    );
-    index += size_of::<u32>();
-
-    let mut main_strings = VecDeque::with_capacity(number_main_strings as usize);
-
-    for _ in 0..number_main_strings {
-        let string_len = u32::from_be_bytes(
-            program[index..index + size_of::<u32>()]
-                .try_into()
-                .unwrap_or_else(|_| unreachable!()),
-        );
-        index += size_of::<u32>();
-
-        let string = match String::from_utf8(program[index..index + string_len as usize].to_vec()) {
-            Ok(string) => string,
-            Err(_) => {
-                return Err(RuntimeError {
-                    ty: RuntimeErrorTy::InvalidString,
-                    message: "Incorrectly encoded string".to_string(),
-                });
-            }
-        };
-
-        main_strings.push_back(string);
-    }
-
-    Ok((function_strings, main_strings, &program[index..]))
-}
-
-fn decode_instruction(
-    instruction: [u8; INSTRUCTION_LENGTH],
-    value: Option<Value>,
-) -> Result<Instruction> {
-    let instruction = match instruction[0] {
-        // TODO: Shift all the values up by one, having zero be important is probably bad
-        0x00 => Instruction::NoOp,
-        0x01 => Instruction::Load(
-            match value {
-                Some(value) => value,
-                None => {
+            let string = match String::from_utf8(self.bytes[self.index..self.index + len].to_vec())
+            {
+                Ok(string) => string,
+                Err(_) => {
                     return Err(RuntimeError {
-                        ty: RuntimeErrorTy::MissingValue,
-                        message: "Not enough values were encoded".to_string(),
+                        ty: RuntimeErrorTy::InvalidString,
+                        message: "Incorrectly encoded string".to_string(),
                     });
                 }
-            },
-            instruction[size_of::<u32>() + 2].into(),
-        ),
-        0x02 => Instruction::Cache(
-            u32::from_be_bytes(
-                instruction[1..size_of::<u32>() + 1]
-                    .try_into()
-                    .unwrap_or_else(|_| unreachable!()),
-            ),
-            match value {
-                Some(value) => value,
-                None => {
-                    return Err(RuntimeError {
-                        ty: RuntimeErrorTy::MissingValue,
-                        message: "Not enough values were encoded".to_string(),
-                    });
-                }
-            },
-            instruction[size_of::<u32>() + 2].into(),
-        ),
-        0x03 => Instruction::CompToReg(instruction[1].into()),
-        0x04 => Instruction::OpToReg(instruction[1].into()),
-        0x05 => Instruction::DropReg(instruction[1].into()),
-        0x06 => Instruction::Drop(u32::from_be_bytes(
-            instruction[1..size_of::<u32>() + 1]
-                .try_into()
-                .unwrap_or_else(|_| unreachable!()),
-        )),
+            };
 
-        0x07 => Instruction::Add(instruction[1].into(), instruction[2].into()),
-        0x08 => Instruction::Sub(instruction[1].into(), instruction[2].into()),
-        0x09 => Instruction::Mult(instruction[1].into(), instruction[2].into()),
-        0x0A => Instruction::Div(instruction[1].into(), instruction[2].into()),
+            strings.push_back(string);
+        }
 
-        0x0B => Instruction::Print(instruction[1].into()),
-
-        0x0C => Instruction::Jump(i32::from_be_bytes(
-            instruction[1..size_of::<i32>() + 1]
-                .try_into()
-                .unwrap_or_else(|_| unreachable!()),
-        )),
-        0x0D => Instruction::JumpComp(i32::from_be_bytes(
-            instruction[1..size_of::<i32>() + 1]
-                .try_into()
-                .unwrap_or_else(|_| unreachable!()),
-        )),
-
-        0x0E => Instruction::And(instruction[1].into(), instruction[2].into()),
-        0x0F => Instruction::Or(instruction[1].into(), instruction[2].into()),
-        0x10 => Instruction::Xor(instruction[1].into(), instruction[2].into()),
-        0x11 => Instruction::Not(instruction[1].into()),
-
-        0x12 => Instruction::Eq(instruction[1].into(), instruction[2].into()),
-        0x13 => Instruction::NotEq(instruction[1].into(), instruction[2].into()),
-        0x14 => Instruction::GreaterThan(instruction[1].into(), instruction[2].into()),
-        0x15 => Instruction::LessThan(instruction[1].into(), instruction[2].into()),
-
-        0x16 => Instruction::Return,
-        0x17 => Instruction::Halt,
-
-        0x18 => Instruction::Save(
-            u32::from_be_bytes(
-                instruction[1..size_of::<u32>() + 1]
-                    .try_into()
-                    .unwrap_or_else(|_| unreachable!()),
-            ),
-            instruction[size_of::<u32>() + 2].into(),
-        ),
-        0x19 => Instruction::Collect,
-        0x1A => Instruction::Syscall(
-            instruction[1],
-            instruction[2].into(),
-            instruction[3].into(),
-            instruction[4].into(),
-            instruction[5].into(),
-            instruction[6].into(),
-            instruction[7].into(),
-        ),
-
-        _ => Instruction::Illegal,
-    };
-
-    Ok(instruction)
+        Ok(strings)
+    }
 }

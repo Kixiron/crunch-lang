@@ -1241,8 +1241,12 @@ mod tests {
                         panic!("Runtime error while compiling");
                     }
                 };
-                let encoded =
-                    crate::bytecode::encode_program(bytecode.0.clone(), bytecode.1.clone());
+                let encoded = crate::bytecode::Encoder::new({
+                    let mut funcs = bytecode.1.clone();
+                    funcs.insert(0, bytecode.0.clone());
+                    funcs
+                })
+                .encode();
 
                 println!(
                     "# Source Code  \n\n\

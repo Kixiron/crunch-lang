@@ -146,6 +146,7 @@ macro_rules! unreachable {
         #[cfg(debug_assertions)]
         std::unreachable!();
 
+        #[allow(unused_unsafe)]
         #[cfg(not(debug_assertions))]
         unsafe { std::hint::unreachable_unchecked(); }
     }};
@@ -154,6 +155,7 @@ macro_rules! unreachable {
         #[cfg(debug_assertions)]
         std::unreachable!($($arg)*);
 
+        #[allow(unused_unsafe)]
         #[cfg(not(debug_assertions))]
         unsafe { std::hint::unreachable_unchecked(); }
     }};
@@ -183,6 +185,7 @@ mod gc;
 mod instruction;
 /// The Interpreter
 mod interpreter;
+mod native_lib;
 /// Helper types
 mod newtypes;
 /// Front-end language parsing

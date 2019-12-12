@@ -1,0 +1,74 @@
+rust: stable
+language: rust
+cache: cargo # Cache cargo for quicker builds
+
+before-script:
+  - rustup component add clippy
+  - rustup component add rustfmt
+  - rustup component add llvm-tools-preview
+  - cargo install cargo-binutils # Install binutils for stripping binaries
+
+script:
+  - rustc -Vv
+  - rustup -V
+  - cargo -V
+  - cargo test --all-targets --all-features -v
+  - cargo clippy --all-targets --all-features -- -D warnings -v
+  - cargo fmt --all -- --check -v
+  - cargo build --release -v
+
+matrix:
+  include:
+    # Linux 64bit
+    - os: linux
+      env: TARGET=x86_64-unknown-linux-musl
+
+    # Linux 32bit
+    - os: linux
+      env: TARGET=i686-unknown-linux-musl
+
+    # OSX 64bit
+    - os: osx
+      env: TARGET=x86_64-apple-darwin
+
+    # Windows 64bit
+    - os: windows
+      env: TARGET=x86_64-pc-windows-msvc
+
+    # Windows 32bit
+    - os: windows
+      env: TARGET=i686-pc-windows-msvc
+
+install:
+  - rustup target add $TARGET
+
+before_deploy:
+  - |
+    (
+    cargo build --release --target $TARGET    
+    if [ "$TRAVIS_OS_NAME" = 'windows' ]; then
+      cp target/${TARGET}/release/crunch.exe crunch-${TRAVIS_TAG}-${TARGET}.exe
+      cargo strip crunch-${TRAVIS_TAG}-${TARGET}.exe -- --strip-all
+    else
+      cp target/${TARGET}/release/crunch crunch-${TRAVIS_TAG}-${TARGET}
+      cargo strip crunch-${TRAVIS_TAG}-${TARGET} -- --strip-all
+    fi
+    )
+
+deploy:
+  api_key:
+    secure: "GITHUB OAUTH TOKEN"
+
+  file: crunch-${TRAVIS_TAG}-${TARGET}*
+  file_glob: true
+
+  on:
+    tags: true
+
+  provider: releases
+  skip_cleanup: true
+
+branches:
+  only:
+    - master
+    - /^v\d+\.\d+(\.\d+)?(-\S*)?$/

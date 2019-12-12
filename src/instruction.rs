@@ -657,7 +657,7 @@ mod tests {
 
             assert_runtime_eq!(
                 vm.prev_op,
-                RuntimeValue::Register(RegisterValue::Int(10 + 10)),
+                RuntimeValue::Register(RegisterValue::Int(50 + 10)),
                 vm
             );
         }
@@ -669,7 +669,7 @@ mod tests {
 
             assert_runtime_eq!(
                 vm.prev_op,
-                RuntimeValue::Register(RegisterValue::Int(10 - 10)),
+                RuntimeValue::Register(RegisterValue::Int(50 - 10)),
                 vm
             );
         }
@@ -681,7 +681,7 @@ mod tests {
 
             assert_runtime_eq!(
                 vm.prev_op,
-                RuntimeValue::Register(RegisterValue::Int(10 * 10)),
+                RuntimeValue::Register(RegisterValue::Int(50 * 10)),
                 vm
             );
         }
@@ -693,7 +693,7 @@ mod tests {
 
             assert_runtime_eq!(
                 vm.prev_op,
-                RuntimeValue::Register(RegisterValue::Int(10 / 10)),
+                RuntimeValue::Register(RegisterValue::Int(50 / 10)),
                 vm
             );
         }

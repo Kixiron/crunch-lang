@@ -237,8 +237,6 @@ Bit Escape Codes: `\b{00000000}`
 - libc: Unix system interaction
 - array_init: Initializing arrays with non-copy types, one usage
 - lazy_static: Only used for the syscall table until [Rust Issue #51910](https://github.com/rust-lang/rust/issues/51910) is merged
-- derive_more: Sugar, needs to be removed
-- shrinkwraprs: Sugar, needs to be removed
 - human-panic: Need to write own panic handler, because panics are an ICE
 
 ## Dev Dependencies Overview

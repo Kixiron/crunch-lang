@@ -3,38 +3,9 @@ use crate::{
     instruction::Result,
     instruction::{RuntimeError, RuntimeErrorTy},
     parser::*,
-    Instruction, Options, Register, Value, NUMBER_REGISTERS,
+    Instruction, Options, Value,
 };
 use std::collections::HashMap;
-
-#[derive(Clone)]
-pub struct Scope<'a> {
-    pub variables: HashMap<String, (Location, Type<'a>)>,
-    pub registers: [Option<Location>; NUMBER_REGISTERS],
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub enum Location {
-    Register(Register, Option<u32>),
-    Gc(u32),
-}
-
-impl<'a> Scope<'a> {
-    pub fn new() -> Self {
-        Self {
-            variables: HashMap::new(),
-            registers: [None; NUMBER_REGISTERS],
-        }
-    }
-}
-
-impl<'a> std::fmt::Debug for Scope<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Scope")
-            .field("variables", &self.variables)
-            .finish()
-    }
-}
 
 #[derive(Debug, Copy, Clone)]
 pub struct InterpOptions {
@@ -52,8 +23,6 @@ impl From<&Options> for InterpOptions {
 #[derive(Debug, Clone)]
 pub struct Interpreter<'a> {
     pub ast: Vec<Node<'a>>,
-    pub scopes: Vec<Scope<'a>>,
-    pub current_scope: Scope<'a>,
     pub gc: u32,
     pub functions: HashMap<String, (Vec<Instruction>, Option<usize>)>,
     pub current_function: Vec<Instruction>,
@@ -66,8 +35,6 @@ impl<'a> Interpreter<'a> {
     pub fn new(ast: Vec<Node<'a>>, options: &Options) -> Self {
         Self {
             ast,
-            scopes: Vec::new(),
-            current_scope: Scope::new(),
             gc: 0,
             functions: HashMap::new(),
             current_function: Vec::new(),
@@ -107,35 +74,6 @@ impl<'a> Interpreter<'a> {
         trace!("Interp Output: {:?}", (&main_func, &functions));
 
         Ok((main_func, functions))
-    }
-
-    pub fn reserve_reg(
-        &mut self,
-        location: Option<Location>,
-        gc_id: Option<u32>,
-    ) -> Result<Register> {
-        if let Some(pos) = self
-            .current_scope
-            .registers
-            .iter()
-            .position(Option::is_none)
-        {
-            trace!("Found Available Register: {}", Register(pos as u8));
-
-            if let Some(location) = location {
-                self.current_scope.registers[pos] = Some(location);
-            } else {
-                self.current_scope.registers[pos] =
-                    Some(Location::Register((pos as u8).into(), gc_id))
-            }
-
-            Ok((pos as u8).into())
-        } else {
-            Err(RuntimeError {
-                ty: RuntimeErrorTy::CompilationError,
-                message: "Failed to fetch avaliable register".to_string(),
-            })
-        }
     }
 
     /*
@@ -340,103 +278,31 @@ impl<'a> Interpreter<'a> {
                             match _exit_code {
                                 // For literals fed into the print function, load them, print them, and drop them
                                 IdentLiteral::Literal(literal) => {
-                                    let (val, gc_id) = (literal.val.into(), self.get_next_gc_id());
+                                    let reg = ctx.reserve_reg()?;
 
-                                    let reg_addr =
-                                        self.reserve_reg(Some(Location::Gc(gc_id)), None)?;
-
-                                    self.add_to_current(&[
-                                        Instruction::Cache(gc_id, val, reg_addr),
-                                        Instruction::Print(reg_addr),
-                                        Instruction::DropReg(reg_addr),
-                                        Instruction::Drop(gc_id),
-                                    ]);
-
-                                    self.current_scope.registers[*reg_addr as usize] = None;
+                                    ctx.inst_load(reg, literal.val.into()).free_reg(reg);
                                 }
 
                                 // For existing variables, fetch them and print them
-                                IdentLiteral::Variable(ident) => {
-                                    // Get the gc address, variable type, and fault status of fetching the requested variable
-                                    // If a fault occurs and fault_tolerant is true, then a null value will be used in place of
-                                    // the requested variable. If fault_tolerant is false, then a Runtime Error will be thrown
-                                    let (var_id, _var_type, faulted) = if let Some(var) =
-                                        self.current_scope.variables.get(&*ident.name)
-                                    {
-                                        (var.0, var.1.clone(), false)
-                                    } else {
-                                        // If fault tolerant, a fault just occurred, so pretend it didn't
-                                        if self.options.fault_tolerant {
-                                            let gc_id = self.get_next_gc_id();
-                                            let addr = self.reserve_reg(None, Some(gc_id))?;
+                                IdentLiteral::Variable(variable) => {
+                                    let ident = builder.intern(&*variable.name);
+                                    let (_reg, _faulted) =
+                                        if let Ok(reg) = ctx.get_cached_reg(ident) {
+                                            (reg, false)
+                                        } else if self.options.fault_tolerant {
+                                            let reg = ctx.reserve_reg()?;
+                                            ctx.inst_load(reg, Value::None);
 
-                                            ctx.inst_load(addr, Value::None);
-
-                                            (Location::Gc(gc_id), Type::Void, true)
-
-                                        // If we aren't fault tolerant, scream
+                                            (reg, true)
                                         } else {
                                             return Err(RuntimeError {
                                                 ty: RuntimeErrorTy::NullVar,
                                                 message: format!(
                                                     "The variable {:?} does not exist",
-                                                    &*ident.name
+                                                    &*variable.name
                                                 ),
                                             });
-                                        }
-                                    };
-
-                                    // If the value is currently loaded into a register, print it directly
-                                    if let Some(reg_addr) =
-                                        self.current_scope.registers.iter().position(|reg| {
-                                            *reg == Some(var_id) || {
-                                                if let Some(Location::Register(_, loc)) = *reg {
-                                                    if let Location::Gc(__loc) = var_id {
-                                                        loc == Some(__loc)
-                                                    } else {
-                                                        false
-                                                    }
-                                                } else {
-                                                    false
-                                                }
-                                            }
-                                        })
-                                    {
-                                        let reg_addr = (reg_addr as u8).into();
-                                        self.add_to_current(&[Instruction::Print(reg_addr)]);
-
-                                        // Note: If the value was already loaded, we probably don't want to drop it yet
-
-                                        // If the value was magically loaded in fault-tolerant mode with a fault,
-                                        // drop it from the registers
-                                        if self.options.fault_tolerant && faulted {
-                                            self.add_to_current(&[Instruction::DropReg(reg_addr)]);
-
-                                            self.current_scope.registers[*reg_addr as usize] = None;
-                                        }
-
-                                    // If the value is not currently loaded, load, print, and drop it from the registers
-                                    } else {
-                                        let reg_addr = self.reserve_reg(Some(var_id), None)?;
-
-                                        self.add_to_current(&[
-                                            // Instruction::Syscall(reg_addr),
-                                            Instruction::DropReg(reg_addr),
-                                        ]);
-
-                                        self.current_scope.registers[*reg_addr as usize] = None;
-                                    }
-
-                                    // Drop the null value from the registers if a fault occurred
-                                    if self.options.fault_tolerant && faulted {
-                                        self.add_to_current(&[Instruction::Drop(
-                                            if let Location::Gc(loc) = var_id {
-                                                loc
-                                            } else {
-                                                unimplemented!()
-                                            },
-                                        )]);
-                                    }
+                                        };
                                 }
                             }
                         }
@@ -526,9 +392,6 @@ impl<'a> Interpreter<'a> {
         std::mem::swap(&mut builder, &mut self.builder);
         drop(builder);
 
-        // Enter a new scope for the next function
-        self.enter_scope();
-
         let index = match &*func.name.name {
             "main" => None,
             _ => Some(self.get_next_func_id()),
@@ -537,27 +400,8 @@ impl<'a> Interpreter<'a> {
         Ok((func.name.name.to_string(), index))
     }
 
-    fn add_to_current(&mut self, instructions: &[Instruction]) {
-        self.current_function.extend_from_slice(instructions);
-        trace!("Adding Instructions to function: {:?}", instructions);
-    }
-
-    pub fn get_next_gc_id(&mut self) -> u32 {
-        let id = self.gc;
-        trace!("Got GC ID: {}", id);
-        self.gc += 1;
-        id
-    }
-
     pub fn get_next_func_id(&mut self) -> usize {
         self.func_index += 1;
         self.func_index
-    }
-
-    /// Enters a new scope
-    fn enter_scope(&mut self) {
-        let mut new = Scope::new();
-        std::mem::swap(&mut new, &mut self.current_scope);
-        self.scopes.push(new);
     }
 }

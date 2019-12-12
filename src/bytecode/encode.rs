@@ -4,270 +4,250 @@ use std::mem::size_of;
 
 // TODO: Document & Test all functions
 
-pub fn encode_program(main: Vec<Instruction>, functions: Vec<Vec<Instruction>>) -> Vec<u8> {
-    // Get the functions to a byte format and extract their values
-    let (main_bytes, main_values) = encode_function(main);
-    let (function_bytes, function_values) = encode_functions(functions);
-
-    // Get the Values and Strings to a byte format
-    let (main_value_bytes, main_value_strings) = encode_values(main_values);
-    let (function_value_bytes, function_value_strings) = encode_values(function_values);
-
-    // Initialize a vec to contain all of the raw data, sized to contain it all
-    let mut output_vec = Vec::with_capacity(
-        main_bytes.len()
-            + main_value_bytes.len()
-            + main_value_strings.len()
-            + function_bytes.len()
-            + function_value_bytes.len()
-            + function_value_strings.len(),
-    );
-
-    // Just extends the consumer slice by all the victims
-    macro_rules! append {
-        ($consumer:tt < $($victim:tt,)*) => {{
-            $(
-                $consumer.extend_from_slice(&$victim);
-            )*
-        }};
-    }
-
-    append!(
-        output_vec < function_value_strings,
-        main_value_strings,
-        function_value_bytes,
-        main_value_bytes,
-        function_bytes,
-        main_bytes,
-    );
-
-    output_vec
+#[derive(Debug, Clone)]
+pub struct Encoder {
+    functions: Vec<Vec<Instruction>>,
+    bytes: Vec<u8>,
+    strings: Vec<u8>,
+    values: Vec<u8>,
+    num_functions: usize,
 }
 
-fn encode_functions(functions: Vec<Vec<Instruction>>) -> (Vec<u8>, Vec<Value>) {
-    // Create the output vector of bytes
-    let mut output_bytes =
-        Vec::with_capacity(size_of::<u32>() + (functions.len() * INSTRUCTION_LENGTH));
+impl Encoder {
+    pub fn new(functions: Vec<Vec<Instruction>>) -> Self {
+        let len = functions.iter().map(|f| f.len()).sum::<usize>() * INSTRUCTION_LENGTH;
+        let num_functions = functions.len();
 
-    // Create the output vector of values
-    let mut output_values = Vec::new();
-
-    // Add the number of functions to output_bytes
-    output_bytes.extend_from_slice(&(functions.len() as u32).to_be_bytes());
-
-    // For each function, encode all of its instructions and capture their values
-    for function in functions {
-        let (bytes, values) = encode_function(function);
-
-        output_bytes.extend_from_slice(&bytes);
-        output_values.extend_from_slice(&values);
-    }
-
-    (output_bytes, output_values)
-}
-
-fn encode_function(function: Vec<Instruction>) -> (Vec<u8>, Vec<Value>) {
-    // Create the output vector of bytes
-    let mut output_bytes =
-        Vec::with_capacity(size_of::<u32>() + (function.len() * INSTRUCTION_LENGTH));
-
-    // Add the length of the function to the output bytes
-    output_bytes.extend_from_slice(&(function.len() as u32).to_be_bytes());
-
-    // Create the output vector of values
-    let mut output_values = Vec::new();
-
-    // For each instruction, encode it and capture the Value (If any)
-    for instruction in function {
-        let (bytes, value) = encode_instruction(instruction);
-
-        output_bytes.extend_from_slice(&bytes);
-
-        if let Some(value) = value {
-            output_values.push(value);
+        Self {
+            functions,
+            bytes: Vec::with_capacity(len),
+            strings: Vec::new(),
+            values: Vec::new(),
+            num_functions,
         }
     }
 
-    (output_bytes, output_values)
-}
+    pub fn encode(mut self) -> Vec<u8> {
+        self.bytes
+            .extend_from_slice(&self.num_functions.to_be_bytes());
 
-fn encode_values(values: Vec<Value>) -> (Vec<u8>, Vec<u8>) {
-    let mut value_bytes = Vec::with_capacity(size_of::<u32>() + (values.len() * VALUE_LENGTH));
+        let (mut bytes, values) = self.encode_functions();
+        self.encode_values(values);
 
-    value_bytes.extend_from_slice(&(values.len() as u32).to_be_bytes());
+        self.bytes.append(&mut self.strings);
+        self.bytes.append(&mut self.values);
+        self.bytes.append(&mut bytes);
 
-    let mut value_strings = Vec::new();
-    let mut number_strings = 0;
-
-    for value in values {
-        let (bytes, string) = value.as_bytes();
-
-        value_bytes.extend_from_slice(&bytes);
-
-        if let Some(string) = string {
-            // Add the length of the string
-            value_strings.extend_from_slice(&(string.len() as u32).to_be_bytes());
-
-            // Add the string
-            value_strings.extend_from_slice(string);
-
-            // Increment the number of strings
-            number_strings += 1;
-        }
+        self.bytes
     }
 
-    // Add the number of strings contained to the front of the strings
-    let mut value_strings_raw = (number_strings as u32).to_be_bytes().as_ref().to_vec();
-    value_strings_raw.extend_from_slice(&value_strings);
+    fn encode_values(&mut self, orig_values: Vec<Value>) {
+        let mut values = Vec::with_capacity(size_of::<u32>() + (orig_values.len() * VALUE_LENGTH));
+        values.extend_from_slice(&(orig_values.len() as u32).to_be_bytes());
 
-    (value_bytes, value_strings_raw)
-}
+        let mut strings = Vec::new();
+        let mut len = 0;
 
-fn encode_instruction(instruction: Instruction) -> ([u8; INSTRUCTION_LENGTH], Option<Value>) {
-    let mut bytes = [0; INSTRUCTION_LENGTH];
-    let mut value = None;
+        for value in orig_values {
+            let (val_bytes, string) = value.as_bytes();
 
-    match instruction {
-        Instruction::NoOp => {
-            bytes[0] = 0x00;
-        }
-        Instruction::Load(val, reg) => {
-            bytes[0] = 0x01;
-            bytes[size_of::<u32>() + 2] = *reg;
-            value = Some(val);
-        }
-        Instruction::Cache(heap_loc, val, reg) => {
-            bytes[0] = 0x02;
-            bytes[1..size_of::<u32>() + 1].copy_from_slice(&heap_loc.to_be_bytes());
-            bytes[size_of::<u32>() + 2] = *reg;
-            value = Some(val);
-        }
-        Instruction::Save(heap_loc, reg) => {
-            bytes[0] = 0x18;
-            bytes[1..size_of::<u32>() + 1].copy_from_slice(&heap_loc.to_be_bytes());
-            bytes[size_of::<u32>() + 2] = *reg;
-        }
-        Instruction::CompToReg(reg) => {
-            bytes[0] = 0x03;
-            bytes[1] = *reg;
-        }
-        Instruction::OpToReg(reg) => {
-            bytes[0] = 0x04;
-            bytes[1] = *reg;
-        }
-        Instruction::DropReg(reg) => {
-            bytes[0] = 0x05;
-            bytes[1] = *reg;
-        }
-        Instruction::Drop(reg) => {
-            bytes[0] = 0x06;
-            bytes[1..size_of::<u32>() + 1].copy_from_slice(&reg.to_be_bytes());
+            values.extend_from_slice(&val_bytes);
+
+            if let Some(string) = string {
+                // Add the length of the string
+                strings.extend_from_slice(&(string.len() as u32).to_be_bytes());
+
+                // Add the string
+                strings.extend_from_slice(string);
+
+                // Increment the number of strings
+                len += 1;
+            }
         }
 
-        Instruction::Add(left, right) => {
-            bytes[0] = 0x07;
-            bytes[1] = *left;
-            bytes[2] = *right;
-        }
-        Instruction::Sub(left, right) => {
-            bytes[0] = 0x08;
-            bytes[1] = *left;
-            bytes[2] = *right;
-        }
-        Instruction::Mult(left, right) => {
-            bytes[0] = 0x09;
-            bytes[1] = *left;
-            bytes[2] = *right;
-        }
-        Instruction::Div(left, right) => {
-            bytes[0] = 0x0A;
-            bytes[1] = *left;
-            bytes[2] = *right;
-        }
+        // Add the number of strings contained to the front of the strings
+        let mut strings_raw = Vec::with_capacity(size_of::<u32>() + strings.len());
+        strings_raw.extend_from_slice(&(len as u32).to_be_bytes());
+        strings_raw.append(&mut strings);
 
-        Instruction::Print(reg) => {
-            bytes[0] = 0x0B;
-            bytes[1] = *reg;
-        }
-
-        Instruction::Jump(loc) => {
-            bytes[0] = 0x0C;
-            bytes[1..size_of::<i32>() + 1].copy_from_slice(&loc.to_be_bytes());
-        }
-        Instruction::JumpComp(loc) => {
-            bytes[0] = 0x0D;
-            bytes[1..size_of::<i32>() + 1].copy_from_slice(&loc.to_be_bytes());
-        }
-
-        Instruction::And(left, right) => {
-            bytes[0] = 0x0E;
-            bytes[1] = *left;
-            bytes[2] = *right;
-        }
-        Instruction::Or(left, right) => {
-            bytes[0] = 0x0F;
-            bytes[1] = *left;
-            bytes[2] = *right;
-        }
-        Instruction::Xor(left, right) => {
-            bytes[0] = 0x10;
-            bytes[1] = *left;
-            bytes[2] = *right;
-        }
-        Instruction::Not(reg) => {
-            bytes[0] = 0x11;
-            bytes[1] = *reg;
-        }
-
-        Instruction::Eq(left, right) => {
-            bytes[0] = 0x12;
-            bytes[1] = *left;
-            bytes[2] = *right;
-        }
-        Instruction::NotEq(left, right) => {
-            bytes[0] = 0x13;
-            bytes[1] = *left;
-            bytes[2] = *right;
-        }
-        Instruction::GreaterThan(left, right) => {
-            bytes[0] = 0x14;
-            bytes[1] = *left;
-            bytes[2] = *right;
-        }
-        Instruction::LessThan(left, right) => {
-            bytes[0] = 0x15;
-            bytes[1] = *left;
-            bytes[2] = *right;
-        }
-
-        Instruction::Collect => {
-            bytes[0] = 0x19;
-        }
-        Instruction::Return => {
-            bytes[0] = 0x16;
-        }
-        Instruction::Halt => {
-            bytes[0] = 0x17;
-        }
-        Instruction::Syscall(offset, output, p1, p2, p3, p4, p5) => {
-            bytes[0] = 0x1A;
-            bytes[1] = offset;
-            bytes[2] = *output;
-            bytes[3] = *p1;
-            bytes[4] = *p2;
-            bytes[5] = *p3;
-            bytes[6] = *p4;
-            bytes[7] = *p5;
-        }
-
-        Instruction::Illegal | Instruction::JumpPoint(_) => {
-            // TODO: Should this be allowed? What should an illegal instruction be legally encoded as?
-            error!("Tried to encode {:?}", instruction);
-            panic!(
-                "I mean, why are you *purposefully* making an Illegal Instruction? Just... Why?"
-            );
-        }
+        self.strings.append(&mut strings_raw);
+        self.values.append(&mut values);
     }
 
-    (bytes, value)
+    fn encode_functions(&mut self) -> (Vec<u8>, Vec<Value>) {
+        let mut output_bytes =
+            Vec::with_capacity(size_of::<u32>() + (self.num_functions * INSTRUCTION_LENGTH));
+
+        // Create the output vector of values
+        let mut output_values = Vec::new();
+
+        // For each function, encode all of its instructions and capture their values
+        let mut functions = Vec::new();
+        std::mem::swap(&mut functions, &mut self.functions);
+        for function in functions {
+            for instruction in function {
+                let (bytes, value) = self.encode_instruction(instruction);
+
+                output_bytes.extend_from_slice(&bytes);
+
+                if let Some(value) = value {
+                    output_values.push(value);
+                }
+            }
+        }
+
+        (output_bytes, output_values)
+    }
+
+    fn encode_instruction(
+        &self,
+        instruction: Instruction,
+    ) -> ([u8; INSTRUCTION_LENGTH], Option<Value>) {
+        let mut bytes = [0; INSTRUCTION_LENGTH];
+        let mut value = None;
+
+        match instruction {
+            Instruction::NoOp => {
+                bytes[0] = 0x00;
+            }
+            Instruction::Load(val, reg) => {
+                bytes[0] = 0x01;
+                bytes[size_of::<u32>() + 2] = *reg;
+                value = Some(val);
+            }
+            Instruction::Cache(heap_loc, val, reg) => {
+                bytes[0] = 0x02;
+                bytes[1..size_of::<u32>() + 1].copy_from_slice(&heap_loc.to_be_bytes());
+                bytes[size_of::<u32>() + 2] = *reg;
+                value = Some(val);
+            }
+            Instruction::Save(heap_loc, reg) => {
+                bytes[0] = 0x18;
+                bytes[1..size_of::<u32>() + 1].copy_from_slice(&heap_loc.to_be_bytes());
+                bytes[size_of::<u32>() + 2] = *reg;
+            }
+            Instruction::CompToReg(reg) => {
+                bytes[0] = 0x03;
+                bytes[1] = *reg;
+            }
+            Instruction::OpToReg(reg) => {
+                bytes[0] = 0x04;
+                bytes[1] = *reg;
+            }
+            Instruction::DropReg(reg) => {
+                bytes[0] = 0x05;
+                bytes[1] = *reg;
+            }
+            Instruction::Drop(reg) => {
+                bytes[0] = 0x06;
+                bytes[1..size_of::<u32>() + 1].copy_from_slice(&reg.to_be_bytes());
+            }
+
+            Instruction::Add(left, right) => {
+                bytes[0] = 0x07;
+                bytes[1] = *left;
+                bytes[2] = *right;
+            }
+            Instruction::Sub(left, right) => {
+                bytes[0] = 0x08;
+                bytes[1] = *left;
+                bytes[2] = *right;
+            }
+            Instruction::Mult(left, right) => {
+                bytes[0] = 0x09;
+                bytes[1] = *left;
+                bytes[2] = *right;
+            }
+            Instruction::Div(left, right) => {
+                bytes[0] = 0x0A;
+                bytes[1] = *left;
+                bytes[2] = *right;
+            }
+
+            Instruction::Print(reg) => {
+                bytes[0] = 0x0B;
+                bytes[1] = *reg;
+            }
+
+            Instruction::Jump(loc) => {
+                bytes[0] = 0x0C;
+                bytes[1..size_of::<i32>() + 1].copy_from_slice(&loc.to_be_bytes());
+            }
+            Instruction::JumpComp(loc) => {
+                bytes[0] = 0x0D;
+                bytes[1..size_of::<i32>() + 1].copy_from_slice(&loc.to_be_bytes());
+            }
+
+            Instruction::And(left, right) => {
+                bytes[0] = 0x0E;
+                bytes[1] = *left;
+                bytes[2] = *right;
+            }
+            Instruction::Or(left, right) => {
+                bytes[0] = 0x0F;
+                bytes[1] = *left;
+                bytes[2] = *right;
+            }
+            Instruction::Xor(left, right) => {
+                bytes[0] = 0x10;
+                bytes[1] = *left;
+                bytes[2] = *right;
+            }
+            Instruction::Not(reg) => {
+                bytes[0] = 0x11;
+                bytes[1] = *reg;
+            }
+
+            Instruction::Eq(left, right) => {
+                bytes[0] = 0x12;
+                bytes[1] = *left;
+                bytes[2] = *right;
+            }
+            Instruction::NotEq(left, right) => {
+                bytes[0] = 0x13;
+                bytes[1] = *left;
+                bytes[2] = *right;
+            }
+            Instruction::GreaterThan(left, right) => {
+                bytes[0] = 0x14;
+                bytes[1] = *left;
+                bytes[2] = *right;
+            }
+            Instruction::LessThan(left, right) => {
+                bytes[0] = 0x15;
+                bytes[1] = *left;
+                bytes[2] = *right;
+            }
+
+            Instruction::Collect => {
+                bytes[0] = 0x19;
+            }
+            Instruction::Return => {
+                bytes[0] = 0x16;
+            }
+            Instruction::Halt => {
+                bytes[0] = 0x17;
+            }
+            Instruction::Syscall(offset, output, p1, p2, p3, p4, p5) => {
+                bytes[0] = 0x1A;
+                bytes[1] = offset;
+                bytes[2] = *output;
+                bytes[3] = *p1;
+                bytes[4] = *p2;
+                bytes[5] = *p3;
+                bytes[6] = *p4;
+                bytes[7] = *p5;
+            }
+
+            Instruction::Illegal | Instruction::JumpPoint(_) => {
+                // TODO: Should this be allowed? What should an illegal instruction be legally encoded as?
+                error!("Tried to encode {:?}", instruction);
+                panic!(
+                    "I mean, why are you *purposefully* making an Illegal Instruction? Just... Why?"
+                );
+            }
+        }
+
+        (bytes, value)
+    }
 }

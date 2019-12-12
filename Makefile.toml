@@ -1,48 +1,21 @@
-[tasks.check]
+[tasks.cli-flow]
 dependencies = [
-    "test",
-    "fmt-check",
+    "test-all",
     "clippy-check",
-]
-
-[tasks.cli]
-dependencies = [
+    "fmt-check",
     "build-release",
-    "test",
-    "fmt-check",
-    "clippy-check",
 ]
 
-[tasks.dist]
-dependencies = [
-    "test",
-    "fmt-check",
-    "clippy-check",
-    "build-release",
-    "move-dist",
-    "strip",
-]
-
-[tasks.move-dist]
-script_runner = "@shell"
-script = [
-'''
-mkdir ${CARGO_MAKE_WORKING_DIRECTORY}/pkg/
-cp ${CARGO_MAKE_WORKING_DIRECTORY}/target/release/${CARGO_MAKE_CRATE_NAME}.exe ${CARGO_MAKE_WORKING_DIRECTORY}/pkg/${CARGO_MAKE_CRATE_NAME}.exe
-'''
-]
-
-[tasks.strip]
-install_crate = { rustup_component_name = "llvm-tools-preview", crate_name = "cargo-binutils", binary = "strip", test_arg = ["strip", "--help"] }
+[tasks.test-all]
 command = "cargo"
-args = ["strip", "${CARGO_MAKE_WORKING_DIRECTORY}/pkg/${CARGO_MAKE_CRATE_NAME}.exe", "--", "--strip-all"]
-
-[tasks.fmt-check]
-install_crate = { rustup_component_name = "rustfmt" }
-command = "cargo"
-args = ["fmt", "--all", "--", "--check"]
+args = ["test", "--all-targets", "--all-features"]
 
 [tasks.clippy-check]
-install_crate = { rustup_component_name = "clippy" }
+install_crate = { rustup_component_name = "clippy", binary = "clippy", test-arg = "--help" }
 command = "cargo"
-args = ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings"]
+args = ["clippy", "--all-targets", "--all-features", "--", "-D", "warinings"]
+
+[tasks.fmt-check]
+install_crate = { rustup_component_name = "rustfmt", binary = "rustfmt", test-arg = "--help" }
+command = "cargo"
+args = ["fmt", "--all", "--", "--check"]

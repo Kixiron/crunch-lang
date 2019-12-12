@@ -1,6 +1,6 @@
 use super::{
-    decode_program, disassemble, encode_program, interpreter::Interpreter, Bytecode, Instruction,
-    Options, ReplOutput, Result, RuntimeError, RuntimeErrorTy, Vm,
+    disassemble, interpreter::Interpreter, Bytecode, Decoder, Encoder, Instruction, Options,
+    ReplOutput, Result, RuntimeError, RuntimeErrorTy, Vm,
 };
 
 /// The main interface to the crunch language
@@ -264,7 +264,7 @@ impl Crunch {
     fn parse_bytecode<'a>(
         bytes: Bytecode<'a>,
     ) -> Result<(Vec<Instruction>, Vec<Vec<Instruction>>)> {
-        decode_program(*bytes)
+        Decoder::new(&*bytes).decode()
     }
 
     /// Validate raw bytes as valid [`Bytecode`]
@@ -276,13 +276,18 @@ impl Crunch {
     /// Encode the currently loaded program as bytes
     #[inline]
     fn encode(&self) -> Vec<u8> {
-        encode_program(self.instructions.clone(), self.vm.functions.clone())
+        Encoder::new({
+            let mut funcs = self.vm.functions.clone();
+            funcs.insert(0, self.instructions.clone());
+            funcs
+        })
+        .encode()
     }
 
     /// Disassemble bytecode in the `.crunched` format
     #[inline]
     pub fn disassemble<'a>(bytes: Bytecode<'a>) -> String {
-        disassemble(*bytes)
+        disassemble(&*bytes)
     }
 }
 

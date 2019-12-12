@@ -1,8 +1,5 @@
 use super::TokenType;
-use crate::{
-    interpreter::{Interpreter, Location},
-    Instruction, Result, RuntimeError, RuntimeErrorTy, Value,
-};
+use crate::Value;
 use codespan::{FileId, Span};
 use std::{borrow::Cow, fmt};
 
@@ -297,110 +294,6 @@ pub struct Assign<'a> {
 pub struct Literal<'a> {
     pub val: LiteralInner<'a>,
     pub info: LocInfo,
-}
-
-impl<'a> Literal<'a> {
-    pub fn cache(
-        self,
-        ident: impl Into<String>,
-        interpreter: &mut Interpreter<'a>,
-    ) -> Result<Vec<Instruction>> {
-        let (ident, value) = (ident.into(), self.val.clone().into());
-
-        let fallback_id = interpreter.get_next_gc_id();
-        let var = interpreter.current_scope.variables.get(&ident).clone();
-        if let Some((mut location, ty)) = var {
-            let ty = ty.to_owned();
-            let id = match location {
-                Location::Gc(id) => id,
-                Location::Register(_reg, id) => match id {
-                    Some(id) => id,
-                    None => fallback_id,
-                },
-            };
-
-            let register = interpreter.reserve_reg(Some(location), Some(id))?;
-
-            if self.val.to_type() != ty {
-                return Err(RuntimeError {
-                    ty: RuntimeErrorTy::IncompatibleTypes,
-                    message: format!(
-                        "A variable by the type of '{}' cannot be given a value of type '{}'",
-                        ty,
-                        self.val.to_type()
-                    ),
-                });
-            }
-
-            if let Location::Register(reg, None) = location {
-                location = Location::Register(reg, Some(id));
-            }
-
-            interpreter
-                .current_scope
-                .variables
-                .insert(ident, (location, ty.clone()));
-
-            Ok(vec![Instruction::Cache(id, value, register)])
-        } else {
-            let id = interpreter.get_next_gc_id();
-            let register = interpreter.reserve_reg(None, Some(id))?;
-
-            interpreter.current_scope.variables.insert(
-                ident,
-                (Location::Register(register, Some(id)), self.val.to_type()),
-            );
-
-            Ok(vec![Instruction::Cache(id, value, register)])
-        }
-    }
-
-    pub fn register(
-        self,
-        ident: impl Into<String>,
-        interpreter: &mut Interpreter<'a>,
-    ) -> Result<Vec<Instruction>> {
-        let (ident, value) = (ident.into(), self.val.clone().into());
-
-        let var = interpreter.current_scope.variables.get(&ident).clone();
-        if let Some((location, ty)) = var {
-            let (location, ty) = (location.to_owned(), ty.to_owned());
-            let id = if let Location::Gc(id) = location {
-                Some(id)
-            } else {
-                None
-            };
-
-            let register = interpreter.reserve_reg(Some(location), id)?;
-
-            if self.val.to_type() != ty {
-                return Err(RuntimeError {
-                    ty: RuntimeErrorTy::IncompatibleTypes,
-                    message: format!(
-                        "A variable by the type of '{}' cannot be given a value of type '{}'",
-                        ty,
-                        self.val.to_type()
-                    ),
-                });
-            }
-
-            interpreter
-                .current_scope
-                .variables
-                .insert(ident, (location, ty));
-
-            Ok(vec![Instruction::Load(value, register)])
-        } else {
-            let register = interpreter.reserve_reg(None, None)?;
-
-            interpreter.current_scope.variables.insert(
-                ident,
-                (Location::Register(register, None), self.val.to_type()),
-            );
-
-            Ok(vec![Instruction::Load(value, register)])
-        }
-    }
 }
 
 #[derive(Clone)]

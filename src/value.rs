@@ -1,23 +1,29 @@
 use super::{AllocId, Gc, GcStr, Result, RuntimeError, RuntimeErrorTy};
-use derive_more::Display;
 use std::ops;
 
 /// The length of an encoded Value
 pub const VALUE_LENGTH: usize = 9;
 
 /// A value contained in the GC
-#[derive(Debug, Clone, Eq, Display)]
+#[derive(Debug, Clone, Eq)]
 pub enum Value {
-    #[display(fmt = "{}", _0)]
     Int(i32),
-    #[display(fmt = "{}", _0)]
     Bool(bool),
-    #[display(fmt = "{}", _0)]
     String(String),
-    #[display(fmt = "0x{:04X}", _0)]
     Pointer(usize),
-    #[display(fmt = "null")]
     None,
+}
+
+impl std::fmt::Display for Value {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Int(inner) => write!(fmt, "{}", inner),
+            Self::Bool(inner) => write!(fmt, "{}", inner),
+            Self::String(inner) => write!(fmt, "{}", inner),
+            Self::Pointer(inner) => write!(fmt, "0x{:04X}", inner),
+            Self::None => write!(fmt, "null"),
+        }
+    }
 }
 
 impl Value {
@@ -309,14 +315,21 @@ impl std::cmp::PartialEq for Value {
     }
 }
 
-#[derive(Debug, Clone, Copy, Display)]
+#[derive(Debug, Clone, Copy)]
 pub enum RuntimeValue {
-    #[display(fmt = "{}", _0)]
     Cached(CachedValue),
-    #[display(fmt = "{}", _0)]
     Register(RegisterValue),
-    #[display(fmt = "NoneType")]
     None,
+}
+
+impl std::fmt::Display for RuntimeValue {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Cached(inner) => write!(fmt, "{}", inner),
+            Self::Register(inner) => write!(fmt, "{}", inner),
+            Self::None => write!(fmt, "NoneType"),
+        }
+    }
 }
 
 impl RuntimeValue {
@@ -450,16 +463,23 @@ generate_op! {
     [RuntimeValue, &, bit_and]
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Display)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegisterValue {
-    #[display(fmt = "{}", _0)]
     String(&'static str),
-    #[display(fmt = "{}", _0)]
     Int(i32),
-    #[display(fmt = "{}", _0)]
     Bool(bool),
-    #[display(fmt = "{:#p}", _0)]
     Pointer(usize),
+}
+
+impl std::fmt::Display for RegisterValue {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::String(inner) => write!(fmt, "{}", inner),
+            Self::Int(inner) => write!(fmt, "{}", inner),
+            Self::Bool(inner) => write!(fmt, "{}", inner),
+            Self::Pointer(inner) => write!(fmt, "{:#p}", inner),
+        }
+    }
 }
 
 impl RegisterValue {
@@ -685,16 +705,23 @@ impl std::cmp::PartialOrd for RegisterValue {
     }
 }
 
-#[derive(Debug, Clone, Copy, Display)]
+#[derive(Debug, Clone, Copy)]
 pub enum CachedValue {
-    #[display(fmt = "{:?}", _0)]
     String(GcStr),
-    #[display(fmt = "{:#p}", _0)]
     Int(AllocId),
-    #[display(fmt = "{:#p}", _0)]
     Bool(AllocId),
-    #[display(fmt = "{:#p}", _0)]
     Pointer(AllocId),
+}
+
+impl std::fmt::Display for CachedValue {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::String(string) => write!(fmt, "{:?}", string),
+            Self::Int(alloc) | Self::Bool(alloc) | Self::Pointer(alloc) => {
+                write!(fmt, "{:#p}", alloc)
+            }
+        }
+    }
 }
 
 impl CachedValue {

@@ -1,6 +1,4 @@
-use crate::{Result, RuntimeError, RuntimeErrorTy};
-use derive_more::{Add, AddAssign, Constructor, From, Into, Mul, MulAssign, Sub, SubAssign};
-use shrinkwraprs::Shrinkwrap;
+use crate::{AllocId, HeapPointer, Result, RuntimeError, RuntimeErrorTy};
 use std::{alloc, mem, ptr, slice};
 
 /// 64mb per half of heap
@@ -509,38 +507,6 @@ impl std::ops::Not for Side {
     }
 }
 
-/// The id of a currently allocated object
-#[derive(
-    Debug,
-    Copy,
-    Clone,
-    PartialEq,
-    Eq,
-    From,
-    Into,
-    Add,
-    AddAssign,
-    Constructor,
-    Shrinkwrap,
-    Mul,
-    MulAssign,
-    Sub,
-    SubAssign,
-)]
-#[repr(transparent)]
-pub struct AllocId(usize);
-
-/// A pointer into the Heap
-#[derive(Debug, Copy, Clone, PartialEq, Eq, From, Into, Constructor, Shrinkwrap, Mul, MulAssign)]
-#[repr(transparent)]
-pub struct HeapPointer(*mut u8);
-
-impl std::fmt::Pointer for HeapPointer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:p}", self.0)
-    }
-}
-
 /// A value contained in the GC
 #[derive(Debug, Clone)]
 pub struct GcValue {
@@ -626,6 +592,12 @@ impl GcStr {
         }
         gc.add_root(obj);
 
+        debug_assert_eq!(
+            string,
+            std::str::from_utf8(gc.fetch(id).expect("Value does not exist"))
+                .expect("Not valid utf-8")
+        );
+
         Ok(Self {
             id,
             len: string.len(),
@@ -654,7 +626,17 @@ impl GcStr {
     }
 
     pub fn to_str<'a>(&self, gc: &'a Gc) -> Result<&'a str> {
-        unsafe { Ok(std::str::from_utf8_unchecked(gc.fetch(self.id)?)) }
+        match std::str::from_utf8(gc.fetch(self.id)?) {
+            Ok(string) => Ok(string),
+            Err(err) => {
+                error!("Error decoding gc string: {:?}", err);
+
+                Err(RuntimeError {
+                    ty: RuntimeErrorTy::InvalidString,
+                    message: "Invalid encoding on string: String is not valid utf-8".to_string(),
+                })
+            }
+        }
     }
 
     pub fn drop(self, gc: &mut Gc) -> Result<()> {

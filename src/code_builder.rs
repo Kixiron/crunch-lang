@@ -1,7 +1,11 @@
 #![allow(dead_code)]
 
 use crate::{Instruction, Register, Result, RuntimeError, RuntimeErrorTy, Value, NUMBER_REGISTERS};
-use rand::{rngs::SmallRng, SeedableRng};
+use rand::{
+    distributions::{Alphanumeric, Distribution, Standard},
+    rngs::SmallRng,
+    Rng, SeedableRng,
+};
 use std::{
     collections::{HashMap, HashSet},
     fmt,
@@ -72,9 +76,15 @@ impl CodeBuilder {
 
     #[inline]
     pub fn gen_clobber_str(&mut self, len: usize) -> String {
-        use rand::distributions::{Alphanumeric, Distribution};
-
         Alphanumeric.sample_iter(&mut self.rng).take(len).collect()
+    }
+
+    #[inline]
+    pub fn gen_rand<T>(&mut self) -> T
+    where
+        Standard: Distribution<T>,
+    {
+        self.rng.gen::<T>()
     }
 
     pub fn build(self) -> (Vec<Instruction>, Vec<Vec<Instruction>>) {
@@ -109,10 +119,14 @@ impl Scope {
     }
 }
 
+// pub struct VariableMeta<'a> {
+//     ty: Type<'a>,
+// }
+
 #[derive(Clone)]
 pub struct FunctionContext {
     registers: [Option<Option<Sym>>; NUMBER_REGISTERS],
-    variables: HashSet<Sym>,
+    pub variables: HashSet<Sym>,
     block: Vec<PartialInstruction>,
     pub scope: Scope,
 }

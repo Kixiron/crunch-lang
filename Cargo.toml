@@ -21,8 +21,6 @@ name = "vm_execution"
 harness = false
 
 [dependencies]
-derive_more = "0.15.0"
-shrinkwraprs = "0.2.1"
 log = "0.4.8"
 simple_logger = "1.3.0"
 color-backtrace = "0.3.0"
