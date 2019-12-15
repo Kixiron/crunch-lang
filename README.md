@@ -208,22 +208,30 @@ Bit Escape Codes: `\b{00000000}`
 
 ## Syntax TODOs
 
-`::: Doc Comments`  
-Mandatory Bracing: `a + b * c` is a syntax error, `a + (b * c)` is not  
-Zig-style multiline string literals with `#'` or `#"`:
-```
-let string = 
-    #' Multi
-    #'     Line
-    #'         String
-    #'             Literals
-```
-Poni-style operators  
-`+` vs `+?` vs `+!`  
-Inspired by https://tutorial.ponylang.io/gotchas/divide-by-zero.html  
-`int / int = int` Normal Divide (Division by zero results in zero)  
-`int /? int = result<int>` Checked Division (Dividing by zero will result in an error)  
-`int /! int = int` Crashing Division (Division by zero will result in a program halt)  
+- `::: Doc Comments`  
+- Mandatory Bracing: `a + b * c` is a syntax error, `a + (b * c)` is not  
+- Zig-style multiline string literals with `#'` or `#"`:
+    ```
+    let string = 
+        #' Multi
+        #'     Line
+        #'         String
+        #'             Literals
+
+    :: Alternatively,
+    let string = 
+        #" Multi
+        #"     Line
+        #"         String
+        #"             Literals
+    ```
+- Poni-style operators  
+    `+` vs `+?` vs `+!`  
+    Inspired by https://tutorial.ponylang.io/gotchas/divide-by-zero.html  
+    `int / int = int` Normal Divide (Division by zero results in zero)  
+    `int /? int = result<int>` Checked Division (Dividing by zero will result in an error)  
+    `int /! int = int` Crashing Division (Division by zero will result in a program halt)  
+- `<ret> if <cond> else <ret>`
 
 ## CLI Options
 
@@ -253,6 +261,8 @@ Inspired by https://tutorial.ponylang.io/gotchas/divide-by-zero.html
 - lazy_static: Only used for the syscall table until [Rust Issue #51910](https://github.com/rust-lang/rust/issues/51910) is merged
 - human-panic: Need to write own panic handler, because panics are an ICE
 - libloading: Load dynamic libraries
+- num-bigint: Arbitrary-precision integers
+- crunch_proc_macro: Proc macros for internal use
 
 ## Dev Dependencies Overview
 - criterion: Benchmarking

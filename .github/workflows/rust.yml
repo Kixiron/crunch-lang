@@ -1,0 +1,24 @@
+name: Rust
+
+on: [push]
+
+jobs:
+  ubuntu:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v1
+      - name: Install
+        run: cargo install cargo-make
+      - name: Make
+        run: cargo make cli
+
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v1
+      - name: Install
+        run: cargo install cargo-make
+      - name: Make
+        run: cargo make cli
