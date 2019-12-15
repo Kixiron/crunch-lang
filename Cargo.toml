@@ -33,6 +33,9 @@ human-panic = "1.0.1"
 string-interner = "0.7.1"
 rand = { version = "0.7.2", features = ["small_rng"] }
 lazy_static = "1.4.0"
+libloading = "0.5.2"
+num-bigint = "0.2.3"
+# no-panic = "0.1.12"
 
 [target.'cfg(target_family = "windows")'.dependencies]
 winapi = "0.3.8"
@@ -42,6 +45,7 @@ libc = "0.2.66"
 
 [dev-dependencies]
 criterion = "0.3.0"
+proptest = "0.9.4"
 
 [profile.dev]
 opt-level = 0

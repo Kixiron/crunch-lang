@@ -1,4 +1,4 @@
-use super::{AllocId, CachedValue, Index, Register, RegisterValue, RuntimeValue, Value, Vm};
+use super::{AllocId, Index, Register, RuntimeValue, Value, Vm};
 
 /// A type alias for results that could be a [`RuntimeError`]
 pub type Result<T> = std::result::Result<T, RuntimeError>;
@@ -49,6 +49,10 @@ pub enum RuntimeErrorTy {
     FileError,
     BytecodeError,
     CompilationError,
+    MissingFile,
+    InvalidInt,
+    StdoutError,
+    IntegerOverflow,
 }
 
 /// Instructions for the VM
@@ -56,8 +60,9 @@ pub enum RuntimeErrorTy {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Instruction {
     /// Load a Value directly into a register
-    Load(Value, Register),
-    Cache(u32, Value, Register),
+    Load(RuntimeValue, Register),
+    // TODO: With the new RuntimeValue managing what is and isn't stored in the GC, the Cache and Save instructions may no longer be needed
+    Cache(u32, RuntimeValue, Register),
     CompToReg(Register),
     OpToReg(Register),
     Save(u32, Register),
@@ -118,71 +123,37 @@ impl Instruction {
             Instruction::Load(val, reg) => {
                 trace!("Loading val into {}", reg);
 
-                let val = RuntimeValue::Register(match val {
-                    Value::Bool(b) => RegisterValue::Bool(*b),
-                    Value::Int(i) => RegisterValue::Int(*i),
-                    Value::Pointer(p) => RegisterValue::Pointer(*p),
-                    Value::String(s) => {
-                        // Hella unsafe buckaroo
-                        RegisterValue::String(unsafe { std::mem::transmute(s.as_str()) })
-                    }
-                    Value::None => unreachable!(), // Is None really unreachable?
-                });
-
-                vm.registers[**reg as usize] = val;
-
+                vm.registers[**reg as usize] = *val;
                 vm.index += Index(1);
             }
             // NOTE: All cached values are written as a `Value`
             Instruction::Cache(heap_loc, val, reg) => {
                 trace!("Loading value onto heap at {}, Val: {:?}", heap_loc, val);
+                error!("This instruction is deprecated");
 
-                let reg_val = RuntimeValue::Cached(CachedValue::allocate_id(
-                    val.clone(),
-                    *heap_loc as usize,
-                    &mut vm.gc,
-                )?);
-
-                vm.registers[**reg as usize] = reg_val;
-
+                vm.registers[**reg as usize] = *val;
                 vm.index += Index(1);
             }
             Instruction::CompToReg(reg) => {
                 trace!("Loading previous comparison into {}", reg);
 
-                vm.registers[**reg as usize] =
-                    RuntimeValue::Register(RegisterValue::Bool(vm.prev_comp));
+                vm.registers[**reg as usize] = RuntimeValue::Bool(vm.prev_comp);
                 vm.index += Index(1);
             }
             Instruction::OpToReg(reg) => {
-                trace!("Loading previous operation into {}", reg);
-                trace!("Previous Operation Value: {:?}", &vm.prev_op);
+                trace!(
+                    "Loading previous operation ({:?}) into {}",
+                    &vm.prev_op,
+                    reg
+                );
 
+                vm.registers[**reg as usize] = RuntimeValue::None;
                 std::mem::swap(&mut vm.registers[**reg as usize], &mut vm.prev_op);
-
                 vm.index += Index(1);
             }
             Instruction::Save(heap_loc, reg) => {
                 trace!("Saving register {} to {}", reg, heap_loc);
-
-                if vm.gc.contains(*heap_loc as usize) && vm.registers[**reg as usize].is_register()
-                {
-                    unsafe {
-                        vm.gc.write(
-                            *heap_loc as usize,
-                            if let RuntimeValue::Register(val) =
-                                vm.registers[**reg as usize].clone()
-                            {
-                                val.to_value()
-                            } else {
-                                unreachable!()
-                            },
-                            None,
-                        )?;
-                    }
-                } else {
-                    unimplemented!("Should allocate a spot for the variable in the GC");
-                }
+                error!("This instruction is deprecated");
 
                 vm.index += Index(1);
             }
@@ -199,9 +170,11 @@ impl Instruction {
             }
 
             Instruction::Add(left, right) => {
-                vm.prev_op = (*vm).get(*left).add((*vm).get(*right), &vm.gc)?;
+                vm.prev_op = vm.registers[**left as usize]
+                    .add_upflowing(vm.registers[**right as usize], &mut vm.gc)?;
                 vm.index += Index(1);
             }
+            /*
             Instruction::Sub(left, right) => {
                 vm.prev_op = (*vm).get(*left).sub((*vm).get(*right), &vm.gc)?;
                 vm.index += Index(1);
@@ -214,12 +187,20 @@ impl Instruction {
                 vm.prev_op = (*vm).get(*left).div((*vm).get(*right), &vm.gc)?;
                 vm.index += Index(1);
             }
-
+            */
             Instruction::Print(reg) => {
                 trace!("Printing reg {:?}", reg);
 
-                if let Err(_err) = write!(vm.stdout, "{}", vm.get(*reg).fetch(&vm.gc)?) {
-                    panic!("Handle this sometime");
+                if let Err(err) = write!(
+                    vm.stdout,
+                    "{}",
+                    vm.registers[**reg as usize].to_string(&vm.gc)?
+                ) {
+                    error!("Error printing to stdout: {:?}", err);
+                    return Err(RuntimeError {
+                        ty: RuntimeErrorTy::StdoutError,
+                        message: "Failed to print to stdout".to_string(),
+                    });
                 }
 
                 vm.index += Index(1);
@@ -259,6 +240,7 @@ impl Instruction {
                 }
             }
 
+            /*
             Instruction::And(left, right) => {
                 vm.prev_op = (*vm).get(*left).bit_and((*vm).get(*right), &vm.gc)?;
                 vm.index += Index(1);
@@ -294,7 +276,7 @@ impl Instruction {
                     == Some(std::cmp::Ordering::Less);
                 vm.index += Index(1);
             }
-
+            */
             Instruction::Collect => {
                 trace!("Forcing a GC collect");
 
@@ -333,37 +315,12 @@ impl Instruction {
                 vm.finished_execution = true;
             }
             Instruction::Syscall(offset, output, param_1, param_2, param_3, param_4, param_5) => {
-                let p = [param_1, param_2, param_3, param_4, param_5];
-                let func = super::syscall::SYSCALL_TABLE[*offset as usize];
-                let func: unsafe extern "C" fn(usize, usize, usize, usize, usize) -> usize =
-                    unsafe { std::mem::transmute(func) };
-
-                let mut params = [0_usize; 5];
-                for index in 0..5 {
-                    match vm.registers[**p[index] as usize] {
-                        RuntimeValue::Cached(CachedValue::Pointer(p)) => {
-                            let i = vm.gc.fetch::<usize, AllocId>(p)?;
-                            params[index] = i;
-                        }
-                        RuntimeValue::Register(RegisterValue::Pointer(p)) => params[index] = p,
-                        RuntimeValue::Cached(CachedValue::Int(i)) => {
-                            let i = vm.gc.fetch::<i32, AllocId>(i)?;
-                            params[index] = i as usize;
-                        }
-                        RuntimeValue::Register(RegisterValue::Int(i)) => params[index] = i as usize,
-                        _ => {}
-                    }
-                }
-
-                let result = unsafe { func(params[0], params[1], params[2], params[3], params[4]) };
-
-                vm.registers[**output as usize] =
-                    RuntimeValue::Register(RegisterValue::Pointer(result));
+                unimplemented!("Syscalls are not stable");
 
                 vm.index += Index(1);
             }
 
-            Instruction::NoOp => {
+            Instruction::NoOp | _ => {
                 vm.index += Index(1);
             }
 
@@ -426,15 +383,6 @@ mod tests {
     use super::*;
     use std::io::stdout;
 
-    // Asserts that two RuntimeValues are equal, just nice syntactic sugar
-    // `$left` is the left-hand side, `$right` is the right-hand side, and
-    // `$vm` is an instance of Vm
-    macro_rules! assert_runtime_eq {
-        ($left:expr, $right:expr, $vm:expr) => {
-            assert!($left.eq(&$right, &$vm.gc).unwrap());
-        };
-    }
-
     #[test]
     fn variable_ops() {
         let mut vm = Vm::new(
@@ -458,7 +406,7 @@ mod tests {
                 let mut vec = Vec::with_capacity(num_ints);
 
                 for _ in 0..num_ints {
-                    vec.push(Value::Int(rng.gen_range(0, i32::max_value())));
+                    vec.push(RuntimeValue::I32(rng.gen_range(0, i32::max_value())));
                 }
 
                 vec
@@ -478,7 +426,7 @@ mod tests {
                         .collect();
 
                     if let Ok(string) = String::from_utf8(string) {
-                        vec.push(Value::String(string));
+                        vec.push(RuntimeValue::Str(Box::leak(string.into_boxed_str())));
                     }
                 }
 
@@ -489,8 +437,8 @@ mod tests {
             let second_strings = thread::spawn(create_strings);
 
             // Add boolean values to test on
-            vec.push(Value::Bool(true));
-            vec.push(Value::Bool(false));
+            vec.push(RuntimeValue::Bool(true));
+            vec.push(RuntimeValue::Bool(false));
             // Add all the randomly generated values to the vector
             vec.extend_from_slice(&ints.join().unwrap());
             vec.extend_from_slice(&first_strings.join().unwrap());
@@ -508,10 +456,7 @@ mod tests {
             cache.execute(&mut vm).unwrap();
 
             assert!(vm.gc.contains(id));
-            assert_eq!(
-                vm.registers[0].cached().unwrap().get_val(&vm.gc).unwrap(),
-                RegisterValue::from_val(val.clone())
-            );
+            assert_eq!(vm.registers[0], val.clone());
 
             // Drop the value so we don't overflow the stack
             Instruction::Drop(id as u32).execute(&mut vm).unwrap();
@@ -529,7 +474,7 @@ mod tests {
             load.execute(&mut vm).unwrap();
 
             // Assert that the registers contain the correct value
-            assert_runtime_eq!(vm.registers[0], RuntimeValue::from_val(val), vm);
+            assert!(vm.registers[0].is_equal(val, &vm.gc).unwrap());
         }
 
         // Do a GC Reset
@@ -543,30 +488,26 @@ mod tests {
             // Set the previous comparison to `true`
             vm.prev_comp = true;
             comp_to_reg.execute(&mut vm).unwrap();
-            assert_runtime_eq!(
-                vm.registers[0],
-                RuntimeValue::Register(RegisterValue::Bool(true)),
-                vm
-            );
+            assert!(vm.registers[0]
+                .is_equal(RuntimeValue::Bool(true), &vm.gc)
+                .unwrap());
 
             // Set the previous comparison to `false`
             vm.prev_comp = false;
             comp_to_reg.execute(&mut vm).unwrap();
-            assert_runtime_eq!(
-                vm.registers[0],
-                RuntimeValue::Register(RegisterValue::Bool(false)),
-                vm
-            );
+            assert!(vm.registers[0]
+                .is_equal(RuntimeValue::Bool(false), &vm.gc)
+                .unwrap());
         }
 
         // Testing the OpToReg instruction, it takes the value of the operation register and store its value
         // in the given register, register 0
         let op_to_reg = Instruction::OpToReg(0.into());
         for val in values.clone() {
-            vm.prev_op = RuntimeValue::from_val(val.clone());
+            vm.prev_op = val.clone();
             op_to_reg.execute(&mut vm).unwrap();
 
-            assert_runtime_eq!(vm.registers[0], RuntimeValue::from_val(val), vm);
+            assert!(vm.registers[0].is_equal(val, &vm.gc).unwrap());
         }
 
         // Do a GC Reset
@@ -575,14 +516,20 @@ mod tests {
         // Testing the Save instruction, which takes a register's value and stores it in the GC with the
         // requested id
         for (id, val) in values.clone().into_iter().enumerate() {
-            vm.registers[0] = RuntimeValue::from_val(val.clone());
+            vm.registers[0] = val.clone();
 
-            let (alloc_val, alloc_id) =
-                vm.gc.allocate_id(std::mem::size_of::<Value>(), id).unwrap();
+            let (alloc_val, alloc_id) = vm
+                .gc
+                .allocate_id(std::mem::size_of::<RuntimeValue>(), id)
+                .unwrap();
             assert_eq!(alloc_id, id.into());
             unsafe {
                 vm.gc
-                    .write(id, &[0; std::mem::size_of::<Value>()], Some(&alloc_val))
+                    .write(
+                        id,
+                        &[0; std::mem::size_of::<RuntimeValue>()],
+                        Some(&alloc_val),
+                    )
                     .unwrap();
             }
             vm.gc.add_root(alloc_val);
@@ -591,7 +538,7 @@ mod tests {
             save.execute(&mut vm).unwrap();
 
             assert!(vm.gc.contains(id));
-            assert_eq!(vm.gc.fetch::<Value, usize>(id).unwrap(), val);
+            assert_eq!(vm.gc.fetch::<RuntimeValue, usize>(id).unwrap(), val);
 
             // Drop the value so we don't overflow the stack
             Instruction::Drop(id as u32).execute(&mut vm).unwrap();
@@ -600,10 +547,12 @@ mod tests {
 
         // Testing the DropReg instruction, which should drop a value from a register
         {
-            vm.registers[0] = RuntimeValue::Register(RegisterValue::String("test string")); // Load the register before hand
+            vm.registers[0] = RuntimeValue::Str("test string"); // Load the register before hand
             let drop_reg = Instruction::DropReg(0.into());
             drop_reg.execute(&mut vm).unwrap();
-            assert_runtime_eq!(vm.registers[0], RuntimeValue::None, vm);
+            assert!(vm.registers[0]
+                .is_equal(RuntimeValue::Str("test string"), &vm.gc)
+                .unwrap());
         }
 
         // Do a VM Reset
@@ -615,8 +564,10 @@ mod tests {
 
             // Allocate the value in the GC
             {
-                let (alloc_val, alloc_id) =
-                    vm.gc.allocate_id(std::mem::size_of::<Value>(), id).unwrap();
+                let (alloc_val, alloc_id) = vm
+                    .gc
+                    .allocate_id(std::mem::size_of::<RuntimeValue>(), id)
+                    .unwrap();
                 unsafe {
                     vm.gc
                         .write(alloc_id, val.clone(), Some(&alloc_val))
@@ -627,7 +578,7 @@ mod tests {
 
             // Assert that the value is alive
             assert!(vm.gc.contains(id));
-            assert_eq!(vm.gc.fetch::<Value, usize>(id).unwrap(), val);
+            assert_eq!(vm.gc.fetch::<RuntimeValue, usize>(id).unwrap(), val);
 
             // Execute the drop and run a GC collection cycle
             drop.execute(&mut vm).unwrap();
@@ -635,67 +586,7 @@ mod tests {
 
             // Assert that the value is dropped
             assert!(!vm.gc.contains(id));
-            assert!(vm.gc.fetch::<Value, usize>(id).is_err()); // The requested value does not exist, and therefore should error
-        }
-    }
-
-    #[test]
-    fn math_ops() {
-        let mut vm = Vm::new(
-            Vec::new(),
-            &crate::OptionBuilder::new("./math_ops").build(),
-            Box::new(stdout()),
-        );
-
-        vm.registers[0] = RuntimeValue::Register(RegisterValue::Int(50));
-        vm.registers[1] = RuntimeValue::Register(RegisterValue::Int(10));
-
-        // Testing the Add instruction
-        {
-            let add = Instruction::Add(0.into(), 1.into());
-            add.execute(&mut vm).unwrap();
-
-            assert_runtime_eq!(
-                vm.prev_op,
-                RuntimeValue::Register(RegisterValue::Int(50 + 10)),
-                vm
-            );
-        }
-
-        // Testing the Sub instruction
-        {
-            let sub = Instruction::Sub(0.into(), 1.into());
-            sub.execute(&mut vm).unwrap();
-
-            assert_runtime_eq!(
-                vm.prev_op,
-                RuntimeValue::Register(RegisterValue::Int(50 - 10)),
-                vm
-            );
-        }
-
-        // Testing the Mult instruction
-        {
-            let mult = Instruction::Mult(0.into(), 1.into());
-            mult.execute(&mut vm).unwrap();
-
-            assert_runtime_eq!(
-                vm.prev_op,
-                RuntimeValue::Register(RegisterValue::Int(50 * 10)),
-                vm
-            );
-        }
-
-        // Testing the Div instruction
-        {
-            let div = Instruction::Div(0.into(), 1.into());
-            div.execute(&mut vm).unwrap();
-
-            assert_runtime_eq!(
-                vm.prev_op,
-                RuntimeValue::Register(RegisterValue::Int(50 / 10)),
-                vm
-            );
+            assert!(vm.gc.fetch::<RuntimeValue, usize>(id).is_err()); // The requested value does not exist, and therefore should error
         }
     }
 
@@ -721,35 +612,35 @@ mod tests {
 
         // Test printing register values
         {
-            vm.registers[0] = RuntimeValue::Register(RegisterValue::String("Test"));
+            vm.registers[0] = RuntimeValue::Str("Test");
             print.execute(&mut vm).unwrap();
             swap_assert(&mut vm, "Test");
 
-            vm.registers[0] = RuntimeValue::Register(RegisterValue::Int(10));
+            vm.registers[0] = RuntimeValue::I32(10);
             print.execute(&mut vm).unwrap();
             swap_assert(&mut vm, "10");
 
-            vm.registers[0] = RuntimeValue::Register(RegisterValue::Bool(true));
+            vm.registers[0] = RuntimeValue::Bool(true);
             print.execute(&mut vm).unwrap();
             swap_assert(&mut vm, "true");
 
-            vm.registers[0] = RuntimeValue::Register(RegisterValue::Bool(false));
+            vm.registers[0] = RuntimeValue::Bool(false);
             print.execute(&mut vm).unwrap();
             swap_assert(&mut vm, "false");
 
             // Test that writing to stdout works too, can only verify that it does, not that it is correct
             vm.stdout = Box::new(std::io::stdout());
 
-            vm.registers[0] = RuntimeValue::Register(RegisterValue::String("Test"));
+            vm.registers[0] = RuntimeValue::Str("Test");
             print.execute(&mut vm).unwrap();
 
-            vm.registers[0] = RuntimeValue::Register(RegisterValue::Int(10));
+            vm.registers[0] = RuntimeValue::I32(10);
             print.execute(&mut vm).unwrap();
 
-            vm.registers[0] = RuntimeValue::Register(RegisterValue::Bool(true));
+            vm.registers[0] = RuntimeValue::Bool(true);
             print.execute(&mut vm).unwrap();
 
-            vm.registers[0] = RuntimeValue::Register(RegisterValue::Bool(false));
+            vm.registers[0] = RuntimeValue::Bool(false);
             print.execute(&mut vm).unwrap();
         }
 
@@ -757,51 +648,37 @@ mod tests {
         {
             vm.stdout = Box::new(Vec::<u8>::new());
 
-            vm.registers[0] = RuntimeValue::Cached(
-                CachedValue::allocate_id(Value::String("Test".to_string()), 0, &mut vm.gc).unwrap(),
-            );
+            vm.registers[0] =
+                RuntimeValue::GcString(crate::GcStr::new("Test", &mut vm.gc).unwrap());
             print.execute(&mut vm).unwrap();
             swap_assert(&mut vm, "Test");
 
-            vm.registers[0] = RuntimeValue::Cached(
-                CachedValue::allocate_id(Value::Int(10), 1, &mut vm.gc).unwrap(),
-            );
+            vm.registers[0] = RuntimeValue::I32(10);
             print.execute(&mut vm).unwrap();
             swap_assert(&mut vm, "10");
 
-            vm.registers[0] = RuntimeValue::Cached(
-                CachedValue::allocate_id(Value::Bool(true), 2, &mut vm.gc).unwrap(),
-            );
+            vm.registers[0] = RuntimeValue::Bool(true);
             print.execute(&mut vm).unwrap();
             swap_assert(&mut vm, "true");
 
-            vm.registers[0] = RuntimeValue::Cached(
-                CachedValue::allocate_id(Value::Bool(false), 3, &mut vm.gc).unwrap(),
-            );
+            vm.registers[0] = RuntimeValue::Bool(false);
             print.execute(&mut vm).unwrap();
             swap_assert(&mut vm, "false");
 
             // Test that writing to stdout works too, can only verify that it does, not that it is correct
             vm.stdout = Box::new(std::io::stdout());
 
-            vm.registers[0] = RuntimeValue::Cached(
-                CachedValue::allocate_id(Value::String("Test".to_string()), 4, &mut vm.gc).unwrap(),
-            );
+            vm.registers[0] =
+                RuntimeValue::GcString(crate::GcStr::new("Test", &mut vm.gc).unwrap());
             print.execute(&mut vm).unwrap();
 
-            vm.registers[0] = RuntimeValue::Cached(
-                CachedValue::allocate_id(Value::Int(10), 5, &mut vm.gc).unwrap(),
-            );
+            vm.registers[0] = RuntimeValue::I32(10);
             print.execute(&mut vm).unwrap();
 
-            vm.registers[0] = RuntimeValue::Cached(
-                CachedValue::allocate_id(Value::Bool(true), 6, &mut vm.gc).unwrap(),
-            );
+            vm.registers[0] = RuntimeValue::Bool(true);
             print.execute(&mut vm).unwrap();
 
-            vm.registers[0] = RuntimeValue::Cached(
-                CachedValue::allocate_id(Value::Bool(false), 7, &mut vm.gc).unwrap(),
-            );
+            vm.registers[0] = RuntimeValue::Bool(false);
             print.execute(&mut vm).unwrap();
         }
     }
@@ -838,54 +715,6 @@ mod tests {
     }
 
     #[test]
-    fn bitwise_ops() {
-        let mut vm = Vm::new(
-            Vec::new(),
-            &crate::OptionBuilder::new("./bitwise_ops").build(),
-            Box::new(stdout()),
-        );
-
-        vm.registers[0] = RuntimeValue::Register(RegisterValue::Int(10));
-        vm.registers[1] = RuntimeValue::Register(RegisterValue::Int(20));
-
-        let and = Instruction::And(0.into(), 1.into());
-        and.execute(&mut vm).unwrap();
-
-        assert_runtime_eq!(
-            vm.prev_op,
-            RuntimeValue::Register(RegisterValue::Int(10 & 20)),
-            vm
-        );
-
-        let or = Instruction::Or(0.into(), 1.into());
-        or.execute(&mut vm).unwrap();
-
-        assert_runtime_eq!(
-            vm.prev_op,
-            RuntimeValue::Register(RegisterValue::Int(10 | 20)),
-            vm
-        );
-
-        let xor = Instruction::Xor(0.into(), 1.into());
-        xor.execute(&mut vm).unwrap();
-
-        assert_runtime_eq!(
-            vm.prev_op,
-            RuntimeValue::Register(RegisterValue::Int(10 ^ 20)),
-            vm
-        );
-
-        let not = Instruction::Not(0.into());
-        not.execute(&mut vm).unwrap();
-
-        assert_runtime_eq!(
-            vm.prev_op,
-            RuntimeValue::Register(RegisterValue::Int(!10)),
-            vm
-        );
-    }
-
-    #[test]
     fn eq_ops() {
         let mut vm = Vm::new(
             Vec::new(),
@@ -893,14 +722,14 @@ mod tests {
             Box::new(stdout()),
         );
 
-        vm.registers[0] = RuntimeValue::Register(RegisterValue::Int(10));
-        vm.registers[1] = RuntimeValue::Register(RegisterValue::Int(10));
+        vm.registers[0] = RuntimeValue::I32(10);
+        vm.registers[1] = RuntimeValue::I32(10);
 
         let eq = Instruction::Eq(0.into(), 1.into());
         eq.execute(&mut vm).unwrap();
         assert_eq!(vm.prev_comp, true);
 
-        vm.registers[0] = RuntimeValue::Register(RegisterValue::Int(20));
+        vm.registers[0] = RuntimeValue::I32(20);
 
         let not_eq = Instruction::NotEq(0.into(), 1.into());
         not_eq.execute(&mut vm).unwrap();
@@ -910,39 +739,11 @@ mod tests {
         greater_than.execute(&mut vm).unwrap();
         assert_eq!(vm.prev_comp, true);
 
-        vm.registers[0] = RuntimeValue::Register(RegisterValue::Int(0));
+        vm.registers[0] = RuntimeValue::I32(0);
 
         let less_than = Instruction::LessThan(0.into(), 1.into());
         less_than.execute(&mut vm).unwrap();
         assert_eq!(vm.prev_comp, true);
-    }
-
-    #[test]
-    fn misc_ops() {
-        let mut vm = Vm::new(
-            Vec::new(),
-            &crate::OptionBuilder::new("./misc_ops").build(),
-            Box::new(stdout()),
-        );
-
-        let collect = Instruction::Collect;
-
-        let (discard, discard_id) = vm.gc.allocate(std::mem::size_of::<Value>()).unwrap();
-        unsafe {
-            vm.gc
-                .write(discard_id, Value::Int(10), Some(&discard))
-                .unwrap();
-        }
-
-        assert!(vm.gc.contains(discard_id));
-        assert!(vm.gc.fetch(discard_id) == Ok(Value::Int(10)));
-
-        collect.execute(&mut vm).unwrap();
-        assert!(!vm.gc.contains(discard_id));
-
-        // TODO: Find way to test these
-        // Return,
-        // Halt,
     }
 
     #[test]
@@ -958,5 +759,180 @@ mod tests {
             illegal.execute(&mut vm).err().unwrap().ty,
             RuntimeErrorTy::IllegalInstruction
         );
+    }
+
+    mod property_tests {
+        use super::super::*;
+        use proptest::prelude::*;
+        use std::io::stdout;
+
+        proptest! {
+            #[test]
+            fn collect(int in 0..i32::max_value(), string in "\\PC*") {
+                let mut vm = Vm::new(
+                    Vec::new(),
+                    &crate::OptionBuilder::new("./misc_ops").build(),
+                    Box::new(stdout()),
+                );
+
+                let collect = Instruction::Collect;
+
+                let (discard, discard_id) = vm.gc.allocate(std::mem::size_of::<RuntimeValue>()).unwrap();
+                unsafe {
+                    vm.gc
+                        .write(discard_id, RuntimeValue::I32(int), Some(&discard))
+                        .unwrap();
+                }
+
+                assert!(vm.gc.contains(discard_id));
+                assert!(vm.gc.fetch(discard_id) == Ok(RuntimeValue::I32(int)));
+
+                collect.execute(&mut vm).unwrap();
+                assert!(!vm.gc.contains(discard_id));
+
+                let gc_str = crate::GcStr::new(&string, &mut vm.gc).unwrap();
+
+                assert!(vm.gc.contains(gc_str.id));
+                assert!(gc_str.to_str(&vm.gc) == Ok(&string));
+
+                gc_str.drop(&mut vm.gc).unwrap();
+                assert!(!vm.gc.contains(gc_str.id));
+            }
+
+            #[test]
+            fn bitwise_and(left in 0_i32..i32::max_value(), right in 0_i32..i32::max_value()) {
+                let mut vm = Vm::new(
+                    Vec::new(),
+                    &crate::OptionBuilder::new("./bitwise_ops").build(),
+                    Box::new(stdout()),
+                );
+
+                vm.registers[0] = RuntimeValue::I32(left);
+                vm.registers[1] = RuntimeValue::I32(right);
+
+                let and = Instruction::And(0.into(), 1.into());
+                and.execute(&mut vm).unwrap();
+
+                assert!(vm.prev_op.is_equal(RuntimeValue::I32(left & right), &vm.gc).unwrap());
+            }
+
+            #[test]
+            fn bitwise_or(left in 0_i32..i32::max_value(), right in 0_i32..i32::max_value()) {
+                let mut vm = Vm::new(
+                    Vec::new(),
+                    &crate::OptionBuilder::new("./bitwise_ops").build(),
+                    Box::new(stdout()),
+                );
+
+                vm.registers[0] = RuntimeValue::I32(left);
+                vm.registers[1] = RuntimeValue::I32(right);
+
+                let or = Instruction::Or(0.into(), 1.into());
+                or.execute(&mut vm).unwrap();
+
+                assert!(vm.prev_op.is_equal(RuntimeValue::I32(left | right), &vm.gc).unwrap());
+            }
+
+            #[test]
+            fn bitwise_xor(left in 0_i32..i32::max_value(), right in 0_i32..i32::max_value()) {
+                let mut vm = Vm::new(
+                    Vec::new(),
+                    &crate::OptionBuilder::new("./bitwise_ops").build(),
+                    Box::new(stdout()),
+                );
+
+                vm.registers[0] = RuntimeValue::I32(left);
+                vm.registers[1] = RuntimeValue::I32(right);
+
+                let xor = Instruction::Xor(0.into(), 1.into());
+                xor.execute(&mut vm).unwrap();
+
+                assert!(vm.prev_op.is_equal(RuntimeValue::I32(left ^ right), &vm.gc).unwrap());
+            }
+
+            #[test]
+            fn bitwise_not(int in 0_i32..i32::max_value()) {
+                let mut vm = Vm::new(
+                    Vec::new(),
+                    &crate::OptionBuilder::new("./bitwise_ops").build(),
+                    Box::new(stdout()),
+                );
+
+                vm.registers[0] = RuntimeValue::I32(int);
+
+                let not = Instruction::Not(0.into());
+                not.execute(&mut vm).unwrap();
+
+                assert!(vm.prev_op.is_equal(RuntimeValue::I32(!int), &vm.gc).unwrap());
+            }
+
+            #[test]
+            fn add(left in 0_i32..i32::max_value(), right in 0_i32..i32::max_value()) {
+                let mut vm = Vm::new(
+                    Vec::new(),
+                    &crate::OptionBuilder::new("./math_ops").build(),
+                    Box::new(stdout()),
+                );
+
+                vm.registers[0] = RuntimeValue::I32(left);
+                vm.registers[1] = RuntimeValue::I32(right);
+
+                let add = Instruction::Add(0.into(), 1.into());
+                add.execute(&mut vm).unwrap();
+
+                assert!(vm.prev_op.is_equal(RuntimeValue::I32(left).add_upflowing(RuntimeValue::I32(right), &mut vm.gc).unwrap(), &vm.gc).unwrap());
+            }
+
+            #[test]
+            fn subtract(left in 0_i32..i32::max_value(), right in 0_i32..i32::max_value()) {
+                let mut vm = Vm::new(
+                    Vec::new(),
+                    &crate::OptionBuilder::new("./math_ops").build(),
+                    Box::new(stdout()),
+                );
+
+                vm.registers[0] = RuntimeValue::I32(left);
+                vm.registers[1] = RuntimeValue::I32(right);
+
+                let sub = Instruction::Sub(0.into(), 1.into());
+                sub.execute(&mut vm).unwrap();
+
+                assert!(vm.prev_op.is_equal(RuntimeValue::I32(left - right), &vm.gc).unwrap());
+            }
+
+            #[test]
+            fn multiply(left in 0_i32..i32::max_value(), right in 0_i32..i32::max_value()) {
+                let mut vm = Vm::new(
+                    Vec::new(),
+                    &crate::OptionBuilder::new("./math_ops").build(),
+                    Box::new(stdout()),
+                );
+
+                vm.registers[0] = RuntimeValue::I32(left);
+                vm.registers[1] = RuntimeValue::I32(right);
+
+                let mult = Instruction::Mult(0.into(), 1.into());
+                mult.execute(&mut vm).unwrap();
+
+                assert!(vm.prev_op.is_equal(RuntimeValue::I32(left * right), &vm.gc).unwrap());
+            }
+
+            #[test]
+            fn divide(left in 0_i32..i32::max_value(), right in 0_i32..i32::max_value()) {
+                let mut vm = Vm::new(
+                    Vec::new(),
+                    &crate::OptionBuilder::new("./math_ops").build(),
+                    Box::new(stdout()),
+                );
+
+                vm.registers[0] = RuntimeValue::I32(left);
+                vm.registers[1] = RuntimeValue::I32(right);
+
+                let div = Instruction::Div(0.into(), 1.into());
+                div.execute(&mut vm).unwrap();
+
+                assert!(vm.prev_op.is_equal(RuntimeValue::I32(left / right), &vm.gc).unwrap());
+            }
+        }
     }
 }

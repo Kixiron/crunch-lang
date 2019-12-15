@@ -1,5 +1,5 @@
 use super::TokenType;
-use crate::Value;
+use crate::RuntimeValue;
 use codespan::{FileId, Span};
 use std::{borrow::Cow, fmt};
 
@@ -315,13 +315,13 @@ impl<'a> LiteralInner<'a> {
     }
 }
 
-impl<'a> Into<Value> for LiteralInner<'a> {
-    fn into(self) -> Value {
+impl<'a> Into<RuntimeValue> for LiteralInner<'a> {
+    fn into(self) -> RuntimeValue {
         match self {
-            Self::String(s) => Value::String(s.to_string()),
-            Self::Int(i) => Value::Int(i),
-            Self::Float(_f) => unimplemented!(),
-            Self::Bool(b) => Value::Bool(b),
+            Self::String(s) => RuntimeValue::Str(Box::leak(s.to_string().into_boxed_str())),
+            Self::Int(i) => RuntimeValue::I32(i),
+            Self::Float(f) => RuntimeValue::F32(f),
+            Self::Bool(b) => RuntimeValue::Bool(b),
         }
     }
 }

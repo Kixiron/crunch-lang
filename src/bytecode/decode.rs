@@ -1,5 +1,6 @@
 use crate::{
-    Instruction, Result, RuntimeError, RuntimeErrorTy, Value, INSTRUCTION_LENGTH, VALUE_LENGTH,
+    Instruction, Result, RuntimeError, RuntimeErrorTy, RuntimeValue, INSTRUCTION_LENGTH,
+    VALUE_LENGTH,
 };
 use std::{collections::VecDeque, convert::TryInto, mem::size_of};
 
@@ -21,7 +22,7 @@ macro_rules! take {
 
 #[derive(Debug, Clone)]
 struct FunctionMeta {
-    values: VecDeque<Value>,
+    values: VecDeque<RuntimeValue>,
 }
 
 #[derive(Debug, Clone)]
@@ -187,7 +188,7 @@ impl<'a> Decoder<'a> {
         Ok(())
     }
 
-    fn take_values(&mut self, mut strings: VecDeque<String>) -> Result<VecDeque<Value>> {
+    fn take_values(&mut self, mut strings: VecDeque<String>) -> Result<VecDeque<RuntimeValue>> {
         let number_values = take!(self, u32) as usize;
 
         let mut values = VecDeque::with_capacity(number_values);
@@ -197,7 +198,8 @@ impl<'a> Decoder<'a> {
                 .unwrap_or_else(|_| unreachable!());
 
             // TODO: Handle this error and make it a RuntimeError
-            let value = Value::from_bytes(bytes, &mut strings).unwrap_or_else(|_| unreachable!());
+            let value =
+                RuntimeValue::from_bytes(bytes, &mut strings).unwrap_or_else(|_| unreachable!());
 
             values.push_back(value);
 

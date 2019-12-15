@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 
-use crate::{Instruction, Register, Result, RuntimeError, RuntimeErrorTy, Value, NUMBER_REGISTERS};
+use crate::{
+    Instruction, Register, Result, RuntimeError, RuntimeErrorTy, RuntimeValue, NUMBER_REGISTERS,
+};
 use rand::{
     distributions::{Alphanumeric, Distribution, Standard},
     rngs::SmallRng,
@@ -228,7 +230,7 @@ impl FunctionContext {
             .collect()
     }
 
-    pub fn inst_load(&mut self, register: impl Into<Register>, value: Value) -> &mut Self {
+    pub fn inst_load(&mut self, register: impl Into<Register>, value: RuntimeValue) -> &mut Self {
         self.block
             .push(Instruction::Load(value, register.into()).into());
 
@@ -237,7 +239,7 @@ impl FunctionContext {
     pub fn inst_cache(
         &mut self,
         register: impl Into<Register>,
-        value: Value,
+        value: RuntimeValue,
         name: Sym,
     ) -> Result<&mut Self> {
         let gc_id = &value as *const _ as u32;
@@ -502,10 +504,10 @@ mod tests {
 
         builder
             .function("main", |_builder, ctx| {
-                ctx.inst_load(0, Value::String("Hello World!\n".to_string()))
-                    .inst_load(1, Value::Int(10))
-                    .inst_load(2, Value::Int(0))
-                    .inst_load(3, Value::Int(1))
+                ctx.inst_load(0, RuntimeValue::Str("Hello World!\n"))
+                    .inst_load(1, RuntimeValue::I32(10))
+                    .inst_load(2, RuntimeValue::I32(0))
+                    .inst_load(3, RuntimeValue::I32(1))
                     .inst_jump_point(77)
                     .inst_print(0)
                     .inst_sub(1, 3)

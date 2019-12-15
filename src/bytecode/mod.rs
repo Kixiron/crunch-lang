@@ -48,8 +48,9 @@ pub const INSTRUCTION_BYTES: [u8; 27] = [
 /// Disassembles bytecode into a human-readable format
 // TODO: Refractor and test
 pub fn disassemble(bytes: &[u8]) -> String {
-    use super::{Instruction, Value, NUMBER_REGISTERS};
+    use super::{Instruction, RuntimeValue, NUMBER_REGISTERS};
     use std::{collections::HashMap, fmt::Write};
+    /*
 
     let functions = {
         let (main, functions) = Decoder::new(bytes).decode().unwrap();
@@ -66,8 +67,8 @@ pub fn disassemble(bytes: &[u8]) -> String {
             write!(&mut output, "=> Function {}\n", index).unwrap();
         }
 
-        let mut registers: [Value; NUMBER_REGISTERS] = array_init::array_init(|_| Value::None);
-        let mut heap: HashMap<u32, Value> = HashMap::new();
+        let mut registers = [RuntimeValue::None; NUMBER_REGISTERS];
+        let mut heap: HashMap<u32, RuntimeValue> = HashMap::new();
 
         for (instruction_index, instruction) in function.into_iter().enumerate() {
             match &instruction {
@@ -82,11 +83,11 @@ pub fn disassemble(bytes: &[u8]) -> String {
                     heap.remove(&heap_loc);
                 }
                 Instruction::DropReg(reg) => {
-                    registers[**reg as usize] = Value::None;
+                    registers[**reg as usize] = RuntimeValue::None;
                 }
                 Instruction::Save(heap_loc, reg) => {
                     heap.insert(*heap_loc, registers[**reg as usize].clone());
-                    registers[**reg as usize] = Value::None;
+                    registers[**reg as usize] = RuntimeValue::None;
                 }
                 _ => {}
             }
@@ -104,7 +105,7 @@ pub fn disassemble(bytes: &[u8]) -> String {
                     Drop(reg) => format!("{}", reg),
 
                     Print(reg) => {
-                        if registers[**reg as usize] != Value::None {
+                        if registers[**reg as usize] != RuntimeValue::None {
                             format!("{}: {}", reg, registers[**reg as usize].to_string())
                         } else {
                             format!("{}", reg)
@@ -115,7 +116,7 @@ pub fn disassemble(bytes: &[u8]) -> String {
 
                     Not(reg) => format!(
                         "{}",
-                        if registers[**reg as usize] != Value::None {
+                        if registers[**reg as usize] != RuntimeValue::None {
                             format!("{}: {}", reg, registers[**reg as usize].to_string())
                         } else {
                             format!("{}", reg)
@@ -134,12 +135,12 @@ pub fn disassemble(bytes: &[u8]) -> String {
                     | GreaterThan(left, right)
                     | LessThan(left, right) => format!(
                         "{}, {}",
-                        if registers[**left as usize] != Value::None {
+                        if registers[**left as usize] != RuntimeValue::None {
                             format!("{}: {:?}", left, registers[**left as usize].to_string())
                         } else {
                             format!("{}", left)
                         },
-                        if registers[**right as usize] != Value::None {
+                        if registers[**right as usize] != RuntimeValue::None {
                             format!("{}: {:?}", right, registers[**right as usize].to_string())
                         } else {
                             format!("{}", right)
@@ -149,27 +150,27 @@ pub fn disassemble(bytes: &[u8]) -> String {
                     Syscall(offset, output, param1, param2, param3, param4, param5) => format!(
                         "0x{:X} ({}, {}, {}, {}, {}) -> {}",
                         crate::syscall::SYSCALL_TABLE[*offset as usize],
-                        if registers[**param1 as usize] != Value::None {
+                        if registers[**param1 as usize] != RuntimeValue::None {
                             format!("{}: {:?}", param1, registers[**param1 as usize].to_string())
                         } else {
                             format!("{}", param1)
                         },
-                        if registers[**param2 as usize] != Value::None {
+                        if registers[**param2 as usize] != RuntimeValue::None {
                             format!("{}: {:?}", param2, registers[**param2 as usize].to_string())
                         } else {
                             format!("{}", param2)
                         },
-                        if registers[**param3 as usize] != Value::None {
+                        if registers[**param3 as usize] != RuntimeValue::None {
                             format!("{}: {:?}", param3, registers[**param3 as usize].to_string())
                         } else {
                             format!("{}", param3)
                         },
-                        if registers[**param4 as usize] != Value::None {
+                        if registers[**param4 as usize] != RuntimeValue::None {
                             format!("{}: {:?}", param4, registers[**param4 as usize].to_string())
                         } else {
                             format!("{}", param4)
                         },
-                        if registers[**param5 as usize] != Value::None {
+                        if registers[**param5 as usize] != RuntimeValue::None {
                             format!("{}: {:?}", param5, registers[**param5 as usize].to_string())
                         } else {
                             format!("{}", param5)
@@ -193,6 +194,9 @@ pub fn disassemble(bytes: &[u8]) -> String {
     }
 
     output
+    */
+
+    "".to_string()
 }
 
 #[cfg(test)]
@@ -201,7 +205,7 @@ mod tests {
 
     #[test]
     fn byte_test() {
-        use crate::{Instruction::*, Value};
+        use crate::{Instruction::*, RuntimeValue};
         use std::io::Write;
 
         simple_logger::init().unwrap();
@@ -209,9 +213,9 @@ mod tests {
 
         let (instructions, functions) = (
             vec![
-                Cache(0, Value::Int(10), 0.into()),
+                Cache(0, RuntimeValue::I32(10), 0.into()),
                 Print(0.into()),
-                Cache(1, Value::Int(5), 1.into()),
+                Cache(1, RuntimeValue::I32(5), 1.into()),
                 Print(1.into()),
                 Div(0.into(), 1.into()),
                 OpToReg(3.into()),
@@ -219,7 +223,7 @@ mod tests {
                 Drop(0),
                 Drop(1),
                 Collect,
-                Cache(0, Value::Pointer(0), 0.into()),
+                Cache(0, RuntimeValue::Pointer(0), 0.into()),
                 Print(0.into()),
                 Syscall(
                     0,

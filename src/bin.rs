@@ -78,22 +78,11 @@ fn main() {
 
         Opt::Repl {
             repl_options,
-            burn_gc,
-            debug_log,
-            fault_tolerant,
-            overwrite_heap,
+            options,
         } => {
-            if debug_log {
+            if options.debug_log {
                 set_debug_hooks();
             }
-
-            let options = Options {
-                file: std::path::PathBuf::from("CrunchRepl"),
-                burn_gc,
-                debug_log,
-                fault_tolerant,
-                overwrite_heap,
-            };
 
             Crunch::repl(options, repl_options);
         }
@@ -134,16 +123,7 @@ enum Opt {
     Repl {
         #[structopt(long = "--output", parse(from_str))]
         repl_options: Vec<ReplOutput>,
-        #[structopt(long = "--burn-gc")]
-        burn_gc: bool,
-        /// Activates detailed debug logging
-        #[structopt(long = "--debug-log")]
-        debug_log: bool,
-        /// Allows some runtime errors to be ignored
-        #[structopt(long = "--fault-tolerant")]
-        fault_tolerant: bool,
-        /// Overwrites the heap on a side swap
-        #[structopt(long = "--overwrite-heap")]
-        overwrite_heap: bool,
+        #[structopt(flatten)]
+        options: Options,
     },
 }

@@ -1,5 +1,5 @@
 use super::INSTRUCTION_LENGTH;
-use crate::{Instruction, Value, VALUE_LENGTH};
+use crate::{Instruction, RuntimeValue, VALUE_LENGTH};
 use std::mem::size_of;
 
 // TODO: Document & Test all functions
@@ -41,7 +41,7 @@ impl Encoder {
         self.bytes
     }
 
-    fn encode_values(&mut self, orig_values: Vec<Value>) {
+    fn encode_values(&mut self, orig_values: Vec<RuntimeValue>) {
         let mut values = Vec::with_capacity(size_of::<u32>() + (orig_values.len() * VALUE_LENGTH));
         values.extend_from_slice(&(orig_values.len() as u32).to_be_bytes());
 
@@ -58,7 +58,7 @@ impl Encoder {
                 strings.extend_from_slice(&(string.len() as u32).to_be_bytes());
 
                 // Add the string
-                strings.extend_from_slice(string);
+                strings.extend_from_slice(string.as_bytes());
 
                 // Increment the number of strings
                 len += 1;
@@ -74,7 +74,7 @@ impl Encoder {
         self.values.append(&mut values);
     }
 
-    fn encode_functions(&mut self) -> (Vec<u8>, Vec<Value>) {
+    fn encode_functions(&mut self) -> (Vec<u8>, Vec<RuntimeValue>) {
         let mut output_bytes =
             Vec::with_capacity(size_of::<u32>() + (self.num_functions * INSTRUCTION_LENGTH));
 
@@ -102,7 +102,7 @@ impl Encoder {
     fn encode_instruction(
         &self,
         instruction: Instruction,
-    ) -> ([u8; INSTRUCTION_LENGTH], Option<Value>) {
+    ) -> ([u8; INSTRUCTION_LENGTH], Option<RuntimeValue>) {
         let mut bytes = [0; INSTRUCTION_LENGTH];
         let mut value = None;
 

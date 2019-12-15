@@ -226,6 +226,8 @@ pub struct Options {
     /// Overwrites the heap on a side swap
     #[structopt(long = "--overwrite-heap")]
     pub overwrite_heap: bool,
+    #[structopt(long = "--heap-size", default_value = "1024")]
+    pub heap_size: usize,
 }
 
 // TODO: Document the option builder
@@ -237,6 +239,7 @@ pub struct OptionBuilder {
     debug_log: bool,
     fault_tolerant: bool,
     overwrite_heap: bool,
+    heap_size: usize,
 }
 
 impl OptionBuilder {
@@ -247,6 +250,7 @@ impl OptionBuilder {
             debug_log: false,
             fault_tolerant: false,
             overwrite_heap: false,
+            heap_size: 1024,
         }
     }
 
@@ -270,6 +274,11 @@ impl OptionBuilder {
         self
     }
 
+    pub fn heap_size(mut self, heap_size: usize) -> Self {
+        self.heap_size = heap_size;
+        self
+    }
+
     pub fn build(self) -> Options {
         Options {
             file: self.file,
@@ -277,6 +286,7 @@ impl OptionBuilder {
             debug_log: self.debug_log,
             fault_tolerant: self.fault_tolerant,
             overwrite_heap: self.overwrite_heap,
+            heap_size: self.heap_size,
         }
     }
 }

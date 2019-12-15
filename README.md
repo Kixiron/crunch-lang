@@ -208,8 +208,22 @@ Bit Escape Codes: `\b{00000000}`
 
 ## Syntax TODOs
 
-`<expr -> bool> ? <ret> : <ret>`  
 `::: Doc Comments`  
+Mandatory Bracing: `a + b * c` is a syntax error, `a + (b * c)` is not  
+Zig-style multiline string literals with `#'` or `#"`:
+```
+let string = 
+    #' Multi
+    #'     Line
+    #'         String
+    #'             Literals
+```
+Poni-style operators  
+`+` vs `+?` vs `+!`  
+Inspired by https://tutorial.ponylang.io/gotchas/divide-by-zero.html  
+`int / int = int` Normal Divide (Division by zero results in zero)  
+`int /? int = result<int>` Checked Division (Dividing by zero will result in an error)  
+`int /! int = int` Crashing Division (Division by zero will result in a program halt)  
 
 ## CLI Options
 
@@ -238,6 +252,8 @@ Bit Escape Codes: `\b{00000000}`
 - array_init: Initializing arrays with non-copy types, one usage
 - lazy_static: Only used for the syscall table until [Rust Issue #51910](https://github.com/rust-lang/rust/issues/51910) is merged
 - human-panic: Need to write own panic handler, because panics are an ICE
+- libloading: Load dynamic libraries
 
 ## Dev Dependencies Overview
 - criterion: Benchmarking
+- proptest: Property Testing

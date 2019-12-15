@@ -1,9 +1,6 @@
 use crate::{AllocId, HeapPointer, Result, RuntimeError, RuntimeErrorTy};
 use std::{alloc, mem, ptr, slice};
 
-/// 64mb per half of heap
-const HEAP_HALF_SIZE: usize = 1000;
-
 /// Gets the memory page size
 #[inline]
 #[cfg(target_family = "unix")]
@@ -49,6 +46,7 @@ pub struct GcOptions {
     pub burn_gc: bool,
     /// Overwrites the heap on a side swap
     pub overwrite_heap: bool,
+    pub heap_size: usize,
 }
 
 impl From<&crate::Options> for GcOptions {
@@ -56,6 +54,7 @@ impl From<&crate::Options> for GcOptions {
         Self {
             burn_gc: options.burn_gc,
             overwrite_heap: options.overwrite_heap,
+            heap_size: options.heap_size,
         }
     }
 }
@@ -92,7 +91,7 @@ impl Gc {
             };
 
             // Create the layout for a heap half
-            let layout = alloc::Layout::from_size_align(HEAP_HALF_SIZE, page_size)
+            let layout = alloc::Layout::from_size_align(options.heap_size, page_size)
                 .expect("Failed to create GC memory block layout");
 
             // Left heap
@@ -131,7 +130,7 @@ impl Gc {
         let heap = self.get_side();
 
         // If the object is too large return None
-        if block_end - *heap as usize > HEAP_HALF_SIZE {
+        if block_end - *heap as usize > self.options.heap_size {
             self.collect()?; // Collect garbage
             return Err(RuntimeError {
                 ty: RuntimeErrorTy::GcError,
@@ -185,7 +184,7 @@ impl Gc {
         let heap = self.get_side();
 
         // If the object is too large return None
-        if block_end - *heap as usize > HEAP_HALF_SIZE {
+        if block_end - *heap as usize > self.options.heap_size {
             trace!("Object too large, failing allocation");
             self.collect()?; // Collect garbage
             return Err(RuntimeError {
@@ -271,7 +270,7 @@ impl Gc {
 
             // Overwrite old heap
             unsafe {
-                ptr::write_bytes(*self.get_side(), 0, HEAP_HALF_SIZE);
+                ptr::write_bytes(*self.get_side(), 0x00, self.options.heap_size);
             }
         }
 
@@ -443,7 +442,7 @@ impl Gc {
         );
 
         GcData {
-            heap_size: HEAP_HALF_SIZE,
+            heap_size: self.options.heap_size,
             heap_usage: *self.latest as usize - *self.get_side() as usize,
             num_roots: self.roots.len(),
             num_allocations: self.allocations.len(),
@@ -573,7 +572,394 @@ impl GcValue {
     }
 }
 
-// TODO: String interning
+#[derive(Debug, Clone, Copy)]
+pub struct GcVec<T> {
+    pub id: AllocId,
+    pub len: usize,
+    pub __inner__: std::marker::PhantomData<T>,
+}
+
+impl<T> GcVec<T>
+where
+    T: Clone + PartialEq + std::fmt::Debug,
+{
+    pub fn new(vec: Vec<T>, gc: &mut Gc) -> Result<Self> {
+        use std::mem::size_of;
+
+        let len = vec.len();
+
+        let (obj, id) = gc.allocate(size_of::<T>() * len)?;
+        #[cfg(debug_assertions)]
+        unsafe {
+            gc.write(id, vec.clone(), Some(&obj))?;
+        }
+        #[cfg(not(debug_assertions))]
+        unsafe {
+            gc.write(id, vec, Some(&obj))?;
+        }
+        gc.add_root(obj);
+
+        #[cfg(debug_assertions)]
+        {
+            let raw = gc.fetch::<&[u8], AllocId>(id)?;
+            let v = unsafe {
+                Vec::from_raw_parts(
+                    raw.as_ptr() as *mut T,
+                    raw.len() / size_of::<T>(),
+                    raw.len() / size_of::<T>(),
+                )
+            };
+
+            debug_assert_eq!(vec, v);
+            std::mem::forget(v);
+        }
+
+        Ok(Self {
+            id,
+            len,
+            __inner__: std::marker::PhantomData,
+        })
+    }
+
+    pub fn new_id(vec: Vec<T>, id: impl Into<AllocId>, gc: &mut Gc) -> Result<Self> {
+        use std::mem::size_of;
+
+        let len = vec.len();
+
+        let (obj, id) = gc.allocate_id(size_of::<T>() * len, id.into())?;
+        #[cfg(debug_assertions)]
+        unsafe {
+            gc.write(id, vec.clone(), Some(&obj))?;
+        }
+        #[cfg(not(debug_assertions))]
+        unsafe {
+            gc.write(id, vec, Some(&obj))?;
+        }
+        gc.add_root(obj);
+
+        #[cfg(debug_assertions)]
+        {
+            let raw = gc.fetch::<&[u8], AllocId>(id)?;
+            let v = unsafe {
+                Vec::from_raw_parts(
+                    raw.as_ptr() as *mut T,
+                    raw.len() / size_of::<T>(),
+                    raw.len() / size_of::<T>(),
+                )
+            };
+
+            debug_assert_eq!(vec, v);
+            std::mem::forget(v);
+        }
+
+        Ok(Self {
+            id,
+            len,
+            __inner__: std::marker::PhantomData,
+        })
+    }
+
+    pub fn to_vec<'a>(&self, gc: &'a Gc) -> Result<ForgetDrop<Vec<T>>> {
+        use std::mem::size_of;
+
+        let raw = gc.fetch::<&[u8], AllocId>(self.id)?;
+        Ok(unsafe {
+            ForgetDrop(Vec::from_raw_parts(
+                raw.as_ptr() as *mut T,
+                raw.len() / size_of::<T>(),
+                raw.len() / size_of::<T>(),
+            ))
+        })
+    }
+
+    pub fn drop(self, gc: &mut Gc) -> Result<()> {
+        gc.remove_root(self.id)?;
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+#[repr(transparent)]
+pub struct ForgetDrop<T>(T);
+
+impl<T> std::ops::Deref for ForgetDrop<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> Drop for ForgetDrop<T> {
+    fn drop(&mut self) {
+        std::mem::forget(self);
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct GcBigInt {
+    pub id: AllocId,
+    pub len: usize,
+}
+
+impl GcBigInt {
+    pub fn new(int: impl num_bigint::ToBigInt, gc: &mut Gc) -> Result<Self> {
+        let int = match int.to_bigint() {
+            Some(int) => int.to_signed_bytes_be(),
+            None => {
+                return Err(RuntimeError {
+                    ty: RuntimeErrorTy::InvalidInt,
+                    message: "Integer is not a valid integer".to_string(),
+                });
+            }
+        };
+        let len = int.len();
+
+        let (obj, id) = gc.allocate(len)?;
+        #[cfg(debug_assertions)]
+        unsafe {
+            gc.write(id, int.clone(), Some(&obj))?;
+        }
+        #[cfg(not(debug_assertions))]
+        unsafe {
+            gc.write(id, int, Some(&obj))?;
+        }
+        gc.add_root(obj);
+
+        debug_assert_eq!(
+            num_bigint::BigInt::from_signed_bytes_be(&int),
+            num_bigint::BigInt::from_signed_bytes_be(gc.fetch(id).expect("Value does not exist")),
+        );
+
+        Ok(Self { id, len })
+    }
+
+    pub fn new_id(
+        int: impl num_bigint::ToBigInt,
+        id: impl Into<AllocId>,
+        gc: &mut Gc,
+    ) -> Result<Self> {
+        let int = match int.to_bigint() {
+            Some(int) => int.to_signed_bytes_be(),
+            None => {
+                return Err(RuntimeError {
+                    ty: RuntimeErrorTy::InvalidInt,
+                    message: "Integer is not a valid integer".to_string(),
+                });
+            }
+        };
+        let len = int.len();
+
+        let (obj, id) = gc.allocate_id(len, id.into())?;
+        #[cfg(debug_assertions)]
+        unsafe {
+            gc.write(id, int.clone(), Some(&obj))?;
+        }
+        #[cfg(not(debug_assertions))]
+        unsafe {
+            gc.write(id, int, Some(&obj))?;
+        }
+        gc.add_root(obj);
+
+        debug_assert_eq!(
+            num_bigint::BigInt::from_signed_bytes_be(&int),
+            num_bigint::BigInt::from_signed_bytes_be(gc.fetch(id).expect("Value does not exist")),
+        );
+
+        Ok(Self { id, len })
+    }
+
+    pub fn new_adding<T>(int: impl num_bigint::ToBigInt, right: T, gc: &mut Gc) -> Result<Self>
+    where
+        num_bigint::BigInt: std::ops::AddAssign<T>,
+    {
+        let int = match int.to_bigint() {
+            Some(mut int) => {
+                int += right;
+                int.to_signed_bytes_be()
+            }
+            None => {
+                return Err(RuntimeError {
+                    ty: RuntimeErrorTy::InvalidInt,
+                    message: "Integer is not a valid integer".to_string(),
+                });
+            }
+        };
+        let len = int.len();
+
+        let (obj, id) = gc.allocate(len)?;
+        #[cfg(debug_assertions)]
+        unsafe {
+            gc.write(id, int.clone(), Some(&obj))?;
+        }
+        #[cfg(not(debug_assertions))]
+        unsafe {
+            gc.write(id, int, Some(&obj))?;
+        }
+        gc.add_root(obj);
+
+        debug_assert_eq!(
+            num_bigint::BigInt::from_signed_bytes_be(&int),
+            num_bigint::BigInt::from_signed_bytes_be(gc.fetch(id).expect("Value does not exist")),
+        );
+
+        Ok(Self { id, len })
+    }
+
+    pub fn to_int<'a>(&self, gc: &'a Gc) -> Result<ForgetDrop<num_bigint::BigInt>> {
+        Ok(ForgetDrop(num_bigint::BigInt::from_signed_bytes_be(
+            gc.fetch(self.id)?,
+        )))
+    }
+
+    pub fn drop(self, gc: &mut Gc) -> Result<()> {
+        gc.remove_root(self.id)?;
+
+        Ok(())
+    }
+
+    pub fn add(self, other: Self, gc: &mut Gc) -> Result<Self> {
+        let (left, right) = (self.to_int(&gc)?, other.to_int(&gc)?);
+        let result = GcBigInt::new(&*left + &*right, gc)?;
+        self.drop(gc)?;
+        other.drop(gc)?;
+
+        Ok(result)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct GcBigUint {
+    pub id: AllocId,
+    pub len: usize,
+}
+
+impl GcBigUint {
+    pub fn new(int: impl num_bigint::ToBigUint, gc: &mut Gc) -> Result<Self> {
+        let int = match int.to_biguint() {
+            Some(int) => int.to_bytes_be(),
+            None => {
+                return Err(RuntimeError {
+                    ty: RuntimeErrorTy::InvalidInt,
+                    message: "Integer is not a valid integer".to_string(),
+                });
+            }
+        };
+        let len = int.len();
+
+        let (obj, id) = gc.allocate(len)?;
+        #[cfg(debug_assertions)]
+        unsafe {
+            gc.write(id, int.clone(), Some(&obj))?;
+        }
+        #[cfg(not(debug_assertions))]
+        unsafe {
+            gc.write(id, int, Some(&obj))?;
+        }
+        gc.add_root(obj);
+
+        debug_assert_eq!(
+            num_bigint::BigUint::from_bytes_be(&int),
+            num_bigint::BigUint::from_bytes_be(gc.fetch(id).expect("Value does not exist")),
+        );
+
+        Ok(Self { id, len })
+    }
+
+    pub fn new_id(
+        int: impl num_bigint::ToBigUint,
+        id: impl Into<AllocId>,
+        gc: &mut Gc,
+    ) -> Result<Self> {
+        let int = match int.to_biguint() {
+            Some(int) => int.to_bytes_be(),
+            None => {
+                return Err(RuntimeError {
+                    ty: RuntimeErrorTy::InvalidInt,
+                    message: "Integer is not a valid integer".to_string(),
+                });
+            }
+        };
+        let len = int.len();
+
+        let (obj, id) = gc.allocate_id(len, id.into())?;
+        #[cfg(debug_assertions)]
+        unsafe {
+            gc.write(id, int.clone(), Some(&obj))?;
+        }
+        #[cfg(not(debug_assertions))]
+        unsafe {
+            gc.write(id, int, Some(&obj))?;
+        }
+        gc.add_root(obj);
+
+        debug_assert_eq!(
+            num_bigint::BigUint::from_bytes_be(&int),
+            num_bigint::BigUint::from_bytes_be(gc.fetch(id).expect("Value does not exist")),
+        );
+
+        Ok(Self { id, len })
+    }
+
+    pub fn new_adding<T>(int: impl num_bigint::ToBigUint, right: T, gc: &mut Gc) -> Result<Self>
+    where
+        num_bigint::BigUint: std::ops::AddAssign<T>,
+    {
+        let int = match int.to_biguint() {
+            Some(mut int) => {
+                int += right;
+                int.to_bytes_be()
+            }
+            None => {
+                return Err(RuntimeError {
+                    ty: RuntimeErrorTy::InvalidInt,
+                    message: "Integer is not a valid integer".to_string(),
+                });
+            }
+        };
+        let len = int.len();
+
+        let (obj, id) = gc.allocate(len)?;
+        #[cfg(debug_assertions)]
+        unsafe {
+            gc.write(id, int.clone(), Some(&obj))?;
+        }
+        #[cfg(not(debug_assertions))]
+        unsafe {
+            gc.write(id, int, Some(&obj))?;
+        }
+        gc.add_root(obj);
+
+        debug_assert_eq!(
+            num_bigint::BigUint::from_bytes_be(&int),
+            num_bigint::BigUint::from_bytes_be(gc.fetch(id).expect("Value does not exist")),
+        );
+
+        Ok(Self { id, len })
+    }
+
+    pub fn to_uint<'a>(&self, gc: &'a Gc) -> Result<ForgetDrop<num_bigint::BigUint>> {
+        Ok(ForgetDrop(num_bigint::BigUint::from_bytes_be(
+            gc.fetch(self.id)?,
+        )))
+    }
+
+    pub fn drop(self, gc: &mut Gc) -> Result<()> {
+        gc.remove_root(self.id)?;
+
+        Ok(())
+    }
+
+    pub fn add(self, other: Self, gc: &mut Gc) -> Result<Self> {
+        let (left, right) = (self.to_uint(&gc)?, other.to_uint(&gc)?);
+        let result = GcBigUint::new(&*left + &*right, gc)?;
+        self.drop(gc)?;
+        other.drop(gc)?;
+
+        Ok(result)
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct GcStr {
@@ -588,7 +974,7 @@ impl GcStr {
 
         let (obj, id) = gc.allocate(string.len())?;
         unsafe {
-            gc.write(id, string.as_bytes(), Some(&obj))?;
+            gc.write(id, string.as_bytes().to_vec(), Some(&obj))?;
         }
         gc.add_root(obj);
 
@@ -626,17 +1012,11 @@ impl GcStr {
     }
 
     pub fn to_str<'a>(&self, gc: &'a Gc) -> Result<&'a str> {
-        match std::str::from_utf8(gc.fetch(self.id)?) {
-            Ok(string) => Ok(string),
-            Err(err) => {
-                error!("Error decoding gc string: {:?}", err);
+        debug_assert!(
+            std::str::from_utf8(gc.fetch(self.id).expect("Value does not exist")).is_ok()
+        );
 
-                Err(RuntimeError {
-                    ty: RuntimeErrorTy::InvalidString,
-                    message: "Invalid encoding on string: String is not valid utf-8".to_string(),
-                })
-            }
-        }
+        unsafe { Ok(std::str::from_utf8_unchecked(gc.fetch(self.id)?)) }
     }
 
     pub fn drop(self, gc: &mut Gc) -> Result<()> {

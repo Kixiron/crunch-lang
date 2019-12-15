@@ -3,7 +3,7 @@ use crate::{
     instruction::Result,
     instruction::{RuntimeError, RuntimeErrorTy},
     parser::*,
-    Instruction, Options, Value,
+    Instruction, Options, RuntimeValue,
 };
 use std::collections::HashMap;
 
@@ -166,11 +166,20 @@ impl<'a> Interpreter<'a> {
 
                         BindingVal::BinOp(bin_op) => match (bin_op.left, bin_op.right) {
                             (BinOpSide::Literal(left), BinOpSide::Literal(right)) => {
-                                let (left, right): (Value, Value) =
+                                let (left, right): (RuntimeValue, RuntimeValue) =
                                     (left.val.into(), right.val.into());
-                                let addr = ctx.reserve_reg()?;
+                                let (left_reg, right_reg) =
+                                    (ctx.reserve_reg()?, ctx.reserve_reg()?);
 
-                                ctx.inst_load(addr, (left + right)?);
+                                // TODO: Compile-time evaluation
+                                ctx.inst_load(left_reg, left).inst_load(right_reg, right);
+                                match bin_op.op {
+                                    Op::Add => ctx.inst_add(left_reg, right_reg),
+                                    Op::Sub => ctx.inst_sub(left_reg, right_reg),
+                                    Op::Mult => ctx.inst_mult(left_reg, right_reg),
+                                    Op::Div => ctx.inst_div(left_reg, right_reg),
+                                };
+                                ctx.inst_op_to_reg(left_reg).inst_drop_reg(right_reg);
                             }
 
                             (BinOpSide::Literal(left), BinOpSide::Variable(right)) => {
@@ -187,7 +196,7 @@ impl<'a> Interpreter<'a> {
                                     } else if self.options.fault_tolerant {
                                         let reg = ctx.reserve_reg()?;
 
-                                        ctx.inst_cache(reg, Value::None, right_ident)?;
+                                        ctx.inst_cache(reg, RuntimeValue::None, right_ident)?;
 
                                         (reg, true)
                                     } else {
@@ -226,7 +235,7 @@ impl<'a> Interpreter<'a> {
                                     reg
                                 } else if self.options.fault_tolerant {
                                     let reg = ctx.reserve_reg()?;
-                                    ctx.inst_cache(reg, Value::None, left_ident)?;
+                                    ctx.inst_cache(reg, RuntimeValue::None, left_ident)?;
 
                                     reg
                                 } else {
@@ -291,7 +300,7 @@ impl<'a> Interpreter<'a> {
                                             (reg, false)
                                         } else if self.options.fault_tolerant {
                                             let reg = ctx.reserve_reg()?;
-                                            ctx.inst_load(reg, Value::None);
+                                            ctx.inst_load(reg, RuntimeValue::None);
 
                                             (reg, true)
                                         } else {
@@ -334,7 +343,7 @@ impl<'a> Interpreter<'a> {
                                                 (reg, false)
                                             } else if self.options.fault_tolerant {
                                                 let reg = ctx.reserve_reg()?;
-                                                ctx.inst_load(reg, Value::None);
+                                                ctx.inst_load(reg, RuntimeValue::None);
 
                                                 (reg, true)
                                             } else {
