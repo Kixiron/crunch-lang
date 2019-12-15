@@ -1,352 +1,45 @@
-use super::{AllocId, Gc, GcBigInt, GcBigUint, GcStr, GcVec, Result, RuntimeError, RuntimeErrorTy};
-use std::{fmt, ops};
-
-/// The length of an encoded Value
-pub const VALUE_LENGTH: usize = 9;
-
-/// A value contained in the GC
-#[derive(Debug, Clone, Eq)]
-pub enum Value {
-    Int(i32),
-    Bool(bool),
-    String(String),
-    Pointer(usize),
-    None,
-}
-
-impl std::fmt::Display for Value {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Int(inner) => write!(fmt, "{}", inner),
-            Self::Bool(inner) => write!(fmt, "{}", inner),
-            Self::String(inner) => write!(fmt, "{}", inner),
-            Self::Pointer(inner) => write!(fmt, "0x{:04X}", inner),
-            Self::None => write!(fmt, "null"),
-        }
-    }
-}
-
-impl Value {
-    /// Get the type of the Value as a static str
-    #[inline]
-    pub fn ty(&self) -> &'static str {
-        match self {
-            Self::Int(_) => "int",
-            Self::Bool(_) => "bool",
-            Self::String(_) => "str",
-            Self::Pointer(_) => "ptr",
-            Self::None => "none",
-        }
-    }
-
-    /// Convert the Value into its Bytecode representation
-    // TODO: Test this
-    #[inline]
-    pub fn as_bytes(&self) -> ([u8; VALUE_LENGTH], Option<&[u8]>) {
-        use std::mem::size_of;
-
-        let mut bytes = [0; VALUE_LENGTH];
-        let mut string_bytes = None;
-
-        match self {
-            Self::None => {
-                bytes[0] = 0x00;
-            }
-            Self::Int(i) => {
-                bytes[0] = 0x01;
-                bytes[1..size_of::<i32>() + 1].copy_from_slice(&i.to_be_bytes());
-            }
-            Self::Bool(b) => {
-                bytes[0] = 0x02;
-                bytes[1] = *b as u8;
-            }
-            Self::String(s) => {
-                bytes[0] = 0x03;
-                string_bytes = Some(s.as_bytes());
-            }
-            Self::Pointer(p) => {
-                bytes[0] = 0x04;
-                bytes[1..size_of::<usize>() + 1].copy_from_slice(&p.to_be_bytes());
-            }
-        }
-
-        (bytes, string_bytes)
-    }
-
-    /// Create a Value from its Bytecode representation
-    // TODO: Test this
-    #[inline]
-    pub fn from_bytes(
-        value: [u8; VALUE_LENGTH],
-        strings: &mut std::collections::VecDeque<String>,
-    ) -> std::result::Result<Self, &'static str> {
-        use std::{convert::TryInto, mem::size_of};
-
-        Ok(match value[0] {
-            0x00 => Self::None,
-            0x01 => Self::Int(i32::from_be_bytes(
-                match value[1..size_of::<i32>() + 1].try_into() {
-                    Ok(val) => val,
-                    Err(_) => return Err("Invalid integer"),
-                },
-            )),
-            0x02 => Self::Bool(value[1] > 0),
-            0x03 => Self::String(match strings.pop_front() {
-                Some(s) => s,
-                None => return Err("Not enough strings supplied"),
-            }),
-            0x04 => Self::Pointer(usize::from_be_bytes(
-                match value[1..size_of::<usize>() + 1].try_into() {
-                    Ok(val) => val,
-                    Err(_) => return Err("Invalid integer"),
-                },
-            )),
-
-            _ => return Err("Invalid Value Header"),
-        })
-    }
-}
+use super::{Gc, GcBigInt, GcBigUint, GcStr, GcVec, Result, RuntimeError, RuntimeErrorTy};
+use std::fmt;
 
 // TODO: Test all implemented operations
 
-impl ops::Add for Value {
-    type Output = Result<Self>;
-
-    #[inline]
-    fn add(self, other: Self) -> Self::Output {
-        match (self, other) {
-            (Self::Int(left), Self::Int(right)) => Ok(Self::Int(right + left)),
-            (Self::None, Self::None) => Ok(Self::None),
-            (Self::String(left), Self::String(right)) => {
-                let mut output = Vec::with_capacity(left.as_bytes().len() + right.as_bytes().len());
-                output.extend_from_slice(left.as_bytes());
-                output.extend_from_slice(right.as_bytes());
-
-                Ok(Self::String(unsafe { String::from_utf8_unchecked(output) }))
-            }
-
-            (left, right) => Err(RuntimeError {
-                ty: RuntimeErrorTy::IncompatibleTypes,
-                message: format!(
-                    "Cannot add variables of types {} and {}",
-                    left.ty(),
-                    right.ty()
-                ),
-            }),
-        }
-    }
-}
-
-impl ops::Sub for Value {
-    type Output = Result<Self>;
-
-    #[inline]
-    fn sub(self, other: Self) -> Self::Output {
-        match (self, other) {
-            (Self::Int(left), Self::Int(right)) => Ok(Self::Int(right - left)),
-
-            (left, right) => Err(RuntimeError {
-                ty: RuntimeErrorTy::IncompatibleTypes,
-                message: format!(
-                    "Cannot subtract variables of types {} and {}",
-                    left.ty(),
-                    right.ty()
-                ),
-            }),
-        }
-    }
-}
-
-impl ops::Mul for Value {
-    type Output = Result<Self>;
-
-    #[inline]
-    fn mul(self, other: Self) -> Self::Output {
-        match (self, other) {
-            (Self::Int(left), Self::Int(right)) => Ok(Self::Int(right * left)),
-
-            (left, right) => Err(RuntimeError {
-                ty: RuntimeErrorTy::IncompatibleTypes,
-                message: format!(
-                    "Cannot multiply variables of types {} and {}",
-                    left.ty(),
-                    right.ty()
-                ),
-            }),
-        }
-    }
-}
-
-impl ops::Div for Value {
-    type Output = Result<Self>;
-
-    #[inline]
-    fn div(self, other: Self) -> Self::Output {
-        match (self, other) {
-            (Self::Int(left), Self::Int(right)) => {
-                if right == 0 {
-                    Err(RuntimeError {
-                        ty: RuntimeErrorTy::DivideByZero,
-                        message: "Cannot divide by zero".to_string(),
-                    })
-                } else {
-                    Ok(Self::Int(left / right))
-                }
-            }
-
-            (left, right) => Err(RuntimeError {
-                ty: RuntimeErrorTy::IncompatibleTypes,
-                message: format!(
-                    "Cannot divide variables of types {} and {}",
-                    left.ty(),
-                    right.ty()
-                ),
-            }),
-        }
-    }
-}
-
-impl ops::BitAnd for Value {
-    type Output = Result<Self>;
-
-    #[inline]
-    fn bitand(self, other: Self) -> Self::Output {
-        match (self, other) {
-            (Self::Int(left), Self::Int(right)) => Ok(Self::Int(right & left)),
-            (Self::Bool(left), Self::Bool(right)) => Ok(Self::Bool(right & left)),
-
-            (left, right) => Err(RuntimeError {
-                ty: RuntimeErrorTy::IncompatibleTypes,
-                message: format!(
-                    "Cannot bitwise and variables of types {} and {}",
-                    left.ty(),
-                    right.ty()
-                ),
-            }),
-        }
-    }
-}
-
-impl ops::BitOr for Value {
-    type Output = Result<Self>;
-
-    #[inline]
-    fn bitor(self, other: Self) -> Self::Output {
-        match (self, other) {
-            (Self::Int(left), Self::Int(right)) => Ok(Self::Int(right | left)),
-            (Self::Bool(left), Self::Bool(right)) => Ok(Self::Bool(right | left)),
-
-            (left, right) => Err(RuntimeError {
-                ty: RuntimeErrorTy::IncompatibleTypes,
-                message: format!(
-                    "Cannot bitwise or variables of types {} and {}",
-                    left.ty(),
-                    right.ty()
-                ),
-            }),
-        }
-    }
-}
-
-impl ops::BitXor for Value {
-    type Output = Result<Self>;
-
-    #[inline]
-    fn bitxor(self, other: Self) -> Self::Output {
-        match (self, other) {
-            (Self::Int(left), Self::Int(right)) => Ok(Self::Int(right ^ left)),
-            (Self::Bool(left), Self::Bool(right)) => Ok(Self::Bool(right ^ left)),
-
-            (left, right) => Err(RuntimeError {
-                ty: RuntimeErrorTy::IncompatibleTypes,
-                message: format!(
-                    "Cannot bitwise xor variables of types {} and {}",
-                    left.ty(),
-                    right.ty()
-                ),
-            }),
-        }
-    }
-}
-
-impl ops::Not for Value {
-    type Output = Result<Self>;
-
-    #[inline]
-    fn not(self) -> Self::Output {
-        match self {
-            Self::Int(int) => Ok(Self::Int(!int)),
-            Self::Bool(boolean) => Ok(Self::Bool(!boolean)),
-
-            val => Err(RuntimeError {
-                ty: RuntimeErrorTy::IncompatibleTypes,
-                message: format!("Cannot apply not to variable of type {}", val.ty()),
-            }),
-        }
-    }
-}
-
-impl std::cmp::PartialOrd for Value {
-    #[inline]
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match (self, other) {
-            (Self::Int(left), Self::Int(right)) => Some(left.cmp(right)),
-            (Self::Bool(left), Self::Bool(right)) => Some(left.cmp(right)),
-            (Self::String(left), Self::String(right)) => Some(left.cmp(right)),
-            (Self::Pointer(left), Self::Pointer(right)) => Some(left.cmp(right)),
-
-            (_, _) => None,
-        }
-    }
-}
-
-impl std::cmp::PartialEq for Value {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Int(left), Self::Int(right)) => left == right,
-            (Self::Bool(left), Self::Bool(right)) => left == right,
-            (Self::String(left), Self::String(right)) => left == right,
-            (Self::Pointer(left), Self::Pointer(right)) => left == right,
-            (Self::None, Self::None) => true,
-
-            (_, _) => false,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 pub enum RuntimeValue {
+    // Unsigned integers
     Byte(u8),
     U16(u16),
     U32(u32),
     U64(u64),
     U128(u128),
+    GcUint(GcBigUint),
 
+    // Signed integers
     IByte(i8),
     I16(i16),
     I32(i32),
     I64(i64),
     I128(i128),
+    GcInt(GcBigInt),
 
+    // Floats
     F32(f32),
     F64(f64),
 
-    Bool(bool),
-
-    // Should this be a u32, u64 or a usize?
-    Pointer(u64),
-
+    // Strings
     Char(char),
     Str(&'static str),
     GcString(GcStr),
 
-    GcUint(GcBigUint),
-    GcInt(GcBigInt),
-
+    // Boolean
+    Bool(bool),
+    // Pointer
+    // Should this be a u32, u64 or a usize?
+    Pointer(u64),
+    // Vec
     GcVec(GcVec<RuntimeValue>),
-
+    // Null
     Null,
+
     None,
 }
 
@@ -375,122 +68,6 @@ impl RuntimeValue {
             Self::Null => "null",
             Self::None => "NoneType",
         }
-    }
-
-    pub fn add_upflowing(self, other: Self, gc: &mut Gc) -> Result<Self> {
-        Ok(match (self, other) {
-            (Self::Byte(left), Self::Byte(right)) => {
-                if let Some(result) = left.checked_add(right) {
-                    Self::Byte(result)
-                } else {
-                    Self::U16(left as u16).add_upflowing(Self::U16(right as u16), gc)?
-                }
-            }
-            (Self::U16(left), Self::U16(right)) => {
-                if let Some(result) = left.checked_add(right) {
-                    Self::U16(result)
-                } else {
-                    Self::U32(left as u32).add_upflowing(Self::U32(right as u32), gc)?
-                }
-            }
-            (Self::U32(left), Self::U32(right)) => {
-                if let Some(result) = left.checked_add(right) {
-                    Self::U32(result)
-                } else {
-                    Self::U64(left as u64).add_upflowing(Self::U64(right as u64), gc)?
-                }
-            }
-            (Self::U64(left), Self::U64(right)) => {
-                if let Some(result) = left.checked_add(right) {
-                    Self::U64(result)
-                } else {
-                    Self::U128(left as u128).add_upflowing(Self::U128(right as u128), gc)?
-                }
-            }
-            (Self::U128(left), Self::U128(right)) => {
-                if let Some(result) = left.checked_add(right) {
-                    Self::U128(result)
-                } else {
-                    Self::GcInt(GcBigInt::new_adding(left, right, gc)?)
-                }
-            }
-            (Self::GcUint(left), Self::GcUint(right)) => Self::GcUint(left.add(right, gc)?),
-
-            (Self::IByte(left), Self::IByte(right)) => {
-                if let Some(result) = left.checked_add(right) {
-                    Self::IByte(result)
-                } else {
-                    Self::I16(left as i16).add_upflowing(Self::I16(right as i16), gc)?
-                }
-            }
-            (Self::I16(left), Self::I16(right)) => {
-                if let Some(result) = left.checked_add(right) {
-                    Self::I16(result)
-                } else {
-                    Self::I32(left as i32).add_upflowing(Self::I32(right as i32), gc)?
-                }
-            }
-            (Self::I32(left), Self::I32(right)) => {
-                if let Some(result) = left.checked_add(right) {
-                    Self::I32(result)
-                } else {
-                    Self::I64(left as i64).add_upflowing(Self::I64(right as i64), gc)?
-                }
-            }
-            (Self::I64(left), Self::I64(right)) => {
-                if let Some(result) = left.checked_add(right) {
-                    Self::I64(result)
-                } else {
-                    Self::I128(left as i128).add_upflowing(Self::I128(right as i128), gc)?
-                }
-            }
-            (Self::I128(left), Self::I128(right)) => {
-                if let Some(result) = left.checked_add(right) {
-                    Self::I128(result)
-                } else {
-                    Self::GcInt(GcBigInt::new_adding(left, right, gc)?)
-                }
-            }
-            (Self::GcInt(left), Self::GcInt(right)) => Self::GcInt(left.add(right, gc)?),
-
-            (Self::F32(_left), Self::F32(_right)) => unimplemented!("No idea how floats work"),
-            (Self::F64(_left), Self::F64(_right)) => unimplemented!("No idea how floats work"),
-
-            (Self::Pointer(left), Self::Pointer(right)) => {
-                if let Some(ptr) = left.checked_add(right) {
-                    Self::Pointer(ptr)
-                } else {
-                    return Err(RuntimeError {
-                        ty: RuntimeErrorTy::IntegerOverflow,
-                        message: format!(
-                            "The attempted add is too large to fit in a '{}'",
-                            self.name()
-                        ),
-                    });
-                }
-            }
-
-            (left, right) | (left, right) if left == Self::None || right == Self::None => {
-                return Err(RuntimeError {
-                    ty: RuntimeErrorTy::NullVar,
-                    message: format!(
-                        "Values of types '{}' and '{}' cannot be added",
-                        left.name(),
-                        right.name()
-                    ),
-                });
-            }
-            (left, right) => {
-                return Err(RuntimeError {
-                    ty: RuntimeErrorTy::IncompatibleTypes,
-                    message: format!(
-                        "Values of types '{}' and '{}' cannot be added",
-                        left.name(),
-                        right.name()
-                    ),
-                });
-            }
-        })
     }
 
     // TODO: Add similar-type eq
@@ -569,6 +146,138 @@ impl RuntimeValue {
         unimplemented!()
     }
 }
+
+macro_rules! upflowing {
+    ($ty:ty, $([$name:tt, $func:tt, $func_two:tt, $func_three:tt]),*) => {
+        impl $ty {
+            $(
+                pub fn $name(self, other: Self, gc: &mut Gc) -> Result<Self> {
+                    Ok(match (self, other) {
+                        (Self::Byte(left), Self::Byte(right)) => {
+                            if let Some(result) = left.$func(right) {
+                                Self::Byte(result)
+                            } else {
+                                Self::U16(left as u16).$name(Self::U16(right as u16), gc)?
+                            }
+                        }
+                        (Self::U16(left), Self::U16(right)) => {
+                            if let Some(result) = left.$func(right) {
+                                Self::U16(result)
+                            } else {
+                                Self::U32(left as u32).$name(Self::U32(right as u32), gc)?
+                            }
+                        }
+                        (Self::U32(left), Self::U32(right)) => {
+                            if let Some(result) = left.$func(right) {
+                                Self::U32(result)
+                            } else {
+                                Self::U64(left as u64).$name(Self::U64(right as u64), gc)?
+                            }
+                        }
+                        (Self::U64(left), Self::U64(right)) => {
+                            if let Some(result) = left.$func(right) {
+                                Self::U64(result)
+                            } else {
+                                Self::U128(left as u128).$name(Self::U128(right as u128), gc)?
+                            }
+                        }
+                        (Self::U128(left), Self::U128(right)) => {
+                            if let Some(result) = left.$func(right) {
+                                Self::U128(result)
+                            } else {
+                                Self::GcInt(GcBigInt::$func_three(left, right, gc)?)
+                            }
+                        }
+                        (Self::GcUint(left), Self::GcUint(right)) => Self::GcUint(left.$func_two(right, gc)?),
+
+                        (Self::IByte(left), Self::IByte(right)) => {
+                            if let Some(result) = left.$func(right) {
+                                Self::IByte(result)
+                            } else {
+                                Self::I16(left as i16).$name(Self::I16(right as i16), gc)?
+                            }
+                        }
+                        (Self::I16(left), Self::I16(right)) => {
+                            if let Some(result) = left.$func(right) {
+                                Self::I16(result)
+                            } else {
+                                Self::I32(left as i32).$name(Self::I32(right as i32), gc)?
+                            }
+                        }
+                        (Self::I32(left), Self::I32(right)) => {
+                            if let Some(result) = left.$func(right) {
+                                Self::I32(result)
+                            } else {
+                                Self::I64(left as i64).$name(Self::I64(right as i64), gc)?
+                            }
+                        }
+                        (Self::I64(left), Self::I64(right)) => {
+                            if let Some(result) = left.$func(right) {
+                                Self::I64(result)
+                            } else {
+                                Self::I128(left as i128).$name(Self::I128(right as i128), gc)?
+                            }
+                        }
+                        (Self::I128(left), Self::I128(right)) => {
+                            if let Some(result) = left.$func(right) {
+                                Self::I128(result)
+                            } else {
+                                Self::GcInt(GcBigInt::$func_three(left, right, gc)?)
+                            }
+                        }
+                        (Self::GcInt(left), Self::GcInt(right)) => Self::GcInt(left.$func_two(right, gc)?),
+
+                        (Self::F32(_left), Self::F32(_right)) => unimplemented!("No idea how floats work"),
+                        (Self::F64(_left), Self::F64(_right)) => unimplemented!("No idea how floats work"),
+
+                        (Self::Pointer(left), Self::Pointer(right)) => {
+                            if let Some(ptr) = left.$func(right) {
+                                Self::Pointer(ptr)
+                            } else {
+                                return Err(RuntimeError {
+                                    ty: RuntimeErrorTy::IntegerOverflow,
+                                    message: format!(
+                                        "The attempted subtract is too large to fit in a '{}'",
+                                        self.name()
+                                    ),
+                                });
+                            }
+                        }
+
+                        (left, right) | (left, right) if left == Self::None || right == Self::None => {
+                            return Err(RuntimeError {
+                                ty: RuntimeErrorTy::NullVar,
+                                message: format!(
+                                    "Values of types '{}' and '{}' cannot be subtracted",
+                                    left.name(),
+                                    right.name()
+                                ),
+                            });
+                        }
+                        (left, right) => {
+                            return Err(RuntimeError {
+                                ty: RuntimeErrorTy::IncompatibleTypes,
+                                message: format!(
+                                    "Values of types '{}' and '{}' cannot be subtracted",
+                                    left.name(),
+                                    right.name()
+                                ),
+                            });
+                        }
+                    })
+                }
+            )*
+        }
+    }
+}
+
+upflowing!(
+    RuntimeValue,
+    [add_upflowing, checked_add, add, new_adding],
+    [sub_upflowing, checked_sub, sub, new_subtracting],
+    [mult_upflowing, checked_mul, mult, new_multiplying],
+    [div_upflowing, checked_div, div, new_dividing]
+);
 
 impl PartialEq for RuntimeValue {
     fn eq(&self, other: &Self) -> bool {

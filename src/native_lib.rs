@@ -1,9 +1,9 @@
-use crate::{Result, RuntimeError, RuntimeErrorTy, Value};
+use crate::{Result, RuntimeError, RuntimeErrorTy, RuntimeValue};
 use libloading::{Library, Symbol};
 use std::collections::HashMap;
 
 const FFI_ENTRY_POINT_PREFIX: &'static [u8] = b"___crunch_native_";
-type ExternalFuncSignature = extern "C" fn(input: Vec<Value>) -> Vec<Value>;
+type ExternalFuncSignature = extern "C" fn(input: Vec<RuntimeValue>) -> Vec<RuntimeValue>;
 
 struct FFIHandler {
     libs: HashMap<usize, Library>,

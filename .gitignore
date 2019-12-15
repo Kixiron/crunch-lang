@@ -10,3 +10,4 @@ utility_commands
 gc_dump-*
 void
 /pkg
+tmp

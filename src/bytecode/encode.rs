@@ -1,5 +1,5 @@
 use super::INSTRUCTION_LENGTH;
-use crate::{Instruction, RuntimeValue, VALUE_LENGTH};
+use crate::{Instruction, RuntimeValue};
 use std::mem::size_of;
 
 // TODO: Document & Test all functions
@@ -42,7 +42,8 @@ impl Encoder {
     }
 
     fn encode_values(&mut self, orig_values: Vec<RuntimeValue>) {
-        let mut values = Vec::with_capacity(size_of::<u32>() + (orig_values.len() * VALUE_LENGTH));
+        let mut values =
+            Vec::with_capacity(size_of::<u32>() + (orig_values.len() * size_of::<RuntimeValue>()));
         values.extend_from_slice(&(orig_values.len() as u32).to_be_bytes());
 
         let mut strings = Vec::new();

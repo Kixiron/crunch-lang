@@ -1,4 +1,4 @@
-use super::{AllocId, Index, Register, RuntimeValue, Value, Vm};
+use super::{Index, Register, RuntimeValue, Vm};
 
 /// A type alias for results that could be a [`RuntimeError`]
 pub type Result<T> = std::result::Result<T, RuntimeError>;
@@ -174,20 +174,22 @@ impl Instruction {
                     .add_upflowing(vm.registers[**right as usize], &mut vm.gc)?;
                 vm.index += Index(1);
             }
-            /*
             Instruction::Sub(left, right) => {
-                vm.prev_op = (*vm).get(*left).sub((*vm).get(*right), &vm.gc)?;
+                vm.prev_op = vm.registers[**left as usize]
+                    .sub_upflowing(vm.registers[**right as usize], &mut vm.gc)?;
                 vm.index += Index(1);
             }
             Instruction::Mult(left, right) => {
-                vm.prev_op = (*vm).get(*left).mult((*vm).get(*right), &vm.gc)?;
+                vm.prev_op = vm.registers[**left as usize]
+                    .mult_upflowing(vm.registers[**right as usize], &mut vm.gc)?;
                 vm.index += Index(1);
             }
             Instruction::Div(left, right) => {
-                vm.prev_op = (*vm).get(*left).div((*vm).get(*right), &vm.gc)?;
+                vm.prev_op = vm.registers[**left as usize]
+                    .div_upflowing(vm.registers[**right as usize], &mut vm.gc)?;
                 vm.index += Index(1);
             }
-            */
+
             Instruction::Print(reg) => {
                 trace!("Printing reg {:?}", reg);
 
@@ -316,11 +318,9 @@ impl Instruction {
             }
             Instruction::Syscall(offset, output, param_1, param_2, param_3, param_4, param_5) => {
                 unimplemented!("Syscalls are not stable");
-
-                vm.index += Index(1);
             }
 
-            Instruction::NoOp | _ => {
+            Instruction::NoOp => {
                 vm.index += Index(1);
             }
 
@@ -329,6 +329,10 @@ impl Instruction {
                     ty: RuntimeErrorTy::IllegalInstruction,
                     message: "Illegal Instruction".to_string(),
                 })
+            }
+
+            _ => {
+                vm.index += Index(1);
             }
         }
 
@@ -783,9 +787,11 @@ mod tests {
                         .write(discard_id, RuntimeValue::I32(int), Some(&discard))
                         .unwrap();
                 }
+                vm.gc.add_root(discard);
 
                 assert!(vm.gc.contains(discard_id));
                 assert!(vm.gc.fetch(discard_id) == Ok(RuntimeValue::I32(int)));
+                vm.gc.remove_root(discard_id).unwrap();
 
                 collect.execute(&mut vm).unwrap();
                 assert!(!vm.gc.contains(discard_id));
@@ -796,6 +802,7 @@ mod tests {
                 assert!(gc_str.to_str(&vm.gc) == Ok(&string));
 
                 gc_str.drop(&mut vm.gc).unwrap();
+                collect.execute(&mut vm).unwrap();
                 assert!(!vm.gc.contains(gc_str.id));
             }
 
@@ -897,7 +904,7 @@ mod tests {
                 let sub = Instruction::Sub(0.into(), 1.into());
                 sub.execute(&mut vm).unwrap();
 
-                assert!(vm.prev_op.is_equal(RuntimeValue::I32(left - right), &vm.gc).unwrap());
+                assert!(vm.prev_op.is_equal(RuntimeValue::I32(left).sub_upflowing(RuntimeValue::I32(right), &mut vm.gc).unwrap(), &vm.gc).unwrap());
             }
 
             #[test]
@@ -914,7 +921,7 @@ mod tests {
                 let mult = Instruction::Mult(0.into(), 1.into());
                 mult.execute(&mut vm).unwrap();
 
-                assert!(vm.prev_op.is_equal(RuntimeValue::I32(left * right), &vm.gc).unwrap());
+                assert!(vm.prev_op.is_equal(RuntimeValue::I32(left).mult_upflowing(RuntimeValue::I32(right), &mut vm.gc).unwrap(), &vm.gc).unwrap());
             }
 
             #[test]
@@ -931,7 +938,7 @@ mod tests {
                 let div = Instruction::Div(0.into(), 1.into());
                 div.execute(&mut vm).unwrap();
 
-                assert!(vm.prev_op.is_equal(RuntimeValue::I32(left / right), &vm.gc).unwrap());
+                assert!(vm.prev_op.is_equal(RuntimeValue::I32(left).div_upflowing(RuntimeValue::I32(right), &mut vm.gc).unwrap(), &vm.gc).unwrap());
             }
         }
     }

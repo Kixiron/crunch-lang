@@ -1,7 +1,4 @@
-use crate::{
-    Instruction, Result, RuntimeError, RuntimeErrorTy, RuntimeValue, INSTRUCTION_LENGTH,
-    VALUE_LENGTH,
-};
+use crate::{Instruction, Result, RuntimeError, RuntimeErrorTy, RuntimeValue, INSTRUCTION_LENGTH};
 use std::{collections::VecDeque, convert::TryInto, mem::size_of};
 
 // TODO: Document & Test all functions
@@ -193,7 +190,8 @@ impl<'a> Decoder<'a> {
 
         let mut values = VecDeque::with_capacity(number_values);
         for _ in 0..number_values {
-            let bytes = self.bytes[self.index..self.index + VALUE_LENGTH]
+            let len = take!(self, u32) as usize;
+            let bytes = self.bytes[self.index..self.index + len]
                 .try_into()
                 .unwrap_or_else(|_| unreachable!());
 
@@ -203,7 +201,7 @@ impl<'a> Decoder<'a> {
 
             values.push_back(value);
 
-            self.index += VALUE_LENGTH;
+            self.index += len;
         }
 
         Ok(values)

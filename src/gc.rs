@@ -697,6 +697,118 @@ impl<T> Drop for ForgetDrop<T> {
     }
 }
 
+/// Generates add, sub, etc. functions
+macro_rules! ops {
+    ($ty:ty, $to:tt, $([$name:tt, $op:tt]),*) => {
+        impl $ty {
+            $(
+                pub fn $name(self, other: Self, gc: &mut Gc) -> Result<Self> {
+                    let (left, right) = (self.$to(&gc)?, other.$to(&gc)?);
+                    let result = Self::new(&*left $op &*right, gc)?;
+
+                    self.drop(gc)?;
+                    other.drop(gc)?;
+
+                    Ok(result)
+                }
+            )*
+        }
+    }
+}
+
+/// Generates new_adding, new_subbing, etc. functions
+macro_rules! new_ops {
+    // Signed
+    (S$ty:ty, $to:tt, $internal:tt, $trait:path, $([$name:tt, $op:tt, $bounds:path]),*) => {
+        impl $ty {
+            $(
+                pub fn $name<I, T>(int: I, right: T, gc: &mut Gc) -> Result<Self>
+                where
+                    I: $trait,
+                    $internal: $bounds,
+                {
+                    let int = match int.to_bigint() {
+                        Some(mut int) => {
+                            int $op right;
+                            int.to_signed_bytes_be()
+                        }
+                        None => {
+                            return Err(RuntimeError {
+                                ty: RuntimeErrorTy::InvalidInt,
+                                message: "Integer is not a valid integer".to_string(),
+                            });
+                        }
+                    };
+                    let len = int.len();
+
+                    let (obj, id) = gc.allocate(len)?;
+                    #[cfg(debug_assertions)]
+                    unsafe {
+                        gc.write(id, int.clone(), Some(&obj))?;
+                    }
+                    #[cfg(not(debug_assertions))]
+                    unsafe {
+                        gc.write(id, int, Some(&obj))?;
+                    }
+                    gc.add_root(obj);
+
+                    debug_assert_eq!(
+                        $internal::from_signed_bytes_be(&int),
+                        $internal::from_signed_bytes_be(gc.fetch(id).expect("Value does not exist")),
+                    );
+
+                    Ok(Self { id, len })
+                }
+            )*
+        }
+    };
+
+    // Unsigned
+    (U$ty:ty, $to:tt, $internal:tt, $trait:path, $([$name:tt, $op:tt, $bounds:path]),*) => {
+        impl $ty {
+            $(
+                pub fn $name<I, T>(int: I, right: T, gc: &mut Gc) -> Result<Self>
+                where
+                    I: $trait,
+                    $internal: $bounds,
+                {
+                    let int = match int.to_biguint() {
+                        Some(mut int) => {
+                            int $op right;
+                            int.to_bytes_be()
+                        }
+                        None => {
+                            return Err(RuntimeError {
+                                ty: RuntimeErrorTy::InvalidInt,
+                                message: "Integer is not a valid integer".to_string(),
+                            });
+                        }
+                    };
+                    let len = int.len();
+
+                    let (obj, id) = gc.allocate(len)?;
+                    #[cfg(debug_assertions)]
+                    unsafe {
+                        gc.write(id, int.clone(), Some(&obj))?;
+                    }
+                    #[cfg(not(debug_assertions))]
+                    unsafe {
+                        gc.write(id, int, Some(&obj))?;
+                    }
+                    gc.add_root(obj);
+
+                    debug_assert_eq!(
+                        $internal::from_bytes_be(&int),
+                        $internal::from_bytes_be(gc.fetch(id).expect("Value does not exist")),
+                    );
+
+                    Ok(Self { id, len })
+                }
+            )*
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct GcBigInt {
     pub id: AllocId,
@@ -770,43 +882,6 @@ impl GcBigInt {
         Ok(Self { id, len })
     }
 
-    pub fn new_adding<T>(int: impl num_bigint::ToBigInt, right: T, gc: &mut Gc) -> Result<Self>
-    where
-        num_bigint::BigInt: std::ops::AddAssign<T>,
-    {
-        let int = match int.to_bigint() {
-            Some(mut int) => {
-                int += right;
-                int.to_signed_bytes_be()
-            }
-            None => {
-                return Err(RuntimeError {
-                    ty: RuntimeErrorTy::InvalidInt,
-                    message: "Integer is not a valid integer".to_string(),
-                });
-            }
-        };
-        let len = int.len();
-
-        let (obj, id) = gc.allocate(len)?;
-        #[cfg(debug_assertions)]
-        unsafe {
-            gc.write(id, int.clone(), Some(&obj))?;
-        }
-        #[cfg(not(debug_assertions))]
-        unsafe {
-            gc.write(id, int, Some(&obj))?;
-        }
-        gc.add_root(obj);
-
-        debug_assert_eq!(
-            num_bigint::BigInt::from_signed_bytes_be(&int),
-            num_bigint::BigInt::from_signed_bytes_be(gc.fetch(id).expect("Value does not exist")),
-        );
-
-        Ok(Self { id, len })
-    }
-
     pub fn to_int<'a>(&self, gc: &'a Gc) -> Result<ForgetDrop<num_bigint::BigInt>> {
         Ok(ForgetDrop(num_bigint::BigInt::from_signed_bytes_be(
             gc.fetch(self.id)?,
@@ -818,16 +893,24 @@ impl GcBigInt {
 
         Ok(())
     }
-
-    pub fn add(self, other: Self, gc: &mut Gc) -> Result<Self> {
-        let (left, right) = (self.to_int(&gc)?, other.to_int(&gc)?);
-        let result = GcBigInt::new(&*left + &*right, gc)?;
-        self.drop(gc)?;
-        other.drop(gc)?;
-
-        Ok(result)
-    }
 }
+
+use num_bigint::BigInt;
+new_ops!(S
+    GcBigInt, to_int, BigInt, num_bigint::ToBigInt,
+    [new_adding, +=, std::ops::AddAssign<T>],
+    [new_subtracting, -=, std::ops::SubAssign<T>],
+    [new_multiplying, *=, std::ops::MulAssign<T>],
+    [new_dividing, /=, std::ops::DivAssign<T>],
+    [new_shifting_right, >>=, std::ops::ShrAssign<T>],
+    [new_shifting_left, <<=, std::ops::ShlAssign<T>]
+);
+
+ops!(
+    GcBigInt, to_int,
+    [add, +], [sub, -],
+    [mult, *], [div, /]
+);
 
 #[derive(Debug, Clone, Copy)]
 pub struct GcBigUint {
@@ -902,43 +985,6 @@ impl GcBigUint {
         Ok(Self { id, len })
     }
 
-    pub fn new_adding<T>(int: impl num_bigint::ToBigUint, right: T, gc: &mut Gc) -> Result<Self>
-    where
-        num_bigint::BigUint: std::ops::AddAssign<T>,
-    {
-        let int = match int.to_biguint() {
-            Some(mut int) => {
-                int += right;
-                int.to_bytes_be()
-            }
-            None => {
-                return Err(RuntimeError {
-                    ty: RuntimeErrorTy::InvalidInt,
-                    message: "Integer is not a valid integer".to_string(),
-                });
-            }
-        };
-        let len = int.len();
-
-        let (obj, id) = gc.allocate(len)?;
-        #[cfg(debug_assertions)]
-        unsafe {
-            gc.write(id, int.clone(), Some(&obj))?;
-        }
-        #[cfg(not(debug_assertions))]
-        unsafe {
-            gc.write(id, int, Some(&obj))?;
-        }
-        gc.add_root(obj);
-
-        debug_assert_eq!(
-            num_bigint::BigUint::from_bytes_be(&int),
-            num_bigint::BigUint::from_bytes_be(gc.fetch(id).expect("Value does not exist")),
-        );
-
-        Ok(Self { id, len })
-    }
-
     pub fn to_uint<'a>(&self, gc: &'a Gc) -> Result<ForgetDrop<num_bigint::BigUint>> {
         Ok(ForgetDrop(num_bigint::BigUint::from_bytes_be(
             gc.fetch(self.id)?,
@@ -950,16 +996,24 @@ impl GcBigUint {
 
         Ok(())
     }
-
-    pub fn add(self, other: Self, gc: &mut Gc) -> Result<Self> {
-        let (left, right) = (self.to_uint(&gc)?, other.to_uint(&gc)?);
-        let result = GcBigUint::new(&*left + &*right, gc)?;
-        self.drop(gc)?;
-        other.drop(gc)?;
-
-        Ok(result)
-    }
 }
+
+use num_bigint::BigUint;
+new_ops!(U
+    GcBigUint, to_uint, BigUint, num_bigint::ToBigUint,
+    [new_adding, +=, std::ops::AddAssign<T>],
+    [new_subtracting, -=, std::ops::SubAssign<T>],
+    [new_multiplying, *=, std::ops::MulAssign<T>],
+    [new_dividing, /=, std::ops::DivAssign<T>],
+    [new_shifting_right, >>=, std::ops::ShrAssign<T>],
+    [new_shifting_left, <<=, std::ops::ShlAssign<T>]
+);
+
+ops!(
+    GcBigUint, to_uint,
+    [add, +], [sub, -],
+    [mult, *], [div, /]
+);
 
 #[derive(Debug, Clone, Copy)]
 pub struct GcStr {
@@ -1033,26 +1087,27 @@ mod tests {
 
     #[test]
     fn alloc_value() {
-        use crate::Value;
+        use crate::RuntimeValue;
 
         let mut gc = Gc::new(&crate::OptionBuilder::new("./alloc_value").build());
 
-        let (int, int_id) = gc.allocate(size_of::<Value>()).unwrap();
+        let (int, int_id) = gc.allocate(size_of::<RuntimeValue>()).unwrap();
         unsafe {
-            gc.write(int_id, Value::Int(10), Some(&int)).unwrap();
+            gc.write(int_id, RuntimeValue::I32(10), Some(&int)).unwrap();
         }
         gc.add_root(int);
         assert!(gc.contains(int_id));
-        assert!(gc.fetch(int_id) == Ok(Value::Int(10)));
+        assert!(gc.fetch(int_id) == Ok(RuntimeValue::I32(10)));
 
-        let (int_2, int_2_id) = dbg!(gc.allocate_id(size_of::<Value>(), 0).unwrap());
+        let (int_2, int_2_id) = dbg!(gc.allocate_id(size_of::<RuntimeValue>(), 0).unwrap());
         unsafe {
-            gc.write(int_2_id, Value::Int(20), Some(&int_2)).unwrap();
+            gc.write(int_2_id, RuntimeValue::I32(20), Some(&int_2))
+                .unwrap();
         }
         gc.add_root(int_2);
         assert_eq!(AllocId(0), int_2_id);
         assert!(gc.contains(int_2_id));
-        assert!(gc.fetch(int_2_id) == Ok(Value::Int(20)));
+        assert!(gc.fetch(int_2_id) == Ok(RuntimeValue::I32(20)));
     }
 
     #[test]
