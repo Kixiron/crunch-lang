@@ -225,9 +225,8 @@ Bit Escape Codes: `\b{00000000}`
         #"         String
         #"             Literals
     ```
-- Poni-style operators  
+- [Poni-style](https://tutorial.ponylang.io/gotchas/divide-by-zero.html) operators  
     `+` vs `+?` vs `+!`  
-    Inspired by https://tutorial.ponylang.io/gotchas/divide-by-zero.html  
     `int / int = int` Normal Divide (Division by zero results in zero)  
     `int /? int = result<int>` Checked Division (Dividing by zero will result in an error)  
     `int /! int = int` Crashing Division (Division by zero will result in a program halt)  

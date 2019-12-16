@@ -21,7 +21,7 @@ name = "vm_execution"
 harness = false
 
 [dependencies]
-log = "0.4.9"
+log = "0.4.8"
 simple_logger = "1.3.0"
 color-backtrace = "0.3.0"
 array-init = "0.1.1"
