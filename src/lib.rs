@@ -1,3 +1,4 @@
+#![feature(track_caller)]
 #![deny(
     missing_debug_implementations,
     deprecated,
@@ -254,27 +255,27 @@ impl OptionBuilder {
         }
     }
 
-    pub fn burn_gc(mut self, b: bool) -> Self {
+    pub const fn burn_gc(mut self, b: bool) -> Self {
         self.burn_gc = b;
         self
     }
 
-    pub fn debug_log(mut self, b: bool) -> Self {
+    pub const fn debug_log(mut self, b: bool) -> Self {
         self.debug_log = b;
         self
     }
 
-    pub fn fault_tolerant(mut self, b: bool) -> Self {
+    pub const fn fault_tolerant(mut self, b: bool) -> Self {
         self.fault_tolerant = b;
         self
     }
 
-    pub fn overwrite_heap(mut self, b: bool) -> Self {
+    pub const fn overwrite_heap(mut self, b: bool) -> Self {
         self.overwrite_heap = b;
         self
     }
 
-    pub fn heap_size(mut self, heap_size: usize) -> Self {
+    pub const fn heap_size(mut self, heap_size: usize) -> Self {
         self.heap_size = heap_size;
         self
     }
@@ -310,8 +311,7 @@ impl From<&str> for ReplOutput {
         match &*string.to_lowercase() {
             "ast" => Self::Ast,
             "bytecode" => Self::Bytecode,
-            "none" => Self::None,
-            _ => Self::None,
+            "none" | _ => Self::None,
         }
     }
 }

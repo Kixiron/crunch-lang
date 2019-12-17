@@ -223,11 +223,11 @@ impl Gc {
         trace!("GC Collecting");
 
         // The allocations to be transferred over to the new heap
-        let mut keep = Vec::new();
+        let mut keep = Vec::with_capacity(self.roots.len());
         // Get the valid allocations of roots and all children
         for root in &mut self.roots {
             if !root.marked {
-                keep.extend(root.collect());
+                root.collect(&mut keep);
             }
         }
 
@@ -241,7 +241,7 @@ impl Gc {
 
         trace!("Allocations before collect: {}", self.allocations.len());
 
-        let mut new_allocations = Vec::new();
+        let mut new_allocations = Vec::with_capacity(keep.len());
         // Iterate over allocations to keep to move them onto the new heap
         for (id, size) in keep {
             // Get the pointer to the location on the old heap
@@ -522,24 +522,20 @@ pub struct GcValue {
 impl GcValue {
     /// Fetches The id and size of all children
     #[inline]
-    pub fn collect(&mut self) -> Vec<(AllocId, usize)> {
-        let mut keep = Vec::new();
-
+    pub fn collect(&mut self, vec: &mut Vec<(AllocId, usize)>) {
         self.marked = true;
-        keep.push((self.id, self.size));
+        vec.push((self.id, self.size));
 
         for child in &mut self.children {
             if !child.marked {
-                keep.extend(child.collect());
+                child.collect(vec);
             }
         }
-
-        keep
     }
 
     /// Fetches a child of the Value
     #[inline]
-    pub fn fetch_child<Id: Into<AllocId> + Copy>(&self, id: Id) -> Option<&GcValue> {
+    pub fn fetch_child<Id: Into<AllocId> + Copy>(&self, id: Id) -> Option<&Self> {
         for child in &self.children {
             if child.id == id.into() {
                 return Some(child);
@@ -555,7 +551,7 @@ impl GcValue {
 
     /// Adds a child
     #[inline]
-    pub fn add_child(&mut self, child: GcValue) {
+    pub fn add_child(&mut self, child: Self) {
         self.children.push(child);
     }
 
@@ -727,17 +723,14 @@ macro_rules! new_ops {
                     I: $trait,
                     $internal: $bounds,
                 {
-                    let int = match int.to_bigint() {
-                        Some(mut int) => {
-                            int $op right;
-                            int.to_signed_bytes_be()
-                        }
-                        None => {
-                            return Err(RuntimeError {
-                                ty: RuntimeErrorTy::InvalidInt,
-                                message: "Integer is not a valid integer".to_string(),
-                            });
-                        }
+                    let int = if let Some(mut int) = int.to_bigint() {
+                        int $op right;
+                        int.to_signed_bytes_be()
+                    } else {
+                        return Err(RuntimeError {
+                            ty: RuntimeErrorTy::InvalidInt,
+                            message: "Integer is not a valid integer".to_string(),
+                        });
                     };
                     let len = int.len();
 
@@ -772,17 +765,14 @@ macro_rules! new_ops {
                     I: $trait,
                     $internal: $bounds,
                 {
-                    let int = match int.to_biguint() {
-                        Some(mut int) => {
-                            int $op right;
-                            int.to_bytes_be()
-                        }
-                        None => {
-                            return Err(RuntimeError {
-                                ty: RuntimeErrorTy::InvalidInt,
-                                message: "Integer is not a valid integer".to_string(),
-                            });
-                        }
+                    let int = if let Some(mut int) = int.to_biguint() {
+                        int $op right;
+                        int.to_bytes_be()
+                    } else {
+                        return Err(RuntimeError {
+                            ty: RuntimeErrorTy::InvalidInt,
+                            message: "Integer is not a valid integer".to_string(),
+                        });
                     };
                     let len = int.len();
 
@@ -817,14 +807,13 @@ pub struct GcBigInt {
 
 impl GcBigInt {
     pub fn new(int: impl num_bigint::ToBigInt, gc: &mut Gc) -> Result<Self> {
-        let int = match int.to_bigint() {
-            Some(int) => int.to_signed_bytes_be(),
-            None => {
-                return Err(RuntimeError {
-                    ty: RuntimeErrorTy::InvalidInt,
-                    message: "Integer is not a valid integer".to_string(),
-                });
-            }
+        let int = if let Some(int) = int.to_bigint() {
+            int.to_signed_bytes_be()
+        } else {
+            return Err(RuntimeError {
+                ty: RuntimeErrorTy::InvalidInt,
+                message: "Integer is not a valid integer".to_string(),
+            });
         };
         let len = int.len();
 
@@ -852,14 +841,13 @@ impl GcBigInt {
         id: impl Into<AllocId>,
         gc: &mut Gc,
     ) -> Result<Self> {
-        let int = match int.to_bigint() {
-            Some(int) => int.to_signed_bytes_be(),
-            None => {
-                return Err(RuntimeError {
-                    ty: RuntimeErrorTy::InvalidInt,
-                    message: "Integer is not a valid integer".to_string(),
-                });
-            }
+        let int = if let Some(int) = int.to_bigint() {
+            int.to_signed_bytes_be()
+        } else {
+            return Err(RuntimeError {
+                ty: RuntimeErrorTy::InvalidInt,
+                message: "Integer is not a valid integer".to_string(),
+            });
         };
         let len = int.len();
 
@@ -920,14 +908,13 @@ pub struct GcBigUint {
 
 impl GcBigUint {
     pub fn new(int: impl num_bigint::ToBigUint, gc: &mut Gc) -> Result<Self> {
-        let int = match int.to_biguint() {
-            Some(int) => int.to_bytes_be(),
-            None => {
-                return Err(RuntimeError {
-                    ty: RuntimeErrorTy::InvalidInt,
-                    message: "Integer is not a valid integer".to_string(),
-                });
-            }
+        let int = if let Some(int) = int.to_biguint() {
+            int.to_bytes_be()
+        } else {
+            return Err(RuntimeError {
+                ty: RuntimeErrorTy::InvalidInt,
+                message: "Integer is not a valid integer".to_string(),
+            });
         };
         let len = int.len();
 
@@ -955,14 +942,13 @@ impl GcBigUint {
         id: impl Into<AllocId>,
         gc: &mut Gc,
     ) -> Result<Self> {
-        let int = match int.to_biguint() {
-            Some(int) => int.to_bytes_be(),
-            None => {
-                return Err(RuntimeError {
-                    ty: RuntimeErrorTy::InvalidInt,
-                    message: "Integer is not a valid integer".to_string(),
-                });
-            }
+        let int = if let Some(int) = int.to_biguint() {
+            int.to_bytes_be()
+        } else {
+            return Err(RuntimeError {
+                ty: RuntimeErrorTy::InvalidInt,
+                message: "Integer is not a valid integer".to_string(),
+            });
         };
         let len = int.len();
 
@@ -1023,7 +1009,7 @@ pub struct GcStr {
 }
 
 impl GcStr {
-    pub fn new<'a>(string: impl AsRef<str>, gc: &mut Gc) -> Result<Self> {
+    pub fn new(string: impl AsRef<str>, gc: &mut Gc) -> Result<Self> {
         let string = string.as_ref();
 
         let (obj, id) = gc.allocate(string.len())?;
@@ -1045,11 +1031,7 @@ impl GcStr {
         })
     }
 
-    pub fn new_id<'a>(
-        string: impl AsRef<str>,
-        id: impl Into<AllocId>,
-        gc: &mut Gc,
-    ) -> Result<Self> {
+    pub fn new_id(string: impl AsRef<str>, id: impl Into<AllocId>, gc: &mut Gc) -> Result<Self> {
         let string = string.as_ref();
 
         let (obj, id) = gc.allocate_id(string.len(), id)?;

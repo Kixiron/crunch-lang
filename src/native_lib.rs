@@ -37,19 +37,18 @@ impl FFIHandler {
     ) -> Result<Symbol<'a, ExternalFuncSignature>> {
         let func_name = func_name.as_ref();
 
-        let lib = match self.libs.get(&lib) {
-            Some(lib) => lib,
-            None => {
-                error!(
-                    "Error getting lib id {}, attempting to use function {:?}",
-                    lib, func_name
-                );
+        let lib = if let Some(lib) = self.libs.get(&lib) {
+            lib
+        } else {
+            error!(
+                "Error getting lib id {}, attempting to use function {:?}",
+                lib, func_name
+            );
 
-                return Err(RuntimeError {
-                    ty: RuntimeErrorTy::MissingFile,
-                    message: "The requested Dynamic Library is not loaded".to_string(),
-                });
-            }
+            return Err(RuntimeError {
+                ty: RuntimeErrorTy::MissingFile,
+                message: "The requested Dynamic Library is not loaded".to_string(),
+            });
         };
 
         let func = match unsafe { lib.get(func_name) } {

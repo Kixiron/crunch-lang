@@ -1,7 +1,7 @@
 use super::TokenType;
 use crate::RuntimeValue;
 use codespan::{FileId, Span};
-use std::{borrow::Cow, fmt};
+use std::fmt;
 
 #[derive(Clone)]
 pub enum Node<'a> {
@@ -83,13 +83,13 @@ impl fmt::Debug for LocInfo {
 
 #[derive(Debug, Clone)]
 pub struct Ident<'a> {
-    pub name: Cow<'a, str>,
+    pub name: &'a str,
     pub info: LocInfo,
 }
 
 impl<'a> PartialEq for Ident<'a> {
     fn eq(&self, other: &Self) -> bool {
-        &*self.name == &*other.name
+        *self.name == *other.name
     }
 }
 
@@ -170,6 +170,7 @@ pub enum FuncExpr<'a> {
     FuncCall(FuncCall<'a>),
     Assign(Assign<'a>),
     Builtin(Builtin<'a>),
+    NoOp,
 }
 
 impl<'a> fmt::Debug for FuncExpr<'a> {
@@ -179,6 +180,7 @@ impl<'a> fmt::Debug for FuncExpr<'a> {
             Self::FuncCall(c) => write!(f, "{:#?}", c),
             Self::Assign(a) => write!(f, "{:#?}", a),
             Self::Builtin(b) => write!(f, "{:#?}", b),
+            Self::NoOp => write!(f, "NoOp"),
         }
     }
 }
@@ -201,7 +203,7 @@ pub struct Binding<'a> {
 
 #[derive(Clone)]
 pub enum BindingVal<'a> {
-    Literal(Literal<'a>),
+    Literal(Literal),
     Variable(Ident<'a>),
     BinOp(BinOp<'a>),
     FuncCall(FuncCall<'a>),
@@ -234,21 +236,23 @@ pub enum Op {
     Mult,
 }
 
-impl From<TokenType> for Op {
-    fn from(token: TokenType) -> Self {
-        match token {
+impl std::convert::TryFrom<TokenType> for Op {
+    type Error = TokenType;
+
+    fn try_from(token: TokenType) -> Result<Self, Self::Error> {
+        Ok(match token {
             TokenType::Plus => Self::Add,
             TokenType::Minus => Self::Sub,
             TokenType::Divide => Self::Div,
             TokenType::Star => Self::Mult,
-            _ => unimplemented!(),
-        }
+            token => return Err(token),
+        })
     }
 }
 
 #[derive(Clone)]
 pub enum BinOpSide<'a> {
-    Literal(Literal<'a>),
+    Literal(Literal),
     Variable(Ident<'a>),
 }
 
@@ -271,7 +275,7 @@ pub struct FuncCall<'a> {
 #[derive(Clone)]
 pub enum IdentLiteral<'a> {
     Variable(Ident<'a>),
-    Literal(Literal<'a>),
+    Literal(Literal),
 }
 
 impl<'a> fmt::Debug for IdentLiteral<'a> {
@@ -291,20 +295,20 @@ pub struct Assign<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Literal<'a> {
-    pub val: LiteralInner<'a>,
+pub struct Literal {
+    pub val: LiteralInner,
     pub info: LocInfo,
 }
 
 #[derive(Clone)]
-pub enum LiteralInner<'a> {
-    String(Cow<'a, str>),
+pub enum LiteralInner {
+    String(String),
     Int(i32),
     Float(f32),
     Bool(bool),
 }
 
-impl<'a> LiteralInner<'a> {
+impl<'a> LiteralInner {
     pub fn to_type(&self) -> Type<'a> {
         match self {
             Self::String(_) => Type::String,
@@ -315,7 +319,7 @@ impl<'a> LiteralInner<'a> {
     }
 }
 
-impl<'a> Into<RuntimeValue> for LiteralInner<'a> {
+impl<'a> Into<RuntimeValue> for LiteralInner {
     fn into(self) -> RuntimeValue {
         match self {
             Self::String(s) => RuntimeValue::Str(Box::leak(s.to_string().into_boxed_str())),
@@ -326,7 +330,7 @@ impl<'a> Into<RuntimeValue> for LiteralInner<'a> {
     }
 }
 
-impl<'a> fmt::Debug for LiteralInner<'a> {
+impl<'a> fmt::Debug for LiteralInner {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::String(s) => write!(f, "String({:?})", s),

@@ -4,6 +4,7 @@
 
 - [ ] Finish Parser
 - [ ] Finish Interpreter
+- [ ] Functions
 - [ ] FFI
 - [ ] WASM Backend
 - [ ] Tooling
@@ -186,7 +187,7 @@ let dependencies: [Dependency] = [
 ## String Escapes:  
 
 Unicode Escape Codes: `\u{0000}`  
-Byte Escape Codes: `\x{00}`  
+Hex Escape Codes: `\x{00}`  
 Bit Escape Codes: `\b{00000000}`  
 
 ## Primitive types

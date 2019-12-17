@@ -152,6 +152,8 @@ impl<'a> Interpreter<'a> {
             // For each expression in the function, evaluate it into instructions
             for expr in func.body.clone() {
                 match expr.expr {
+                    FuncExpr::NoOp => continue,
+
                     // Bind a variable to a value
                     FuncExpr::Binding(binding) => match binding.val {
                         BindingVal::Literal(literal) => {
@@ -280,11 +282,11 @@ impl<'a> Interpreter<'a> {
                             ctx.inst_halt();
                         }
 
-                        Builtin::SyscallExit(_exit_code) => {
+                        Builtin::SyscallExit(exit_code) => {
                             unimplemented!("Syscalls have not been implemented");
 
                             #[allow(unreachable_code)]
-                            match _exit_code {
+                            match exit_code {
                                 // For literals fed into the print function, load them, print them, and drop them
                                 IdentLiteral::Literal(literal) => {
                                     let reg = ctx.reserve_reg()?;

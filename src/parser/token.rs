@@ -193,10 +193,10 @@ impl<'a> Iterator for TokenStream<'a> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct Token<'a> {
     pub ty: TokenType,
-    pub source: Cow<'a, str>,
+    pub source: &'a str,
     pub range: (u32, u32),
 }
 
@@ -204,8 +204,18 @@ impl<'a> Token<'a> {
     pub fn new(ty: TokenType, source: &'a str, range: std::ops::Range<usize>) -> Self {
         Self {
             ty,
-            source: Cow::Borrowed(source),
+            source,
             range: (range.start as u32, range.end as u32),
         }
+    }
+}
+
+impl<'a> std::fmt::Debug for Token<'a> {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fmt.debug_struct("Token")
+            .field("ty", &self.ty)
+            .field("source", &self.source)
+            .field("range", &(self.range.0..self.range.1))
+            .finish()
     }
 }

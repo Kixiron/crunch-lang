@@ -79,7 +79,7 @@ impl RuntimeValue {
             (Self::U64(left), Self::U64(right)) => left == right,
             (Self::U128(left), Self::U128(right)) => left == right,
             (Self::GcUint(left), Self::GcUint(right)) => {
-                *left.to_uint(&gc)? == *right.to_uint(&gc)?
+                *left.to_uint(gc)? == *right.to_uint(gc)?
             }
 
             (Self::IByte(left), Self::IByte(right)) => left == right,
@@ -87,7 +87,7 @@ impl RuntimeValue {
             (Self::I32(left), Self::I32(right)) => left == right,
             (Self::I64(left), Self::I64(right)) => left == right,
             (Self::I128(left), Self::I128(right)) => left == right,
-            (Self::GcInt(left), Self::GcInt(right)) => *left.to_int(&gc)? == *right.to_int(&gc)?,
+            (Self::GcInt(left), Self::GcInt(right)) => *left.to_int(gc)? == *right.to_int(gc)?,
 
             (Self::F32(_left), Self::F32(_right)) => unimplemented!("No idea how floats work"),
             (Self::F64(_left), Self::F64(_right)) => unimplemented!("No idea how floats work"),
@@ -125,11 +125,11 @@ impl RuntimeValue {
             Self::Bool(int) => int.to_string(),
             Self::Pointer(int) => format!("{:p}", int as *const _),
             Self::Char(c) => c.to_string(),
-            Self::GcString(string) => string.to_str(&gc)?.to_string(),
+            Self::GcString(string) => string.to_str(gc)?.to_string(),
             Self::Str(string) => string.to_string(),
-            Self::GcInt(int) => int.to_int(&gc)?.to_string(),
-            Self::GcUint(int) => int.to_uint(&gc)?.to_string(),
-            Self::GcVec(vec) => format!("{:?}", *vec.to_vec(&gc)?),
+            Self::GcInt(int) => int.to_int(gc)?.to_string(),
+            Self::GcUint(int) => int.to_uint(gc)?.to_string(),
+            Self::GcVec(vec) => format!("{:?}", *vec.to_vec(gc)?),
             Self::Null => "null".to_string(),
             Self::None => "NoneType".to_string(),
         })

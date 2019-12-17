@@ -5,7 +5,7 @@ pub use ast::*;
 
 use codespan::{FileId, Files, Span};
 use codespan_reporting::diagnostic::{Diagnostic, Label, Severity};
-use std::{borrow::Cow, char, collections::VecDeque};
+use std::{char, collections::VecDeque, convert::TryFrom, panic::Location};
 use token::*;
 
 type Result<T> = std::result::Result<T, Diagnostic>;
@@ -66,7 +66,7 @@ impl<'a> Parser<'a> {
 
         const TOP_LEVEL_TOKENS: [TokenType; 2] = [TokenType::Import, TokenType::Function];
 
-        while let Ok(token) = self.next(line!()) {
+        while let Ok(token) = self.next() {
             match token.ty {
                 TokenType::Function => {
                     info!("Top Level Loop: Function");
@@ -97,8 +97,8 @@ impl<'a> Parser<'a> {
 
                 // This is apparently kinda flawed
                 TokenType::Space | TokenType::Comment | TokenType::Newline => {
-                    self.eat_of(&[TokenType::Space, TokenType::Comment, TokenType::Newline])
-                        .expect("Shouldn't be able to fail");
+                    trace!("Eating the token {:?} at the top level", token);
+                    // Do nothing, the token has already been consumed
                 }
 
                 TokenType::Error => {
@@ -173,14 +173,14 @@ impl<'a> Parser<'a> {
 
         self.eat_w()?;
 
-        let (exposes, alias) = match self.peek(line!())?.ty {
+        let (exposes, alias) = match self.peek()?.ty {
             TokenType::Exposing => {
                 self.eat(TokenType::Exposing)
                     .unwrap_or_else(|_| unreachable!("Peek was Exposing"));
 
                 self.eat_w()?;
 
-                let peek = self.peek(line!())?;
+                let peek = self.peek()?;
                 if peek.ty == TokenType::Star {
                     self.eat(TokenType::Star)
                         .unwrap_or_else(|_| unreachable!("Peek was Star"));
@@ -189,7 +189,7 @@ impl<'a> Parser<'a> {
 
                     (Exposes::All, None)
                 } else if peek.ty == TokenType::Ident {
-                    let (mut imports, mut peek) = (Vec::new(), self.peek(line!())?);
+                    let (mut imports, mut peek) = (Vec::new(), self.peek()?);
 
                     while peek.ty != TokenType::Newline {
                         let ident =
@@ -197,7 +197,7 @@ impl<'a> Parser<'a> {
 
                         self.eat_w()?;
 
-                        let token = self.peek(line!())?;
+                        let token = self.peek()?;
                         let alias = if token.ty == TokenType::As {
                             self.eat(TokenType::As)
                                 .unwrap_or_else(|_| unreachable!("Peek was As"));
@@ -215,7 +215,7 @@ impl<'a> Parser<'a> {
                         imports.push((ident, alias));
 
                         self.eat_w()?;
-                        peek = self.peek(line!())?;
+                        peek = self.peek()?;
 
                         if peek.ty == TokenType::Comma {
                             self.eat(TokenType::Comma)
@@ -241,7 +241,8 @@ impl<'a> Parser<'a> {
                         Label::new(
                             self.files[0],
                             self.codespan.source_span(self.files[0]),
-                            format!("You must expose something when using the `exposing` keyword"),
+                            "You must expose something when using the `exposing` keyword"
+                                .to_string(),
                         ),
                     ));
                 }
@@ -253,12 +254,12 @@ impl<'a> Parser<'a> {
 
                 let alias = Ident::from_token(self.eat(TokenType::Ident)?, self.current_file);
 
-                if self.peek(line!())?.ty == TokenType::Exposing {
+                if self.peek()?.ty == TokenType::Exposing {
                     self.eat(TokenType::Exposing)
                         .unwrap_or_else(|_| unreachable!("Peek was Exposing"));
 
                     self.eat_w()?;
-                    let peek = self.peek(line!())?;
+                    let peek = self.peek()?;
 
                     if peek.ty == TokenType::Star {
                         self.eat(TokenType::Star)
@@ -266,14 +267,14 @@ impl<'a> Parser<'a> {
 
                         (Exposes::All, Some(alias))
                     } else if peek.ty == TokenType::Ident {
-                        let (mut imports, mut peek) = (Vec::new(), self.peek(line!())?);
+                        let (mut imports, mut peek) = (Vec::new(), self.peek()?);
 
                         while peek.ty != TokenType::Newline {
                             let ident =
                                 Ident::from_token(self.eat(TokenType::Ident)?, self.current_file);
 
                             self.eat_w()?;
-                            let token = self.peek(line!())?;
+                            let token = self.peek()?;
 
                             let alias = if token.ty == TokenType::As {
                                 self.eat(TokenType::As)
@@ -290,7 +291,7 @@ impl<'a> Parser<'a> {
                             imports.push((ident, alias));
 
                             self.eat_w()?;
-                            peek = self.peek(line!())?;
+                            peek = self.peek()?;
 
                             if peek.ty == TokenType::Comma {
                                 self.eat(TokenType::Comma)
@@ -334,18 +335,30 @@ impl<'a> Parser<'a> {
 
         info!("Finished parsing Import");
 
-        Ok(Import {
+        let import = Import {
             file,
             alias,
             exposes,
             ty,
-        })
+        };
+
+        info!("Produced Import: {:#?}", &import);
+
+        Ok(import)
     }
 
     fn parse_import_type(&mut self) -> Result<ImportType> {
-        match self.peek(line!())?.ty {
-            TokenType::Library => Ok(ImportType::Library),
-            TokenType::Package => Ok(ImportType::Package),
+        self.eat_w()?;
+
+        match self.peek()?.ty {
+            TokenType::Library => {
+                self.eat(TokenType::Library)?;
+                Ok(ImportType::Library)
+            }
+            TokenType::Package => {
+                self.eat(TokenType::Package)?;
+                Ok(ImportType::Package)
+            }
             _ => Ok(ImportType::File),
         }
     }
@@ -359,11 +372,11 @@ impl<'a> Parser<'a> {
 
         self.eat_w()?;
         let mut params = Vec::new();
-        while self.peek(line!())?.ty != TokenType::RightParen {
+        while self.peek()?.ty != TokenType::RightParen {
             params.push(self.parse_named_parameter()?);
 
             self.eat_w()?;
-            if self.peek(line!())?.ty == TokenType::Comma {
+            if self.peek()?.ty == TokenType::Comma {
                 self.eat(TokenType::Comma)
                     .unwrap_or_else(|_| unreachable!("Peek was Comma"));
             }
@@ -372,13 +385,13 @@ impl<'a> Parser<'a> {
         self.eat(TokenType::RightParen)?;
 
         self.eat_w()?;
-        let returns = if self.peek(line!())?.ty == TokenType::RightArrow {
+        let returns = if self.peek()?.ty == TokenType::RightArrow {
             self.eat(TokenType::RightArrow)
                 .unwrap_or_else(|_| unreachable!("Peek was RightArrow"));
 
             self.parse_type()?.0
         } else {
-            Type::Infer
+            Type::Void
         };
 
         self.eat_line_end()?;
@@ -386,24 +399,39 @@ impl<'a> Parser<'a> {
         let (mut body, mut span_end) = (Vec::new(), span_start);
 
         self.eat_w()?;
-        let mut token = self.peek(line!())?;
-        while token.ty == TokenType::Indent {
-            self.eat(TokenType::Indent)?;
+        let (mut token, mut num_newlines) = (self.peek()?, 0);
+        while token.ty == TokenType::Indent || (token.ty == TokenType::Newline && num_newlines <= 2)
+        {
+            if token.ty == TokenType::Indent {
+                self.eat(TokenType::Indent)?;
+                num_newlines = 0;
+            } else {
+                self.eat(TokenType::Newline)?;
+                num_newlines += 1;
+                if let Ok(peek) = self.peek() {
+                    token = peek;
+                    continue;
+                } else {
+                    trace!("Breaking from function body parsing, EOF reached");
+                    break;
+                }
+            }
 
             self.eat_w()?;
-            if self.peek(line!())?.ty == TokenType::Comment {
+            if self.peek()?.ty == TokenType::Comment {
                 self.eat_line_end()?;
-                token = self.peek(line!())?;
+                token = self.peek()?;
                 continue;
             }
 
             body.push(self.parse_func_body(token.range.0)?);
             span_end = token.range.1;
 
-            self.eat_until(TokenType::Newline, true)?;
-            if let Ok(peek) = self.peek(line!()) {
+            self.eat_all_of(&[TokenType::Newline, TokenType::Space, TokenType::Comment])?;
+            if let Ok(peek) = self.peek() {
                 token = peek;
             } else {
+                trace!("Breaking from function body parsing, EOF reached");
                 break;
             }
         }
@@ -427,21 +455,20 @@ impl<'a> Parser<'a> {
 
         self.eat_all_of(&[TokenType::Space, TokenType::Comment, TokenType::Newline])?;
 
-        let token = self.peek(line!())?;
+        self.eat_w()?;
+        let token = self.peek()?;
+
         let (expr, span_end): (FuncExpr<'a>, u32) = match token.ty {
             TokenType::Ident => {
-                let ident = self.eat(TokenType::Ident)?;
-                let span_start = ident.range.0 as u32;
-                let ident = Ident::from_token(ident, self.current_file);
+                let ident = Ident::from_token(self.eat(TokenType::Ident)?, self.current_file);
 
                 self.eat_w()?;
-
-                match self.peek(line!())?.ty {
+                match self.peek()?.ty {
                     TokenType::LeftParen => {
                         self.eat(TokenType::LeftParen)?;
                         self.eat_w()?;
 
-                        let (mut params, mut next) = (Vec::new(), self.peek(line!())?);
+                        let (mut params, mut next) = (Vec::new(), self.peek()?);
 
                         while next.ty != TokenType::RightParen {
                             match next.ty {
@@ -494,7 +521,7 @@ impl<'a> Parser<'a> {
                             }
 
                             self.eat_w()?;
-                            next = self.peek(line!())?;
+                            next = self.peek()?;
                         }
 
                         let span_end = self.eat(TokenType::RightParen)?.range.1;
@@ -516,7 +543,7 @@ impl<'a> Parser<'a> {
                         self.eat(TokenType::Equal)?;
 
                         self.eat_w()?;
-                        let span_end = self.peek(line!())?.range.1;
+                        let span_end = self.peek()?.range.1;
 
                         let assignment = self.ident_literal()?;
 
@@ -544,7 +571,7 @@ impl<'a> Parser<'a> {
 
                 let name = Ident::from_token(self.eat(TokenType::Ident)?, self.current_file);
 
-                let ty = if self.peek(line!()).unwrap().ty == TokenType::Colon {
+                let ty = if self.peek().unwrap().ty == TokenType::Colon {
                     self.eat(TokenType::Colon)
                         .unwrap_or_else(|_| unreachable!("Peek was Colon"));
 
@@ -576,19 +603,19 @@ impl<'a> Parser<'a> {
                 self.eat(TokenType::Print)?;
 
                 self.eat_w()?;
-                let (mut params, mut peek) = (Vec::new(), self.peek(line!())?);
+                let (mut params, mut peek) = (Vec::new(), self.peek()?);
 
                 while peek.ty != TokenType::Newline && peek.ty != TokenType::Comma {
                     params.push(self.ident_literal()?);
 
                     self.eat_w()?;
-                    if self.peek(line!())?.ty == TokenType::Comma {
+                    if self.peek()?.ty == TokenType::Comma {
                         self.eat(TokenType::Comma)
                             .unwrap_or_else(|_| unreachable!("Peek was Comma"));
                     }
 
                     self.eat_w()?;
-                    peek = self.peek(line!())?;
+                    peek = self.peek()?;
                 }
 
                 let span_end = self.eat_line_end_returning()?.range.1;
@@ -610,7 +637,7 @@ impl<'a> Parser<'a> {
                 self.eat(TokenType::SyscallExit)?;
 
                 self.eat_w()?;
-                let peek = self.peek(line!())?;
+                let peek = self.peek()?;
 
                 let exit_code = if peek.ty != TokenType::Newline && peek.ty != TokenType::Comma {
                     self.ident_literal()?
@@ -627,7 +654,7 @@ impl<'a> Parser<'a> {
                         Label::new(
                             self.files[0],
                             self.codespan.source_span(self.files[0]),
-                            format!("Exit takes one parameter"),
+                            "Exit takes one parameter".to_string(),
                         ),
                     ));
                 };
@@ -637,7 +664,15 @@ impl<'a> Parser<'a> {
                 (FuncExpr::Builtin(Builtin::SyscallExit(exit_code)), span_end)
             }
 
-            _ => unimplemented!("Haven't implemented all possible function body expressions"),
+            TokenType::Indent => {
+                let span_start = self.eat(TokenType::Indent)?.range.0;
+                return dbg!(self.parse_func_body(span_start));
+            }
+
+            token => unimplemented!(
+                "Haven't implemented all possible function body expressions: {:?}",
+                token
+            ),
         };
 
         info!("Finished parsing Func Body");
@@ -655,7 +690,7 @@ impl<'a> Parser<'a> {
         info!("Parsing Ident or Literal");
 
         self.eat_w()?;
-        match self.peek(line!())?.ty {
+        match self.peek()?.ty {
             TokenType::String | TokenType::Bool | TokenType::Int => {
                 Ok(IdentLiteral::Literal(self.parse_variable()?))
             }
@@ -690,39 +725,47 @@ impl<'a> Parser<'a> {
         info!("Parsing Binding Value");
 
         self.eat_w()?;
-        let val = match self.peek(line!())?.ty {
+        let val = match self.peek()?.ty {
             TokenType::String | TokenType::Bool | TokenType::Int | TokenType::Ident => {
-                let left = self.parse_bin_op_side()?;
-                self.eat_w()?;
-                let peek = self.peek(line!())?;
-                if [
+                const TOKENS: [TokenType; 4] = [
                     TokenType::Plus,
                     TokenType::Minus,
                     TokenType::Divide,
                     TokenType::Star,
-                ]
-                .contains(&peek.ty)
-                {
-                    self.eat_of(&[
-                        TokenType::Plus,
-                        TokenType::Minus,
-                        TokenType::Divide,
-                        TokenType::Star,
-                    ])
-                    .unwrap_or_else(|_| {
-                        unreachable!(
-                            "Peek was {:?}",
-                            [
-                                TokenType::Plus,
-                                TokenType::Minus,
-                                TokenType::Divide,
-                                TokenType::Star,
-                            ]
-                        )
-                    });
+                ];
+
+                let left = self.parse_bin_op_side()?;
+                self.eat_w()?;
+                let peek = self.peek()?;
+                if TOKENS.contains(&peek.ty) {
+                    self.eat_of(&TOKENS)
+                        .unwrap_or_else(|_| unreachable!("Peek was {:?}", TOKENS));
+
+                    let op = match Op::try_from(peek.ty) {
+                        Ok(op) => op,
+                        Err(ty) => {
+                            return Err(Diagnostic::new(
+                                Severity::Error,
+                                "Incorrect operator token",
+                                Label::new(
+                                    self.files[0],
+                                    self.codespan.source_span(self.files[0]),
+                                    format!(
+                                        "Expected one of {}, got {}",
+                                        TOKENS
+                                            .iter()
+                                            .map(|t| format!("'{}'", t))
+                                            .collect::<Vec<String>>()
+                                            .join(", "),
+                                        ty
+                                    ),
+                                ),
+                            ));
+                        }
+                    };
 
                     BindingVal::BinOp(BinOp {
-                        op: Op::from(peek.ty),
+                        op,
                         left,
                         right: self.parse_bin_op_side()?,
                         info: LocInfo {
@@ -737,7 +780,7 @@ impl<'a> Parser<'a> {
                     }
                 }
             }
-            _ => crate::unreachable!("Impossible Token: {:?}", self.peek(line!())),
+            _ => crate::unreachable!("Impossible Token: {:?}", self.peek()),
         };
 
         info!("Finished parsing Binding Value");
@@ -749,7 +792,7 @@ impl<'a> Parser<'a> {
         info!("Parsing BinOp Side");
 
         self.eat_w()?;
-        let token = self.peek(line!())?;
+        let token = self.peek()?;
 
         let side = match token.ty {
             TokenType::Ident => {
@@ -770,18 +813,18 @@ impl<'a> Parser<'a> {
     }
 
     #[inline]
-    fn parse_variable(&mut self) -> Result<Literal<'a>> {
+    fn parse_variable(&mut self) -> Result<Literal> {
         info!("Parsing Variable");
 
         self.eat_w()?;
-        let token = self.next(line!())?;
+        let token = self.next()?;
 
         let (span_start, span_end) = token.range;
         let val = match token.ty {
             TokenType::Int => LiteralInner::Int(token.source.parse().unwrap()),
-            TokenType::String => LiteralInner::String(Cow::Owned(
+            TokenType::String => LiteralInner::String(
                 self.escape_string(&(&*token.source)[1..token.source.len() - 1])?,
-            )),
+            ),
             TokenType::Bool => LiteralInner::Bool(token.source.parse().unwrap()),
             _ => unimplemented!("{:?}", token.ty),
         };
@@ -831,10 +874,10 @@ impl<'a> Parser<'a> {
 
         Ok((
             match ident.source {
-                Cow::Borrowed("void") => Type::Void,
-                Cow::Borrowed("str") => Type::String,
-                Cow::Borrowed("int") => Type::Int,
-                Cow::Borrowed("bool") => Type::Bool,
+                "void" => Type::Void,
+                "str" => Type::String,
+                "int" => Type::Int,
+                "bool" => Type::Bool,
                 custom => Type::Custom(Ident {
                     name: custom,
                     info: LocInfo {
@@ -851,27 +894,39 @@ impl<'a> Parser<'a> {
 /// Parsing utilities
 impl<'a> Parser<'a> {
     #[inline]
-    fn next(&mut self, line: u32) -> Result<Token<'a>> {
+    #[track_caller]
+    fn next(&mut self) -> Result<Token<'a>> {
+        let loc = Location::caller();
+
         let mut next = self.token_stream.next();
         std::mem::swap(&mut next, &mut self.peek);
         self.next = next.clone();
 
         if let Some(next) = next {
-            trace!("Got token: {:?}", next);
+            trace!(
+                "[{} {}:{}] Got token: {:?}",
+                loc.file(),
+                loc.line(),
+                loc.column(),
+                next
+            );
             Ok(next)
         } else {
             error!(
-                "[Parsing error on {}:{}]: Unexpected EOF while calling next at line {}",
-                line!(),
-                column!(),
-                line,
+                "[Parsing error in {} {}:{}]: Unexpected EOF",
+                loc.file(),
+                loc.line(),
+                loc.column(),
             );
             Err(Diagnostic::new(
                 Severity::Error,
                 "Unexpected End Of File",
                 Label::new(
                     self.files[0],
-                    self.codespan.source_span(self.files[0]),
+                    {
+                        let end = self.codespan.source_span(self.files[0]).end();
+                        end..end
+                    },
                     "Unexpected End Of File".to_string(),
                 ),
             ))
@@ -879,22 +934,28 @@ impl<'a> Parser<'a> {
     }
 
     #[inline]
-    fn peek(&mut self, line: u32) -> Result<Token<'a>> {
+    #[track_caller]
+    fn peek(&mut self) -> Result<Token<'a>> {
+        let loc = Location::caller();
+
         if let Some(next) = self.peek.clone() {
             Ok(next)
         } else {
             error!(
-                "[Parsing error on {}:{}]: Unexpected EOF while peeking at line {}",
-                line!(),
-                column!(),
-                line,
+                "[Parsing error in {} {}:{}]: Unexpected EOF",
+                loc.file(),
+                loc.line(),
+                loc.column(),
             );
             Err(Diagnostic::new(
                 Severity::Error,
                 "Unexpected End Of File",
                 Label::new(
                     self.files[0],
-                    self.codespan.source_span(self.files[0]),
+                    {
+                        let end = self.codespan.source_span(self.files[0]).end();
+                        end..end
+                    },
                     "Unexpected End Of File".to_string(),
                 ),
             ))
@@ -905,7 +966,7 @@ impl<'a> Parser<'a> {
     fn eat_w(&mut self) -> Result<()> {
         while let Some(token) = &self.peek {
             if token.ty == TokenType::Space || token.ty == TokenType::Comment {
-                if self.next(line!()).is_ok() {
+                if self.next().is_ok() {
                     continue;
                 } else {
                     break;
@@ -919,10 +980,20 @@ impl<'a> Parser<'a> {
     }
 
     #[inline]
+    #[track_caller]
     fn eat_until(&mut self, target: TokenType, including: bool) -> Result<()> {
+        let loc = Location::caller();
+        trace!(
+            "[{} {}:{}]Eating until {:?}",
+            loc.file(),
+            loc.line(),
+            loc.column(),
+            target,
+        );
+
         while let Some(token) = &self.peek {
             if token.ty != target {
-                if self.next(line!()).is_ok() {
+                if self.next().is_ok() {
                     continue;
                 } else {
                     break;
@@ -941,10 +1012,20 @@ impl<'a> Parser<'a> {
     }
 
     #[inline]
+    #[track_caller]
     fn eat_all_of(&mut self, tokens: &[TokenType]) -> Result<()> {
+        let loc = Location::caller();
+        trace!(
+            "[{} {}:{}] Eating all of {:?}",
+            loc.file(),
+            loc.line(),
+            loc.column(),
+            tokens
+        );
+
         while let Some(token) = &self.peek {
             if tokens.contains(&token.ty) {
-                if self.next(line!()).is_ok() {
+                if self.next().is_ok() {
                     continue;
                 } else {
                     break;
@@ -958,18 +1039,22 @@ impl<'a> Parser<'a> {
     }
 
     #[inline]
+    #[track_caller]
     fn eat(&mut self, expected: TokenType) -> Result<Token<'a>> {
         self.eat_w()?;
-        let token = self.next(line!())?;
+        let token = self.next()?;
 
         if token.ty == expected {
             Ok(token)
         } else {
+            let loc = Location::caller();
+
             self.error = true;
             error!(
-                "[Parsing error on {}:{}]: Failed to eat token, expected {:?} got {:?}. Token: {:?}",
-                line!(),
-                column!(),
+                "[Parsing error in {} {}:{}]: Failed to eat token, expected {:?} got {:?}. Token: {:?}",
+                loc.file(),
+                loc.line(),
+                loc.column(),
                 expected,
                 token.ty,
                 token
@@ -993,7 +1078,7 @@ impl<'a> Parser<'a> {
     fn eat_of(&mut self, expected: &[TokenType]) -> Result<Token<'a>> {
         self.eat_w()?;
 
-        let token = self.next(line!())?;
+        let token = self.next()?;
 
         if expected.contains(&token.ty) {
             Ok(token)
@@ -1028,20 +1113,30 @@ impl<'a> Parser<'a> {
     }
 
     #[inline]
+    #[track_caller]
     fn eat_line_end(&mut self) -> Result<()> {
+        let loc = Location::caller();
+        trace!(
+            "[{} {}:{}] Eating until line end",
+            loc.file(),
+            loc.line(),
+            loc.column()
+        );
+
         self.eat_until(TokenType::Newline, true)
     }
 
     #[inline]
+    #[track_caller]
     fn eat_line_end_returning(&mut self) -> Result<Token<'a>> {
-        let (mut peek, mut returned_token) = (self.peek(line!())?, None);
+        let (mut peek, mut returned_token) = (self.peek()?, None);
         loop {
             if [TokenType::Space, TokenType::Comment, TokenType::Newline].contains(&peek.ty) {
                 returned_token = Some(peek.clone());
 
                 self.eat_of(&[TokenType::Space, TokenType::Comment, TokenType::Newline])?;
 
-                if let Ok(p) = self.peek(line!()) {
+                if let Ok(p) = self.peek() {
                     peek = p;
                 } else {
                     break;
@@ -1054,10 +1149,13 @@ impl<'a> Parser<'a> {
         if let Some(token) = returned_token {
             Ok(token)
         } else {
+            let loc = Location::caller();
+
             error!(
-                "[Parsing error on {}:{}]: Failed to eat line end returning one of {:?}, got {:?}",
-                line!(),
-                column!(),
+                "[Parsing error in {} {}:{}]: Failed to eat line end returning one of {:?}, got {:?}",
+                loc.file(),
+                loc.line(),
+                loc.column(),
                 &[TokenType::Space, TokenType::Comment, TokenType::Newline],
                 returned_token
             );
@@ -1103,26 +1201,23 @@ impl<'a> Parser<'a> {
                 Some('\'') => s.push('\''),
                 Some('\"') => s.push('\"'),
                 Some('\\') => s.push('\\'),
-                Some('u') => s.push(match unescape_unicode(&mut queue) {
-                    Some(c) => c,
-                    None => {
-                        self.error = true;
-                        return Err(error);
-                    }
+                Some('u') => s.push(if let Some(c) = unescape_unicode(&mut queue) {
+                    c
+                } else {
+                    self.error = true;
+                    return Err(error);
                 }),
-                Some('x') => s.push(match unescape_byte(&mut queue) {
-                    Some(c) => c,
-                    None => {
-                        self.error = true;
-                        return Err(error);
-                    }
+                Some('x') => s.push(if let Some(c) = unescape_byte(&mut queue) {
+                    c
+                } else {
+                    self.error = true;
+                    return Err(error);
                 }),
-                Some('b') => s.push(match unescape_bits(&mut queue) {
-                    Some(c) => c,
-                    None => {
-                        self.error = true;
-                        return Err(error);
-                    }
+                Some('b') => s.push(if let Some(c) = unescape_bits(&mut queue) {
+                    c
+                } else {
+                    self.error = true;
+                    return Err(error);
                 }),
                 _ => {
                     self.error = true;
@@ -1136,6 +1231,7 @@ impl<'a> Parser<'a> {
 }
 
 fn unescape_unicode(queue: &mut VecDeque<char>) -> Option<char> {
+    trace!("Parsing Unicode Escape");
     let mut s = String::with_capacity(4);
 
     if queue.pop_front() != Some('{') {
@@ -1158,10 +1254,13 @@ fn unescape_unicode(queue: &mut VecDeque<char>) -> Option<char> {
         Ok(u) => u,
         Err(_) => return None,
     };
+
+    trace!("Valid Unicode Escape");
     char::from_u32(u)
 }
 
 fn unescape_byte(queue: &mut VecDeque<char>) -> Option<char> {
+    trace!("Parsing Hex Escape");
     let mut s = String::with_capacity(2);
 
     if queue.pop_front() != Some('{') {
@@ -1181,12 +1280,16 @@ fn unescape_byte(queue: &mut VecDeque<char>) -> Option<char> {
     }
 
     match u8::from_str_radix(&s, 16) {
-        Ok(c) => Some(c as char),
+        Ok(c) => {
+            trace!("Valid Hex Escape");
+            Some(c as char)
+        }
         Err(_) => None,
     }
 }
 
 fn unescape_bits(queue: &mut VecDeque<char>) -> Option<char> {
+    trace!("Parsing Bit Escape");
     let mut s = String::with_capacity(8);
 
     if queue.pop_front() != Some('{') {
@@ -1206,7 +1309,10 @@ fn unescape_bits(queue: &mut VecDeque<char>) -> Option<char> {
     }
 
     match u8::from_str_radix(&s, 2) {
-        Ok(c) => Some(c as char),
+        Ok(c) => {
+            trace!("Valid Bit Escape");
+            Some(c as char)
+        }
         Err(_) => None,
     }
 }
@@ -1217,8 +1323,6 @@ mod tests {
 
     #[test]
     fn parse_test() {
-        use std::{fs::File, io::Write};
-
         const CODE: &str = include_str!("../../examples/parse_test.crunch");
         const FILENAME: &str = "parse_test.crunch";
 
@@ -1241,74 +1345,7 @@ mod tests {
                         panic!("Runtime error while compiling");
                     }
                 };
-                let encoded = crate::bytecode::Encoder::new({
-                    let mut funcs = bytecode.1.clone();
-                    funcs.insert(0, bytecode.0.clone());
-                    funcs
-                })
-                .encode();
-
-                println!(
-                    "# Source Code  \n\n\
-
-                    ```\n\
-                    {}\n\
-                    ```\n\n\
-
-                    # AST  \n\n\
-
-                    ```\n\
-                    {:#?}\n\
-                    ```\n\n\
-
-                    # Bytecode IR  \n\n\
-                    
-                    ```\n\
-                    (\n    \
-                        [\n        \
-                            {}\n    \
-                        ],\n    \
-                        [\n        \
-                                {}\n    \
-                        ]\n\
-                    )\n\
-                    ```\n\n\
-
-                    # Raw Bytecode  \n\n\
-
-                    ```\n\
-                    {}\n\
-                    ```\n\n\n",
-                    CODE,
-                    ast,
-                    bytecode
-                        .0
-                        .iter()
-                        .map(|b| format!("        {:?}", b))
-                        .collect::<Vec<String>>()
-                        .join(",\n"),
-                    bytecode
-                        .1
-                        .iter()
-                        .map(|b| b
-                            .iter()
-                            .map(|a| format!("\t\t{:?}", a))
-                            .collect::<Vec<String>>()
-                            .join(",\n"))
-                        .collect::<Vec<String>>()
-                        .join("],"),
-                    encoded
-                        .iter()
-                        .map(|b| format!("{:02X}", b))
-                        .collect::<Vec<String>>()
-                        .chunks(16)
-                        .map(|c| c.join(" "))
-                        .collect::<Vec<String>>()
-                        .join("\n"),
-                );
-
-                let mut file = File::create("./examples/hello_world.crunched").unwrap();
-                file.write_all(&encoded).unwrap();
+                println!("{:?}", bytecode);
 
                 crate::Crunch::run_source_file(
                     crate::OptionBuilder::new("./examples/parse_test.crunch").build(),

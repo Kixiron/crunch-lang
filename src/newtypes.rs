@@ -65,7 +65,7 @@ macro_rules! util_ops {
 
             impl $ty {
                 #[allow(unused)]
-                pub fn new(inner: $target) -> Self {
+                pub const fn new(inner: $target) -> Self {
                     Self(inner)
                 }
             }
@@ -113,7 +113,7 @@ pub struct Register(pub u8);
 
 impl std::fmt::Debug for Register {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Rx{:03}", self.0)
+        write!(f, "r{:03}", self.0)
     }
 }
 
