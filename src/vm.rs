@@ -45,6 +45,7 @@ pub struct Vm {
 impl Vm {
     /// Creates a new VM from functions and options
     #[inline]
+    #[must_use]
     pub fn new(
         functions: Vec<Vec<Instruction>>,
         options: &crate::Options,
@@ -78,6 +79,7 @@ impl Vm {
     }
 
     #[inline]
+    #[must_use]
     pub fn get(&self, reg: Register) -> &RuntimeValue {
         &self.registers[*reg as usize]
     }

@@ -93,7 +93,7 @@ impl CodeBuilder {
         let mut main = Vec::new();
         let mut functions = Vec::new();
 
-        for (sym, (mut func, _index)) in self.functions.clone().into_iter() {
+        for (sym, (mut func, _index)) in self.functions.clone() {
             if let Some(ident) = self.interner.resolve(sym) {
                 if ident == "main" {
                     if func[func.len() - 1] != Instruction::Halt {
@@ -116,7 +116,7 @@ pub struct Scope {}
 
 impl Scope {
     #[inline]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {}
     }
 }
@@ -125,9 +125,15 @@ impl Scope {
 //     ty: Type<'a>,
 // }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Reg {
+    Symbol(Sym),
+    None,
+}
+
 #[derive(Clone)]
 pub struct FunctionContext {
-    registers: [Option<Option<Sym>>; NUMBER_REGISTERS],
+    registers: [Option<Reg>; NUMBER_REGISTERS],
     pub variables: HashSet<Sym>,
     block: Vec<PartialInstruction>,
     pub scope: Scope,
@@ -153,9 +159,9 @@ impl FunctionContext {
 
     #[inline]
     pub fn reserve_reg(&mut self) -> Result<Register> {
-        match self.registers.iter().position(|r| r.is_none()) {
+        match self.registers.iter().position(Option::is_none) {
             Some(pos) => {
-                self.registers[pos] = Some(None);
+                self.registers[pos] = Some(Reg::None);
                 Ok((pos as u8).into())
             }
             None => Err(RuntimeError {
@@ -167,9 +173,9 @@ impl FunctionContext {
 
     #[inline]
     pub fn reserve_reg_sym(&mut self, sym: Sym) -> Result<Register> {
-        match self.registers.iter().position(|r| r.is_none()) {
+        match self.registers.iter().position(Option::is_none) {
             Some(pos) => {
-                self.registers[pos] = Some(Some(sym));
+                self.registers[pos] = Some(Reg::Symbol(sym));
                 Ok((pos as u8).into())
             }
             None => Err(RuntimeError {
@@ -180,7 +186,11 @@ impl FunctionContext {
     }
 
     pub fn get_cached_reg(&mut self, sym: Sym) -> Result<Register> {
-        match self.registers.iter().position(|r| *r == Some(Some(sym))) {
+        match self
+            .registers
+            .iter()
+            .position(|r| *r == Some(Reg::Symbol(sym)))
+        {
             Some(pos) => Ok((pos as u8).into()),
             None => Err(RuntimeError {
                 ty: RuntimeErrorTy::CompilationError,

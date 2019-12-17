@@ -35,7 +35,7 @@ pub use encode::Encoder;
 pub const INSTRUCTION_LENGTH: usize = 8;
 
 /// An array containing all Instruction byte headers, for verification purposes
-#[cfg_attr(rustfmt, rustfmt::skip)]
+#[rustfmt::skip]
 pub const INSTRUCTION_BYTES: [u8; 27] = [
     0x00, 0x01, 0x02, 0x03, 0x04,
     0x05, 0x06, 0x07, 0x08, 0x09,
@@ -47,6 +47,7 @@ pub const INSTRUCTION_BYTES: [u8; 27] = [
 
 /// Disassembles bytecode into a human-readable format
 // TODO: Refractor and test
+#[must_use]
 pub fn disassemble(_bytes: &[u8]) -> String {
     /*
     use super::{Instruction, RuntimeValue, NUMBER_REGISTERS};

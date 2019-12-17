@@ -113,22 +113,21 @@ pub enum Instruction {
 impl Instruction {
     /// The execution of each instruction
     // TODO: Document this bad boy
-    #[inline]
     pub fn execute(&self, mut vm: &mut Vm) -> Result<()> {
         match self {
-            Instruction::Load(val, reg) => {
+            Self::Load(val, reg) => {
                 trace!("Loading val into {}", reg);
 
                 vm.registers[**reg as usize] = *val;
                 vm.index += Index(1);
             }
-            Instruction::CompToReg(reg) => {
+            Self::CompToReg(reg) => {
                 trace!("Loading previous comparison into {}", reg);
 
                 vm.registers[**reg as usize] = RuntimeValue::Bool(vm.prev_comp);
                 vm.index += Index(1);
             }
-            Instruction::OpToReg(reg) => {
+            Self::OpToReg(reg) => {
                 trace!(
                     "Loading previous operation ({:?}) into {}",
                     &vm.prev_op,
@@ -139,36 +138,36 @@ impl Instruction {
                 std::mem::swap(&mut vm.registers[**reg as usize], &mut vm.prev_op);
                 vm.index += Index(1);
             }
-            Instruction::DropReg(reg) => {
+            Self::DropReg(reg) => {
                 trace!("Clearing register {}", reg);
 
                 vm.registers[**reg as usize].drop(&mut vm.gc)?;
                 vm.index += Index(1);
             }
 
-            Instruction::Add(left, right) => {
+            Self::Add(left, right) => {
                 println!("here");
                 vm.prev_op = vm.registers[**left as usize]
                     .add_upflowing(vm.registers[**right as usize], &mut vm.gc)?;
                 vm.index += Index(1);
             }
-            Instruction::Sub(left, right) => {
+            Self::Sub(left, right) => {
                 vm.prev_op = vm.registers[**left as usize]
                     .sub_upflowing(vm.registers[**right as usize], &mut vm.gc)?;
                 vm.index += Index(1);
             }
-            Instruction::Mult(left, right) => {
+            Self::Mult(left, right) => {
                 vm.prev_op = vm.registers[**left as usize]
                     .mult_upflowing(vm.registers[**right as usize], &mut vm.gc)?;
                 vm.index += Index(1);
             }
-            Instruction::Div(left, right) => {
+            Self::Div(left, right) => {
                 vm.prev_op = vm.registers[**left as usize]
                     .div_upflowing(vm.registers[**right as usize], &mut vm.gc)?;
                 vm.index += Index(1);
             }
 
-            Instruction::Print(reg) => {
+            Self::Print(reg) => {
                 trace!("Printing reg {:?}", reg);
 
                 if let Err(err) = write!(
@@ -186,7 +185,7 @@ impl Instruction {
                 vm.index += Index(1);
             }
 
-            Instruction::Jump(index) => {
+            Self::Jump(index) => {
                 trace!("Jumping by offset {}", index);
 
                 let index = if index.is_negative() {
@@ -206,7 +205,7 @@ impl Instruction {
 
                 vm.index = Index(index);
             }
-            Instruction::JumpComp(index) => {
+            Self::JumpComp(index) => {
                 trace!(
                     "Comparison Jump: Prev Comp is {}, jump amount is {}",
                     vm.prev_comp,
@@ -221,49 +220,49 @@ impl Instruction {
             }
 
             /*
-            Instruction::And(left, right) => {
+            Self::And(left, right) => {
                 vm.prev_op = (*vm).get(*left).bit_and((*vm).get(*right), &vm.gc)?;
                 vm.index += Index(1);
             }
-            Instruction::Or(left, right) => {
+            Self::Or(left, right) => {
                 vm.prev_op = (*vm).get(*left).bit_or((*vm).get(*right), &vm.gc)?;
                 vm.index += Index(1);
             }
-            Instruction::Xor(left, right) => {
+            Self::Xor(left, right) => {
                 vm.prev_op = (*vm).get(*left).bit_xor((*vm).get(*right), &vm.gc)?;
                 vm.index += Index(1);
             }
-            Instruction::Not(reg) => {
+            Self::Not(reg) => {
                 vm.prev_op = (*vm).get(*reg).not(&vm.gc)?;
                 vm.index += Index(1);
             }
 
-            Instruction::Eq(left, right) => {
+            Self::Eq(left, right) => {
                 vm.prev_comp = (*vm).get(*left).eq((*vm).get(*right), &vm.gc)?;
                 vm.index += Index(1);
             }
-            Instruction::NotEq(left, right) => {
+            Self::NotEq(left, right) => {
                 vm.prev_comp = !(*vm).get(*left).eq((*vm).get(*right), &vm.gc)?;
                 vm.index += Index(1);
             }
-            Instruction::GreaterThan(left, right) => {
+            Self::GreaterThan(left, right) => {
                 vm.prev_comp = (*vm).get(*left).cmp((*vm).get(*right), &vm.gc)?
                     == Some(std::cmp::Ordering::Greater);
                 vm.index += Index(1);
             }
-            Instruction::LessThan(left, right) => {
+            Self::LessThan(left, right) => {
                 vm.prev_comp = (*vm).get(*left).cmp((*vm).get(*right), &vm.gc)?
                     == Some(std::cmp::Ordering::Less);
                 vm.index += Index(1);
             }
             */
-            Instruction::Collect => {
+            Self::Collect => {
                 trace!("Forcing a GC collect");
 
                 vm.gc.collect()?;
                 vm.index += Index(1);
             }
-            Instruction::Return => {
+            Self::Return => {
                 vm.returning = true;
 
                 if let Some(context) = vm.snapshots.pop() {
@@ -281,51 +280,40 @@ impl Instruction {
                     } else {
                         trace!("Returning to main");
                     }
+                } else if let Some(location) = vm.return_stack.pop() {
+                    vm.index = location;
                 } else {
-                    if let Some(location) = vm.return_stack.pop() {
-                        vm.index = location;
-                    } else {
-                        vm.finished_execution = true;
-                    }
+                    vm.finished_execution = true;
                 }
 
                 vm.index += Index(1);
             }
-            Instruction::Halt => {
+            Self::Halt => {
                 vm.finished_execution = true;
             }
-            Instruction::Syscall(
-                _offset,
-                _output,
-                _param_1,
-                _param_2,
-                _param_3,
-                _param_4,
-                _param_5,
-            ) => {
+            Self::Syscall(_offset, _output, _param_1, _param_2, _param_3, _param_4, _param_5) => {
                 unimplemented!("Syscalls are not stable");
             }
 
-            Instruction::NoOp => {
+            Self::NoOp => {
                 vm.index += Index(1);
             }
 
-            Instruction::Illegal | Instruction::JumpPoint(_) => {
+            Self::Illegal | Self::JumpPoint(_) => {
                 return Err(RuntimeError {
                     ty: RuntimeErrorTy::IllegalInstruction,
                     message: "Illegal Instruction".to_string(),
                 })
             }
 
-            _ => {
-                vm.index += Index(1);
-            }
+            _ => unimplemented!(),
         }
 
         Ok(())
     }
 
     /// Turns the instruction into a string representation, for disassembly purposes
+    #[must_use]
     pub fn to_str(&self) -> &'static str {
         match self {
             Self::Load(_, _) => "ld",

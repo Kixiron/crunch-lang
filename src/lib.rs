@@ -1,19 +1,26 @@
 #![feature(track_caller)]
-#![deny(
-    missing_debug_implementations,
-    deprecated,
-    unused_must_use,
-    // missing_docs
-)]
+#![deny(missing_debug_implementations, deprecated, unused_must_use)]
 #![warn(
     clippy::cargo,
-    clippy::nursery,
     clippy::pedantic,
     clippy::perf,
     clippy::complexity,
     clippy::style,
     clippy::correctness,
     rust_2018_idioms
+)]
+#![allow(
+    clippy::too_many_lines,
+    clippy::cast_lossless,
+    clippy::shadow_unrelated,
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    clippy::needless_pass_by_value,
+    clippy::unused_self,
+    clippy::debug_assert_with_mut_call,
+    clippy::cast_precision_loss,
+    clippy::module_name_repetitions
 )]
 
 //! # Crunch
@@ -255,31 +262,39 @@ impl OptionBuilder {
         }
     }
 
+    #[must_use]
     pub const fn burn_gc(mut self, b: bool) -> Self {
         self.burn_gc = b;
         self
     }
 
+    #[must_use]
     pub const fn debug_log(mut self, b: bool) -> Self {
         self.debug_log = b;
         self
     }
 
+    #[must_use]
     pub const fn fault_tolerant(mut self, b: bool) -> Self {
         self.fault_tolerant = b;
         self
     }
 
+    #[must_use]
     pub const fn overwrite_heap(mut self, b: bool) -> Self {
         self.overwrite_heap = b;
         self
     }
 
+    #[must_use]
     pub const fn heap_size(mut self, heap_size: usize) -> Self {
         self.heap_size = heap_size;
         self
     }
 
+    // Cannot make destructors const fns
+    #[allow(clippy::missing_const_for_fn)]
+    #[must_use]
     pub fn build(self) -> Options {
         Options {
             file: self.file,

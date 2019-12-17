@@ -33,8 +33,7 @@ pub enum RuntimeValue {
     // Boolean
     Bool(bool),
     // Pointer
-    // Should this be a u32, u64 or a usize?
-    Pointer(u64),
+    Pointer(usize),
     // Vec
     GcVec(GcVec<RuntimeValue>),
     // Null
@@ -44,6 +43,7 @@ pub enum RuntimeValue {
 }
 
 impl RuntimeValue {
+    #[must_use]
     pub fn name(&self) -> &'static str {
         match self {
             Self::Byte(_) => "byte",
@@ -126,7 +126,7 @@ impl RuntimeValue {
             Self::Pointer(int) => format!("{:p}", int as *const _),
             Self::Char(c) => c.to_string(),
             Self::GcString(string) => string.to_str(gc)?.to_string(),
-            Self::Str(string) => string.to_string(),
+            Self::Str(string) => (*string).to_string(),
             Self::GcInt(int) => int.to_int(gc)?.to_string(),
             Self::GcUint(int) => int.to_uint(gc)?.to_string(),
             Self::GcVec(vec) => format!("{:?}", *vec.to_vec(gc)?),
@@ -156,6 +156,8 @@ impl RuntimeValue {
         unimplemented!()
     }
 
+    #[must_use]
+    #[allow(clippy::unused_self)]
     pub fn as_bytes(&self) -> (Vec<u8>, Option<String>) {
         unimplemented!()
     }

@@ -79,6 +79,7 @@ pub struct Gc {
 
 impl Gc {
     /// Create a new GC instance
+    #[must_use]
     pub fn new(options: &crate::Options) -> Self {
         trace!("Initializing GC");
 
@@ -193,7 +194,7 @@ impl Gc {
             });
         }
 
-        if !self.allocations.iter().any(|(i, _)| *i == id) {
+        if self.allocations.iter().any(|(i, _)| *i != id) {
             self.allocations.push((id, HeapPointer::new(block_start)));
         } else {
             trace!("Requested Id {:?} already exists, failing allocation", id);
@@ -292,10 +293,8 @@ impl Gc {
         for root in &self.roots {
             if root.id == id.into() {
                 return Ok(root);
-            } else {
-                if let Some(value) = root.fetch_child(id) {
-                    return Ok(value);
-                }
+            } else if let Some(value) = root.fetch_child(id) {
+                return Ok(value);
             }
         }
 
@@ -308,12 +307,13 @@ impl Gc {
     /// Fetches the current pointer associated with an id
     #[inline]
     pub(crate) fn get_ptr<Id: Into<AllocId> + Copy>(&self, id: Id) -> Result<HeapPointer> {
-        if let Some(ptr) = self
-            .allocations
-            .iter()
-            .find(|alloc| alloc.0 == id.into())
-            .map(|alloc| alloc.1)
-        {
+        if let Some(ptr) = self.allocations.iter().find_map(|alloc| {
+            if alloc.0 == id.into() {
+                Some(alloc.1)
+            } else {
+                None
+            }
+        }) {
             Ok(ptr)
         } else {
             Err(RuntimeError {
@@ -353,7 +353,9 @@ impl Gc {
     }
 
     /// Write to an object
-    /// WARNING: Any object passed as `data` MUST BE OWNED
+    ///
+    /// # Safety
+    /// Any object passed as `data` **must** be owned,
     pub unsafe fn write<T>(
         &self,
         id: impl Into<AllocId> + Copy,
@@ -361,25 +363,8 @@ impl Gc {
         concrete_value: Option<&GcValue>,
     ) -> Result<()> {
         match (self.get_ptr(id), self.fetch_value(id), concrete_value) {
-            (Ok(ptr), Ok(value), _) => {
-                if !mem::size_of::<T>() > value.size {
-                    ptr::write(*ptr as *mut T, data);
-
-                    Ok(())
-                } else {
-                    Err(RuntimeError {
-                        ty: RuntimeErrorTy::GcError,
-                        message: format!(
-                            "Size Misalign: {} != {}",
-                            value.size,
-                            mem::size_of::<T>()
-                        ),
-                    })
-                }
-            }
-
-            (Ok(ptr), Err(_), Some(value)) => {
-                if !mem::size_of::<T>() > value.size {
+            (Ok(ptr), Ok(value), _) | (Ok(ptr), Err(_), Some(value)) => {
+                if mem::size_of::<T>() == value.size {
                     ptr::write(*ptr as *mut T, data);
 
                     Ok(())
@@ -425,6 +410,7 @@ impl Gc {
     }
 
     /// Gets the current heap side
+    #[must_use]
     pub fn get_side(&self) -> HeapPointer {
         match self.current_side {
             Side::Left => self.left,
@@ -433,6 +419,7 @@ impl Gc {
     }
 
     /// Information about the state of the GC
+    #[must_use]
     pub fn data(&self) -> GcData {
         trace!(
             "Latest: {:?}, Start: {:?}, Diff {}",
@@ -539,10 +526,8 @@ impl GcValue {
         for child in &self.children {
             if child.id == id.into() {
                 return Some(child);
-            } else {
-                if let Some(value) = child.fetch_child(id) {
-                    return Some(value);
-                }
+            } else if let Some(value) = child.fetch_child(id) {
+                return Some(value);
             }
         }
 
@@ -689,7 +674,9 @@ impl<T> std::ops::Deref for ForgetDrop<T> {
 
 impl<T> Drop for ForgetDrop<T> {
     fn drop(&mut self) {
-        std::mem::forget(self);
+        let mut tmp = unsafe { mem::MaybeUninit::zeroed().assume_init() };
+        mem::swap(&mut self.0, &mut tmp);
+        mem::forget(tmp);
     }
 }
 
@@ -1202,19 +1189,19 @@ mod tests {
         let (mut ten, ten_id) = gc.allocate(size_of::<usize>()).unwrap();
         println!("Allocated usize: Ptr: {:p}", gc.get_ptr(ten_id).unwrap());
         unsafe {
-            gc.write(ten_id, 10, Some(&ten)).unwrap();
+            gc.write(ten_id, 10_usize, Some(&ten)).unwrap();
         }
 
         let (eleven, eleven_id) = gc.allocate(size_of::<usize>()).unwrap();
         println!("Allocated usize: Ptr: {:p}", gc.get_ptr(eleven_id).unwrap());
         unsafe {
-            gc.write(eleven_id, 11, Some(&eleven)).unwrap();
+            gc.write(eleven_id, 11_usize, Some(&eleven)).unwrap();
         }
 
         let (twelve, twelve_id) = gc.allocate(size_of::<usize>()).unwrap();
         println!("Allocated usize: Ptr: {:p}", gc.get_ptr(twelve_id).unwrap());
         unsafe {
-            gc.write(twelve_id, 12, Some(&twelve)).unwrap();
+            gc.write(twelve_id, 12_usize, Some(&twelve)).unwrap();
         }
 
         ten.add_child(eleven);

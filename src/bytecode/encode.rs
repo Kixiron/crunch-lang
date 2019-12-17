@@ -14,8 +14,9 @@ pub struct Encoder {
 }
 
 impl Encoder {
+    #[must_use]
     pub fn new(functions: Vec<Vec<Instruction>>) -> Self {
-        let len = functions.iter().map(|f| f.len()).sum::<usize>() * INSTRUCTION_LENGTH;
+        let len = functions.iter().map(Vec::len).sum::<usize>() * INSTRUCTION_LENGTH;
         let num_functions = functions.len();
 
         Self {
@@ -27,6 +28,7 @@ impl Encoder {
         }
     }
 
+    #[must_use]
     pub fn encode(mut self) -> Vec<u8> {
         self.bytes
             .extend_from_slice(&self.num_functions.to_be_bytes());
@@ -157,11 +159,11 @@ impl Encoder {
 
             Instruction::Jump(loc) => {
                 bytes[0] = 0x0C;
-                bytes[1..size_of::<i32>() + 1].copy_from_slice(&loc.to_be_bytes());
+                bytes[1..=size_of::<i32>()].copy_from_slice(&loc.to_be_bytes());
             }
             Instruction::JumpComp(loc) => {
                 bytes[0] = 0x0D;
-                bytes[1..size_of::<i32>() + 1].copy_from_slice(&loc.to_be_bytes());
+                bytes[1..=size_of::<i32>()].copy_from_slice(&loc.to_be_bytes());
             }
 
             Instruction::And(left, right) => {

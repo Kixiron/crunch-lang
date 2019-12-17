@@ -187,12 +187,12 @@ impl<'a> Iterator for TokenStream<'a> {
 
         match self.current.ty {
             TokenType::End => None,
-            _ => Some(self.current.clone()),
+            _ => Some(self.current),
         }
     }
 }
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 pub struct Token<'a> {
     pub ty: TokenType,
     pub source: &'a str,
@@ -200,7 +200,7 @@ pub struct Token<'a> {
 }
 
 impl<'a> Token<'a> {
-    pub fn new(ty: TokenType, source: &'a str, range: std::ops::Range<usize>) -> Self {
+    pub const fn new(ty: TokenType, source: &'a str, range: std::ops::Range<usize>) -> Self {
         Self {
             ty,
             source,

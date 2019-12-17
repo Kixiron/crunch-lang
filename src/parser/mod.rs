@@ -23,6 +23,7 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
+    #[must_use]
     pub fn new(filename: Option<&'a str>, input: &'a str) -> Self {
         // The trim_start is a sketchy solution to the weird problem
         //  of a `\r\n` precluding a function decl causing everything
@@ -59,12 +60,9 @@ impl<'a> Parser<'a> {
     pub fn parse(
         &mut self,
     ) -> std::result::Result<(Vec<Node<'a>>, Vec<Diagnostic>), Vec<Diagnostic>> {
-        let mut ast = Vec::new();
-
-        // TODO: Make this loop operate off of peeks, and change all the top-level parsers
-        // to consume their first token
-
         const TOP_LEVEL_TOKENS: [TokenType; 2] = [TokenType::Import, TokenType::Function];
+
+        let mut ast = Vec::new();
 
         while let Ok(token) = self.next() {
             match token.ty {
@@ -586,7 +584,7 @@ impl<'a> Parser<'a> {
                 let span_end = self.eat_line_end_returning()?.range.1;
 
                 (
-                    FuncExpr::Binding(Binding {
+                    FuncExpr::Binding(Box::new(Binding {
                         name,
                         val,
                         ty,
@@ -594,7 +592,7 @@ impl<'a> Parser<'a> {
                             span: Span::new(span_start, span_end),
                             file: self.current_file,
                         },
-                    }),
+                    })),
                     span_end,
                 )
             }
@@ -900,7 +898,7 @@ impl<'a> Parser<'a> {
 
         let mut next = self.token_stream.next();
         std::mem::swap(&mut next, &mut self.peek);
-        self.next = next.clone();
+        self.next = next;
 
         if let Some(next) = next {
             trace!(
@@ -938,7 +936,7 @@ impl<'a> Parser<'a> {
     fn peek(&mut self) -> Result<Token<'a>> {
         let loc = Location::caller();
 
-        if let Some(next) = self.peek.clone() {
+        if let Some(next) = self.peek {
             Ok(next)
         } else {
             error!(
@@ -1001,9 +999,7 @@ impl<'a> Parser<'a> {
             }
 
             if including {
-                if self.eat(target).is_err() {
-                    break;
-                }
+                self.eat(target)?;
             }
             break;
         }
@@ -1132,7 +1128,7 @@ impl<'a> Parser<'a> {
         let (mut peek, mut returned_token) = (self.peek()?, None);
         loop {
             if [TokenType::Space, TokenType::Comment, TokenType::Newline].contains(&peek.ty) {
-                returned_token = Some(peek.clone());
+                returned_token = Some(peek);
 
                 self.eat_of(&[TokenType::Space, TokenType::Comment, TokenType::Newline])?;
 

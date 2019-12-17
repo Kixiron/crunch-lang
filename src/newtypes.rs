@@ -64,7 +64,8 @@ macro_rules! util_ops {
             }
 
             impl $ty {
-                #[allow(unused)]
+                #[allow(dead_code)]
+                #[must_use]
                 pub const fn new(inner: $target) -> Self {
                     Self(inner)
                 }

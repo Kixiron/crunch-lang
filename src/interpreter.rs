@@ -148,7 +148,7 @@ impl<'a> Interpreter<'a> {
         let mut builder = CodeBuilder::new();
         std::mem::swap(&mut builder, &mut self.builder);
 
-        builder.function(&*func.name.name.clone(), |builder, ctx| {
+        builder.function(func.name.name, |builder, ctx| {
             // For each expression in the function, evaluate it into instructions
             for expr in func.body.clone() {
                 match expr.expr {

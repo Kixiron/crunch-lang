@@ -21,13 +21,17 @@ before-script:
   - cargo install cargo-binutils # Install binutils for stripping binaries
 
 script:
+  # Print version info
   - rustc -Vv
   - rustup -V
   - cargo -V
-  - cargo test --all-targets --all-features -v
-  - cargo clippy --all-targets --all-features -- -D warnings -v
-  - cargo fmt --all -- --check -v
-  - cargo build --release -v
+
+  # Test
+  - cargo test --all-targets --all-features
+  # Clippy
+  - cargo clippy --all-targets --all-features -- -D warnings
+  # Rustfmt
+  - cargo fmt --all -- --check
 
 matrix:
   include:

@@ -96,6 +96,7 @@ impl<'a> PartialEq for Ident<'a> {
 impl<'a> Eq for Ident<'a> {}
 
 impl<'a> Ident<'a> {
+    #[must_use]
     pub fn from_token(token: super::Token<'a>, file: FileId) -> Self {
         Self {
             name: token.source,
@@ -166,7 +167,7 @@ pub struct FuncBody<'a> {
 
 #[derive(Clone)]
 pub enum FuncExpr<'a> {
-    Binding(Binding<'a>),
+    Binding(Box<Binding<'a>>),
     FuncCall(FuncCall<'a>),
     Assign(Assign<'a>),
     Builtin(Builtin<'a>),
@@ -309,6 +310,7 @@ pub enum LiteralInner {
 }
 
 impl<'a> LiteralInner {
+    #[must_use]
     pub fn to_type(&self) -> Type<'a> {
         match self {
             Self::String(_) => Type::String,
@@ -322,7 +324,7 @@ impl<'a> LiteralInner {
 impl<'a> Into<RuntimeValue> for LiteralInner {
     fn into(self) -> RuntimeValue {
         match self {
-            Self::String(s) => RuntimeValue::Str(Box::leak(s.to_string().into_boxed_str())),
+            Self::String(s) => RuntimeValue::Str(Box::leak(s.into_boxed_str())),
             Self::Int(i) => RuntimeValue::I32(i),
             Self::Float(f) => RuntimeValue::F32(f),
             Self::Bool(b) => RuntimeValue::Bool(b),

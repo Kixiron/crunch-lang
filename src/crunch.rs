@@ -40,7 +40,7 @@ impl Crunch {
 
     /// Run a source file in the `.crunch` format
     #[inline]
-    pub fn run_source_file<'a>(options: Options) {
+    pub fn run_source_file(options: Options) {
         trace!("Running Source File: {}", options.file.display());
 
         let source = {
@@ -113,7 +113,7 @@ impl Crunch {
 
     /// Run a byte file in the `.crunched` format
     #[inline]
-    pub fn run_byte_file<'a>(options: Options) -> Result<()> {
+    pub fn run_byte_file(options: Options) -> Result<()> {
         trace!("Running Compiled File: {}", options.file.display());
 
         let source = {
@@ -165,7 +165,8 @@ impl Crunch {
 
         'repl: loop {
             print!(">>> ");
-            if let Err(_) = io::stdout().flush() {
+            if let Err(err) = io::stdout().flush() {
+                error!("Repl Flush Error: {:?}", err);
                 println!("[Repl Flush Error]");
                 continue;
             }
@@ -177,15 +178,16 @@ impl Crunch {
                 input.push_str(&curr_input);
                 curr_input = String::new();
 
-                if let Err(_) = io::stdin().read_line(&mut curr_input) {
+                if let Err(err) = io::stdin().read_line(&mut curr_input) {
+                    error!("Repl Read Error: {:?}", err);
                     println!("[Repl Read Error]");
                     break;
                 }
 
-                if !curr_input.trim().is_empty() {
-                    number_empty_lines = 0;
-                } else {
+                if curr_input.trim().is_empty() {
                     number_empty_lines += 1;
+                } else {
+                    number_empty_lines = 0;
                 }
 
                 if curr_input.trim() == "exit" {
@@ -193,7 +195,8 @@ impl Crunch {
                 }
 
                 print!("... ");
-                if let Err(_) = io::stdout().flush() {
+                if let Err(err) = io::stdout().flush() {
+                    error!("Repl Flush Error: {:?}", err);
                     println!("[Repl Flush Error]");
                     break;
                 }
@@ -261,9 +264,7 @@ impl Crunch {
 
     /// Parse validated bytecode into the Main Function and Function Table
     #[inline]
-    fn parse_bytecode<'a>(
-        bytes: Bytecode<'a>,
-    ) -> Result<(Vec<Instruction>, Vec<Vec<Instruction>>)> {
+    fn parse_bytecode(bytes: Bytecode<'_>) -> Result<(Vec<Instruction>, Vec<Vec<Instruction>>)> {
         Decoder::new(&*bytes).decode()
     }
 
@@ -286,7 +287,8 @@ impl Crunch {
 
     /// Disassemble bytecode in the `.crunched` format
     #[inline]
-    pub fn disassemble<'a>(bytes: Bytecode<'a>) -> String {
+    #[must_use]
+    pub fn disassemble(bytes: Bytecode<'_>) -> String {
         disassemble(&*bytes)
     }
 }
@@ -305,7 +307,7 @@ impl From<(Vec<Instruction>, Vec<Vec<Instruction>>, Options)> for Crunch {
 }
 
 impl Into<Vec<u8>> for Crunch {
-    #[inline(always)]
+    #[inline]
     fn into(self) -> Vec<u8> {
         self.encode()
     }

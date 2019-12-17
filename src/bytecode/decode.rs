@@ -32,6 +32,7 @@ pub struct Decoder<'a> {
 }
 
 impl<'a> Decoder<'a> {
+    #[must_use]
     pub fn new(bytes: &'a [u8]) -> Self {
         Self {
             bytes,
@@ -94,14 +95,13 @@ impl<'a> Decoder<'a> {
         let instruction = match self.bytes[self.index] {
             0x00 => Instruction::NoOp,
             0x01 => Instruction::Load(
-                match meta.values.pop_front() {
-                    Some(value) => value,
-                    None => {
-                        return Err(RuntimeError {
-                            ty: RuntimeErrorTy::MissingValue,
-                            message: "Not enough values were encoded".to_string(),
-                        });
-                    }
+                if let Some(value) = meta.values.pop_front() {
+                    value
+                } else {
+                    return Err(RuntimeError {
+                        ty: RuntimeErrorTy::MissingValue,
+                        message: "Not enough values were encoded".to_string(),
+                    });
                 },
                 self.bytes[1].into(),
             ),
@@ -194,15 +194,15 @@ impl<'a> Decoder<'a> {
         for _ in 0..number_strings {
             let len = take!(self, u32) as usize;
 
-            let string = match String::from_utf8(self.bytes[self.index..self.index + len].to_vec())
+            let string = if let Ok(string) =
+                String::from_utf8(self.bytes[self.index..self.index + len].to_vec())
             {
-                Ok(string) => string,
-                Err(_) => {
-                    return Err(RuntimeError {
-                        ty: RuntimeErrorTy::InvalidString,
-                        message: "Incorrectly encoded string".to_string(),
-                    });
-                }
+                string
+            } else {
+                return Err(RuntimeError {
+                    ty: RuntimeErrorTy::InvalidString,
+                    message: "Incorrectly encoded string".to_string(),
+                });
             };
 
             strings.push_back(string);
