@@ -116,17 +116,6 @@ impl Encoder {
                 bytes[size_of::<u32>() + 2] = *reg;
                 value = Some(val);
             }
-            Instruction::Cache(heap_loc, val, reg) => {
-                bytes[0] = 0x02;
-                bytes[1..size_of::<u32>() + 1].copy_from_slice(&heap_loc.to_be_bytes());
-                bytes[size_of::<u32>() + 2] = *reg;
-                value = Some(val);
-            }
-            Instruction::Save(heap_loc, reg) => {
-                bytes[0] = 0x18;
-                bytes[1..size_of::<u32>() + 1].copy_from_slice(&heap_loc.to_be_bytes());
-                bytes[size_of::<u32>() + 2] = *reg;
-            }
             Instruction::CompToReg(reg) => {
                 bytes[0] = 0x03;
                 bytes[1] = *reg;
@@ -138,10 +127,6 @@ impl Encoder {
             Instruction::DropReg(reg) => {
                 bytes[0] = 0x05;
                 bytes[1] = *reg;
-            }
-            Instruction::Drop(reg) => {
-                bytes[0] = 0x06;
-                bytes[1..size_of::<u32>() + 1].copy_from_slice(&reg.to_be_bytes());
             }
 
             Instruction::Add(left, right) => {

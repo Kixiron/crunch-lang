@@ -61,13 +61,9 @@ pub enum RuntimeErrorTy {
 pub enum Instruction {
     /// Load a Value directly into a register
     Load(RuntimeValue, Register),
-    // TODO: With the new RuntimeValue managing what is and isn't stored in the GC, the Cache and Save instructions may no longer be needed
-    Cache(u32, RuntimeValue, Register),
     CompToReg(Register),
     OpToReg(Register),
-    Save(u32, Register),
     DropReg(Register),
-    Drop(u32),
 
     Add(Register, Register),
     Sub(Register, Register),
@@ -126,14 +122,6 @@ impl Instruction {
                 vm.registers[**reg as usize] = *val;
                 vm.index += Index(1);
             }
-            // NOTE: All cached values are written as a `Value`
-            Instruction::Cache(heap_loc, val, reg) => {
-                trace!("Loading value onto heap at {}, Val: {:?}", heap_loc, val);
-                error!("This instruction is deprecated");
-
-                vm.registers[**reg as usize] = *val;
-                vm.index += Index(1);
-            }
             Instruction::CompToReg(reg) => {
                 trace!("Loading previous comparison into {}", reg);
 
@@ -151,25 +139,15 @@ impl Instruction {
                 std::mem::swap(&mut vm.registers[**reg as usize], &mut vm.prev_op);
                 vm.index += Index(1);
             }
-            Instruction::Save(heap_loc, reg) => {
-                trace!("Saving register {} to {}", reg, heap_loc);
-                error!("This instruction is deprecated");
-
-                vm.index += Index(1);
-            }
             Instruction::DropReg(reg) => {
                 trace!("Clearing register {}", reg);
 
-                vm.registers[**reg as usize] = RuntimeValue::None;
-                vm.index += Index(1);
-            }
-            Instruction::Drop(id) => {
-                trace!("Dropping {:?}", id);
-                vm.gc.remove_root(*id as usize)?;
+                vm.registers[**reg as usize].drop(&mut vm.gc)?;
                 vm.index += Index(1);
             }
 
             Instruction::Add(left, right) => {
+                println!("here");
                 vm.prev_op = vm.registers[**left as usize]
                     .add_upflowing(vm.registers[**right as usize], &mut vm.gc)?;
                 vm.index += Index(1);
@@ -316,7 +294,15 @@ impl Instruction {
             Instruction::Halt => {
                 vm.finished_execution = true;
             }
-            Instruction::Syscall(offset, output, param_1, param_2, param_3, param_4, param_5) => {
+            Instruction::Syscall(
+                _offset,
+                _output,
+                _param_1,
+                _param_2,
+                _param_3,
+                _param_4,
+                _param_5,
+            ) => {
                 unimplemented!("Syscalls are not stable");
             }
 
@@ -343,12 +329,9 @@ impl Instruction {
     pub fn to_str(&self) -> &'static str {
         match self {
             Self::Load(_, _) => "ld",
-            Self::Cache(_, _, _) => "cache",
             Self::CompToReg(_) => "compr",
             Self::OpToReg(_) => "opr",
-            Self::Save(_, _) => "save",
             Self::DropReg(_) => "dropr",
-            Self::Drop(_) => "drop",
 
             Self::Add(_, _) => "add",
             Self::Sub(_, _) => "sub",
@@ -451,25 +434,6 @@ mod tests {
             vec
         };
 
-        // Testing the Cache instruction, it should take a value and an id (In this case the value's index in the array)
-        // and store the value into the GC with the given id and store the resulting Cached value in the registers at
-        // register 0
-        for (id, val) in values.clone().into_iter().enumerate() {
-            // Construct and execute the Cache instruction
-            let cache = Instruction::Cache(id as u32, val.clone(), 0.into());
-            cache.execute(&mut vm).unwrap();
-
-            assert!(vm.gc.contains(id));
-            assert_eq!(vm.registers[0], val.clone());
-
-            // Drop the value so we don't overflow the stack
-            Instruction::Drop(id as u32).execute(&mut vm).unwrap();
-            vm.gc.collect().unwrap();
-        }
-
-        // Do a VM Reset
-        vm.gc = crate::Gc::new(&crate::OptionBuilder::new("./variable_ops").build());
-
         // Testing the Load instruction, it should take a value and store it in a register, which in this case is
         // register 0
         for val in values.clone().into_iter() {
@@ -517,38 +481,6 @@ mod tests {
         // Do a GC Reset
         vm.gc = crate::Gc::new(&crate::OptionBuilder::new("./variable_ops").build());
 
-        // Testing the Save instruction, which takes a register's value and stores it in the GC with the
-        // requested id
-        for (id, val) in values.clone().into_iter().enumerate() {
-            vm.registers[0] = val.clone();
-
-            let (alloc_val, alloc_id) = vm
-                .gc
-                .allocate_id(std::mem::size_of::<RuntimeValue>(), id)
-                .unwrap();
-            assert_eq!(alloc_id, id.into());
-            unsafe {
-                vm.gc
-                    .write(
-                        id,
-                        &[0; std::mem::size_of::<RuntimeValue>()],
-                        Some(&alloc_val),
-                    )
-                    .unwrap();
-            }
-            vm.gc.add_root(alloc_val);
-
-            let save = Instruction::Save(id as u32, 0.into());
-            save.execute(&mut vm).unwrap();
-
-            assert!(vm.gc.contains(id));
-            assert_eq!(vm.gc.fetch::<RuntimeValue, usize>(id).unwrap(), val);
-
-            // Drop the value so we don't overflow the stack
-            Instruction::Drop(id as u32).execute(&mut vm).unwrap();
-            vm.gc.collect().unwrap();
-        }
-
         // Testing the DropReg instruction, which should drop a value from a register
         {
             vm.registers[0] = RuntimeValue::Str("test string"); // Load the register before hand
@@ -557,40 +489,6 @@ mod tests {
             assert!(vm.registers[0]
                 .is_equal(RuntimeValue::Str("test string"), &vm.gc)
                 .unwrap());
-        }
-
-        // Do a VM Reset
-        vm.gc = crate::Gc::new(&crate::OptionBuilder::new("./variable_ops").build());
-
-        // Testing the Drop instruction, which should drop a value from the GC by its id
-        for (id, val) in values.clone().into_iter().enumerate() {
-            let drop = Instruction::Drop(id as u32);
-
-            // Allocate the value in the GC
-            {
-                let (alloc_val, alloc_id) = vm
-                    .gc
-                    .allocate_id(std::mem::size_of::<RuntimeValue>(), id)
-                    .unwrap();
-                unsafe {
-                    vm.gc
-                        .write(alloc_id, val.clone(), Some(&alloc_val))
-                        .unwrap();
-                }
-                vm.gc.add_root(alloc_val);
-            }
-
-            // Assert that the value is alive
-            assert!(vm.gc.contains(id));
-            assert_eq!(vm.gc.fetch::<RuntimeValue, usize>(id).unwrap(), val);
-
-            // Execute the drop and run a GC collection cycle
-            drop.execute(&mut vm).unwrap();
-            vm.gc.collect().unwrap();
-
-            // Assert that the value is dropped
-            assert!(!vm.gc.contains(id));
-            assert!(vm.gc.fetch::<RuntimeValue, usize>(id).is_err()); // The requested value does not exist, and therefore should error
         }
     }
 

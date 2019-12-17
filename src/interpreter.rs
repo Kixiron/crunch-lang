@@ -159,11 +159,7 @@ impl<'a> Interpreter<'a> {
                         BindingVal::Literal(literal) => {
                             let addr = ctx.reserve_reg()?;
 
-                            ctx.inst_cache(
-                                addr,
-                                literal.val.into(),
-                                builder.intern(&*binding.name.name),
-                            )?;
+                            ctx.inst_load(addr, literal.val.into());
                         }
 
                         BindingVal::BinOp(bin_op) => match (bin_op.left, bin_op.right) {
@@ -185,11 +181,11 @@ impl<'a> Interpreter<'a> {
                             }
 
                             (BinOpSide::Literal(left), BinOpSide::Variable(right)) => {
-                                let (left_reg, left_ident) = (ctx.reserve_reg()?, {
+                                let (left_reg, _left_ident) = (ctx.reserve_reg()?, {
                                     let clobber = builder.gen_clobber_str(15);
                                     builder.intern(format!("___bin-op-literal-{}", clobber))
                                 });
-                                ctx.inst_cache(left_reg, left.val.into(), left_ident)?;
+                                ctx.inst_load(left_reg, left.val.into());
 
                                 let right_ident = builder.intern(&*right.name);
                                 let (right_reg, faulted) =
@@ -198,7 +194,7 @@ impl<'a> Interpreter<'a> {
                                     } else if self.options.fault_tolerant {
                                         let reg = ctx.reserve_reg()?;
 
-                                        ctx.inst_cache(reg, RuntimeValue::None, right_ident)?;
+                                        ctx.inst_load(reg, RuntimeValue::None);
 
                                         (reg, true)
                                     } else {
@@ -226,9 +222,7 @@ impl<'a> Interpreter<'a> {
                                 }
 
                                 let output = ctx.reserve_reg()?;
-                                ctx.inst_drop_reg(right_reg)
-                                    .inst_drop(right_ident)?
-                                    .inst_op_to_reg(output);
+                                ctx.inst_drop_reg(right_reg).inst_op_to_reg(output);
                             }
 
                             (BinOpSide::Variable(left), BinOpSide::Literal(right)) => {
@@ -237,7 +231,7 @@ impl<'a> Interpreter<'a> {
                                     reg
                                 } else if self.options.fault_tolerant {
                                     let reg = ctx.reserve_reg()?;
-                                    ctx.inst_cache(reg, RuntimeValue::None, left_ident)?;
+                                    ctx.inst_load(reg, RuntimeValue::None);
 
                                     reg
                                 } else {
@@ -250,20 +244,18 @@ impl<'a> Interpreter<'a> {
                                     });
                                 };
 
-                                let (right_reg, right_ident) = (ctx.reserve_reg()?, {
+                                let (right_reg, _right_ident) = (ctx.reserve_reg()?, {
                                     let clobber = builder.gen_clobber_str(15);
                                     builder.intern(format!("___bin-op-literal-{}", clobber))
                                 });
 
-                                ctx.inst_cache(right_reg, right.val.into(), right_ident)?
+                                ctx.inst_load(right_reg, right.val.into())
                                     .inst_add(left_reg, right_reg)
                                     .free_reg(right_reg)
                                     .free_reg(left_reg);
 
                                 let output = ctx.reserve_reg()?;
-                                ctx.inst_drop_reg(right_reg)
-                                    .inst_drop(right_ident)?
-                                    .inst_op_to_reg(output);
+                                ctx.inst_drop_reg(right_reg).inst_op_to_reg(output);
                             }
                             _ => unimplemented!(),
                         },
@@ -282,9 +274,10 @@ impl<'a> Interpreter<'a> {
                             ctx.inst_halt();
                         }
 
-                        Builtin::SyscallExit(exit_code) => {
+                        Builtin::SyscallExit(_exit_code) => {
                             unimplemented!("Syscalls have not been implemented");
 
+                            /*
                             #[allow(unreachable_code)]
                             match exit_code {
                                 // For literals fed into the print function, load them, print them, and drop them
@@ -316,6 +309,7 @@ impl<'a> Interpreter<'a> {
                                         };
                                 }
                             }
+                            */
                         }
 
                         // Print values

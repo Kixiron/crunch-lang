@@ -745,6 +745,7 @@ macro_rules! new_ops {
                     }
                     gc.add_root(obj);
 
+                    #[cfg(debug_assertions)]
                     debug_assert_eq!(
                         $internal::from_signed_bytes_be(&int),
                         $internal::from_signed_bytes_be(gc.fetch(id).expect("Value does not exist")),
@@ -787,6 +788,7 @@ macro_rules! new_ops {
                     }
                     gc.add_root(obj);
 
+                    #[cfg(debug_assertions)]
                     debug_assert_eq!(
                         $internal::from_bytes_be(&int),
                         $internal::from_bytes_be(gc.fetch(id).expect("Value does not exist")),
@@ -828,6 +830,7 @@ impl GcBigInt {
         }
         gc.add_root(obj);
 
+        #[cfg(debug_assertions)]
         debug_assert_eq!(
             num_bigint::BigInt::from_signed_bytes_be(&int),
             num_bigint::BigInt::from_signed_bytes_be(gc.fetch(id).expect("Value does not exist")),
@@ -862,6 +865,7 @@ impl GcBigInt {
         }
         gc.add_root(obj);
 
+        #[cfg(debug_assertions)]
         debug_assert_eq!(
             num_bigint::BigInt::from_signed_bytes_be(&int),
             num_bigint::BigInt::from_signed_bytes_be(gc.fetch(id).expect("Value does not exist")),
@@ -929,6 +933,7 @@ impl GcBigUint {
         }
         gc.add_root(obj);
 
+        #[cfg(debug_assertions)]
         debug_assert_eq!(
             num_bigint::BigUint::from_bytes_be(&int),
             num_bigint::BigUint::from_bytes_be(gc.fetch(id).expect("Value does not exist")),
@@ -963,6 +968,7 @@ impl GcBigUint {
         }
         gc.add_root(obj);
 
+        #[cfg(debug_assertions)]
         debug_assert_eq!(
             num_bigint::BigUint::from_bytes_be(&int),
             num_bigint::BigUint::from_bytes_be(gc.fetch(id).expect("Value does not exist")),
@@ -1031,6 +1037,41 @@ impl GcStr {
         })
     }
 
+    pub fn new_adding(left: impl AsRef<str>, right: impl AsRef<str>, gc: &mut Gc) -> Result<Self> {
+        let (left, right) = (left.as_ref(), right.as_ref());
+
+        let (obj, id) = gc.allocate(left.len() + right.len())?;
+        unsafe {
+            gc.write(
+                id,
+                {
+                    let mut vec = Vec::with_capacity(left.len() + right.len());
+                    vec.extend_from_slice(left.as_bytes());
+                    vec.extend_from_slice(right.as_bytes());
+                    left
+                },
+                Some(&obj),
+            )?;
+        }
+        gc.add_root(obj);
+
+        debug_assert_eq!(
+            {
+                let mut left = left.to_string();
+                left.push_str(right);
+                left
+            },
+            std::str::from_utf8(gc.fetch(id).expect("Value does not exist"))
+                .expect("Not valid utf-8")
+        );
+
+        Ok(Self {
+            id,
+            len: left.len() + right.len(),
+            capacity: left.len() + right.len(),
+        })
+    }
+
     pub fn new_id(string: impl AsRef<str>, id: impl Into<AllocId>, gc: &mut Gc) -> Result<Self> {
         let string = string.as_ref();
 
@@ -1045,6 +1086,19 @@ impl GcStr {
             len: string.len(),
             capacity: string.len(),
         })
+    }
+
+    pub fn add(self, other: Self, gc: &mut Gc) -> Result<Self> {
+        // TODO: I don't like allocating, make it not
+        let left = self.to_str(gc)?.to_string();
+        let right = self.to_str(gc)?.to_string();
+
+        let new = Self::new_adding(left, right, gc)?;
+
+        self.drop(gc)?;
+        other.drop(gc)?;
+
+        Ok(new)
     }
 
     pub fn to_str<'a>(&self, gc: &'a Gc) -> Result<&'a str> {
@@ -1081,7 +1135,7 @@ mod tests {
         assert!(gc.contains(int_id));
         assert!(gc.fetch(int_id) == Ok(RuntimeValue::I32(10)));
 
-        let (int_2, int_2_id) = dbg!(gc.allocate_id(size_of::<RuntimeValue>(), 0).unwrap());
+        let (int_2, int_2_id) = gc.allocate_id(size_of::<RuntimeValue>(), 0).unwrap();
         unsafe {
             gc.write(int_2_id, RuntimeValue::I32(20), Some(&int_2))
                 .unwrap();

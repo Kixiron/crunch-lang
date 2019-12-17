@@ -1,5 +1,8 @@
 # Crunch
 
+[![LOC](https://tokei.rs/b1/github/Kixiron/crunch-lang)](https://github.com/Kixiron/crunch-lang)
+![Codecov](https://img.shields.io/codecov/c/github/Kixiron/crunch-lang)
+
 ## Overarching TODOs
 
 - [ ] Finish Parser

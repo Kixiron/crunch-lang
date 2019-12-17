@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::{Result, RuntimeError, RuntimeErrorTy, RuntimeValue};
 use libloading::{Library, Symbol};
 use std::collections::HashMap;

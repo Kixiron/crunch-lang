@@ -236,25 +236,6 @@ impl FunctionContext {
 
         self
     }
-    pub fn inst_cache(
-        &mut self,
-        register: impl Into<Register>,
-        value: RuntimeValue,
-        name: Sym,
-    ) -> Result<&mut Self> {
-        let gc_id = &value as *const _ as u32;
-
-        self.block.push(PartialInstruction {
-            uninit_inst: Instruction::Cache(gc_id, value, register.into()),
-            func_sym: None,
-            global_sym: None,
-            local_sym: Some(name),
-        });
-
-        self.reserve_reg_sym(name)?;
-
-        Ok(self)
-    }
 
     pub fn inst_comp_to_reg(&mut self, register: impl Into<Register>) -> &mut Self {
         self.block
@@ -276,19 +257,6 @@ impl FunctionContext {
         self.free_reg(register);
 
         self
-    }
-    pub fn inst_drop(&mut self, name: Sym) -> Result<&mut Self> {
-        self.block.push(PartialInstruction {
-            uninit_inst: Instruction::Drop(0).into(),
-            func_sym: None,
-            global_sym: None,
-            local_sym: Some(name),
-        });
-
-        let register = self.get_cached_reg(name)?;
-        self.free_reg(register);
-
-        Ok(self)
     }
 
     pub fn inst_add(&mut self, left: impl Into<Register>, right: impl Into<Register>) -> &mut Self {
@@ -456,25 +424,8 @@ struct PartialInstruction {
 }
 
 impl PartialInstruction {
-    pub fn solidify(self, builder: &mut CodeBuilder) -> Instruction {
+    pub fn solidify(self, _builder: &mut CodeBuilder) -> Instruction {
         match self.uninit_inst {
-            Instruction::Cache(start_id, value, register) => {
-                let concrete_id = builder.solidify_id(start_id);
-
-                builder
-                    .local_symbols
-                    .insert(self.local_sym.expect("Expected Local Symbol"), concrete_id);
-
-                Instruction::Cache(concrete_id, value, register)
-            }
-
-            Instruction::Drop(_) => Instruction::Drop(
-                *builder
-                    .local_symbols
-                    .get(&self.local_sym.expect("Expected Local Symbol"))
-                    .expect("No Registered Local Symbol"),
-            ),
-
             _ => self.uninit_inst,
         }
     }

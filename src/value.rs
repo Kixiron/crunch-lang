@@ -94,7 +94,7 @@ impl RuntimeValue {
 
             (Self::Pointer(left), Self::Pointer(right)) => left == right,
 
-            (left, right) | (left, right) if left == Self::None || right == Self::None => {
+            (left, right) if left == Self::None || right == Self::None => {
                 return Err(RuntimeError {
                     ty: RuntimeErrorTy::NullVar,
                     message: format!(
@@ -135,6 +135,20 @@ impl RuntimeValue {
         })
     }
 
+    pub fn drop(&mut self, gc: &mut Gc) -> Result<()> {
+        match self {
+            Self::GcString(string) => string.drop(gc)?,
+            Self::GcInt(int) => int.drop(gc)?,
+            Self::GcUint(int) => int.drop(gc)?,
+            Self::GcVec(vec) => vec.drop(gc)?,
+            _ => {}
+        }
+
+        *self = Self::None;
+
+        Ok(())
+    }
+
     pub fn from_bytes(
         _bytes: &[u8],
         _strings: &mut std::collections::VecDeque<String>,
@@ -145,10 +159,131 @@ impl RuntimeValue {
     pub fn as_bytes(&self) -> (Vec<u8>, Option<String>) {
         unimplemented!()
     }
+
+    pub fn add_upflowing(self, other: Self, gc: &mut Gc) -> Result<Self> {
+        Ok(match (self, other) {
+            (Self::Byte(left), Self::Byte(right)) => {
+                if let Some(result) = left.checked_add(right) {
+                    Self::Byte(result)
+                } else {
+                    Self::U16(left as u16).add_upflowing(Self::U16(right as u16), gc)?
+                }
+            }
+            (Self::U16(left), Self::U16(right)) => {
+                if let Some(result) = left.checked_add(right) {
+                    Self::U16(result)
+                } else {
+                    Self::U32(left as u32).add_upflowing(Self::U32(right as u32), gc)?
+                }
+            }
+            (Self::U32(left), Self::U32(right)) => {
+                if let Some(result) = left.checked_add(right) {
+                    Self::U32(result)
+                } else {
+                    Self::U64(left as u64).add_upflowing(Self::U64(right as u64), gc)?
+                }
+            }
+            (Self::U64(left), Self::U64(right)) => {
+                if let Some(result) = left.checked_add(right) {
+                    Self::U64(result)
+                } else {
+                    Self::U128(left as u128).add_upflowing(Self::U128(right as u128), gc)?
+                }
+            }
+            (Self::U128(left), Self::U128(right)) => {
+                if let Some(result) = left.checked_add(right) {
+                    Self::U128(result)
+                } else {
+                    Self::GcInt(GcBigInt::new_adding(left, right, gc)?)
+                }
+            }
+            (Self::GcUint(left), Self::GcUint(right)) => Self::GcUint(left.add(right, gc)?),
+
+            (Self::IByte(left), Self::IByte(right)) => {
+                if let Some(result) = left.checked_add(right) {
+                    Self::IByte(result)
+                } else {
+                    Self::I16(left as i16).add_upflowing(Self::I16(right as i16), gc)?
+                }
+            }
+            (Self::I16(left), Self::I16(right)) => {
+                if let Some(result) = left.checked_add(right) {
+                    Self::I16(result)
+                } else {
+                    Self::I32(left as i32).add_upflowing(Self::I32(right as i32), gc)?
+                }
+            }
+            (Self::I32(left), Self::I32(right)) => {
+                if let Some(result) = left.checked_add(right) {
+                    Self::I32(result)
+                } else {
+                    Self::I64(left as i64).add_upflowing(Self::I64(right as i64), gc)?
+                }
+            }
+            (Self::I64(left), Self::I64(right)) => {
+                if let Some(result) = left.checked_add(right) {
+                    Self::I64(result)
+                } else {
+                    Self::I128(left as i128).add_upflowing(Self::I128(right as i128), gc)?
+                }
+            }
+            (Self::I128(left), Self::I128(right)) => {
+                if let Some(result) = left.checked_add(right) {
+                    Self::I128(result)
+                } else {
+                    Self::GcInt(GcBigInt::new_adding(left, right, gc)?)
+                }
+            }
+            (Self::GcInt(left), Self::GcInt(right)) => Self::GcInt(left.add(right, gc)?),
+
+            (Self::F32(_left), Self::F32(_right)) => unimplemented!("No idea how floats work"),
+            (Self::F64(_left), Self::F64(_right)) => unimplemented!("No idea how floats work"),
+
+            (Self::Pointer(left), Self::Pointer(right)) => {
+                if let Some(ptr) = left.checked_add(right) {
+                    Self::Pointer(ptr)
+                } else {
+                    return Err(RuntimeError {
+                        ty: RuntimeErrorTy::IntegerOverflow,
+                        message: format!(
+                            "The attempted subtract is too large to fit in a '{}'",
+                            self.name()
+                        ),
+                    });
+                }
+            }
+
+            (Self::Str(left), Self::Str(right)) => {
+                Self::GcString(GcStr::new_adding(left, right, gc)?)
+            }
+            (Self::GcString(left), Self::GcString(right)) => Self::GcString(left.add(right, gc)?),
+
+            (left, right) if left == Self::None || right == Self::None => {
+                return Err(RuntimeError {
+                    ty: RuntimeErrorTy::NullVar,
+                    message: format!(
+                        "Values of types '{}' and '{}' cannot be added",
+                        left.name(),
+                        right.name()
+                    ),
+                });
+            }
+            (left, right) => {
+                return Err(RuntimeError {
+                    ty: RuntimeErrorTy::IncompatibleTypes,
+                    message: format!(
+                        "Values of types '{}' and '{}' cannot be added",
+                        left.name(),
+                        right.name()
+                    ),
+                });
+            }
+        })
+    }
 }
 
 macro_rules! upflowing {
-    ($ty:ty, $([$name:tt, $func:tt, $func_two:tt, $func_three:tt]),*) => {
+    ($ty:ty, $([$name:tt, $func:tt, $func_two:tt, $func_three:tt, $err_one:literal, $err_two:literal, $err_three:literal]),*) => {
         impl $ty {
             $(
                 pub fn $name(self, other: Self, gc: &mut Gc) -> Result<Self> {
@@ -237,18 +372,18 @@ macro_rules! upflowing {
                                 return Err(RuntimeError {
                                     ty: RuntimeErrorTy::IntegerOverflow,
                                     message: format!(
-                                        "The attempted subtract is too large to fit in a '{}'",
+                                        $err_one,
                                         self.name()
                                     ),
                                 });
                             }
                         }
 
-                        (left, right) | (left, right) if left == Self::None || right == Self::None => {
+                        (left, right) if left == Self::None || right == Self::None => {
                             return Err(RuntimeError {
                                 ty: RuntimeErrorTy::NullVar,
                                 message: format!(
-                                    "Values of types '{}' and '{}' cannot be subtracted",
+                                    $err_two,
                                     left.name(),
                                     right.name()
                                 ),
@@ -258,7 +393,7 @@ macro_rules! upflowing {
                             return Err(RuntimeError {
                                 ty: RuntimeErrorTy::IncompatibleTypes,
                                 message: format!(
-                                    "Values of types '{}' and '{}' cannot be subtracted",
+                                    $err_three,
                                     left.name(),
                                     right.name()
                                 ),
@@ -273,10 +408,33 @@ macro_rules! upflowing {
 
 upflowing!(
     RuntimeValue,
-    [add_upflowing, checked_add, add, new_adding],
-    [sub_upflowing, checked_sub, sub, new_subtracting],
-    [mult_upflowing, checked_mul, mult, new_multiplying],
-    [div_upflowing, checked_div, div, new_dividing]
+    [
+        sub_upflowing,
+        checked_sub,
+        sub,
+        new_subtracting,
+        "The attempted subtract is too large to fit in a '{}'",
+        "Values of types '{}' and '{}' cannot be subtracted",
+        "Values of types '{}' and '{}' cannot be subtracted"
+    ],
+    [
+        mult_upflowing,
+        checked_mul,
+        mult,
+        new_multiplying,
+        "The attempted multiply is too large to fit in a '{}'",
+        "Values of types '{}' and '{}' cannot be multiplied",
+        "Values of types '{}' and '{}' cannot be multiplied"
+    ],
+    [
+        div_upflowing,
+        checked_div,
+        div,
+        new_dividing,
+        "The attempted divide is too large to fit in a '{}'",
+        "Values of types '{}' and '{}' cannot be divided",
+        "Values of types '{}' and '{}' cannot be divided"
+    ]
 );
 
 impl PartialEq for RuntimeValue {

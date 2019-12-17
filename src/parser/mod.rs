@@ -666,7 +666,7 @@ impl<'a> Parser<'a> {
 
             TokenType::Indent => {
                 let span_start = self.eat(TokenType::Indent)?.range.0;
-                return dbg!(self.parse_func_body(span_start));
+                return self.parse_func_body(span_start);
             }
 
             token => unimplemented!(

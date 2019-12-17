@@ -47,8 +47,6 @@ impl<'a> Decoder<'a> {
         self.fill_meta()?;
         self.fill_functions()?;
 
-        dbg!(&self.functions);
-
         Ok((self.functions.remove(0), self.functions))
     }
 
@@ -107,23 +105,9 @@ impl<'a> Decoder<'a> {
                 },
                 self.bytes[1].into(),
             ),
-            0x02 => Instruction::Cache(
-                take_from!(self, 1, u32),
-                match meta.values.pop_front() {
-                    Some(value) => value,
-                    None => {
-                        return Err(RuntimeError {
-                            ty: RuntimeErrorTy::MissingValue,
-                            message: "Not enough values were encoded".to_string(),
-                        });
-                    }
-                },
-                self.bytes[1].into(),
-            ),
             0x03 => Instruction::CompToReg(self.bytes[1].into()),
             0x04 => Instruction::OpToReg(self.bytes[1].into()),
             0x05 => Instruction::DropReg(self.bytes[1].into()),
-            0x06 => Instruction::Drop(take_from!(self, 1, u32)),
 
             0x07 => Instruction::Add(self.bytes[1].into(), self.bytes[2].into()),
             0x08 => Instruction::Sub(self.bytes[1].into(), self.bytes[2].into()),
@@ -148,10 +132,6 @@ impl<'a> Decoder<'a> {
             0x16 => Instruction::Return,
             0x17 => Instruction::Halt,
 
-            0x18 => Instruction::Save(
-                take_from!(self, 1, u32),
-                self.bytes[size_of::<u32>() + 2].into(),
-            ),
             0x19 => Instruction::Collect,
             0x1A => Instruction::Syscall(
                 self.bytes[1],

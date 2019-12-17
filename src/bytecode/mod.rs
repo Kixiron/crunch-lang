@@ -47,10 +47,10 @@ pub const INSTRUCTION_BYTES: [u8; 27] = [
 
 /// Disassembles bytecode into a human-readable format
 // TODO: Refractor and test
-pub fn disassemble(bytes: &[u8]) -> String {
+pub fn disassemble(_bytes: &[u8]) -> String {
+    /*
     use super::{Instruction, RuntimeValue, NUMBER_REGISTERS};
     use std::{collections::HashMap, fmt::Write};
-    /*
 
     let functions = {
         let (main, functions) = Decoder::new(bytes).decode().unwrap();
@@ -213,17 +213,17 @@ mod tests {
 
         let (instructions, functions) = (
             vec![
-                Cache(0, RuntimeValue::I32(10), 0.into()),
+                Load(RuntimeValue::I32(10), 0.into()),
                 Print(0.into()),
-                Cache(1, RuntimeValue::I32(5), 1.into()),
+                Load(RuntimeValue::I32(5), 1.into()),
                 Print(1.into()),
                 Div(0.into(), 1.into()),
                 OpToReg(3.into()),
                 Print(3.into()),
-                Drop(0),
-                Drop(1),
+                DropReg(0.into()),
+                DropReg(1.into()),
                 Collect,
-                Cache(0, RuntimeValue::Pointer(0), 0.into()),
+                Load(RuntimeValue::Pointer(0), 0.into()),
                 Print(0.into()),
                 Syscall(
                     0,

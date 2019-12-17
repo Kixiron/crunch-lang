@@ -1,5 +1,4 @@
 use logos::{Lexer, Logos};
-use std::borrow::Cow;
 
 #[derive(Logos, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TokenType {
