@@ -1,5 +1,5 @@
 use crate::{AllocId, HeapPointer, Result, RuntimeError, RuntimeErrorTy};
-use std::{alloc, mem, ptr, slice};
+use std::{alloc, marker::PhantomData, mem, ptr, slice};
 
 /// Gets the memory page size
 #[inline]
@@ -640,16 +640,19 @@ where
         })
     }
 
-    pub fn to_vec<'a>(&self, gc: &'a Gc) -> Result<ForgetDrop<Vec<T>>> {
+    pub fn to_vec<'a>(&self, gc: &'a Gc) -> Result<ForgetDrop<'a, Vec<T>>> {
         use std::mem::size_of;
 
         let raw = gc.fetch::<&[u8], AllocId>(self.id)?;
         Ok(unsafe {
-            ForgetDrop(Vec::from_raw_parts(
-                raw.as_ptr() as *mut T,
-                raw.len() / size_of::<T>(),
-                raw.len() / size_of::<T>(),
-            ))
+            ForgetDrop(
+                Vec::from_raw_parts(
+                    raw.as_ptr() as *mut T,
+                    raw.len() / size_of::<T>(),
+                    raw.len() / size_of::<T>(),
+                ),
+                PhantomData,
+            )
         })
     }
 
@@ -661,10 +664,9 @@ where
 }
 
 #[derive(Debug, Clone)]
-#[repr(transparent)]
-pub struct ForgetDrop<T>(T);
+pub struct ForgetDrop<'a, T>(T, PhantomData<&'a T>);
 
-impl<T> std::ops::Deref for ForgetDrop<T> {
+impl<'a, T> std::ops::Deref for ForgetDrop<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -672,7 +674,7 @@ impl<T> std::ops::Deref for ForgetDrop<T> {
     }
 }
 
-impl<T> Drop for ForgetDrop<T> {
+impl<'a, T> Drop for ForgetDrop<'a, T> {
     fn drop(&mut self) {
         let mut tmp = unsafe { mem::MaybeUninit::zeroed().assume_init() };
         mem::swap(&mut self.0, &mut tmp);
@@ -686,8 +688,8 @@ macro_rules! ops {
         impl $ty {
             $(
                 pub fn $name(self, other: Self, gc: &mut Gc) -> Result<Self> {
-                    let (left, right) = (self.$to(&gc)?, other.$to(&gc)?);
-                    let result = Self::new(&*left $op &*right, gc)?;
+                    let (left, right) = ((*self.$to(&gc)?).to_owned(), (*other.$to(&gc)?).to_owned());
+                    let result = Self::new(left $op right, gc)?;
 
                     self.drop(gc)?;
                     other.drop(gc)?;
@@ -861,10 +863,20 @@ impl GcBigInt {
         Ok(Self { id, len })
     }
 
-    pub fn to_int<'a>(&self, gc: &'a Gc) -> Result<ForgetDrop<num_bigint::BigInt>> {
-        Ok(ForgetDrop(num_bigint::BigInt::from_signed_bytes_be(
-            gc.fetch(self.id)?,
-        )))
+    pub fn bit_not<'a>(self, gc: &'a mut Gc) -> Result<Self> {
+        let int = self.to_int(gc)?;
+        unsafe {
+            gc.write(self.id, !(*int).clone(), None)?;
+        }
+
+        Ok(self)
+    }
+
+    pub fn to_int<'a>(&self, gc: &'a Gc) -> Result<ForgetDrop<'a, num_bigint::BigInt>> {
+        Ok(ForgetDrop(
+            num_bigint::BigInt::from_signed_bytes_be(gc.fetch(self.id)?),
+            PhantomData,
+        ))
     }
 
     pub fn drop(self, gc: &mut Gc) -> Result<()> {
@@ -888,7 +900,9 @@ new_ops!(S
 ops!(
     GcBigInt, to_int,
     [add, +], [sub, -],
-    [mult, *], [div, /]
+    [mult, *], [div, /],
+    [bit_or, |], [bit_and, &],
+    [bit_xor, ^]
 );
 
 #[derive(Debug, Clone, Copy)]
@@ -964,10 +978,22 @@ impl GcBigUint {
         Ok(Self { id, len })
     }
 
-    pub fn to_uint<'a>(&self, gc: &'a Gc) -> Result<ForgetDrop<num_bigint::BigUint>> {
-        Ok(ForgetDrop(num_bigint::BigUint::from_bytes_be(
-            gc.fetch(self.id)?,
-        )))
+    pub fn bit_not<'a>(self, _gc: &'a mut Gc) -> Result<Self> {
+        // let int = self.to_uint(gc)?;
+        // unsafe {
+        //     gc.write(self.id, !*int, None)?;
+        // }
+        //
+        // Ok(self)
+
+        unimplemented!("`std::ops::Not` is not implemented for `num_bigint::BitUint`")
+    }
+
+    pub fn to_uint<'a>(&self, gc: &'a Gc) -> Result<ForgetDrop<'a, num_bigint::BigUint>> {
+        Ok(ForgetDrop(
+            num_bigint::BigUint::from_bytes_be(gc.fetch(self.id)?),
+            PhantomData,
+        ))
     }
 
     pub fn drop(self, gc: &mut Gc) -> Result<()> {
@@ -991,7 +1017,9 @@ new_ops!(U
 ops!(
     GcBigUint, to_uint,
     [add, +], [sub, -],
-    [mult, *], [div, /]
+    [mult, *], [div, /],
+    [bit_or, |], [bit_and, &],
+    [bit_xor, ^]
 );
 
 #[derive(Debug, Clone, Copy)]

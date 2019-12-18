@@ -282,10 +282,40 @@ impl RuntimeValue {
             }
         })
     }
+
+    pub fn bit_not(self, gc: &mut Gc) -> Result<Self> {
+        Ok(match self {
+            Self::Byte(int) => Self::Byte(!int),
+            Self::U16(int) => Self::U16(!int),
+            Self::U32(int) => Self::U32(!int),
+            Self::U64(int) => Self::U64(!int),
+            Self::U128(int) => Self::U128(!int),
+            Self::GcUint(int) => Self::GcUint(int.bit_not(gc)?),
+
+            Self::IByte(int) => Self::IByte(!int),
+            Self::I16(int) => Self::I16(!int),
+            Self::I32(int) => Self::I32(!int),
+            Self::I64(int) => Self::I64(!int),
+            Self::I128(int) => Self::I128(!int),
+            Self::GcInt(int) => Self::GcInt(int.bit_not(gc)?),
+
+            Self::F32(_int) => unimplemented!("No idea how floats work"),
+            Self::F64(_int) => unimplemented!("No idea how floats work"),
+
+            Self::Pointer(int) => Self::Pointer(!int),
+
+            val => {
+                return Err(RuntimeError {
+                    ty: RuntimeErrorTy::NullVar,
+                    message: format!("Cannot apply the bitwise not to the type {}", val.name()),
+                });
+            }
+        })
+    }
 }
 
 macro_rules! upflowing {
-    ($ty:ty, $([$name:tt, $func:tt, $func_two:tt, $func_three:tt, $err_one:literal, $err_two:literal, $err_three:literal]),*) => {
+    ($ty:ty, $([$name:tt, $func:tt, $func_two:tt, $func_three:tt, $err_one:literal, $err_two:literal]),*) => {
         impl $ty {
             $(
                 pub fn $name(self, other: Self, gc: &mut Gc) -> Result<Self> {
@@ -395,7 +425,59 @@ macro_rules! upflowing {
                             return Err(RuntimeError {
                                 ty: RuntimeErrorTy::IncompatibleTypes,
                                 message: format!(
-                                    $err_three,
+                                    $err_two,
+                                    left.name(),
+                                    right.name()
+                                ),
+                            });
+                        }
+                    })
+                }
+            )*
+        }
+    }
+}
+
+macro_rules! binary_op {
+    ($ty:ty, $([$name:tt, $op:tt, $func:tt, $err:literal]),*) => {
+        impl $ty {
+            $(
+                pub fn $name(self, other: Self, gc: &mut Gc) -> Result<Self> {
+                    Ok(match (self, other) {
+                        (Self::Byte(left), Self::Byte(right)) => Self::Byte(left $op right),
+                        (Self::U16(left), Self::U16(right)) => Self::U16(left $op right),
+                        (Self::U32(left), Self::U32(right)) => Self::U32(left $op right),
+                        (Self::U64(left), Self::U64(right)) => Self::U64(left $op right),
+                        (Self::U128(left), Self::U128(right)) => Self::U128(left $op right),
+                        (Self::GcUint(left), Self::GcUint(right)) => Self::GcUint(left.$func(right, gc)?),
+
+                        (Self::IByte(left), Self::IByte(right)) => Self::IByte(left $op right),
+                        (Self::I16(left), Self::I16(right)) => Self::I16(left $op right),
+                        (Self::I32(left), Self::I32(right)) => Self::I32(left $op right),
+                        (Self::I64(left), Self::I64(right)) => Self::I64(left $op right),
+                        (Self::I128(left), Self::I128(right)) => Self::I128(left $op right),
+                        (Self::GcInt(left), Self::GcInt(right)) => Self::GcInt(left.$func(right, gc)?),
+
+                        (Self::F32(_left), Self::F32(_right)) => unimplemented!("No idea how floats work"),
+                        (Self::F64(_left), Self::F64(_right)) => unimplemented!("No idea how floats work"),
+
+                        (Self::Pointer(left), Self::Pointer(right)) => Self::Pointer(left $op right),
+
+                        (left, right) if left == Self::None || right == Self::None => {
+                            return Err(RuntimeError {
+                                ty: RuntimeErrorTy::NullVar,
+                                message: format!(
+                                    $err,
+                                    left.name(),
+                                    right.name()
+                                ),
+                            });
+                        }
+                        (left, right) => {
+                            return Err(RuntimeError {
+                                ty: RuntimeErrorTy::IncompatibleTypes,
+                                message: format!(
+                                    $err,
                                     left.name(),
                                     right.name()
                                 ),
@@ -416,7 +498,6 @@ upflowing!(
         sub,
         new_subtracting,
         "The attempted subtract is too large to fit in a '{}'",
-        "Values of types '{}' and '{}' cannot be subtracted",
         "Values of types '{}' and '{}' cannot be subtracted"
     ],
     [
@@ -425,7 +506,6 @@ upflowing!(
         mult,
         new_multiplying,
         "The attempted multiply is too large to fit in a '{}'",
-        "Values of types '{}' and '{}' cannot be multiplied",
         "Values of types '{}' and '{}' cannot be multiplied"
     ],
     [
@@ -434,8 +514,23 @@ upflowing!(
         div,
         new_dividing,
         "The attempted divide is too large to fit in a '{}'",
-        "Values of types '{}' and '{}' cannot be divided",
         "Values of types '{}' and '{}' cannot be divided"
+    ]
+);
+
+binary_op!(
+    RuntimeValue,
+    [
+        bit_or, |, bit_or,
+        "Values of types '{}' and '{}' cannot be bit ord"
+    ],
+    [
+        bit_xor, ^, bit_xor,
+        "Values of types '{}' and '{}' cannot be bit xored"
+    ],
+    [
+        bit_and, &, bit_and,
+        "Values of types '{}' and '{}' cannot be bit anded"
     ]
 );
 

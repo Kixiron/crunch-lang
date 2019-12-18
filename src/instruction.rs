@@ -219,24 +219,27 @@ impl Instruction {
                 }
             }
 
-            /*
             Self::And(left, right) => {
-                vm.prev_op = (*vm).get(*left).bit_and((*vm).get(*right), &vm.gc)?;
+                vm.prev_op = vm.registers[**left as usize]
+                    .bit_and(vm.registers[**right as usize], &mut vm.gc)?;
                 vm.index += Index(1);
             }
             Self::Or(left, right) => {
-                vm.prev_op = (*vm).get(*left).bit_or((*vm).get(*right), &vm.gc)?;
+                vm.prev_op = vm.registers[**left as usize]
+                    .bit_or(vm.registers[**right as usize], &mut vm.gc)?;
                 vm.index += Index(1);
             }
             Self::Xor(left, right) => {
-                vm.prev_op = (*vm).get(*left).bit_xor((*vm).get(*right), &vm.gc)?;
+                vm.prev_op = vm.registers[**left as usize]
+                    .bit_xor(vm.registers[**right as usize], &mut vm.gc)?;
                 vm.index += Index(1);
             }
             Self::Not(reg) => {
-                vm.prev_op = (*vm).get(*reg).not(&vm.gc)?;
+                vm.prev_op = vm.registers[**reg as usize].bit_not(&mut vm.gc)?;
                 vm.index += Index(1);
             }
 
+            /*
             Self::Eq(left, right) => {
                 vm.prev_comp = (*vm).get(*left).eq((*vm).get(*right), &vm.gc)?;
                 vm.index += Index(1);
@@ -262,6 +265,7 @@ impl Instruction {
                 vm.gc.collect()?;
                 vm.index += Index(1);
             }
+
             Self::Return => {
                 vm.returning = true;
 
@@ -288,9 +292,11 @@ impl Instruction {
 
                 vm.index += Index(1);
             }
+
             Self::Halt => {
                 vm.finished_execution = true;
             }
+
             Self::Syscall(_offset, _output, _param_1, _param_2, _param_3, _param_4, _param_5) => {
                 unimplemented!("Syscalls are not stable");
             }

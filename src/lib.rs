@@ -143,7 +143,7 @@
 //!
 
 /// The number of available registers for the VM
-const NUMBER_REGISTERS: usize = 256;
+const NUMBER_REGISTERS: usize = 32;
 
 /// Signals an unreachable codepath, uses std in debug mode and
 /// unreachable_unchecked in release
