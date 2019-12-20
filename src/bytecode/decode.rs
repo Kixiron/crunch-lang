@@ -133,15 +133,6 @@ impl<'a> Decoder<'a> {
             0x17 => Instruction::Halt,
 
             0x19 => Instruction::Collect,
-            0x1A => Instruction::Syscall(
-                self.bytes[1],
-                self.bytes[2].into(),
-                self.bytes[3].into(),
-                self.bytes[4].into(),
-                self.bytes[5].into(),
-                self.bytes[6].into(),
-                self.bytes[7].into(),
-            ),
 
             _ => Instruction::Illegal,
         };

@@ -18,7 +18,7 @@ pub struct Crunch {
 impl Crunch {
     /// Execute the currently loaded program
     #[inline]
-    pub fn execute(&mut self) {
+    pub fn execute(&mut self) -> Result<()> {
         trace!("Starting Crunch Execution");
 
         while !self.vm.finished_execution {
@@ -29,13 +29,13 @@ impl Crunch {
 
             // If an error occurs during execution, emit the error and return
             if let Err(err) = self.instructions[*self.vm.index as usize].execute(&mut self.vm) {
-                err.emit();
                 trace!("Finished Crunch Execution with Error");
-                return;
+                return Err(err);
             }
         }
 
-        trace!("Finished Crunch Execution");
+        trace!("Finished Crunch Execution Successfully");
+        Ok(())
     }
 
     /// Run a source file in the `.crunch` format
@@ -76,7 +76,10 @@ impl Crunch {
             Ok(ast) => match Interpreter::new(ast.0.clone(), &options).interpret() {
                 Ok((main, funcs)) => {
                     info!("Executing Crunch Program");
-                    Self::from((main, funcs, options)).execute()
+
+                    if let Err(err) = Self::from((main, funcs, options)).execute() {
+                        err.emit()
+                    }
                 }
                 Err(err) => err.emit(),
             },
@@ -153,7 +156,7 @@ impl Crunch {
 
         let instructions = Self::parse_bytecode(bytes)?;
 
-        Self::from((instructions.0, instructions.1, options)).execute();
+        Self::from((instructions.0, instructions.1, options)).execute()?;
 
         Ok(())
     }
@@ -229,7 +232,10 @@ impl Crunch {
                             }
 
                             println!("[Output]:");
-                            Self::from((main, funcs, options.clone())).execute()
+
+                            if let Err(err) = Self::from((main, funcs, options.clone())).execute() {
+                                err.emit()
+                            }
                         }
                         Err(err) => err.emit(),
                     }

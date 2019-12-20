@@ -226,15 +226,6 @@ mod tests {
                 Collect,
                 Load(RuntimeValue::Pointer(0), 0.into()),
                 Print(0.into()),
-                Syscall(
-                    0,
-                    1.into(),
-                    0.into(),
-                    1.into(),
-                    1.into(),
-                    1.into(),
-                    1.into(),
-                ),
                 Halt,
             ],
             Vec::new(),
@@ -259,6 +250,6 @@ mod tests {
             decoded_program.1,
             crate::OptionBuilder::new("./byte_test").build(),
         ));
-        crunch.execute();
+        crunch.execute().unwrap();
     }
 }

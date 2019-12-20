@@ -1,4 +1,4 @@
-#![feature(track_caller)]
+#![feature(track_caller, proc_macro_hygiene)]
 #![deny(missing_debug_implementations, deprecated, unused_must_use)]
 #![warn(
     clippy::cargo,
@@ -193,6 +193,7 @@ mod gc;
 mod instruction;
 /// The Interpreter
 mod interpreter;
+mod jit;
 mod native_lib;
 /// Helper types
 mod newtypes;

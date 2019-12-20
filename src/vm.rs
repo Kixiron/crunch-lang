@@ -10,19 +10,25 @@ impl From<&crate::Options> for VmOptions {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ReturnFrame {
+    pub registers: [RuntimeValue; NUMBER_REGISTERS],
+    pub index: Index,
+    // If function_index is None, then the main function is being returned to
+    pub function_index: Option<Index>,
+    pub yield_point: Option<Index>,
+}
+
 /// The VM environment for Crunch
-#[allow(missing_debug_implementations)]
 pub struct Vm {
     /// The active VM Registers
     pub registers: [RuntimeValue; NUMBER_REGISTERS],
-    /// The register snapshots (For moving functions)
-    pub snapshots: Vec<(Index, Option<Index>, [RuntimeValue; NUMBER_REGISTERS])>,
+    /// The register snapshots for function calls
+    pub return_stack: Vec<ReturnFrame>,
     /// The index of the current function, None if the current function is the main
     pub current_func: Option<Index>,
     /// The functions of the program
     pub functions: Vec<Vec<Instruction>>,
-    /// The function return stack
-    pub return_stack: Vec<Index>,
     /// The current instruction index of the current function
     pub index: Index,
     /// Whether or not program execution is done
@@ -53,10 +59,9 @@ impl Vm {
     ) -> Self {
         Self {
             registers: [RuntimeValue::None; NUMBER_REGISTERS],
-            snapshots: Vec::new(),
+            return_stack: Vec::new(),
             current_func: None,
             functions,
-            return_stack: Vec::new(),
             index: Index(0),
             finished_execution: false,
             returning: false,
@@ -88,20 +93,22 @@ impl Vm {
     pub fn get_mut(&mut self, reg: Register) -> &mut RuntimeValue {
         &mut self.registers[*reg as usize]
     }
-
-    #[inline]
-    pub fn snapshot(&mut self) {
-        let mut old_regs = [RuntimeValue::None; NUMBER_REGISTERS];
-        std::mem::swap(&mut old_regs, &mut self.registers);
-        self.snapshots
-            .push((self.index, self.current_func, old_regs));
-
-        // TODO: Clear registers after saving?
-    }
 }
 
-impl Drop for Vm {
-    fn drop(&mut self) {
-        // TODO: This should do things
+impl std::fmt::Debug for Vm {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fmt.debug_struct("Vm")
+            .field("registers", &self.registers)
+            .field("return_stack", &self.return_stack)
+            .field("current_func", &self.current_func)
+            .field("functions", &self.functions)
+            .field("index", &self.index)
+            .field("finished_execution", &self.finished_execution)
+            .field("returning", &self.returning)
+            .field("prev_op", &self.prev_op)
+            .field("prev_comp", &self.prev_comp)
+            .field("gc", &self.gc)
+            .field("options", &self.options)
+            .finish()
     }
 }

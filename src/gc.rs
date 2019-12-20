@@ -1,5 +1,10 @@
 use crate::{AllocId, HeapPointer, Result, RuntimeError, RuntimeErrorTy};
-use std::{alloc, marker::PhantomData, mem, ptr, slice};
+use std::{
+    alloc,
+    marker::PhantomData,
+    mem::{self, ManuallyDrop},
+    ptr, slice,
+};
 
 /// Gets the memory page size
 #[inline]
@@ -355,18 +360,28 @@ impl Gc {
     /// Write to an object
     ///
     /// # Safety
-    /// Any object passed as `data` **must** be owned,
-    pub unsafe fn write<T>(
+    /// Any object passed as `data` **must** be owned
+    pub unsafe fn write<T, Id>(
         &self,
-        id: impl Into<AllocId> + Copy,
+        id: Id,
         data: T,
         concrete_value: Option<&GcValue>,
-    ) -> Result<()> {
+    ) -> Result<()>
+    where
+        Id: Into<AllocId> + Copy,
+    {
         match (self.get_ptr(id), self.fetch_value(id), concrete_value) {
             (Ok(ptr), Ok(value), _) | (Ok(ptr), Err(_), Some(value)) => {
                 if mem::size_of::<T>() == value.size {
                     ptr::write(*ptr as *mut T, data);
-
+                    Ok(())
+                } else if mem::size_of::<T>() > value.size {
+                    warn!(
+                        "Non-fatal Size Misalign: {} != {}",
+                        value.size,
+                        mem::size_of::<T>(),
+                    );
+                    ptr::write(*ptr as *mut T, data);
                     Ok(())
                 } else {
                     Err(RuntimeError {
@@ -374,10 +389,46 @@ impl Gc {
                         message: format!(
                             "Size Misalign: {} != {}",
                             value.size,
-                            mem::size_of::<T>()
+                            mem::size_of::<T>(),
                         ),
                     })
                 }
+            }
+
+            _ => Err(RuntimeError {
+                ty: RuntimeErrorTy::GcError,
+                message: "Object to be written to does not exist".to_string(),
+            }),
+        }
+    }
+
+    /// Write to an object
+    ///
+    /// # Safety
+    /// Any object passed as `data` **must** be owned  
+    /// With great power comes great danger, just don't use this unless you have to  
+    /// Currently only used inside of `GcStr` because it's broken with the normal `write`  
+    pub unsafe fn write_unchecked<T, Id>(
+        &self,
+        id: Id,
+        data: T,
+        concrete_value: Option<&GcValue>,
+    ) -> Result<()>
+    where
+        Id: Into<AllocId> + Copy,
+    {
+        match (self.get_ptr(id), self.fetch_value(id), concrete_value) {
+            (Ok(ptr), Ok(value), _) | (Ok(ptr), Err(_), Some(value)) => {
+                if mem::size_of::<T>() != value.size {
+                    warn!(
+                        "Non-fatal Size Misalign: {} != {}",
+                        value.size,
+                        mem::size_of::<T>(),
+                    );
+                }
+
+                ptr::write(*ptr as *mut T, data);
+                Ok(())
             }
 
             _ => Err(RuntimeError {
@@ -640,19 +691,16 @@ where
         })
     }
 
-    pub fn to_vec<'a>(&self, gc: &'a Gc) -> Result<ForgetDrop<'a, Vec<T>>> {
+    pub fn to_vec<'a>(&self, gc: &'a Gc) -> Result<BorrowedOwned<'a, Vec<T>>> {
         use std::mem::size_of;
 
         let raw = gc.fetch::<&[u8], AllocId>(self.id)?;
         Ok(unsafe {
-            ForgetDrop(
-                Vec::from_raw_parts(
-                    raw.as_ptr() as *mut T,
-                    raw.len() / size_of::<T>(),
-                    raw.len() / size_of::<T>(),
-                ),
-                PhantomData,
-            )
+            BorrowedOwned::new(Vec::from_raw_parts(
+                raw.as_ptr() as *mut T,
+                raw.len() / size_of::<T>(),
+                raw.len() / size_of::<T>(),
+            ))
         })
     }
 
@@ -664,21 +712,19 @@ where
 }
 
 #[derive(Debug, Clone)]
-pub struct ForgetDrop<'a, T>(T, PhantomData<&'a T>);
+pub struct BorrowedOwned<'a, T>(ManuallyDrop<T>, PhantomData<&'a T>);
 
-impl<'a, T> std::ops::Deref for ForgetDrop<'a, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
+impl<'a, T> BorrowedOwned<'a, T> {
+    pub fn new(val: T) -> Self {
+        Self(ManuallyDrop::new(val), PhantomData)
     }
 }
 
-impl<'a, T> Drop for ForgetDrop<'a, T> {
-    fn drop(&mut self) {
-        let mut tmp = unsafe { mem::MaybeUninit::zeroed().assume_init() };
-        mem::swap(&mut self.0, &mut tmp);
-        mem::forget(tmp);
+impl<'a, T> std::ops::Deref for BorrowedOwned<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &*self.0
     }
 }
 
@@ -872,10 +918,9 @@ impl GcBigInt {
         Ok(self)
     }
 
-    pub fn to_int<'a>(&self, gc: &'a Gc) -> Result<ForgetDrop<'a, num_bigint::BigInt>> {
-        Ok(ForgetDrop(
+    pub fn to_int<'a>(&self, gc: &'a Gc) -> Result<BorrowedOwned<'a, num_bigint::BigInt>> {
+        Ok(BorrowedOwned::new(
             num_bigint::BigInt::from_signed_bytes_be(gc.fetch(self.id)?),
-            PhantomData,
         ))
     }
 
@@ -989,11 +1034,10 @@ impl GcBigUint {
         unimplemented!("`std::ops::Not` is not implemented for `num_bigint::BitUint`")
     }
 
-    pub fn to_uint<'a>(&self, gc: &'a Gc) -> Result<ForgetDrop<'a, num_bigint::BigUint>> {
-        Ok(ForgetDrop(
-            num_bigint::BigUint::from_bytes_be(gc.fetch(self.id)?),
-            PhantomData,
-        ))
+    pub fn to_uint<'a>(&self, gc: &'a Gc) -> Result<BorrowedOwned<'a, num_bigint::BigUint>> {
+        Ok(BorrowedOwned::new(num_bigint::BigUint::from_bytes_be(
+            gc.fetch(self.id)?,
+        )))
     }
 
     pub fn drop(self, gc: &mut Gc) -> Result<()> {
@@ -1034,8 +1078,10 @@ impl GcStr {
         let string = string.as_ref();
 
         let (obj, id) = gc.allocate(string.len())?;
+        // FIXME: If the normal `write` function is used, it does not work,
+        // as the sizes are always mis-aligned
         unsafe {
-            gc.write(id, string.as_bytes().to_vec(), Some(&obj))?;
+            gc.write_unchecked(id, string.as_bytes(), Some(&obj))?;
         }
         gc.add_root(obj);
 

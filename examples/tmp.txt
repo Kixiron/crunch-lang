@@ -1,3 +1,0 @@
-TODOs for today:
-    - Implement the rest of binary operations
-    - Like breaks in function bodies

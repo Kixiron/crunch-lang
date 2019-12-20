@@ -46,11 +46,11 @@ impl<'a> Interpreter<'a> {
 
     /// Interpret the contained ast and return the instructions
     pub fn interpret(mut self) -> Result<(Vec<Instruction>, Vec<Vec<Instruction>>)> {
-        for node_index in 0..self.ast.len() {
-            match &self.ast[node_index] {
-                Node::Func(_) => {
+        while let Some(node) = self.ast.pop() {
+            match node {
+                Node::Func(func) => {
                     // Interpret the function
-                    let (name, index) = unsafe { self.interp_func(node_index)? };
+                    let (name, index) = self.interp_func(func)?;
 
                     // Will contain the newly created function
                     let mut func = Vec::new();
@@ -69,7 +69,7 @@ impl<'a> Interpreter<'a> {
             }
         }
 
-        let (main_func, functions) = self.builder.build();
+        let (main_func, functions) = self.builder.build()?;
 
         trace!("Interp Output: {:?}", (&main_func, &functions));
 
@@ -138,13 +138,7 @@ impl<'a> Interpreter<'a> {
     */
 
     /// Interpret a function
-    unsafe fn interp_func(&mut self, node_index: usize) -> Result<(String, Option<usize>)> {
-        let func = if let Node::Func(func) = self.ast.remove(node_index) {
-            func
-        } else {
-            unreachable!("Should be an already a confirmed function");
-        };
-
+    fn interp_func(&mut self, func: Func<'a>) -> Result<(String, Option<usize>)> {
         let mut builder = CodeBuilder::new();
         std::mem::swap(&mut builder, &mut self.builder);
 
@@ -387,7 +381,13 @@ impl<'a> Interpreter<'a> {
                     //
                     //     self.add_to_current(&[Instruction::Load( )]);
                     // }
-                    FuncExpr::FuncCall(_) | FuncExpr::Assign(_) => unimplemented!(),
+                    FuncExpr::FuncCall(func_call) => {
+                        let func_name = builder.intern(func_call.func_name.name);
+
+                        // TODO: Pass parameters somehow
+                        ctx.inst_func_call(func_name);
+                    }
+                    FuncExpr::Assign(_) => unimplemented!(),
                 }
             }
 

@@ -36,6 +36,8 @@ lazy_static = "1.4.0"
 libloading = "0.5.2"
 num-bigint = "0.2.3"
 crunch_proc_macro = { path = "./crates/crunch_proc_macro" }
+dynasm = "0.5.2"
+dynasmrt = "0.5.2"
 # no-panic = "0.1.12"
 
 [target.'cfg(target_family = "windows")'.dependencies]

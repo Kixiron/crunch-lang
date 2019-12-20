@@ -6,3 +6,4 @@
 # everyone who runs the test benefits from these saved cases.
 cc fe41a57f08691b7073c1cf27100b1e87c650f38eecc60d11c78cc2864680d1c6 # shrinks to left = 1882708380, right = 264775268
 cc 6e4861b1f162c2a778fc8390387b5f77139812690fea9258c5938e05d078fc7b # shrinks to left = 3, right = 715827883
+cc e9a6c87e236fd29face3e5bc807a90ccfd20a52fb6047bda531ea05e8be46fdd # shrinks to int = 0, string = "𐼀￼0A 𑌵 ¡"

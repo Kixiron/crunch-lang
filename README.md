@@ -14,6 +14,7 @@
 - [ ] Testing
 - [ ] CLI flow (Codecov, Clippy, Rustfmt, Windows & Linux Testing)
 - [ ] [Reduce Dependencies](#dependencies-overview)
+- [ ] [String Formatting](https://docs.rs/runtime-fmt/0.4.1/runtime_fmt/)
 
 ## Checklist
 -----
@@ -64,6 +65,8 @@
     - [X] Booleans
     - [ ] Uninitialized variables
     - [ ] Global Variables
+        - `global` keyword
+        - Declared outside any scope
     - [ ] Manipulation (Adding, indexing, removing, type info, etc.)
     - [ ] Constants
         - Strictly enforced to be unchanging

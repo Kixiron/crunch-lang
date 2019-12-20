@@ -106,7 +106,7 @@ impl Encoder {
         &self,
         instruction: Instruction,
     ) -> ([u8; INSTRUCTION_LENGTH], Option<RuntimeValue>) {
-        let mut bytes = [0; INSTRUCTION_LENGTH];
+        let mut bytes = [0x00; INSTRUCTION_LENGTH];
         let mut value = None;
 
         match instruction {
@@ -216,16 +216,6 @@ impl Encoder {
             Instruction::Halt => {
                 bytes[0] = 0x17;
             }
-            Instruction::Syscall(offset, output, p1, p2, p3, p4, p5) => {
-                bytes[0] = 0x1A;
-                bytes[1] = offset;
-                bytes[2] = *output;
-                bytes[3] = *p1;
-                bytes[4] = *p2;
-                bytes[5] = *p3;
-                bytes[6] = *p4;
-                bytes[7] = *p5;
-            }
 
             Instruction::Illegal | Instruction::JumpPoint(_) => {
                 // TODO: Should this be allowed? What should an illegal instruction be legally encoded as?
@@ -234,6 +224,8 @@ impl Encoder {
                     "I mean, why are you *purposefully* making an Illegal Instruction? Just... Why?"
                 );
             }
+
+            _ => todo!("Implement procedural encoding/decoding"),
         }
 
         (bytes, value)

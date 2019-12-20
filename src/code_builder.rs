@@ -19,11 +19,12 @@ impl<T: Into<String> + AsRef<str>> Ident for T {}
 
 #[derive(Debug, Clone)]
 pub struct CodeBuilder {
-    functions: HashMap<Sym, (Vec<Instruction>, Option<u32>)>,
+    functions: HashMap<Sym, (FunctionContext, Option<u32>)>,
     interner: StringInterner<Sym>,
     gc_ids: HashSet<u32>,
     local_symbols: HashMap<Sym, u32>,
     rng: SmallRng,
+    func_index: u32,
 }
 
 impl CodeBuilder {
@@ -34,6 +35,7 @@ impl CodeBuilder {
             gc_ids: HashSet::new(),
             local_symbols: HashMap::new(),
             rng: SmallRng::from_entropy(),
+            func_index: 0,
         }
     }
 
@@ -47,9 +49,7 @@ impl CodeBuilder {
 
         (function)(self, &mut context)?;
 
-        let built_function = context.build(self);
-
-        self.functions.insert(name, (built_function, None));
+        self.functions.insert(name, (context, None));
 
         Ok(())
     }
@@ -89,11 +89,13 @@ impl CodeBuilder {
         self.rng.gen::<T>()
     }
 
-    pub fn build(self) -> (Vec<Instruction>, Vec<Vec<Instruction>>) {
+    pub fn build(mut self) -> Result<(Vec<Instruction>, Vec<Vec<Instruction>>)> {
         let mut main = Vec::new();
         let mut functions = Vec::new();
 
-        for (sym, (mut func, _index)) in self.functions.clone() {
+        for (sym, (func, _index)) in self.functions.clone() {
+            let mut func = func.build(&mut self)?;
+
             if let Some(ident) = self.interner.resolve(sym) {
                 if ident == "main" {
                     if func[func.len() - 1] != Instruction::Halt {
@@ -101,13 +103,17 @@ impl CodeBuilder {
                     }
                     main = func;
                     continue;
+                } else {
+                    if func[func.len() - 1] != Instruction::Return {
+                        func.push(Instruction::Return);
+                    }
                 }
             }
 
             functions.push(func);
         }
 
-        (main, functions)
+        Ok((main, functions))
     }
 }
 
@@ -204,10 +210,10 @@ impl FunctionContext {
         self.variables.insert(sym);
     }
 
-    pub fn build(self, builder: &mut CodeBuilder) -> Vec<Instruction> {
+    pub fn build(self, builder: &mut CodeBuilder) -> Result<Vec<Instruction>> {
         let mut instructions = Vec::with_capacity(self.block.len());
         for inst in self.block {
-            instructions.push(inst.solidify(builder));
+            instructions.push(inst.solidify(builder)?);
         }
 
         let mut jumps: HashMap<u32, u32> = HashMap::new(); // JumpId, JumpIndex
@@ -228,7 +234,7 @@ impl FunctionContext {
             }
         }
 
-        instructions
+        Ok(instructions
             .into_iter()
             .map(|i| {
                 if let Instruction::JumpPoint(_) = i {
@@ -237,7 +243,7 @@ impl FunctionContext {
                     i
                 }
             })
-            .collect()
+            .collect())
     }
 
     pub fn inst_load(&mut self, register: impl Into<Register>, value: RuntimeValue) -> &mut Self {
@@ -392,8 +398,23 @@ impl FunctionContext {
 
         self
     }
+    pub fn inst_func_call(&mut self, func_name: Sym) -> &mut Self {
+        self.block.push(PartialInstruction {
+            uninit_inst: Instruction::Func(0),
+            func_sym: Some(func_name),
+            global_sym: None,
+            local_sym: None,
+        });
+
+        self
+    }
     pub fn inst_halt(&mut self) -> &mut Self {
         self.block.push(Instruction::Halt.into());
+
+        self
+    }
+    pub fn inst_noop(&mut self) -> &mut Self {
+        self.block.push(Instruction::NoOp.into());
 
         self
     }
@@ -434,9 +455,46 @@ struct PartialInstruction {
 }
 
 impl PartialInstruction {
-    pub fn solidify(self, _builder: &mut CodeBuilder) -> Instruction {
+    pub fn solidify(self, builder: &mut CodeBuilder) -> Result<Instruction> {
         match self.uninit_inst {
-            _ => self.uninit_inst,
+            Instruction::Func(_) => {
+                let (_instructions, func_index) = if let Some(entry) = builder.functions.get(
+                    &self
+                        .func_sym
+                        .expect("Should have a func_sym for a function instruction"),
+                ) {
+                    entry
+                } else {
+                    return Err(RuntimeError {
+                        ty: RuntimeErrorTy::MissingSymbol,
+                        message:
+                            "A malformed function instruction was encountered during compilation"
+                                .to_string(),
+                    });
+                };
+
+                if let Some(func_index) = func_index {
+                    Ok(Instruction::Func(*func_index))
+                } else {
+                    let func_index = builder.func_index;
+                    builder.func_index += 1;
+
+                    let entry = builder
+                        .functions
+                        .get_mut(
+                            &self
+                                .func_sym
+                                .expect("Should have a func_sym for a function instruction"),
+                        )
+                        .expect("The check has already been preformed");
+
+                    entry.1 = Some(func_index);
+
+                    Ok(Instruction::Func(func_index))
+                }
+            }
+
+            _ => Ok(self.uninit_inst),
         }
     }
 }
@@ -460,28 +518,40 @@ mod tests {
     #[test]
     fn codebuilder_test() {
         color_backtrace::install();
+        simple_logger::init().unwrap();
 
         let mut builder = CodeBuilder::new();
 
         builder
-            .function("main", |_builder, ctx| {
-                ctx.inst_load(0, RuntimeValue::Str("Hello World!\n"))
-                    .inst_load(1, RuntimeValue::I32(10))
-                    .inst_load(2, RuntimeValue::I32(0))
-                    .inst_load(3, RuntimeValue::I32(1))
-                    .inst_jump_point(77)
+            .function("main", |builder, ctx| {
+                ctx.inst_load(0, RuntimeValue::Str("Hello from the main function!\n"))
                     .inst_print(0)
-                    .inst_sub(1, 3)
-                    .inst_op_to_reg(1)
-                    .inst_greater_than(1, 2)
-                    .inst_jump_comp(77)
+                    .inst_drop_reg(0)
+                    .inst_func_call(builder.intern("test"))
+                    .inst_load(
+                        1,
+                        RuntimeValue::Str("Hello from the main function again!\n"),
+                    )
+                    .inst_print(1)
+                    .inst_drop_reg(1)
                     .inst_halt();
 
                 Ok(())
             })
             .unwrap();
 
-        let (main, functions) = builder.build();
+        builder
+            .function("test", |_builder, ctx| {
+                ctx.inst_load(0, RuntimeValue::Str("Hello from the test function!\n"))
+                    .inst_print(0)
+                    .inst_drop_reg(0)
+                    .inst_return();
+
+                Ok(())
+            })
+            .unwrap();
+
+        let (main, functions) = builder.build().unwrap();
         let crunch = (
             main,
             functions,
@@ -490,6 +560,6 @@ mod tests {
                 .build(),
         );
 
-        Crunch::from(crunch).execute();
+        Crunch::from(crunch).execute().unwrap();
     }
 }

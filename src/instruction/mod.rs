@@ -1,4 +1,6 @@
-use super::{Index, Register, RuntimeValue, Vm};
+use super::{Index, Register, ReturnFrame, RuntimeValue, Vm, NUMBER_REGISTERS};
+
+pub mod functions;
 
 /// A type alias for results that could be a [`RuntimeError`]
 pub type Result<T> = std::result::Result<T, RuntimeError>;
@@ -53,6 +55,7 @@ pub enum RuntimeErrorTy {
     InvalidInt,
     StdoutError,
     IntegerOverflow,
+    MissingSymbol,
 }
 
 /// Instructions for the VM
@@ -86,20 +89,12 @@ pub enum Instruction {
     GreaterThan(Register, Register),
     LessThan(Register, Register),
 
-    Collect,
-    // TODO: Flesh this instruction out
+    Func(u32),
+    Yield,
     Return,
+
+    Collect,
     Halt,
-    // TODO: Use a `Value::ParamBuf` instead
-    Syscall(
-        u8,
-        Register,
-        Register,
-        Register,
-        Register,
-        Register,
-        Register,
-    ),
 
     // TODO: Handle FFI with the following instructions
     // LoadLib(&'static str), // Loads a dynamic library
@@ -113,206 +108,42 @@ pub enum Instruction {
 impl Instruction {
     /// The execution of each instruction
     // TODO: Document this bad boy
-    pub fn execute(&self, mut vm: &mut Vm) -> Result<()> {
+    pub fn execute(&self, vm: &mut Vm) -> Result<()> {
         match self {
-            Self::Load(val, reg) => {
-                trace!("Loading val into {}", reg);
+            Self::Load(val, reg) => functions::load(vm, *val, **reg)?,
+            Self::CompToReg(reg) => functions::comp_to_reg(vm, **reg)?,
+            Self::OpToReg(reg) => functions::comp_to_reg(vm, **reg)?,
+            Self::DropReg(reg) => functions::drop_reg(vm, **reg)?,
 
-                vm.registers[**reg as usize] = *val;
-                vm.index += Index(1);
-            }
-            Self::CompToReg(reg) => {
-                trace!("Loading previous comparison into {}", reg);
+            Self::Add(left, right) => functions::add(vm, **left, **right)?,
+            Self::Sub(left, right) => functions::sub(vm, **left, **right)?,
+            Self::Mult(left, right) => functions::mult(vm, **left, **right)?,
+            Self::Div(left, right) => functions::div(vm, **left, **right)?,
 
-                vm.registers[**reg as usize] = RuntimeValue::Bool(vm.prev_comp);
-                vm.index += Index(1);
-            }
-            Self::OpToReg(reg) => {
-                trace!(
-                    "Loading previous operation ({:?}) into {}",
-                    &vm.prev_op,
-                    reg
-                );
+            Self::Print(reg) => functions::print(vm, **reg)?,
 
-                vm.registers[**reg as usize] = RuntimeValue::None;
-                std::mem::swap(&mut vm.registers[**reg as usize], &mut vm.prev_op);
-                vm.index += Index(1);
-            }
-            Self::DropReg(reg) => {
-                trace!("Clearing register {}", reg);
+            Self::Jump(index) => functions::jump(vm, *index)?,
+            Self::JumpComp(index) => functions::jump_comp(vm, *index)?,
 
-                vm.registers[**reg as usize].drop(&mut vm.gc)?;
-                vm.index += Index(1);
-            }
+            Self::And(left, right) => functions::and(vm, **left, **right)?,
+            Self::Or(left, right) => functions::or(vm, **left, **right)?,
+            Self::Xor(left, right) => functions::xor(vm, **left, **right)?,
+            Self::Not(reg) => functions::not(vm, **reg)?,
 
-            Self::Add(left, right) => {
-                println!("here");
-                vm.prev_op = vm.registers[**left as usize]
-                    .add_upflowing(vm.registers[**right as usize], &mut vm.gc)?;
-                vm.index += Index(1);
-            }
-            Self::Sub(left, right) => {
-                vm.prev_op = vm.registers[**left as usize]
-                    .sub_upflowing(vm.registers[**right as usize], &mut vm.gc)?;
-                vm.index += Index(1);
-            }
-            Self::Mult(left, right) => {
-                vm.prev_op = vm.registers[**left as usize]
-                    .mult_upflowing(vm.registers[**right as usize], &mut vm.gc)?;
-                vm.index += Index(1);
-            }
-            Self::Div(left, right) => {
-                vm.prev_op = vm.registers[**left as usize]
-                    .div_upflowing(vm.registers[**right as usize], &mut vm.gc)?;
-                vm.index += Index(1);
-            }
+            Self::Eq(left, right) => functions::eq(vm, **left, **right)?,
+            Self::NotEq(left, right) => functions::not_eq(vm, **left, **right)?,
+            Self::GreaterThan(left, right) => functions::greater_than(vm, **left, **right)?,
+            Self::LessThan(left, right) => functions::less_than(vm, **left, **right)?,
 
-            Self::Print(reg) => {
-                trace!("Printing reg {:?}", reg);
+            Self::Func(func) => functions::func(vm, *func)?,
+            Self::Yield => functions::yield_generator(vm)?,
+            Self::Return => functions::ret(vm)?,
 
-                if let Err(err) = write!(
-                    vm.stdout,
-                    "{}",
-                    vm.registers[**reg as usize].to_string(&vm.gc)?
-                ) {
-                    error!("Error printing to stdout: {:?}", err);
-                    return Err(RuntimeError {
-                        ty: RuntimeErrorTy::StdoutError,
-                        message: "Failed to print to stdout".to_string(),
-                    });
-                }
-
-                vm.index += Index(1);
-            }
-
-            Self::Jump(index) => {
-                trace!("Jumping by offset {}", index);
-
-                let index = if index.is_negative() {
-                    let (index, overflowed) = vm.index.overflowing_sub(index.abs() as u32);
-
-                    if overflowed {
-                        return Err(RuntimeError {
-                            ty: RuntimeErrorTy::InvalidJump,
-                            message: "Jump overflowed".to_string(),
-                        });
-                    }
-
-                    index + 1
-                } else {
-                    *vm.index + *index as u32 + 1
-                };
-
-                vm.index = Index(index);
-            }
-            Self::JumpComp(index) => {
-                trace!(
-                    "Comparison Jump: Prev Comp is {}, jump amount is {}",
-                    vm.prev_comp,
-                    index
-                );
-
-                if vm.prev_comp {
-                    vm.index = Index((*vm.index as i32 + *index + 1) as u32);
-                } else {
-                    vm.index += Index(1);
-                }
-            }
-
-            Self::And(left, right) => {
-                vm.prev_op = vm.registers[**left as usize]
-                    .bit_and(vm.registers[**right as usize], &mut vm.gc)?;
-                vm.index += Index(1);
-            }
-            Self::Or(left, right) => {
-                vm.prev_op = vm.registers[**left as usize]
-                    .bit_or(vm.registers[**right as usize], &mut vm.gc)?;
-                vm.index += Index(1);
-            }
-            Self::Xor(left, right) => {
-                vm.prev_op = vm.registers[**left as usize]
-                    .bit_xor(vm.registers[**right as usize], &mut vm.gc)?;
-                vm.index += Index(1);
-            }
-            Self::Not(reg) => {
-                vm.prev_op = vm.registers[**reg as usize].bit_not(&mut vm.gc)?;
-                vm.index += Index(1);
-            }
-
-            /*
-            Self::Eq(left, right) => {
-                vm.prev_comp = (*vm).get(*left).eq((*vm).get(*right), &vm.gc)?;
-                vm.index += Index(1);
-            }
-            Self::NotEq(left, right) => {
-                vm.prev_comp = !(*vm).get(*left).eq((*vm).get(*right), &vm.gc)?;
-                vm.index += Index(1);
-            }
-            Self::GreaterThan(left, right) => {
-                vm.prev_comp = (*vm).get(*left).cmp((*vm).get(*right), &vm.gc)?
-                    == Some(std::cmp::Ordering::Greater);
-                vm.index += Index(1);
-            }
-            Self::LessThan(left, right) => {
-                vm.prev_comp = (*vm).get(*left).cmp((*vm).get(*right), &vm.gc)?
-                    == Some(std::cmp::Ordering::Less);
-                vm.index += Index(1);
-            }
-            */
-            Self::Collect => {
-                trace!("Forcing a GC collect");
-
-                vm.gc.collect()?;
-                vm.index += Index(1);
-            }
-
-            Self::Return => {
-                vm.returning = true;
-
-                if let Some(context) = vm.snapshots.pop() {
-                    vm.index = context.0;
-                    vm.registers = context.2;
-
-                    if let Some(index) = context.1 {
-                        vm.returning = false;
-
-                        while !vm.returning {
-                            vm.functions[*index as usize][*vm.index as usize]
-                                .clone()
-                                .execute(&mut vm)?;
-                        }
-                    } else {
-                        trace!("Returning to main");
-                    }
-                } else if let Some(location) = vm.return_stack.pop() {
-                    vm.index = location;
-                } else {
-                    vm.finished_execution = true;
-                }
-
-                vm.index += Index(1);
-            }
-
-            Self::Halt => {
-                vm.finished_execution = true;
-            }
-
-            Self::Syscall(_offset, _output, _param_1, _param_2, _param_3, _param_4, _param_5) => {
-                unimplemented!("Syscalls are not stable");
-            }
-
-            Self::NoOp => {
-                vm.index += Index(1);
-            }
-
-            Self::Illegal | Self::JumpPoint(_) => {
-                return Err(RuntimeError {
-                    ty: RuntimeErrorTy::IllegalInstruction,
-                    message: "Illegal Instruction".to_string(),
-                })
-            }
-
-            _ => unimplemented!(),
+            Self::Collect => functions::collect(vm)?,
+            Self::Halt => functions::halt(vm)?,
+            Self::NoOp => functions::no_op(vm)?,
+            Self::JumpPoint(_) => functions::jump_point(vm)?,
+            Self::Illegal => functions::illegal(vm)?,
         }
 
         Ok(())
@@ -348,10 +179,12 @@ impl Instruction {
             Self::GreaterThan(_, _) => "grt",
             Self::LessThan(_, _) => "let",
 
-            Self::Collect => "coll",
+            Self::Func(_) => "func",
+            Self::Yield => "yield",
             Self::Return => "ret",
+
+            Self::Collect => "coll",
             Self::Halt => "halt",
-            Self::Syscall(_, _, _, _, _, _, _) => "sysc",
 
             Self::Illegal => "illegal",
             Self::NoOp => "nop",
@@ -363,6 +196,33 @@ impl Instruction {
 mod tests {
     use super::*;
     use std::io::stdout;
+
+    #[test]
+    fn function_test() {
+        use crate::Crunch;
+
+        let mut crunch = Crunch::from((
+            vec![
+                Instruction::Load(RuntimeValue::Str("Calling the function!\n"), 0.into()),
+                Instruction::Print(0.into()),
+                Instruction::Func(0_u32.into()),
+                Instruction::DropReg(0.into()),
+                Instruction::Load(RuntimeValue::Str("The function was called?\n"), 0.into()),
+                Instruction::Print(0.into()),
+                Instruction::DropReg(0.into()),
+                Instruction::Halt,
+            ],
+            vec![vec![
+                Instruction::Load(RuntimeValue::Str("The function was called!\n"), 0.into()),
+                Instruction::Print(0.into()),
+                Instruction::DropReg(0.into()),
+                Instruction::Return,
+            ]],
+            crate::OptionBuilder::new("./function_test").build(),
+        ));
+
+        crunch.execute().unwrap();
+    }
 
     #[test]
     fn variable_ops() {
@@ -646,7 +506,7 @@ mod tests {
     fn illegal_op() {
         let mut vm = Vm::new(
             Vec::new(),
-            &crate::OptionBuilder::new("./illegal_ops").build(),
+            &crate::OptionBuilder::new("./illegal_op").build(),
             Box::new(stdout()),
         );
 
@@ -665,6 +525,8 @@ mod tests {
         proptest! {
             #[test]
             fn collect(int in 0..i32::max_value(), string in "\\PC*") {
+                color_backtrace::install();
+
                 let mut vm = Vm::new(
                     Vec::new(),
                     &crate::OptionBuilder::new("./misc_ops").build(),
@@ -677,7 +539,7 @@ mod tests {
                 unsafe {
                     vm.gc
                         .write(discard_id, RuntimeValue::I32(int), Some(&discard))
-                        .unwrap();
+                        .expect("here");
                 }
                 vm.gc.add_root(discard);
 
