@@ -1,4 +1,4 @@
-use super::{Index, Register, ReturnFrame, RuntimeValue, Vm, NUMBER_REGISTERS};
+use super::{Register, RuntimeValue, Vm};
 
 pub mod functions;
 
@@ -56,6 +56,7 @@ pub enum RuntimeErrorTy {
     StdoutError,
     IntegerOverflow,
     MissingSymbol,
+    JitError,
 }
 
 /// Instructions for the VM
@@ -123,7 +124,9 @@ impl Instruction {
             Self::Print(reg) => functions::print(vm, **reg)?,
 
             Self::Jump(index) => functions::jump(vm, *index)?,
-            Self::JumpComp(index) => functions::jump_comp(vm, *index)?,
+            Self::JumpComp(index) => {
+                functions::jump_comp(vm, *index)?;
+            }
 
             Self::And(left, right) => functions::and(vm, **left, **right)?,
             Self::Or(left, right) => functions::or(vm, **left, **right)?,

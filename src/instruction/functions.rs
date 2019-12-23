@@ -44,7 +44,11 @@ pub fn drop_reg(vm: &mut Vm, reg: u8) -> Result<()> {
 }
 
 pub fn add(mut vm: &mut Vm, left: u8, right: u8) -> Result<()> {
-    println!("here");
+    println!(
+        "{:?} + {:?}",
+        vm.registers[left as usize], vm.registers[right as usize]
+    );
+
     vm.prev_op =
         vm.registers[left as usize].add_upflowing(vm.registers[right as usize], &mut vm.gc)?;
     vm.index += Index(1);
@@ -53,7 +57,6 @@ pub fn add(mut vm: &mut Vm, left: u8, right: u8) -> Result<()> {
 }
 
 pub fn sub(mut vm: &mut Vm, left: u8, right: u8) -> Result<()> {
-    println!("here");
     vm.prev_op =
         vm.registers[left as usize].sub_upflowing(vm.registers[right as usize], &mut vm.gc)?;
     vm.index += Index(1);
@@ -62,7 +65,6 @@ pub fn sub(mut vm: &mut Vm, left: u8, right: u8) -> Result<()> {
 }
 
 pub fn mult(mut vm: &mut Vm, left: u8, right: u8) -> Result<()> {
-    println!("here");
     vm.prev_op =
         vm.registers[left as usize].mult_upflowing(vm.registers[right as usize], &mut vm.gc)?;
     vm.index += Index(1);
@@ -71,7 +73,6 @@ pub fn mult(mut vm: &mut Vm, left: u8, right: u8) -> Result<()> {
 }
 
 pub fn div(mut vm: &mut Vm, left: u8, right: u8) -> Result<()> {
-    println!("here");
     vm.prev_op =
         vm.registers[left as usize].div_upflowing(vm.registers[right as usize], &mut vm.gc)?;
     vm.index += Index(1);
@@ -122,7 +123,7 @@ pub fn jump(vm: &mut Vm, index: i32) -> Result<()> {
     Ok(())
 }
 
-pub fn jump_comp(vm: &mut Vm, index: i32) -> Result<()> {
+pub fn jump_comp(vm: &mut Vm, index: i32) -> Result<bool> {
     trace!(
         "Comparison Jump: Prev Comp is {}, jump amount is {}",
         vm.prev_comp,
@@ -131,11 +132,11 @@ pub fn jump_comp(vm: &mut Vm, index: i32) -> Result<()> {
 
     if vm.prev_comp {
         vm.index = Index((*vm.index as i32 + index + 1) as u32);
+        Ok(true)
     } else {
         vm.index += Index(1);
+        Ok(false)
     }
-
-    Ok(())
 }
 
 pub fn and(vm: &mut Vm, left: u8, right: u8) -> Result<()> {

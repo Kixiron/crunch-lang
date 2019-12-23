@@ -261,6 +261,11 @@ impl RuntimeValue {
             (Self::GcString(left), Self::GcString(right)) => Self::GcString(left.add(right, gc)?),
 
             (left, right) if left == Self::None || right == Self::None => {
+                error!(
+                    "Values of types {} and {} cannot be added",
+                    left.name(),
+                    right.name()
+                );
                 return Err(RuntimeError {
                     ty: RuntimeErrorTy::NullVar,
                     message: format!(
@@ -271,6 +276,11 @@ impl RuntimeValue {
                 });
             }
             (left, right) => {
+                error!(
+                    "Values of types {} and {} cannot be added",
+                    left.name(),
+                    right.name()
+                );
                 return Err(RuntimeError {
                     ty: RuntimeErrorTy::IncompatibleTypes,
                     message: format!(

@@ -165,25 +165,26 @@ pub struct FuncBody<'a> {
     pub info: LocInfo,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum FuncExpr<'a> {
     Binding(Box<Binding<'a>>),
     FuncCall(FuncCall<'a>),
     Assign(Assign<'a>),
     Builtin(Builtin<'a>),
+    Conditional(Vec<Conditional<'a>>),
+    Val(BindingVal<'a>),
     NoOp,
 }
 
-impl<'a> fmt::Debug for FuncExpr<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Binding(b) => write!(f, "{:#?}", b),
-            Self::FuncCall(c) => write!(f, "{:#?}", c),
-            Self::Assign(a) => write!(f, "{:#?}", a),
-            Self::Builtin(b) => write!(f, "{:#?}", b),
-            Self::NoOp => write!(f, "NoOp"),
-        }
-    }
+#[derive(Debug, Clone)]
+pub enum Conditional<'a> {
+    If {
+        condition: FuncExpr<'a>,
+        body: Vec<FuncExpr<'a>>,
+    },
+    Else {
+        body: Vec<FuncExpr<'a>>,
+    },
 }
 
 #[derive(Debug, Clone)]

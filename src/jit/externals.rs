@@ -1,35 +1,54 @@
-use crate::Vm;
+use crate::{RuntimeValue, Vm};
+
+pub extern "win64" fn load(vm: *mut Vm, val: *const RuntimeValue, reg: u8) {
+    unsafe {
+        let vm = vm.as_mut().unwrap();
+
+        crate::instruction::functions::load(vm, *val, reg)
+            .expect("Probably should handle jit errors as well");
+    }
+}
 
 pub extern "win64" fn add(vm: *mut Vm, left: u8, right: u8) {
     unsafe {
-        crate::instruction::functions::add(&mut (*vm), left, right)
+        let vm = vm.as_mut().unwrap();
+
+        crate::instruction::functions::add(vm, left, right)
             .expect("Probably should handle jit errors as well");
     }
 }
 
 pub extern "win64" fn sub(vm: *mut Vm, left: u8, right: u8) {
     unsafe {
-        crate::instruction::functions::sub(&mut (*vm), left, right)
+        let vm = vm.as_mut().unwrap();
+
+        crate::instruction::functions::sub(vm, left, right)
             .expect("Probably should handle jit errors as well");
     }
 }
 
 pub extern "win64" fn mult(vm: *mut Vm, left: u8, right: u8) {
     unsafe {
-        crate::instruction::functions::mult(&mut (*vm), left, right)
+        let vm = vm.as_mut().unwrap();
+
+        crate::instruction::functions::mult(vm, left, right)
             .expect("Probably should handle jit errors as well");
     }
 }
 
 pub extern "win64" fn div(vm: *mut Vm, left: u8, right: u8) {
     unsafe {
-        crate::instruction::functions::div(&mut (*vm), left, right)
+        let vm = vm.as_mut().unwrap();
+
+        crate::instruction::functions::div(vm, left, right)
             .expect("Probably should handle jit errors as well");
     }
 }
 
 pub extern "win64" fn comp_to_reg(vm: *mut Vm, reg: u8) {
     unsafe {
+        let vm = vm.as_mut().unwrap();
+
         crate::instruction::functions::comp_to_reg(&mut (*vm), reg)
             .expect("Probably should handle jit errors as well");
     }
@@ -56,17 +75,22 @@ pub extern "win64" fn print(vm: *mut Vm, reg: u8) {
     }
 }
 
-pub extern "win64" fn jump(vm: *mut Vm, index: i32) {
+pub extern "win64" fn jump(vm: *mut Vm, index: i32) -> u8 {
     unsafe {
-        crate::instruction::functions::jump(&mut (*vm), index)
+        let vm = vm.as_mut().unwrap();
+
+        crate::instruction::functions::jump(vm, index)
             .expect("Probably should handle jit errors as well");
     }
+    0
 }
 
-pub extern "win64" fn jump_comp(vm: *mut Vm, index: i32) {
+pub extern "win64" fn jump_comp(vm: *mut Vm, index: i32) -> u8 {
     unsafe {
-        crate::instruction::functions::jump_comp(&mut (*vm), index)
-            .expect("Probably should handle jit errors as well");
+        let vm = vm.as_mut().unwrap();
+
+        crate::instruction::functions::jump_comp(vm, index)
+            .expect("Probably should handle jit errors as well") as u8
     }
 }
 

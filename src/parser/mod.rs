@@ -663,9 +663,21 @@ impl<'a> Parser<'a> {
             }
 
             TokenType::Indent => {
-                let span_start = self.eat(TokenType::Indent)?.range.0;
                 return self.parse_func_body(span_start);
             }
+
+            TokenType::If => {
+                let (mut token, mut span_end, mut conditions) = (token, span_start, Vec::new());
+                while token.ty == TokenType::If || token.ty == TokenType::Else {
+                    conditions.push(self.conditional()?);
+                    token = self.next()?;
+                    span_end = token.range.1;
+                }
+
+                (FuncExpr::Conditional(conditions), span_end)
+            }
+
+            TokenType::Bool => (FuncExpr::Val(self.parse_binding_val()?), span_start),
 
             token => unimplemented!(
                 "Haven't implemented all possible function body expressions: {:?}",
@@ -681,6 +693,78 @@ impl<'a> Parser<'a> {
                 span: Span::new(span_start, span_end),
                 file: self.current_file,
             },
+        })
+    }
+
+    fn conditional(&mut self) -> Result<Conditional<'a>> {
+        #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+        enum CondType {
+            If,
+            ElseIf,
+            Else,
+        }
+
+        let cond = self.eat_of(&[TokenType::If, TokenType::Else])?;
+        let span_start = cond.range.0;
+        let cond = if cond.ty == TokenType::If {
+            CondType::If
+        } else if cond.ty == TokenType::Else && self.peek()?.ty == TokenType::If {
+            self.eat(TokenType::If)?;
+            CondType::ElseIf
+        } else if cond.ty == TokenType::Else {
+            CondType::Else
+        } else {
+            unreachable!("The only valid conditionals should be `if` `else if` and `else`")
+        };
+
+        let condition = if cond != CondType::Else {
+            self.parse_func_body(span_start)?.expr
+        } else {
+            unreachable!("Else clauses don't have conditions")
+        };
+
+        self.eat_w()?;
+        let (mut token, mut num_newlines, mut body, mut span_end) =
+            (self.peek()?, 0, Vec::new(), span_start);
+        while token.ty == TokenType::Indent || (token.ty == TokenType::Newline && num_newlines <= 2)
+        {
+            if token.ty == TokenType::Indent {
+                self.eat(TokenType::Indent)?;
+                num_newlines = 0;
+            } else {
+                self.eat(TokenType::Newline)?;
+                num_newlines += 1;
+                if let Ok(peek) = self.peek() {
+                    token = peek;
+                    continue;
+                } else {
+                    trace!("Breaking from function body parsing, EOF reached");
+                    break;
+                }
+            }
+
+            self.eat_w()?;
+            if self.peek()?.ty == TokenType::Comment {
+                self.eat_line_end()?;
+                token = self.peek()?;
+                continue;
+            }
+
+            body.push(self.parse_func_body(token.range.0)?.expr);
+            span_end = token.range.1;
+
+            self.eat_all_of(&[TokenType::Newline, TokenType::Space, TokenType::Comment])?;
+            if let Ok(peek) = self.peek() {
+                token = peek;
+            } else {
+                trace!("Breaking from function body parsing, EOF reached");
+                break;
+            }
+        }
+
+        Ok(match cond {
+            CondType::If | CondType::ElseIf => Conditional::If { condition, body },
+            CondType::Else => Conditional::Else { body },
         })
     }
 

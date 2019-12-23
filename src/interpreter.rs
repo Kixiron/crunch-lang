@@ -148,6 +148,8 @@ impl<'a> Interpreter<'a> {
                 match expr.expr {
                     FuncExpr::NoOp => continue,
 
+                    FuncExpr::Conditional(_conditions) => todo!("Interpret conditionals"),
+
                     // Bind a variable to a value
                     FuncExpr::Binding(binding) => match binding.val {
                         BindingVal::Literal(literal) => {
@@ -387,7 +389,7 @@ impl<'a> Interpreter<'a> {
                         // TODO: Pass parameters somehow
                         ctx.inst_func_call(func_name);
                     }
-                    FuncExpr::Assign(_) => unimplemented!(),
+                    FuncExpr::Assign(_) | _ => unimplemented!(),
                 }
             }
 
