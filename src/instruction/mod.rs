@@ -7,6 +7,7 @@ pub type Result<T> = std::result::Result<T, RuntimeError>;
 
 /// A Crunch Runtime Error
 // TODO: Make this more detailed
+#[repr(C)]
 #[derive(Debug, Clone, Eq)]
 pub struct RuntimeError {
     /// The type of error
@@ -111,7 +112,7 @@ impl Instruction {
     // TODO: Document this bad boy
     pub fn execute(&self, vm: &mut Vm) -> Result<()> {
         match self {
-            Self::Load(val, reg) => functions::load(vm, *val, **reg)?,
+            Self::Load(val, reg) => functions::load(vm, val.clone(), **reg)?,
             Self::CompToReg(reg) => functions::comp_to_reg(vm, **reg)?,
             Self::OpToReg(reg) => functions::comp_to_reg(vm, **reg)?,
             Self::DropReg(reg) => functions::drop_reg(vm, **reg)?,
@@ -299,7 +300,7 @@ mod tests {
             load.execute(&mut vm).unwrap();
 
             // Assert that the registers contain the correct value
-            assert!(vm.registers[0].is_equal(val, &vm.gc).unwrap());
+            assert!(vm.registers[0].clone().is_equal(val, &vm.gc).unwrap());
         }
 
         // Do a GC Reset
@@ -314,6 +315,7 @@ mod tests {
             vm.prev_comp = true;
             comp_to_reg.execute(&mut vm).unwrap();
             assert!(vm.registers[0]
+                .clone()
                 .is_equal(RuntimeValue::Bool(true), &vm.gc)
                 .unwrap());
 
@@ -321,6 +323,7 @@ mod tests {
             vm.prev_comp = false;
             comp_to_reg.execute(&mut vm).unwrap();
             assert!(vm.registers[0]
+                .clone()
                 .is_equal(RuntimeValue::Bool(false), &vm.gc)
                 .unwrap());
         }
@@ -332,7 +335,7 @@ mod tests {
             vm.prev_op = val.clone();
             op_to_reg.execute(&mut vm).unwrap();
 
-            assert!(vm.registers[0].is_equal(val, &vm.gc).unwrap());
+            assert!(vm.registers[0].clone().is_equal(val, &vm.gc).unwrap());
         }
 
         // Do a GC Reset
@@ -344,6 +347,7 @@ mod tests {
             let drop_reg = Instruction::DropReg(0.into());
             drop_reg.execute(&mut vm).unwrap();
             assert!(vm.registers[0]
+                .clone()
                 .is_equal(RuntimeValue::Str("test string"), &vm.gc)
                 .unwrap());
         }
@@ -528,8 +532,6 @@ mod tests {
         proptest! {
             #[test]
             fn collect(int in 0..i32::max_value(), string in "\\PC*") {
-                color_backtrace::install();
-
                 let mut vm = Vm::new(
                     Vec::new(),
                     &crate::OptionBuilder::new("./misc_ops").build(),

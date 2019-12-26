@@ -20,6 +20,7 @@ pub struct Parser<'a> {
     current_file: FileId,
     diagnostics: Vec<Diagnostic>,
     error: bool,
+    indent_level: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -30,7 +31,7 @@ impl<'a> Parser<'a> {
         // to break. Smallest reproducible set:
         // "\r\nfn main()\r\n\t@print \"Welp.\\n\"\r\n"
         // TODO: Fix it, I don't like it lying around
-        let mut token_stream = TokenStream::new(input.trim_start());
+        let mut token_stream = TokenStream::new(input.trim_start(), true);
 
         let peek = token_stream.next();
         let next = token_stream.next();
@@ -54,6 +55,7 @@ impl<'a> Parser<'a> {
             current_file,
             diagnostics: Vec::new(),
             error: false,
+            indent_level: 0,
         }
     }
 
@@ -397,8 +399,11 @@ impl<'a> Parser<'a> {
         let (mut body, mut span_end) = (Vec::new(), span_start);
 
         self.eat_w()?;
-        let (mut token, mut num_newlines) = (self.peek()?, 0);
-        while token.ty == TokenType::Indent || (token.ty == TokenType::Newline && num_newlines <= 2)
+
+        let (mut token, mut num_newlines, func_indent) = (self.peek()?, 0, self.indent_level);
+        while (token.ty == TokenType::Indent
+            || (token.ty == TokenType::Newline && num_newlines <= 2))
+            && self.indent_level == func_indent
         {
             if token.ty == TokenType::Indent {
                 self.eat(TokenType::Indent)?;
@@ -422,7 +427,11 @@ impl<'a> Parser<'a> {
                 continue;
             }
 
-            body.push(self.parse_func_body(token.range.0)?);
+            if let Ok(func_body) = self.parse_func_body(token.range.0) {
+                body.push(func_body);
+            } else {
+                break;
+            }
             span_end = token.range.1;
 
             self.eat_all_of(&[TokenType::Newline, TokenType::Space, TokenType::Comment])?;
@@ -448,8 +457,15 @@ impl<'a> Parser<'a> {
         })
     }
 
+    #[track_caller]
     fn parse_func_body(&mut self, span_start: u32) -> Result<FuncBody<'a>> {
-        info!("Parsing function body");
+        let loc = Location::caller();
+        info!(
+            "[{} {}:{}] Parsing function body",
+            loc.file(),
+            loc.line(),
+            loc.column()
+        );
 
         self.eat_all_of(&[TokenType::Space, TokenType::Comment, TokenType::Newline])?;
 
@@ -663,21 +679,24 @@ impl<'a> Parser<'a> {
             }
 
             TokenType::Indent => {
+                self.eat(TokenType::Indent)?;
                 return self.parse_func_body(span_start);
             }
 
             TokenType::If => {
-                let (mut token, mut span_end, mut conditions) = (token, span_start, Vec::new());
-                while token.ty == TokenType::If || token.ty == TokenType::Else {
+                let (mut peek, mut conditions) = (token.ty, Vec::new());
+                while dbg!(peek == TokenType::If) || dbg!(peek == TokenType::Else) {
                     conditions.push(self.conditional()?);
-                    token = self.next()?;
-                    span_end = token.range.1;
+
+                    self.eat_w()?;
+                    for _ in 0..self.indent_level {
+                        self.eat(TokenType::Indent)?;
+                    }
+                    peek = dbg!(self.peek()?.ty);
                 }
 
-                (FuncExpr::Conditional(conditions), span_end)
+                (FuncExpr::Conditional(conditions), span_start)
             }
-
-            TokenType::Bool => (FuncExpr::Val(self.parse_binding_val()?), span_start),
 
             token => unimplemented!(
                 "Haven't implemented all possible function body expressions: {:?}",
@@ -685,7 +704,12 @@ impl<'a> Parser<'a> {
             ),
         };
 
-        info!("Finished parsing Func Body");
+        info!(
+            "[{} {}:{}] Finished parsing Func Body",
+            loc.file(),
+            loc.line(),
+            loc.column()
+        );
 
         Ok(FuncBody {
             expr,
@@ -704,32 +728,39 @@ impl<'a> Parser<'a> {
             Else,
         }
 
+        trace!("Started parsing conditional");
+
         let cond = self.eat_of(&[TokenType::If, TokenType::Else])?;
-        let span_start = cond.range.0;
         let cond = if cond.ty == TokenType::If {
+            println!("if");
             CondType::If
         } else if cond.ty == TokenType::Else && self.peek()?.ty == TokenType::If {
+            println!("else if");
             self.eat(TokenType::If)?;
             CondType::ElseIf
         } else if cond.ty == TokenType::Else {
+            println!("else");
             CondType::Else
         } else {
             unreachable!("The only valid conditionals should be `if` `else if` and `else`")
         };
 
         let condition = if cond != CondType::Else {
-            self.parse_func_body(span_start)?.expr
+            Some(self.parse_binding_val()?)
         } else {
-            unreachable!("Else clauses don't have conditions")
+            None
         };
+        self.eat(TokenType::Newline)?;
 
         self.eat_w()?;
-        let (mut token, mut num_newlines, mut body, mut span_end) =
-            (self.peek()?, 0, Vec::new(), span_start);
+
+        let (mut token, mut num_newlines, mut body) = (self.peek()?, 0, Vec::new());
         while token.ty == TokenType::Indent || (token.ty == TokenType::Newline && num_newlines <= 2)
         {
             if token.ty == TokenType::Indent {
-                self.eat(TokenType::Indent)?;
+                for _ in 0..self.indent_level {
+                    self.eat(TokenType::Indent)?;
+                }
                 num_newlines = 0;
             } else {
                 self.eat(TokenType::Newline)?;
@@ -750,8 +781,17 @@ impl<'a> Parser<'a> {
                 continue;
             }
 
-            body.push(self.parse_func_body(token.range.0)?.expr);
-            span_end = token.range.1;
+            self.eat_w()?;
+            dbg!(self.peek()?);
+            if self.peek()?.ty == TokenType::Else {
+                break;
+            }
+
+            if let Ok(func_body) = self.parse_func_body(token.range.0) {
+                body.push(func_body.expr);
+            } else {
+                break;
+            }
 
             self.eat_all_of(&[TokenType::Newline, TokenType::Space, TokenType::Comment])?;
             if let Ok(peek) = self.peek() {
@@ -762,8 +802,13 @@ impl<'a> Parser<'a> {
             }
         }
 
+        trace!("Finished parsing conditional");
+
         Ok(match cond {
-            CondType::If | CondType::ElseIf => Conditional::If { condition, body },
+            CondType::If | CondType::ElseIf => Conditional::If {
+                condition: condition.expect("`if` and `else if` clauses have conditions"),
+                body,
+            },
             CondType::Else => Conditional::Else { body },
         })
     }
@@ -862,7 +907,7 @@ impl<'a> Parser<'a> {
                     }
                 }
             }
-            _ => crate::unreachable!("Impossible Token: {:?}", self.peek()),
+            token => unreachable!("Impossible Token: {:?}", token),
         };
 
         info!("Finished parsing Binding Value");
@@ -1095,17 +1140,17 @@ impl<'a> Parser<'a> {
     #[track_caller]
     fn eat_all_of(&mut self, tokens: &[TokenType]) -> Result<()> {
         let loc = Location::caller();
-        trace!(
-            "[{} {}:{}] Eating all of {:?}",
-            loc.file(),
-            loc.line(),
-            loc.column(),
-            tokens
-        );
 
         while let Some(token) = &self.peek {
             if tokens.contains(&token.ty) {
-                if self.next().is_ok() {
+                if let Some(next) = self.next {
+                    trace!(
+                        "[{} {}:{}] Ate {:?}",
+                        loc.file(),
+                        loc.line(),
+                        loc.column(),
+                        next
+                    );
                     continue;
                 } else {
                     break;
@@ -1406,8 +1451,11 @@ mod tests {
         const CODE: &str = include_str!("../../examples/parse_test.crunch");
         const FILENAME: &str = "parse_test.crunch";
 
+        #[cfg(not(miri))]
         color_backtrace::install();
-        // simple_logger::init().unwrap();
+        simple_logger::init().unwrap();
+
+        println!("{:#?}", TokenStream::new(CODE, true));
 
         let mut parser = Parser::new(Some(FILENAME), CODE);
 

@@ -145,40 +145,6 @@
 /// The number of available registers for the VM
 const NUMBER_REGISTERS: usize = 32;
 
-/// Signals an unreachable codepath, uses std in debug mode and
-/// unreachable_unchecked in release
-#[doc(hidden)]
-#[macro_export]
-macro_rules! unreachable {
-    () => {{
-        #[cfg(debug_assertions)]
-        std::unreachable!();
-
-        #[allow(unused_unsafe)]
-        #[cfg(not(debug_assertions))]
-        unsafe { std::hint::unreachable_unchecked(); }
-    }};
-
-    ($($arg:tt)*) => {{
-        #[cfg(debug_assertions)]
-        std::unreachable!($($arg)*);
-
-        #[allow(unused_unsafe)]
-        #[cfg(not(debug_assertions))]
-        unsafe { std::hint::unreachable_unchecked(); }
-    }};
-}
-
-/// A wrapper around the trace macro from log
-#[doc(hidden)]
-#[macro_export]
-macro_rules! trace {
-    ($($arg:tt)*) => {
-        // log::trace!("[{} {}:{}] {}", file!(), line!(), column!(), format_args!($($arg)*));
-        log::trace!($($arg)*);
-    }
-}
-
 #[macro_use]
 extern crate log;
 

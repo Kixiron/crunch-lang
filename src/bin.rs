@@ -91,6 +91,7 @@ fn main() {
 
 fn set_debug_hooks() {
     simple_logger::init().unwrap();
+    #[cfg(not(miri))]
     color_backtrace::install();
 }
 

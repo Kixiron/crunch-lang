@@ -389,7 +389,7 @@ impl<'a> Interpreter<'a> {
                         // TODO: Pass parameters somehow
                         ctx.inst_func_call(func_name);
                     }
-                    FuncExpr::Assign(_) | _ => unimplemented!(),
+                    FuncExpr::Assign(_) => unimplemented!(),
                 }
             }
 

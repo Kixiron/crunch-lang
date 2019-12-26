@@ -58,7 +58,7 @@ impl Vm {
         stdout: Box<dyn std::io::Write>,
     ) -> Self {
         Self {
-            registers: [RuntimeValue::None; NUMBER_REGISTERS],
+            registers: array_init::array_init(|_| RuntimeValue::None),
             return_stack: Vec::new(),
             current_func: None,
             functions,

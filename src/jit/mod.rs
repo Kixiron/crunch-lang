@@ -7,20 +7,27 @@ use dynasm::dynasm;
 use dynasmrt::{DynasmApi, DynasmLabelApi};
 use std::{marker::PhantomData, mem};
 
-// TODO: Jumps don't work, everything needs testing and then integration
-
+/// Call a win64 function in assembly, requires the user to setup parameters and
+/// replaces the Vm pointer into rcx  
+/// Automatically handles errors, non-zero returns will be immediately returned from the entire function
 macro_rules! call {
-    ($asm:ident, $func:expr) => {
+    ($asm:ident, $func:expr) => {{
+        let skip = $asm.new_dynamic_label();
         dynasm!($asm
-            ; mov rax, QWORD $func as _
-            ; call rax
-            ; mov rcx, [rsp + 0x30]
+            ; mov rax, QWORD $func as _ // Move the function pointer into rax
+            ; call rax                  // Execute the function at rax
+            ; cmp rax, 0x00             // Load the value of rax into the comparison reg
+            ; jz =>skip                 // If rax is zero, skip the return
+            ; add rsp, 0x28             // Deallocate the memory allocated for the Vm ptr
+            ; ret                       // Return with the value at rax
+            ; =>skip
+            ; mov rcx, [rsp + 0x30]     // Move the Vm pointer back into rax
         );
-    };
+    }};
 }
 
 dynasm!(asm
-    ; .arch x64
+    ; .arch x64 // Asm currently written for x64
 );
 
 #[derive(Debug)]
@@ -31,32 +38,28 @@ struct Jit<'a> {
 }
 
 impl<'a> Jit<'a> {
-    pub fn run(&self, vm: &mut Vm) -> std::result::Result<(), &'static str> {
-        let f: extern "win64" fn(*mut Vm) -> u8 =
+    pub fn run(&self, vm: &mut Vm) -> Result<()> {
+        let jit: extern "win64" fn(*mut Vm) -> usize =
             unsafe { mem::transmute(self.code.ptr(self.start)) };
 
-        let res = f(vm);
+        let res = jit(vm);
         if res == 0 {
             Ok(())
-        } else if res == 1 {
-            Err("An overflow occurred")
-        } else if res == 2 {
-            Err("IO error")
         } else {
-            panic!("Unknown error code: {}", res);
+            // Unsafe: Trusts that the given pointer is valid
+            let err = unsafe { Box::from_raw(res as *mut RuntimeError) };
+            Err(*err)
         }
     }
 
     pub fn new(instructions: &'a [Instruction]) -> Result<Jit<'a>> {
         let mut asm = dynasmrt::x64::Assembler::new().unwrap();
-        let mut front_jumps = Vec::new();
-        let mut back_jumps = Vec::new();
-        let mut inst_ptr = 0;
+        let (mut front_jumps, mut back_jumps, mut inst_ptr) = (Vec::new(), Vec::new(), 0);
 
         let start = asm.offset();
         dynasm!(asm
-            ; sub rsp, 0x28
-            ; mov [rsp + 0x30], rcx // Move the *mut Vm into rcx
+            ; sub rsp, 0x28         // Allocate the space for the Vm ptr
+            ; mov [rsp + 0x30], rcx // Move the Vm ptr into the allocation
         );
 
         for instruction in instructions {
@@ -133,7 +136,10 @@ impl<'a> Jit<'a> {
                             let (jump_point, _) = back_jumps.remove(pos);
 
                             dynasm!(asm
-                                ; =>jump_point
+                                ; mov rdx, *index
+                                ;; call!(asm, externals::jump)
+                                ; cmp rax, 0
+                                ; jz =>jump_point
                             );
                         } else {
                             panic!("Failed to find JIT back jump");
@@ -143,8 +149,9 @@ impl<'a> Jit<'a> {
                         front_jumps.push((jump_point, inst_ptr, *index));
 
                         dynasm!(asm
+                            ; mov rdx, *index
                             ;; call!(asm, externals::jump)
-                            ; cmp BYTE [rax], 0
+                            ; cmp rax, 0
                             ; jz =>jump_point
                         );
                     }
@@ -158,7 +165,10 @@ impl<'a> Jit<'a> {
                             let (jump_point, _) = back_jumps.remove(pos);
 
                             dynasm!(asm
-                                ; =>jump_point
+                                ; mov rdx, *index
+                                ;; call!(asm, externals::jump_comp)
+                                ; cmp rax, 0
+                                ; jz =>jump_point
                             );
                         } else {
                             panic!("Failed to find JIT back jump");
@@ -168,8 +178,9 @@ impl<'a> Jit<'a> {
                         front_jumps.push((jump_point, inst_ptr, *index));
 
                         dynasm!(asm
+                            ; mov rdx, *index
                             ;; call!(asm, externals::jump_comp)
-                            ; cmp BYTE [rax], 0
+                            ; cmp rax, 0
                             ; jz =>jump_point
                         );
                     }
@@ -187,6 +198,10 @@ impl<'a> Jit<'a> {
                     } else {
                         let jump_point = asm.new_dynamic_label();
                         back_jumps.push((jump_point, inst_ptr));
+
+                        dynasm!(asm
+                            ; =>jump_point
+                        );
                     }
                 }
 
@@ -299,15 +314,14 @@ fn jit_test() {
     let instructions = vec![
         Instruction::Add(0.into(), 1.into()),
         Instruction::Add(0.into(), 1.into()),
-        Instruction::Load(RuntimeValue::Str("Test"), 0.into()),
+        Instruction::Load(RuntimeValue::Str("Test\n"), 0.into()),
+        Instruction::Print(0.into()),
+        Instruction::Print(0.into()),
+        Instruction::Jump(4),
+        Instruction::DropReg(0.into()),
+        Instruction::Load(RuntimeValue::Str("Test Two\n"), 0.into()),
         Instruction::Print(0.into()),
         Instruction::JumpPoint(0),
-        Instruction::Print(0.into()),
-        Instruction::Jump(-2),
-        Instruction::Jump(3),
-        Instruction::DropReg(0.into()),
-        Instruction::Load(RuntimeValue::Str("Test Two"), 0.into()),
-        Instruction::Print(0.into()),
     ];
     let jit = Jit::new(&instructions).unwrap();
 

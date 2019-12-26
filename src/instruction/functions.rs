@@ -1,6 +1,4 @@
-use crate::{
-    Index, Result, ReturnFrame, RuntimeError, RuntimeErrorTy, RuntimeValue, Vm, NUMBER_REGISTERS,
-};
+use crate::{Index, Result, ReturnFrame, RuntimeError, RuntimeErrorTy, RuntimeValue, Vm};
 
 pub fn load(mut vm: &mut Vm, val: RuntimeValue, reg: u8) -> Result<()> {
     trace!("Loading val into {}", reg);
@@ -37,7 +35,7 @@ pub fn op_to_reg(mut vm: &mut Vm, reg: u8) -> Result<()> {
 pub fn drop_reg(vm: &mut Vm, reg: u8) -> Result<()> {
     trace!("Clearing register {}", reg);
 
-    vm.registers[reg as usize].drop(&mut vm.gc)?;
+    vm.registers[reg as usize].clone().drop(&mut vm.gc)?;
     vm.index += Index(1);
 
     Ok(())
@@ -49,32 +47,36 @@ pub fn add(mut vm: &mut Vm, left: u8, right: u8) -> Result<()> {
         vm.registers[left as usize], vm.registers[right as usize]
     );
 
-    vm.prev_op =
-        vm.registers[left as usize].add_upflowing(vm.registers[right as usize], &mut vm.gc)?;
+    vm.prev_op = vm.registers[left as usize]
+        .clone()
+        .add_upflowing(vm.registers[right as usize].clone(), &mut vm.gc)?;
     vm.index += Index(1);
 
     Ok(())
 }
 
 pub fn sub(mut vm: &mut Vm, left: u8, right: u8) -> Result<()> {
-    vm.prev_op =
-        vm.registers[left as usize].sub_upflowing(vm.registers[right as usize], &mut vm.gc)?;
+    vm.prev_op = vm.registers[left as usize]
+        .clone()
+        .sub_upflowing(vm.registers[right as usize].clone(), &mut vm.gc)?;
     vm.index += Index(1);
 
     Ok(())
 }
 
 pub fn mult(mut vm: &mut Vm, left: u8, right: u8) -> Result<()> {
-    vm.prev_op =
-        vm.registers[left as usize].mult_upflowing(vm.registers[right as usize], &mut vm.gc)?;
+    vm.prev_op = vm.registers[left as usize]
+        .clone()
+        .mult_upflowing(vm.registers[right as usize].clone(), &mut vm.gc)?;
     vm.index += Index(1);
 
     Ok(())
 }
 
 pub fn div(mut vm: &mut Vm, left: u8, right: u8) -> Result<()> {
-    vm.prev_op =
-        vm.registers[left as usize].div_upflowing(vm.registers[right as usize], &mut vm.gc)?;
+    vm.prev_op = vm.registers[left as usize]
+        .clone()
+        .div_upflowing(vm.registers[right as usize].clone(), &mut vm.gc)?;
     vm.index += Index(1);
 
     Ok(())
@@ -140,28 +142,34 @@ pub fn jump_comp(vm: &mut Vm, index: i32) -> Result<bool> {
 }
 
 pub fn and(vm: &mut Vm, left: u8, right: u8) -> Result<()> {
-    vm.prev_op = vm.registers[left as usize].bit_and(vm.registers[right as usize], &mut vm.gc)?;
+    vm.prev_op = vm.registers[left as usize]
+        .clone()
+        .bit_and(vm.registers[right as usize].clone(), &mut vm.gc)?;
     vm.index += Index(1);
 
     Ok(())
 }
 
 pub fn or(vm: &mut Vm, left: u8, right: u8) -> Result<()> {
-    vm.prev_op = vm.registers[left as usize].bit_or(vm.registers[right as usize], &mut vm.gc)?;
+    vm.prev_op = vm.registers[left as usize]
+        .clone()
+        .bit_or(vm.registers[right as usize].clone(), &mut vm.gc)?;
     vm.index += Index(1);
 
     Ok(())
 }
 
 pub fn xor(vm: &mut Vm, left: u8, right: u8) -> Result<()> {
-    vm.prev_op = vm.registers[left as usize].bit_xor(vm.registers[right as usize], &mut vm.gc)?;
+    vm.prev_op = vm.registers[left as usize]
+        .clone()
+        .bit_xor(vm.registers[right as usize].clone(), &mut vm.gc)?;
     vm.index += Index(1);
 
     Ok(())
 }
 
 pub fn not(vm: &mut Vm, reg: u8) -> Result<()> {
-    vm.prev_op = vm.registers[reg as usize].bit_not(&mut vm.gc)?;
+    vm.prev_op = vm.registers[reg as usize].clone().bit_not(&mut vm.gc)?;
     vm.index += Index(1);
 
     Ok(())
@@ -186,7 +194,7 @@ pub fn less_than(_vm: &mut Vm, _left: u8, _right: u8) -> Result<()> {
 pub fn func(mut vm: &mut Vm, func: u32) -> Result<()> {
     trace!("Jumping to function {}", func);
 
-    let mut registers = [RuntimeValue::None; NUMBER_REGISTERS];
+    let mut registers = array_init::array_init(|_| RuntimeValue::None);
     std::mem::swap(&mut vm.registers, &mut registers);
 
     vm.return_stack.push(ReturnFrame {

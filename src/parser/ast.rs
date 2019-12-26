@@ -172,14 +172,13 @@ pub enum FuncExpr<'a> {
     Assign(Assign<'a>),
     Builtin(Builtin<'a>),
     Conditional(Vec<Conditional<'a>>),
-    Val(BindingVal<'a>),
     NoOp,
 }
 
 #[derive(Debug, Clone)]
 pub enum Conditional<'a> {
     If {
-        condition: FuncExpr<'a>,
+        condition: BindingVal<'a>,
         body: Vec<FuncExpr<'a>>,
     },
     Else {
@@ -325,7 +324,7 @@ impl<'a> LiteralInner {
 impl<'a> Into<RuntimeValue> for LiteralInner {
     fn into(self) -> RuntimeValue {
         match self {
-            Self::String(s) => RuntimeValue::Str(Box::leak(s.into_boxed_str())),
+            Self::String(string) => RuntimeValue::Str(Box::leak(string.into_boxed_str())),
             Self::Int(i) => RuntimeValue::I32(i),
             Self::Float(f) => RuntimeValue::F32(f),
             Self::Bool(b) => RuntimeValue::Bool(b),

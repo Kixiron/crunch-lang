@@ -210,6 +210,7 @@ mod tests {
         use std::io::Write;
 
         simple_logger::init().unwrap();
+        #[cfg(not(miri))]
         color_backtrace::install();
 
         let (instructions, functions) = (

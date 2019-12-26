@@ -517,6 +517,7 @@ mod tests {
 
     #[test]
     fn codebuilder_test() {
+        #[cfg(not(miri))]
         color_backtrace::install();
         simple_logger::init().unwrap();
 
