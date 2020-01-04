@@ -141,7 +141,7 @@ impl CodeBuilder {
         let mut functions = Vec::new();
 
         for (sym, (func, _index)) in self.functions.clone() {
-            let mut func = func.build(&mut self, sym)?;
+            let mut func = func.build(&mut self)?;
 
             if func[func.len() - 1] != Instruction::Return {
                 func.push(Instruction::Return);
@@ -255,10 +255,10 @@ impl FunctionContext {
         self.variables.insert(sym);
     }
 
-    pub fn build(self, builder: &mut CodeBuilder, function_name: Sym) -> Result<Vec<Instruction>> {
+    pub fn build(self, builder: &mut CodeBuilder) -> Result<Vec<Instruction>> {
         let mut instructions = Vec::with_capacity(self.block.len());
         for inst in self.block {
-            instructions.push(inst.solidify(builder, function_name)?);
+            instructions.push(inst.solidify(builder)?);
         }
 
         let mut jumps: HashMap<u32, u32> = HashMap::new(); // JumpId, JumpIndex
@@ -491,7 +491,7 @@ struct PartialInstruction {
 }
 
 impl PartialInstruction {
-    pub fn solidify(self, builder: &mut CodeBuilder, function_name: Sym) -> Result<Instruction> {
+    pub fn solidify(self, builder: &mut CodeBuilder) -> Result<Instruction> {
         match self.uninit_inst {
             Instruction::Func(_) => {
                 let (_instructions, func_index) = if let Some(entry) = builder.functions.get(
