@@ -171,19 +171,20 @@ pub enum FuncExpr<'a> {
     FuncCall(FuncCall<'a>),
     Assign(Assign<'a>),
     Builtin(Builtin<'a>),
-    Conditional(Vec<Conditional<'a>>),
+    Conditional(Conditional<'a>),
     NoOp,
 }
 
 #[derive(Debug, Clone)]
-pub enum Conditional<'a> {
-    If {
-        condition: BindingVal<'a>,
-        body: Vec<FuncExpr<'a>>,
-    },
-    Else {
-        body: Vec<FuncExpr<'a>>,
-    },
+pub struct Conditional<'a> {
+    pub if_clauses: Vec<If<'a>>,
+    pub else_body: Option<Vec<FuncExpr<'a>>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct If<'a> {
+    pub condition: BindingVal<'a>,
+    pub body: Vec<FuncExpr<'a>>,
 }
 
 #[derive(Debug, Clone)]
@@ -341,4 +342,10 @@ impl<'a> fmt::Debug for LiteralInner {
             Self::Bool(b) => write!(f, "Bool({:?})", b),
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum Either<L, R> {
+    Left(L),
+    Right(R),
 }

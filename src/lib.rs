@@ -148,6 +148,7 @@ const NUMBER_REGISTERS: usize = 32;
 #[macro_use]
 extern crate log;
 
+mod assembler;
 /// Encoding and decoding bytecode
 mod bytecode;
 mod code_builder;

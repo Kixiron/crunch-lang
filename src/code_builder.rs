@@ -17,6 +17,13 @@ use string_interner::{StringInterner, Sym};
 pub trait Ident: Into<String> + AsRef<str> {}
 impl<T: Into<String> + AsRef<str>> Ident for T {}
 
+pub enum MangleStatus {
+    Function,
+    Global,
+    Local,
+    Type,
+}
+
 #[derive(Debug, Clone)]
 pub struct CodeBuilder {
     functions: HashMap<Sym, (FunctionContext, Option<u32>)>,
@@ -25,6 +32,7 @@ pub struct CodeBuilder {
     local_symbols: HashMap<Sym, u32>,
     rng: SmallRng,
     func_index: u32,
+    last_jump_id: u32,
 }
 
 impl CodeBuilder {
@@ -35,21 +43,28 @@ impl CodeBuilder {
             gc_ids: HashSet::new(),
             local_symbols: HashMap::new(),
             rng: SmallRng::from_entropy(),
-            func_index: 0,
+            func_index: 1,
+            last_jump_id: 0,
         }
     }
 
-    pub fn function<N, F>(&mut self, name: N, mut function: F) -> Result<()>
+    pub fn function<N, F>(&mut self, name: N, function: F) -> Result<()>
     where
         N: Ident,
-        F: FnMut(&mut Self, &mut FunctionContext) -> Result<()>,
+        F: FnOnce(&mut Self, &mut FunctionContext) -> Result<()>,
     {
-        let name = self.interner.get_or_intern(name);
+        let name = self.intern(name);
         let mut context = FunctionContext::new();
 
         (function)(self, &mut context)?;
 
+        let old = self.functions.clone();
         self.functions.insert(name, (context, None));
+
+        assert_ne!(
+            &old.keys().collect::<Vec<_>>(),
+            &self.functions.keys().collect::<Vec<_>>()
+        );
 
         Ok(())
     }
@@ -81,6 +96,33 @@ impl CodeBuilder {
         Alphanumeric.sample_iter(&mut self.rng).take(len).collect()
     }
 
+    pub fn mangle(&mut self, path: &[&str], status: MangleStatus) -> String {
+        let status_prefix = match status {
+            MangleStatus::Function => "function",
+            MangleStatus::Global => "global",
+            MangleStatus::Local => "local",
+            MangleStatus::Type => "type",
+        };
+
+        let path = path
+            .into_iter()
+            .map(|segment| format!("{}{}", segment.len(), segment))
+            .collect::<Vec<_>>()
+            .join("");
+
+        let rand_len = self.rng.gen_range(5, 15);
+
+        format!(
+            "__{}_{}__{}",
+            status_prefix,
+            path,
+            Alphanumeric
+                .sample_iter(&mut self.rng)
+                .take(rand_len)
+                .collect::<String>()
+        )
+    }
+
     #[inline]
     pub fn gen_rand<T>(&mut self) -> T
     where
@@ -89,31 +131,34 @@ impl CodeBuilder {
         self.rng.gen::<T>()
     }
 
-    pub fn build(mut self) -> Result<(Vec<Instruction>, Vec<Vec<Instruction>>)> {
-        let mut main = Vec::new();
+    #[inline]
+    pub fn next_jump_id(&mut self) -> u32 {
+        self.last_jump_id += 1;
+        self.last_jump_id
+    }
+
+    pub fn build(mut self) -> Result<Vec<Vec<Instruction>>> {
         let mut functions = Vec::new();
 
         for (sym, (func, _index)) in self.functions.clone() {
-            let mut func = func.build(&mut self)?;
+            let mut func = func.build(&mut self, sym)?;
+
+            if func[func.len() - 1] != Instruction::Return {
+                func.push(Instruction::Return);
+            }
 
             if let Some(ident) = self.interner.resolve(sym) {
                 if ident == "main" {
-                    if func[func.len() - 1] != Instruction::Halt {
-                        func.push(Instruction::Halt);
-                    }
-                    main = func;
-                    continue;
+                    functions.insert(0, func);
                 } else {
-                    if func[func.len() - 1] != Instruction::Return {
-                        func.push(Instruction::Return);
-                    }
+                    functions.push(func);
                 }
+            } else {
+                error!("Unresolved function name: {:?}", sym);
             }
-
-            functions.push(func);
         }
 
-        Ok((main, functions))
+        Ok(functions)
     }
 }
 
@@ -165,7 +210,7 @@ impl FunctionContext {
 
     #[inline]
     pub fn reserve_reg(&mut self) -> Result<Register> {
-        match self.registers.iter().position(Option::is_none) {
+        match self.registers.iter().rev().position(Option::is_none) {
             Some(pos) => {
                 self.registers[pos] = Some(Reg::None);
                 Ok((pos as u8).into())
@@ -210,10 +255,10 @@ impl FunctionContext {
         self.variables.insert(sym);
     }
 
-    pub fn build(self, builder: &mut CodeBuilder) -> Result<Vec<Instruction>> {
+    pub fn build(self, builder: &mut CodeBuilder, function_name: Sym) -> Result<Vec<Instruction>> {
         let mut instructions = Vec::with_capacity(self.block.len());
         for inst in self.block {
-            instructions.push(inst.solidify(builder)?);
+            instructions.push(inst.solidify(builder, function_name)?);
         }
 
         let mut jumps: HashMap<u32, u32> = HashMap::new(); // JumpId, JumpIndex
@@ -234,16 +279,7 @@ impl FunctionContext {
             }
         }
 
-        Ok(instructions
-            .into_iter()
-            .map(|i| {
-                if let Instruction::JumpPoint(_) = i {
-                    Instruction::NoOp
-                } else {
-                    i
-                }
-            })
-            .collect())
+        Ok(instructions)
     }
 
     pub fn inst_load(&mut self, register: impl Into<Register>, value: RuntimeValue) -> &mut Self {
@@ -266,10 +302,10 @@ impl FunctionContext {
         self
     }
 
-    pub fn inst_drop_reg(&mut self, register: impl Into<Register>) -> &mut Self {
+    pub fn inst_drop(&mut self, register: impl Into<Register>) -> &mut Self {
         let register = register.into();
 
-        self.block.push(Instruction::DropReg(register).into());
+        self.block.push(Instruction::Drop(register).into());
         self.free_reg(register);
 
         self
@@ -455,7 +491,7 @@ struct PartialInstruction {
 }
 
 impl PartialInstruction {
-    pub fn solidify(self, builder: &mut CodeBuilder) -> Result<Instruction> {
+    pub fn solidify(self, builder: &mut CodeBuilder, function_name: Sym) -> Result<Instruction> {
         match self.uninit_inst {
             Instruction::Func(_) => {
                 let (_instructions, func_index) = if let Some(entry) = builder.functions.get(
@@ -476,8 +512,20 @@ impl PartialInstruction {
                 if let Some(func_index) = func_index {
                     Ok(Instruction::Func(*func_index))
                 } else {
-                    let func_index = builder.func_index;
-                    builder.func_index += 1;
+                    let func_index = if let Some(name) = builder.interner.resolve(
+                        self.func_sym
+                            .expect("Should have a func_sym for a function instruction"),
+                    ) {
+                        if name == "main" {
+                            0
+                        } else {
+                            builder.func_index += 1;
+                            builder.func_index - 1
+                        }
+                    } else {
+                        builder.func_index += 1;
+                        builder.func_index - 1
+                    };
 
                     let entry = builder
                         .functions
@@ -517,25 +565,21 @@ mod tests {
 
     #[test]
     fn codebuilder_test() {
-        #[cfg(not(miri))]
-        color_backtrace::install();
-        simple_logger::init().unwrap();
-
         let mut builder = CodeBuilder::new();
 
         builder
             .function("main", |builder, ctx| {
                 ctx.inst_load(0, RuntimeValue::Str("Hello from the main function!\n"))
                     .inst_print(0)
-                    .inst_drop_reg(0)
+                    .inst_drop(0)
                     .inst_func_call(builder.intern("test"))
                     .inst_load(
                         1,
                         RuntimeValue::Str("Hello from the main function again!\n"),
                     )
                     .inst_print(1)
-                    .inst_drop_reg(1)
-                    .inst_halt();
+                    .inst_drop(1)
+                    .inst_return();
 
                 Ok(())
             })
@@ -545,22 +589,21 @@ mod tests {
             .function("test", |_builder, ctx| {
                 ctx.inst_load(0, RuntimeValue::Str("Hello from the test function!\n"))
                     .inst_print(0)
-                    .inst_drop_reg(0)
+                    .inst_drop(0)
                     .inst_return();
 
                 Ok(())
             })
             .unwrap();
 
-        let (main, functions) = builder.build().unwrap();
-        let crunch = (
-            main,
-            functions,
+        let functions = builder.build().unwrap();
+
+        Crunch::new(
             OptionBuilder::new("./codebuilder_test")
                 .debug_log(true)
                 .build(),
-        );
-
-        Crunch::from(crunch).execute().unwrap();
+        )
+        .execute(functions)
+        .unwrap();
     }
 }

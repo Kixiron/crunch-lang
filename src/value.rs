@@ -94,6 +94,8 @@ impl RuntimeValue {
 
             (Self::Pointer(left), Self::Pointer(right)) => left == right,
 
+            (Self::Bool(left), Self::Bool(right)) => left == right,
+
             (left, right) if left == Self::None || right == Self::None => {
                 return Err(RuntimeError {
                     ty: RuntimeErrorTy::NullVar,

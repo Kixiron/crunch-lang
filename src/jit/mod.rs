@@ -5,6 +5,7 @@ mod externals;
 use crate::{Instruction, Result, RuntimeError, RuntimeErrorTy, RuntimeValue, Vm};
 use dynasm::dynasm;
 use dynasmrt::{DynasmApi, DynasmLabelApi};
+use once_cell::sync::OnceCell;
 use std::{marker::PhantomData, mem};
 
 /// Call a win64 function in assembly, requires the user to setup parameters and
@@ -26,19 +27,75 @@ macro_rules! call {
     }};
 }
 
+/// Get the offset of a type field
+macro_rules! offset_of {
+    ($instance:expr, $type:path, $field:tt) => {{
+        let reference: &$type = &$instance;
+        let address = reference as *const _ as usize;
+        let $type {
+            $field: field_ref, ..
+        } = reference;
+        let field_pointer = field_ref as *const _ as usize;
+
+        field_pointer - address
+    }};
+}
+
+#[derive(Debug, Clone)]
+struct VmOffsets {
+    pub registers: usize,
+    pub return_stack: usize,
+    pub current_func: usize,
+    pub index: usize,
+    pub finished_execution: usize,
+    pub returning: usize,
+    pub prev_op: usize,
+    pub prev_comp: usize,
+    pub gc: usize,
+    pub options: usize,
+    pub stdout: usize,
+    pub start_time: usize,
+}
+
+impl VmOffsets {
+    pub fn offsets(vm: &Vm) -> &'static VmOffsets {
+        static INSTANCE: OnceCell<VmOffsets> = OnceCell::new();
+        if INSTANCE.get().is_none() {
+            INSTANCE
+                .set(VmOffsets {
+                    registers: offset_of!(vm, Vm, registers),
+                    return_stack: offset_of!(vm, Vm, return_stack),
+                    current_func: offset_of!(vm, Vm, current_func),
+                    index: offset_of!(vm, Vm, index),
+                    finished_execution: offset_of!(vm, Vm, finished_execution),
+                    returning: offset_of!(vm, Vm, returning),
+                    prev_op: offset_of!(vm, Vm, prev_op),
+                    prev_comp: offset_of!(vm, Vm, prev_comp),
+                    gc: offset_of!(vm, Vm, gc),
+                    options: offset_of!(vm, Vm, options),
+                    stdout: offset_of!(vm, Vm, stdout),
+                    start_time: offset_of!(vm, Vm, start_time),
+                })
+                .unwrap();
+        }
+        INSTANCE.get().unwrap()
+    }
+}
+
 dynasm!(asm
     ; .arch x64 // Asm currently written for x64
 );
 
 #[derive(Debug)]
-struct Jit<'a> {
+pub struct Jit<'a> {
     code: dynasmrt::ExecutableBuffer,
     start: dynasmrt::AssemblyOffset,
     __value_lifetime: PhantomData<&'a RuntimeValue>,
+    pub reference: Vec<Instruction>,
 }
 
 impl<'a> Jit<'a> {
-    pub fn run(&self, vm: &mut Vm) -> Result<()> {
+    pub fn run(&self, vm: &'a mut Vm) -> Result<()> {
         let jit: extern "win64" fn(*mut Vm) -> usize =
             unsafe { mem::transmute(self.code.ptr(self.start)) };
 
@@ -52,7 +109,10 @@ impl<'a> Jit<'a> {
         }
     }
 
-    pub fn new(instructions: &'a [Instruction]) -> Result<Jit<'a>> {
+    pub fn new(instructions: Vec<Instruction>) -> Result<Jit<'a>> {
+        let start_time = std::time::Instant::now();
+        info!("Jitting function, started at {:?}", start_time);
+
         let mut asm = dynasmrt::x64::Assembler::new().unwrap();
         let (mut front_jumps, mut back_jumps, mut inst_ptr) = (Vec::new(), Vec::new(), 0);
 
@@ -62,7 +122,7 @@ impl<'a> Jit<'a> {
             ; mov [rsp + 0x30], rcx // Move the Vm ptr into the allocation
         );
 
-        for instruction in instructions {
+        for instruction in &instructions {
             match instruction {
                 Instruction::Load(val, reg) => {
                     dynasm!(asm
@@ -83,10 +143,17 @@ impl<'a> Jit<'a> {
                         ;; call!(asm, externals::op_to_reg)
                     );
                 }
-                Instruction::DropReg(reg) => {
+                Instruction::Drop(reg) => {
                     dynasm!(asm
                         ; mov rdx, BYTE **reg as _
-                        ;; call!(asm, externals::drop_reg)
+                        ;; call!(asm, externals::drop)
+                    );
+                }
+                Instruction::Move(input, output) => {
+                    dynasm!(asm
+                        ; mov rdx, BYTE **input as _
+                        ; mov rdx, BYTE **output as _
+                        ;; call!(asm, externals::mov)
                     );
                 }
 
@@ -298,44 +365,39 @@ impl<'a> Jit<'a> {
         }
 
         let code = asm.finalize().unwrap(); // TODO: Handle Error
+
+        info!("Finished jitting function at {:?}", start_time.elapsed());
         Ok(Self {
             code,
             start,
             __value_lifetime: PhantomData,
+            reference: instructions,
         })
     }
 }
 
 #[test]
 fn jit_test() {
-    simple_logger::init().unwrap();
-    color_backtrace::install();
-
     let instructions = vec![
+        Instruction::Load(RuntimeValue::I32(10), 0.into()),
+        Instruction::Load(RuntimeValue::I32(10), 1.into()),
         Instruction::Add(0.into(), 1.into()),
         Instruction::Add(0.into(), 1.into()),
         Instruction::Load(RuntimeValue::Str("Test\n"), 0.into()),
         Instruction::Print(0.into()),
         Instruction::Print(0.into()),
         Instruction::Jump(4),
-        Instruction::DropReg(0.into()),
+        Instruction::Drop(0.into()),
         Instruction::Load(RuntimeValue::Str("Test Two\n"), 0.into()),
         Instruction::Print(0.into()),
         Instruction::JumpPoint(0),
     ];
-    let jit = Jit::new(&instructions).unwrap();
+    let jit = Jit::new(instructions).unwrap();
 
     let mut vm = Vm::new(
-        Vec::new(),
         &crate::OptionBuilder::new("./jit_test").build(),
         Box::new(std::io::stdout()),
     );
-    Instruction::Load(RuntimeValue::I32(10), 0.into())
-        .execute(&mut vm)
-        .unwrap();
-    Instruction::Load(RuntimeValue::I32(10), 1.into())
-        .execute(&mut vm)
-        .unwrap();
 
     jit.run(&mut vm).unwrap();
 }

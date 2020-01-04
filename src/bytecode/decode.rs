@@ -107,7 +107,7 @@ impl<'a> Decoder<'a> {
             ),
             0x03 => Instruction::CompToReg(self.bytes[1].into()),
             0x04 => Instruction::OpToReg(self.bytes[1].into()),
-            0x05 => Instruction::DropReg(self.bytes[1].into()),
+            0x05 => Instruction::Drop(self.bytes[1].into()),
 
             0x07 => Instruction::Add(self.bytes[1].into(), self.bytes[2].into()),
             0x08 => Instruction::Sub(self.bytes[1].into(), self.bytes[2].into()),

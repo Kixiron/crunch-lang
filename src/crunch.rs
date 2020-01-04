@@ -1,13 +1,11 @@
 use super::{
-    disassemble, interpreter::Interpreter, Bytecode, Decoder, Encoder, Instruction, Options,
-    ReplOutput, Result, RuntimeError, RuntimeErrorTy, Vm,
+    disassemble, interpreter::Interpreter, Bytecode, Decoder, Instruction, Options, ReplOutput,
+    Result, RuntimeError, RuntimeErrorTy, Vm,
 };
 
 /// The main interface to the crunch language
 #[allow(missing_debug_implementations)]
 pub struct Crunch {
-    /// The Main function of the program
-    instructions: Vec<Instruction>,
     /// The main contents of the VM
     vm: Vm,
     /// Contained options
@@ -16,23 +14,20 @@ pub struct Crunch {
 
 /// The main usage of Crunch
 impl Crunch {
+    #[inline]
+    pub fn new(options: Options) -> Self {
+        Self {
+            vm: Vm::new(&options, Box::new(std::io::stdout())),
+            _options: options,
+        }
+    }
+
     /// Execute the currently loaded program
     #[inline]
-    pub fn execute(&mut self) -> Result<()> {
+    pub fn execute(&mut self, instructions: Vec<Vec<Instruction>>) -> Result<()> {
         trace!("Starting Crunch Execution");
 
-        while !self.vm.finished_execution {
-            trace!(
-                "Executing instruction: {:?}",
-                self.instructions[*self.vm.index as usize]
-            );
-
-            // If an error occurs during execution, emit the error and return
-            if let Err(err) = self.instructions[*self.vm.index as usize].execute(&mut self.vm) {
-                trace!("Finished Crunch Execution with Error");
-                return Err(err);
-            }
-        }
+        self.vm.execute(instructions)?;
 
         trace!("Finished Crunch Execution Successfully");
         Ok(())
@@ -74,10 +69,10 @@ impl Crunch {
 
         match parser.parse() {
             Ok(ast) => match Interpreter::new(ast.0.clone(), &options).interpret() {
-                Ok((main, funcs)) => {
+                Ok(functions) => {
                     info!("Executing Crunch Program");
 
-                    if let Err(err) = Self::from((main, funcs, options)).execute() {
+                    if let Err(err) = Self::new(options).execute(functions) {
                         err.emit()
                     }
                 }
@@ -154,9 +149,10 @@ impl Crunch {
             }
         };
 
-        let instructions = Self::parse_bytecode(bytes)?;
+        let (main, mut functions) = Self::parse_bytecode(bytes)?;
+        functions.insert(0, main);
 
-        Self::from((instructions.0, instructions.1, options)).execute()?;
+        Self::new(options).execute(functions)?;
 
         Ok(())
     }
@@ -219,12 +215,11 @@ impl Crunch {
                     }
 
                     match Interpreter::new(ast.0.clone(), &options).interpret() {
-                        Ok((main, funcs)) => {
+                        Ok(functions) => {
                             if repl_outputs.contains(&ReplOutput::Bytecode) {
                                 println!(
-                                    "[Program Bytecode]:\n  [Main]: {:?}\n  [Functions]: {:#?}",
-                                    &main,
-                                    funcs
+                                    "[Program Bytecode]:\n  [Functions]: {:#?}",
+                                    functions
                                         .iter()
                                         .map(|f| format!("{:?}", f))
                                         .collect::<Vec<String>>()
@@ -233,7 +228,7 @@ impl Crunch {
 
                             println!("[Output]:");
 
-                            if let Err(err) = Self::from((main, funcs, options.clone())).execute() {
+                            if let Err(err) = Self::new(options.clone()).execute(functions) {
                                 err.emit()
                             }
                         }
@@ -276,45 +271,31 @@ impl Crunch {
 
     /// Validate raw bytes as valid [`Bytecode`]
     #[inline]
-    pub fn validate<'a>(bytes: &'a [u8]) -> std::result::Result<Bytecode<'a>, &'static str> {
+    pub fn validate<'b>(bytes: &'b [u8]) -> std::result::Result<Bytecode<'b>, &'static str> {
         Bytecode::validate(bytes)
     }
 
     /// Encode the currently loaded program as bytes
-    #[inline]
-    fn encode(&self) -> Vec<u8> {
-        Encoder::new({
-            let mut funcs = self.vm.functions.clone();
-            funcs.insert(0, self.instructions.clone());
-            funcs
-        })
-        .encode()
-    }
+    // #[inline]
+    // fn encode(self) -> Vec<u8> {
+    //     Encoder::new({
+    //         let mut funcs = self.vm.functions;
+    //         funcs.insert(0, self.instructions);
+    //         funcs
+    //             .into_iter()
+    //             .map(|f| match f.0 {
+    //                 Either::Left(inst) => inst,
+    //                 Either::Right((_jit, inst)) => inst,
+    //             })
+    //             .collect()
+    //     })
+    //     .encode()
+    // }
 
     /// Disassemble bytecode in the `.crunched` format
     #[inline]
     #[must_use]
     pub fn disassemble(bytes: Bytecode<'_>) -> String {
         disassemble(&*bytes)
-    }
-}
-
-impl From<(Vec<Instruction>, Vec<Vec<Instruction>>, Options)> for Crunch {
-    #[inline]
-    fn from(
-        (instructions, functions, options): (Vec<Instruction>, Vec<Vec<Instruction>>, Options),
-    ) -> Self {
-        Self {
-            instructions,
-            vm: Vm::new(functions, &options, Box::new(std::io::stdout())),
-            _options: options,
-        }
-    }
-}
-
-impl Into<Vec<u8>> for Crunch {
-    #[inline]
-    fn into(self) -> Vec<u8> {
-        self.encode()
     }
 }

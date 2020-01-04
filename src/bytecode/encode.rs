@@ -126,7 +126,7 @@ impl Encoder {
                 bytes[0] = 0x04;
                 bytes[1] = *reg;
             }
-            Instruction::DropReg(reg) => {
+            Instruction::Drop(reg) => {
                 bytes[0] = 0x05;
                 bytes[1] = *reg;
             }

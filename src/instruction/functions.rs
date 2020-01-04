@@ -32,7 +32,7 @@ pub fn op_to_reg(mut vm: &mut Vm, reg: u8) -> Result<()> {
     Ok(())
 }
 
-pub fn drop_reg(vm: &mut Vm, reg: u8) -> Result<()> {
+pub fn drop(vm: &mut Vm, reg: u8) -> Result<()> {
     trace!("Clearing register {}", reg);
 
     vm.registers[reg as usize].clone().drop(&mut vm.gc)?;
@@ -41,11 +41,17 @@ pub fn drop_reg(vm: &mut Vm, reg: u8) -> Result<()> {
     Ok(())
 }
 
+pub fn mov(vm: &mut Vm, input: u8, output: u8) -> Result<()> {
+    trace!("Moving {} to {}", input, output);
+
+    vm.registers[output as usize] = vm.registers[input as usize].clone();
+    vm.index += Index(1);
+
+    Ok(())
+}
+
 pub fn add(mut vm: &mut Vm, left: u8, right: u8) -> Result<()> {
-    println!(
-        "{:?} + {:?}",
-        vm.registers[left as usize], vm.registers[right as usize]
-    );
+    trace!("Adding registers {} and {}", left, right);
 
     vm.prev_op = vm.registers[left as usize]
         .clone()
@@ -175,12 +181,22 @@ pub fn not(vm: &mut Vm, reg: u8) -> Result<()> {
     Ok(())
 }
 
-pub fn eq(_vm: &mut Vm, _left: u8, _right: u8) -> Result<()> {
-    todo!()
+pub fn eq(vm: &mut Vm, left: u8, right: u8) -> Result<()> {
+    vm.prev_comp = vm.registers[left as usize]
+        .clone()
+        .is_equal(vm.registers[right as usize].clone(), &vm.gc)?;
+    vm.index += Index(1);
+
+    Ok(())
 }
 
-pub fn not_eq(_vm: &mut Vm, _left: u8, _right: u8) -> Result<()> {
-    todo!()
+pub fn not_eq(vm: &mut Vm, left: u8, right: u8) -> Result<()> {
+    vm.prev_comp = !vm.registers[left as usize]
+        .clone()
+        .is_equal(vm.registers[right as usize].clone(), &vm.gc)?;
+    vm.index += Index(1);
+
+    Ok(())
 }
 
 pub fn greater_than(_vm: &mut Vm, _left: u8, _right: u8) -> Result<()> {
@@ -194,31 +210,21 @@ pub fn less_than(_vm: &mut Vm, _left: u8, _right: u8) -> Result<()> {
 pub fn func(mut vm: &mut Vm, func: u32) -> Result<()> {
     trace!("Jumping to function {}", func);
 
-    let mut registers = array_init::array_init(|_| RuntimeValue::None);
-    std::mem::swap(&mut vm.registers, &mut registers);
+    let mut registers: [RuntimeValue; crate::NUMBER_REGISTERS - 5] =
+        array_init::array_init(|_| RuntimeValue::None);
+
+    vm.registers[5..].swap_with_slice(&mut registers[..]);
 
     vm.return_stack.push(ReturnFrame {
         registers,
-        index: vm.index,
+        index: vm.index + Index(1),
         function_index: vm.current_func,
         yield_point: None,
     });
 
     vm.index = Index(0);
-    vm.current_func = Some(Index(func));
+    vm.current_func = func;
 
-    while !vm.returning {
-        trace!(
-            "Executing Instruction: {:?}",
-            vm.functions[func as usize][*vm.index as usize]
-        );
-        vm.functions[func as usize][*vm.index as usize]
-            .clone()
-            .execute(&mut vm)?;
-    }
-    vm.returning = false;
-
-    // Note: Don't try to increment the index here, it will skip the instruction after the function call
     Ok(())
 }
 
@@ -231,32 +237,18 @@ pub fn ret(mut vm: &mut Vm) -> Result<()> {
 
     // Get the most recent return frame
     if let Some(frame) = vm.return_stack.pop() {
+        trace!("Popping return frame");
+
         // Set the important stuff from the frame
         vm.index = frame.index;
-        vm.registers = frame.registers;
+        vm.registers[5..].clone_from_slice(&frame.registers[..]);
+        vm.current_func = frame.function_index;
 
-        // If there is a function_index, then execute that function
-        if let Some(function_index) = frame.function_index {
-            trace!(
-                "Executing Instruction: {:?}",
-                vm.functions[*function_index as usize][*vm.index as usize]
-            );
-            while !vm.returning {
-                vm.functions[*function_index as usize][*vm.index as usize]
-                    .clone()
-                    .execute(&mut vm)?;
-            }
-
-        // Otherwise, return to the execution of main
-        } else {
-            vm.returning = true;
-            vm.index += Index(1);
-        }
-
-    // If there are no further stack frames, then halt execution
+    // If there are no further stack frames, then return to main
     } else {
-        vm.returning = true;
-        vm.index += Index(1);
+        info!("Returning with no return frames left, halting program");
+
+        vm.finished_execution = true;
     }
 
     Ok(())

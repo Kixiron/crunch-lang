@@ -209,10 +209,6 @@ mod tests {
         use crate::{Instruction::*, RuntimeValue};
         use std::io::Write;
 
-        simple_logger::init().unwrap();
-        #[cfg(not(miri))]
-        color_backtrace::install();
-
         let (instructions, functions) = (
             vec![
                 Load(RuntimeValue::I32(10), 0.into()),
@@ -222,8 +218,8 @@ mod tests {
                 Div(0.into(), 1.into()),
                 OpToReg(3.into()),
                 Print(3.into()),
-                DropReg(0.into()),
-                DropReg(1.into()),
+                Drop(0.into()),
+                Drop(1.into()),
                 Collect,
                 Load(RuntimeValue::Pointer(0), 0.into()),
                 Print(0.into()),
@@ -238,19 +234,23 @@ mod tests {
             func
         })
         .encode();
-        let decoded_program = Decoder::new(&encoded_program).decode().unwrap();
+        let (main, mut funcs) = Decoder::new(&encoded_program).decode().unwrap();
+        funcs.insert(0, main);
 
         let mut file = std::fs::File::create("./examples/hello_world.crunched").unwrap();
         file.write_all(&encoded_program).unwrap();
 
         println!("{}", disassemble(&encoded_program));
 
-        assert_eq!((instructions, functions), decoded_program);
-        let mut crunch = crate::Crunch::from((
-            decoded_program.0,
-            decoded_program.1,
-            crate::OptionBuilder::new("./byte_test").build(),
-        ));
-        crunch.execute().unwrap();
+        assert_eq!(
+            {
+                let mut functions = functions;
+                functions.insert(0, instructions);
+                functions
+            },
+            funcs
+        );
+        let mut crunch = crate::Crunch::new(crate::OptionBuilder::new("./byte_test").build());
+        crunch.execute(funcs).unwrap();
     }
 }

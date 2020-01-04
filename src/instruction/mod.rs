@@ -68,7 +68,8 @@ pub enum Instruction {
     Load(RuntimeValue, Register),
     CompToReg(Register),
     OpToReg(Register),
-    DropReg(Register),
+    Drop(Register),
+    Move(Register, Register),
 
     Add(Register, Register),
     Sub(Register, Register),
@@ -111,11 +112,14 @@ impl Instruction {
     /// The execution of each instruction
     // TODO: Document this bad boy
     pub fn execute(&self, vm: &mut Vm) -> Result<()> {
+        trace!("Executing instruction {:?}", self);
+
         match self {
             Self::Load(val, reg) => functions::load(vm, val.clone(), **reg)?,
             Self::CompToReg(reg) => functions::comp_to_reg(vm, **reg)?,
             Self::OpToReg(reg) => functions::comp_to_reg(vm, **reg)?,
-            Self::DropReg(reg) => functions::drop_reg(vm, **reg)?,
+            Self::Drop(reg) => functions::drop(vm, **reg)?,
+            Self::Move(input, output) => functions::mov(vm, **input, **output)?,
 
             Self::Add(left, right) => functions::add(vm, **left, **right)?,
             Self::Sub(left, right) => functions::sub(vm, **left, **right)?,
@@ -158,9 +162,10 @@ impl Instruction {
     pub fn to_str(&self) -> &'static str {
         match self {
             Self::Load(_, _) => "ld",
-            Self::CompToReg(_) => "compr",
+            Self::CompToReg(_) => "cmp",
             Self::OpToReg(_) => "opr",
-            Self::DropReg(_) => "dropr",
+            Self::Drop(_) => "drop",
+            Self::Move(_, _) => "mov",
 
             Self::Add(_, _) => "add",
             Self::Sub(_, _) => "sub",
@@ -183,7 +188,7 @@ impl Instruction {
             Self::GreaterThan(_, _) => "grt",
             Self::LessThan(_, _) => "let",
 
-            Self::Func(_) => "func",
+            Self::Func(_) => "call",
             Self::Yield => "yield",
             Self::Return => "ret",
 
@@ -205,33 +210,39 @@ mod tests {
     fn function_test() {
         use crate::Crunch;
 
-        let mut crunch = Crunch::from((
+        let mut crunch = Crunch::new(crate::OptionBuilder::new("./function_test").build());
+        let functions = vec![
             vec![
-                Instruction::Load(RuntimeValue::Str("Calling the function!\n"), 0.into()),
+                Instruction::Load(RuntimeValue::Str("Calling the function!\n"), 31.into()),
+                Instruction::Print(31.into()),
+                Instruction::Drop(31.into()),
+                Instruction::Load(RuntimeValue::Bool(false), 0.into()),
+                Instruction::Func(1_u32.into()),
+                Instruction::Load(RuntimeValue::Str("Was the function called? "), 31.into()),
+                Instruction::Load(RuntimeValue::Str("\n"), 30.into()),
+                Instruction::Print(31.into()),
                 Instruction::Print(0.into()),
-                Instruction::Func(0_u32.into()),
-                Instruction::DropReg(0.into()),
-                Instruction::Load(RuntimeValue::Str("The function was called?\n"), 0.into()),
-                Instruction::Print(0.into()),
-                Instruction::DropReg(0.into()),
-                Instruction::Halt,
+                Instruction::Print(30.into()),
+                Instruction::Drop(31.into()),
+                Instruction::Drop(30.into()),
+                Instruction::Drop(0.into()),
+                Instruction::Return,
             ],
-            vec![vec![
+            vec![
                 Instruction::Load(RuntimeValue::Str("The function was called!\n"), 0.into()),
                 Instruction::Print(0.into()),
-                Instruction::DropReg(0.into()),
+                Instruction::Drop(0.into()),
+                Instruction::Load(RuntimeValue::Bool(true), 0.into()),
                 Instruction::Return,
-            ]],
-            crate::OptionBuilder::new("./function_test").build(),
-        ));
+            ],
+        ];
 
-        crunch.execute().unwrap();
+        crunch.execute(functions).unwrap();
     }
 
     #[test]
     fn variable_ops() {
         let mut vm = Vm::new(
-            Vec::new(),
             &crate::OptionBuilder::new("./variable_ops").build(),
             Box::new(stdout()),
         );
@@ -335,6 +346,13 @@ mod tests {
             vm.prev_op = val.clone();
             op_to_reg.execute(&mut vm).unwrap();
 
+            println!(
+                "{:?}/{:?} == {:?} = {:?}",
+                vm.prev_op,
+                vm.registers[0].clone(),
+                val.clone(),
+                vm.registers[0].clone().is_equal(val.clone(), &vm.gc)
+            );
             assert!(vm.registers[0].clone().is_equal(val, &vm.gc).unwrap());
         }
 
@@ -344,7 +362,7 @@ mod tests {
         // Testing the DropReg instruction, which should drop a value from a register
         {
             vm.registers[0] = RuntimeValue::Str("test string"); // Load the register before hand
-            let drop_reg = Instruction::DropReg(0.into());
+            let drop_reg = Instruction::Drop(0.into());
             drop_reg.execute(&mut vm).unwrap();
             assert!(vm.registers[0]
                 .clone()
@@ -354,12 +372,11 @@ mod tests {
     }
 
     #[test]
-    fn print_op() {
+    fn print_op<'a>() {
         use std::mem;
 
         let print = Instruction::Print(0.into());
         let mut vm = Vm::new(
-            Vec::new(),
             &crate::OptionBuilder::new("./print_op").build(),
             Box::new(Vec::<u8>::new()),
         );
@@ -449,7 +466,6 @@ mod tests {
     #[test]
     fn jump_ops() {
         let mut vm = Vm::new(
-            Vec::new(),
             &crate::OptionBuilder::new("./jump_ops").build(),
             Box::new(stdout()),
         );
@@ -480,7 +496,6 @@ mod tests {
     #[test]
     fn eq_ops() {
         let mut vm = Vm::new(
-            Vec::new(),
             &crate::OptionBuilder::new("./eq_ops").build(),
             Box::new(stdout()),
         );
@@ -512,7 +527,6 @@ mod tests {
     #[test]
     fn illegal_op() {
         let mut vm = Vm::new(
-            Vec::new(),
             &crate::OptionBuilder::new("./illegal_op").build(),
             Box::new(stdout()),
         );
@@ -533,7 +547,6 @@ mod tests {
             #[test]
             fn collect(int in 0..i32::max_value(), string in "\\PC*") {
                 let mut vm = Vm::new(
-                    Vec::new(),
                     &crate::OptionBuilder::new("./misc_ops").build(),
                     Box::new(stdout()),
                 );
@@ -568,7 +581,6 @@ mod tests {
             #[test]
             fn bitwise_and(left in 0_i32..i32::max_value(), right in 0_i32..i32::max_value()) {
                 let mut vm = Vm::new(
-                    Vec::new(),
                     &crate::OptionBuilder::new("./bitwise_ops").build(),
                     Box::new(stdout()),
                 );
@@ -585,7 +597,6 @@ mod tests {
             #[test]
             fn bitwise_or(left in 0_i32..i32::max_value(), right in 0_i32..i32::max_value()) {
                 let mut vm = Vm::new(
-                    Vec::new(),
                     &crate::OptionBuilder::new("./bitwise_ops").build(),
                     Box::new(stdout()),
                 );
@@ -602,7 +613,6 @@ mod tests {
             #[test]
             fn bitwise_xor(left in 0_i32..i32::max_value(), right in 0_i32..i32::max_value()) {
                 let mut vm = Vm::new(
-                    Vec::new(),
                     &crate::OptionBuilder::new("./bitwise_ops").build(),
                     Box::new(stdout()),
                 );
@@ -619,7 +629,6 @@ mod tests {
             #[test]
             fn bitwise_not(int in 0_i32..i32::max_value()) {
                 let mut vm = Vm::new(
-                    Vec::new(),
                     &crate::OptionBuilder::new("./bitwise_ops").build(),
                     Box::new(stdout()),
                 );
@@ -635,7 +644,6 @@ mod tests {
             #[test]
             fn add(left in 0_i32..i32::max_value(), right in 0_i32..i32::max_value()) {
                 let mut vm = Vm::new(
-                    Vec::new(),
                     &crate::OptionBuilder::new("./math_ops").build(),
                     Box::new(stdout()),
                 );
@@ -652,7 +660,6 @@ mod tests {
             #[test]
             fn subtract(left in 0_i32..i32::max_value(), right in 0_i32..i32::max_value()) {
                 let mut vm = Vm::new(
-                    Vec::new(),
                     &crate::OptionBuilder::new("./math_ops").build(),
                     Box::new(stdout()),
                 );
@@ -669,7 +676,6 @@ mod tests {
             #[test]
             fn multiply(left in 0_i32..i32::max_value(), right in 0_i32..i32::max_value()) {
                 let mut vm = Vm::new(
-                    Vec::new(),
                     &crate::OptionBuilder::new("./math_ops").build(),
                     Box::new(stdout()),
                 );
@@ -686,7 +692,6 @@ mod tests {
             #[test]
             fn divide(left in 0_i32..i32::max_value(), right in 0_i32..i32::max_value()) {
                 let mut vm = Vm::new(
-                    Vec::new(),
                     &crate::OptionBuilder::new("./math_ops").build(),
                     Box::new(stdout()),
                 );

@@ -1,7 +1,7 @@
 [package]
 name = "crunch"
 version = "0.0.0"
-authors = ["Chase Wilson <chase.h.wilson3@gmail.com>"]
+authors = ["Chase Wilson <contact@chasewilson.dev>"]
 publish = false
 description = "An esoteric language written in Rust"
 homepage = "https://github.com/Kixiron/crunch-lang"
@@ -39,6 +39,7 @@ crunch_proc_macro = { path = "./crates/crunch_proc_macro" }
 dynasm = "0.5.2"
 dynasmrt = "0.5.2"
 # no-panic = "0.1.12"
+once_cell = "1.2.0"
 
 [target.'cfg(target_family = "windows")'.dependencies]
 winapi = "0.3.8"

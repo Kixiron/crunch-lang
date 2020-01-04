@@ -33,7 +33,7 @@ pub extern "win64" fn add(vm: *mut Vm, left: u8, right: u8) -> usize {
 
         match crate::instruction::functions::add(vm, left, right) {
             Ok(_) => 0,
-            Err(err) => dbg!(Box::into_raw(Box::new(err))) as usize,
+            Err(err) => Box::into_raw(Box::new(err)) as usize,
         }
     }
 }
@@ -133,7 +133,7 @@ pub extern "win64" fn op_to_reg(vm: *mut Vm, reg: u8) -> usize {
     }
 }
 
-pub extern "win64" fn drop_reg(vm: *mut Vm, reg: u8) -> usize {
+pub extern "win64" fn drop(vm: *mut Vm, reg: u8) -> usize {
     unsafe {
         let vm = if let Some(vm) = vm.as_mut() {
             vm
@@ -145,7 +145,26 @@ pub extern "win64" fn drop_reg(vm: *mut Vm, reg: u8) -> usize {
             return err as *const RuntimeError as usize;
         };
 
-        match crate::instruction::functions::drop_reg(vm, reg) {
+        match crate::instruction::functions::drop(vm, reg) {
+            Ok(_) => 0,
+            Err(err) => Box::into_raw(Box::new(err)) as usize,
+        }
+    }
+}
+
+pub extern "win64" fn mov(vm: *mut Vm, input: u8, output: u8) -> usize {
+    unsafe {
+        let vm = if let Some(vm) = vm.as_mut() {
+            vm
+        } else {
+            let err = Box::leak(Box::new(RuntimeError {
+                ty: RuntimeErrorTy::JitError,
+                message: "The VM pointer is null".to_string(),
+            }));
+            return err as *const RuntimeError as usize;
+        };
+
+        match crate::instruction::functions::mov(vm, input, output) {
             Ok(_) => 0,
             Err(err) => Box::into_raw(Box::new(err)) as usize,
         }

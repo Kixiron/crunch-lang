@@ -195,13 +195,14 @@ impl<'a> std::fmt::Debug for TokenIter<'a> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct TokenStream<'a> {
     token_stream: TokenIter<'a>,
     indent_level: u32,
     line_indent_level: u32,
     line_start: bool,
     skip_comments: bool,
+    current: Option<Token<'a>>,
 }
 
 impl<'a> TokenStream<'a> {
@@ -210,69 +211,66 @@ impl<'a> TokenStream<'a> {
             token_stream: TokenIter::new(input),
             indent_level: 0,
             line_indent_level: 0,
-            line_start: true,
+            line_start: false,
             skip_comments,
+            current: None,
         }
     }
 
-    fn next(&mut self) -> Option<Token<'a>> {
+    pub fn next_token(&mut self) -> Option<Token<'a>> {
+        let current = if self.current.is_some() {
+            let mut token = None;
+            std::mem::swap(&mut token, &mut self.current);
+            return token;
+        } else if let Some(current) = self.token_stream.next() {
+            current
+        } else if self.indent_level > 0 {
+            self.indent_level -= 1;
+            return Some(Token::new(TokenType::Dedent, "", 0..0));
+        } else {
+            return None;
+        };
+
+        let mut token = match current.ty {
+            // Skip Indents while incrementing the indentation level
+            TokenType::Indent => {
+                self.line_indent_level += 1;
+                self.next_token()
+            }
+            TokenType::Newline => {
+                self.line_start = true;
+                return Some(current);
+            }
+
+            // Skip whitespace
+            TokenType::Space => self.next_token(),
+            TokenType::Comment if self.skip_comments => self.next_token(),
+
+            _ => Some(current),
+        };
+
         if self.line_start {
             self.line_start = false;
-
-            print!(
-                "Last: {}, current: {}",
-                self.indent_level, self.line_indent_level
-            );
-
             let indent_insert = if self.line_indent_level < self.indent_level {
+                self.current = token;
                 Some(Token::new(TokenType::Dedent, "", 0..0))
             } else if self.line_indent_level > self.indent_level {
+                self.current = token;
                 Some(Token::new(TokenType::Indent, "", 0..0))
+            } else if self.current.is_some() {
+                std::mem::swap(&mut self.current, &mut token);
+                token
             } else {
-                None
+                token
             };
 
             self.indent_level = self.line_indent_level;
             self.line_indent_level = 0;
 
-            if indent_insert.is_some() {
-                return indent_insert;
-            }
+            indent_insert
+        } else {
+            token
         }
-
-        let current = self.token_stream.next()?;
-        match current.ty {
-            // Skip Indents while incrementing the indentation level
-            TokenType::Indent => {
-                self.line_indent_level += 1;
-                self.next()
-            }
-            TokenType::Newline => {
-                self.line_start = true;
-                Some(current)
-            }
-
-            // Skip whitespace
-            TokenType::Space => self.next(),
-            TokenType::Comment if self.skip_comments => self.next(),
-
-            _ => Some(current),
-        }
-    }
-}
-
-impl<'a> std::fmt::Debug for TokenStream<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TokenStream")
-            .field(
-                "token_stream",
-                &self.clone().into_iter().collect::<Vec<Token<'a>>>(),
-            )
-            .field("indent_level", &self.indent_level)
-            .field("line_indent_level", &self.line_indent_level)
-            .field("line_start", &self.line_start)
-            .field("skip_comments", &self.skip_comments)
-            .finish()
     }
 }
 
@@ -280,9 +278,7 @@ impl<'a> Iterator for TokenStream<'a> {
     type Item = Token<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let next = self.next();
-        println!(" Next: {:?}", next);
-        next
+        self.next_token()
     }
 }
 
@@ -311,4 +307,16 @@ impl<'a> std::fmt::Debug for Token<'a> {
             .field("range", &(self.range.0..self.range.1))
             .finish()
     }
+}
+
+#[test]
+fn token_test() {
+    const CODE: &str = include_str!("../../examples/parse_test.crunch");
+
+    let tokens = TokenStream::new(CODE, true)
+        .into_iter()
+        .map(|t| t.ty)
+        .collect::<Vec<_>>();
+
+    println!("{:#?}", tokens);
 }
