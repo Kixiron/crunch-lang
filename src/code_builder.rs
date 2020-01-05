@@ -27,7 +27,7 @@ pub enum MangleStatus {
 #[derive(Debug, Clone)]
 pub struct CodeBuilder {
     functions: HashMap<Sym, (FunctionContext, Option<u32>)>,
-    interner: StringInterner<Sym>,
+    pub interner: StringInterner<Sym>,
     gc_ids: HashSet<u32>,
     local_symbols: HashMap<Sym, u32>,
     rng: SmallRng,
@@ -58,13 +58,7 @@ impl CodeBuilder {
 
         (function)(self, &mut context)?;
 
-        let old = self.functions.clone();
         self.functions.insert(name, (context, None));
-
-        assert_ne!(
-            &old.keys().collect::<Vec<_>>(),
-            &self.functions.keys().collect::<Vec<_>>()
-        );
 
         Ok(())
     }
@@ -172,19 +166,9 @@ impl Scope {
     }
 }
 
-// pub struct VariableMeta<'a> {
-//     ty: Type<'a>,
-// }
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Reg {
-    Symbol(Sym),
-    None,
-}
-
 #[derive(Clone)]
 pub struct FunctionContext {
-    registers: [Option<Reg>; NUMBER_REGISTERS],
+    pub registers: [Option<Option<Sym>>; NUMBER_REGISTERS],
     pub variables: HashSet<Sym>,
     block: Vec<PartialInstruction>,
     pub scope: Scope,
@@ -203,45 +187,37 @@ impl FunctionContext {
 
     #[inline]
     pub fn free_reg(&mut self, reg: impl Into<Register>) -> &mut Self {
-        self.registers[*reg.into() as usize] = None;
+        let reg = reg.into();
+        trace!("Freeing register {}", reg.0);
+
+        self.registers[*reg as usize] = None;
 
         self
     }
 
     #[inline]
-    pub fn reserve_reg(&mut self) -> Result<Register> {
-        match self.registers.iter().rev().position(Option::is_none) {
+    pub fn reserve_reg(&mut self, sym: impl Into<Option<Sym>>) -> Result<Register> {
+        match self.registers.iter().rev().position(|r| r.is_none()) {
             Some(pos) => {
-                self.registers[pos] = Some(Reg::None);
-                Ok((pos as u8).into())
-            }
-            None => Err(RuntimeError {
-                ty: RuntimeErrorTy::CompilationError,
-                message: "Failed to fetch available register".to_string(),
-            }),
-        }
-    }
+                let sym = sym.into();
+                trace!("Reserving register {} for {:?}", pos, sym);
 
-    #[inline]
-    pub fn reserve_reg_sym(&mut self, sym: Sym) -> Result<Register> {
-        match self.registers.iter().position(Option::is_none) {
-            Some(pos) => {
-                self.registers[pos] = Some(Reg::Symbol(sym));
+                self.registers[pos] = Some(sym);
+                dbg!(self.registers[pos]);
                 Ok((pos as u8).into())
             }
-            None => Err(RuntimeError {
-                ty: RuntimeErrorTy::CompilationError,
-                message: "Failed to fetch available register".to_string(),
-            }),
+            None => {
+                error!("Failed to find avaliable register");
+                Err(RuntimeError {
+                    ty: RuntimeErrorTy::CompilationError,
+                    message: "Failed to fetch available register".to_string(),
+                })
+            }
         }
     }
 
     pub fn get_cached_reg(&mut self, sym: Sym) -> Result<Register> {
-        match self
-            .registers
-            .iter()
-            .position(|r| *r == Some(Reg::Symbol(sym)))
-        {
+        match self.registers.iter().position(|r| *r == Some(Some(sym))) {
             Some(pos) => Ok((pos as u8).into()),
             None => Err(RuntimeError {
                 ty: RuntimeErrorTy::CompilationError,

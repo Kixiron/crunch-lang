@@ -6,6 +6,7 @@ use crate::{
     Instruction, Options, Register, RuntimeValue,
 };
 use std::collections::HashMap;
+use string_interner::Sym;
 
 #[derive(Debug, Copy, Clone)]
 pub struct InterpOptions {
@@ -142,10 +143,11 @@ impl<'a> Interpreter<'a> {
         builder: &mut CodeBuilder,
         ctx: &mut FunctionContext,
         binding_val: BindingVal<'a>,
+        binding_name: impl Into<Option<Sym>>,
     ) -> Result<Register> {
         match binding_val {
             BindingVal::Literal(literal) => {
-                let addr = ctx.reserve_reg()?;
+                let addr = ctx.reserve_reg(binding_name)?;
 
                 ctx.inst_load(addr, literal.val.into());
 
@@ -156,7 +158,8 @@ impl<'a> Interpreter<'a> {
                 (BinOpSide::Literal(left), BinOpSide::Literal(right)) => {
                     let (left, right): (RuntimeValue, RuntimeValue) =
                         (left.val.into(), right.val.into());
-                    let (left_reg, right_reg) = (ctx.reserve_reg()?, ctx.reserve_reg()?);
+                    let (left_reg, right_reg) =
+                        (ctx.reserve_reg(binding_name)?, ctx.reserve_reg(None)?);
 
                     // TODO: Compile-time evaluation
                     ctx.inst_load(left_reg, left).inst_load(right_reg, right);
@@ -165,6 +168,7 @@ impl<'a> Interpreter<'a> {
                         Op::Sub => ctx.inst_sub(left_reg, right_reg),
                         Op::Mult => ctx.inst_mult(left_reg, right_reg),
                         Op::Div => ctx.inst_div(left_reg, right_reg),
+                        Op::IsEqual => ctx.inst_eq(left_reg, right_reg),
                     };
                     ctx.inst_op_to_reg(left_reg).inst_drop(right_reg);
 
@@ -172,22 +176,20 @@ impl<'a> Interpreter<'a> {
                 }
 
                 (BinOpSide::Literal(left), BinOpSide::Variable(right)) => {
-                    let (left_reg, _left_ident) = (ctx.reserve_reg()?, {
-                        let clobber = builder.gen_clobber_str(15);
-                        builder.intern(format!("___bin-op-literal-{}", clobber))
-                    });
+                    let left_reg = ctx.reserve_reg(binding_name)?;
                     ctx.inst_load(left_reg, left.val.into());
 
                     let right_ident = builder.intern(&*right.name);
                     let (right_reg, faulted) = if let Ok(reg) = ctx.get_cached_reg(right_ident) {
                         (reg, false)
                     } else if self.options.fault_tolerant {
-                        let reg = ctx.reserve_reg()?;
+                        let reg = ctx.reserve_reg(right_ident)?;
 
                         ctx.inst_load(reg, RuntimeValue::None);
 
                         (reg, true)
                     } else {
+                        error!("Failed to find variable for Literal/Variable binary operation");
                         return Err(RuntimeError {
                             ty: RuntimeErrorTy::NullVar,
                             message: format!("The variable {:?} does not exist", &*right.name),
@@ -201,17 +203,20 @@ impl<'a> Interpreter<'a> {
                             ctx.inst_drop(left_reg).free_reg(right_reg);
                         }
                     } else {
-                        let left_reg = ctx.reserve_reg()?;
+                        let left_reg = ctx.reserve_reg(right_ident)?;
 
-                        ctx.inst_add(left_reg, right_reg)
-                            .free_reg(right_reg)
-                            .free_reg(left_reg);
+                        match bin_op.op {
+                            Op::Add => ctx.inst_add(left_reg, right_reg),
+                            Op::Sub => ctx.inst_sub(left_reg, right_reg),
+                            Op::Mult => ctx.inst_mult(left_reg, right_reg),
+                            Op::Div => ctx.inst_div(left_reg, right_reg),
+                            Op::IsEqual => ctx.inst_eq(left_reg, right_reg),
+                        };
                     }
 
-                    let output = ctx.reserve_reg()?;
-                    ctx.inst_drop(right_reg).inst_op_to_reg(output);
+                    ctx.inst_drop(right_reg).inst_op_to_reg(left_reg);
 
-                    Ok(output)
+                    Ok(left_reg)
                 }
 
                 (BinOpSide::Variable(left), BinOpSide::Literal(right)) => {
@@ -219,28 +224,24 @@ impl<'a> Interpreter<'a> {
                     let left_reg = if let Ok(reg) = ctx.get_cached_reg(left_ident) {
                         reg
                     } else if self.options.fault_tolerant {
-                        let reg = ctx.reserve_reg()?;
+                        let reg = ctx.reserve_reg(left_ident)?;
                         ctx.inst_load(reg, RuntimeValue::None);
 
                         reg
                     } else {
+                        error!("Failed to find variable for Variable/Literal binary operation");
                         return Err(RuntimeError {
                             ty: RuntimeErrorTy::NullVar,
                             message: format!("The variable {:?} does not exist", &*left.name),
                         });
                     };
 
-                    let (right_reg, _right_ident) = (ctx.reserve_reg()?, {
-                        let clobber = builder.gen_clobber_str(15);
-                        builder.intern(format!("___bin-op-literal-{}", clobber))
-                    });
+                    let right_reg = ctx.reserve_reg(None)?;
 
                     ctx.inst_load(right_reg, right.val.into())
-                        .inst_add(left_reg, right_reg)
-                        .free_reg(right_reg)
-                        .free_reg(left_reg);
+                        .inst_add(left_reg, right_reg);
 
-                    let output = ctx.reserve_reg()?;
+                    let output = ctx.reserve_reg(binding_name)?;
                     ctx.inst_drop(right_reg).inst_op_to_reg(output);
 
                     Ok(output)
@@ -265,7 +266,7 @@ impl<'a> Interpreter<'a> {
         builder.function(func.name.name, |builder, ctx| {
             // For each expression in the function, evaluate it into instructions
             for expr in body {
-                self.interp_func_body(builder, ctx, expr.expr)?
+                self.interp_func_body(builder, ctx, expr)?
             }
 
             Ok(())
@@ -274,7 +275,7 @@ impl<'a> Interpreter<'a> {
         std::mem::swap(&mut builder, &mut self.builder);
         drop(builder);
 
-        let index = match &*func.name.name {
+        let index = match func.name.name {
             "main" => None,
             _ => Some(self.get_next_func_id()),
         };
@@ -299,7 +300,7 @@ impl<'a> Interpreter<'a> {
             FuncExpr::Conditional(conditional) => {
                 let endif = builder.next_jump_id();
 
-                let true_reg = ctx.reserve_reg()?;
+                let true_reg = ctx.reserve_reg(None)?;
                 ctx.inst_load(true_reg, RuntimeValue::Bool(true));
 
                 let mut bodies: Vec<
@@ -313,7 +314,7 @@ impl<'a> Interpreter<'a> {
                 > = Vec::new();
 
                 for If { condition, body } in conditional.if_clauses {
-                    let comparison = self.load_binding_val(builder, ctx, condition)?;
+                    let comparison = self.load_binding_val(builder, ctx, condition, None)?;
                     let block_start = builder.next_jump_id();
 
                     ctx.inst_eq(comparison, true_reg)
@@ -360,7 +361,9 @@ impl<'a> Interpreter<'a> {
 
             // Bind a variable to a value
             FuncExpr::Binding(binding) => {
-                self.load_binding_val(builder, ctx, binding.val)?;
+                let name = builder.intern(binding.name.name);
+                self.load_binding_val(builder, ctx, binding.val, name)?;
+                dbg!(&ctx.registers);
             }
 
             // Compiler builtin functions
@@ -419,35 +422,31 @@ impl<'a> Interpreter<'a> {
                         match param {
                             // For literals fed into the print function, load them, print them, and drop them
                             IdentLiteral::Literal(literal) => {
-                                let reg = ctx.reserve_reg()?;
+                                let reg = ctx.reserve_reg(None)?;
 
                                 // Literals can just be moved into a register
                                 ctx.inst_load(reg, literal.val.into())
                                     .inst_print(reg)
-                                    .inst_drop(reg)
-                                    .free_reg(reg);
+                                    .inst_drop(reg);
                             }
 
                             // For existing variables, fetch them and print them
                             IdentLiteral::Variable(variable) => {
-                                // Get the gc address, variable type, and fault status of fetching the requested variable
-                                // If a fault occurs and fault_tolerant is true, then a null value will be used in place of
-                                // the requested variable. If fault_tolerant is false, then a Runtime Error will be thrown
-
-                                let ident = builder.intern(&*variable.name);
+                                let ident = builder.intern(variable.name);
                                 let (reg, faulted) = if let Ok(reg) = ctx.get_cached_reg(ident) {
                                     (reg, false)
                                 } else if self.options.fault_tolerant {
-                                    let reg = ctx.reserve_reg()?;
+                                    let reg = ctx.reserve_reg(builder.intern(variable.name))?;
                                     ctx.inst_load(reg, RuntimeValue::None);
 
                                     (reg, true)
                                 } else {
+                                    error!("Failed to find variable for Print parameter");
                                     return Err(RuntimeError {
                                         ty: RuntimeErrorTy::NullVar,
                                         message: format!(
                                             "The variable {:?} does not exist",
-                                            &*variable.name
+                                            variable.name
                                         ),
                                     });
                                 };

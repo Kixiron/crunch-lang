@@ -33,7 +33,7 @@ impl<'a> Parser<'a> {
         // TODO: Fix it, I don't like it lying around
         let mut token_stream = TokenStream::new(input.trim_start(), true);
 
-        let next = token_stream.next_token();
+        let next = None;
         let peek = token_stream.next_token();
         let (codespan, files) = {
             let mut files = Files::new();
@@ -66,7 +66,7 @@ impl<'a> Parser<'a> {
 
         let mut ast = Vec::new();
 
-        while let Some(token) = self.next {
+        while let Ok(token) = self.peek() {
             match token.ty {
                 TokenType::Function => {
                     info!("Top Level Loop: Function");
@@ -95,7 +95,7 @@ impl<'a> Parser<'a> {
 
                 TokenType::End => break,
 
-                TokenType::Newline | TokenType::Dedent => {
+                TokenType::Newline => {
                     trace!("Eating the token {:?} at the top level", token);
                     if self.next().is_err() {
                         break;
@@ -171,6 +171,8 @@ impl<'a> Parser<'a> {
 
         info!("Parsing Import");
 
+        self.eat(TokenType::Import)?;
+
         let ty = self.parse_import_type()?;
 
         let file: PathBuf = {
@@ -188,9 +190,7 @@ impl<'a> Parser<'a> {
                     self.eat(TokenType::Star)
                         .unwrap_or_else(|_| unreachable!("Peek was Star"));
 
-                    if self.peek()?.ty != TokenType::Dedent {
-                        self.eat(TokenType::Newline)?;
-                    }
+                    self.eat(TokenType::Newline)?;
 
                     (Exposes::All, None)
                 } else if peek.ty == TokenType::Ident {
@@ -225,9 +225,7 @@ impl<'a> Parser<'a> {
                         }
                     }
 
-                    if self.peek()?.ty != TokenType::Dedent {
-                        self.eat(TokenType::Newline)?;
-                    }
+                    self.eat(TokenType::Newline)?;
 
                     (Exposes::Some(imports), None)
                 } else {
@@ -300,9 +298,7 @@ impl<'a> Parser<'a> {
                             }
                         }
 
-                        if self.peek()?.ty != TokenType::Dedent {
-                            self.eat(TokenType::Newline)?;
-                        }
+                        self.eat(TokenType::Newline)?;
 
                         (Exposes::Some(imports), Some(alias))
                     } else {
@@ -323,17 +319,13 @@ impl<'a> Parser<'a> {
                         ));
                     }
                 } else {
-                    if self.peek()?.ty != TokenType::Dedent {
-                        self.eat(TokenType::Newline)?;
-                    }
+                    self.eat(TokenType::Newline)?;
                     (Exposes::All, Some(alias))
                 }
             }
 
             _ => {
-                if self.peek()?.ty != TokenType::Dedent {
-                    self.eat(TokenType::Newline)?;
-                }
+                self.eat(TokenType::Newline)?;
                 (Exposes::File, None)
             }
         };
@@ -366,11 +358,9 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_function(&mut self, span_start: u32) -> Result<Func<'a>> {
-        info!("Parsing Function");
-        let name = Ident::from_token(self.eat(TokenType::Ident)?, self.current_file);
-
+    fn parse_function_parameters(&mut self) -> Result<Vec<FuncParam<'a>>> {
         self.eat(TokenType::LeftParen)?;
+
         let mut params = Vec::new();
         while self.peek()?.ty != TokenType::RightParen {
             params.push(self.parse_named_parameter()?);
@@ -380,287 +370,241 @@ impl<'a> Parser<'a> {
                     .unwrap_or_else(|_| unreachable!("Peek was Comma"));
             }
         }
+
         self.eat(TokenType::RightParen)?;
 
-        let returns = if self.peek()?.ty == TokenType::RightArrow {
+        Ok(params)
+    }
+
+    fn parse_function_return_type(&mut self) -> Result<Type<'a>> {
+        if self.peek()?.ty == TokenType::RightArrow {
             self.eat(TokenType::RightArrow)
                 .unwrap_or_else(|_| unreachable!("Peek was RightArrow"));
 
-            self.parse_type()?.0
+            Ok(self.parse_type()?.0)
         } else {
-            Type::Void
-        };
+            Ok(Type::Void)
+        }
+    }
+
+    fn parse_function_body(&mut self) -> Result<Vec<FuncExpr<'a>>> {
+        let (mut body, mut token) = (Vec::new(), self.peek()?);
+        while token.ty != TokenType::EndBlock {
+            if let Some(expr) = self.parse_expr()? {
+                body.push(expr);
+            } else {
+                trace!("`parse_expr` hit a EndBlock, finishing function body parsing");
+                break;
+            }
+
+            token = self.peek()?;
+        }
+
+        Ok(body)
+    }
+
+    fn parse_function(&mut self, span_start: u32) -> Result<Func<'a>> {
+        info!("Parsing Function");
+
+        self.eat(TokenType::Function)?;
+
+        let name = Ident::from_token(self.eat(TokenType::Ident)?, self.current_file);
+        let parameters = self.parse_function_parameters()?;
+        let returns = self.parse_function_return_type()?;
 
         self.eat(TokenType::Newline)?;
-        self.eat(TokenType::Indent)?;
 
-        let (mut body, mut span_end) = (Vec::new(), span_start);
+        let body = self.parse_function_body()?;
 
-        let mut token = self.peek()?;
-        while token.ty != TokenType::Dedent && token.ty != TokenType::Newline {
-            if let Ok(func_body) = self.parse_func_body(token.range.0) {
-                body.push(func_body);
-            } else {
-                break;
-            }
-            span_end = token.range.1;
-
-            if let Ok(peek) = self.peek() {
-                token = peek;
-            } else {
-                trace!("Breaking from function body parsing, EOF reached");
-                break;
-            }
-        }
-        let _ = self.next();
-        // self.eat(TokenType::Dedent)?;
-
-        println!("{:#?}\n{:?}\n{:?}", self.token_stream, self.next, self.peek);
+        self.eat(TokenType::EndBlock)?;
 
         info!("Finished parsing Function");
 
         Ok(Func {
             name,
-            params,
+            params: parameters,
             returns,
             body,
             info: LocInfo {
-                span: Span::new(span_start, span_end),
+                span: Span::new(span_start, span_start),
                 file: self.current_file,
             },
         })
     }
 
-    #[track_caller]
-    fn parse_func_body(&mut self, span_start: u32) -> Result<FuncBody<'a>> {
-        let loc = Location::caller();
-        info!(
-            "[{} {}:{}] Parsing function body",
-            loc.file(),
-            loc.line(),
-            loc.column()
-        );
+    fn parse_inline_parameters_parenless(&mut self) -> Result<Vec<IdentLiteral<'a>>> {
+        let (mut params, mut peek) = (Vec::new(), self.peek()?);
 
-        let token = self.peek()?;
+        while peek.ty != TokenType::Newline && peek.ty != TokenType::Comma {
+            params.push(self.ident_literal()?);
 
-        let (expr, span_end): (FuncExpr<'a>, u32) = match token.ty {
-            TokenType::Ident => {
-                let ident = Ident::from_token(self.eat(TokenType::Ident)?, self.current_file);
+            if self.peek()?.ty == TokenType::Comma {
+                self.eat(TokenType::Comma)
+                    .unwrap_or_else(|_| unreachable!("Peek was Comma"));
+            }
 
-                match self.peek()?.ty {
-                    TokenType::LeftParen => {
-                        self.eat(TokenType::LeftParen)?;
+            peek = self.peek()?;
+        }
 
-                        let (mut params, mut next) = (Vec::new(), self.peek()?);
+        Ok(params)
+    }
 
-                        while next.ty != TokenType::RightParen {
-                            match next.ty {
-                                TokenType::String
-                                | TokenType::Bool
-                                | TokenType::Int
-                                | TokenType::Ident => {
-                                    params.push(self.ident_literal()?);
-                                }
+    fn parse_inline_parameters(&mut self) -> Result<Vec<IdentLiteral<'a>>> {
+        self.eat(TokenType::LeftParen)?;
 
-                                TokenType::Comma => {
-                                    self.eat(TokenType::Comma)
-                                        .unwrap_or_else(|_| unreachable!("Peek was Comma"));
-                                }
+        let (mut params, mut next) = (Vec::new(), self.peek()?);
 
-                                t => {
-                                    const EXPECTED_TOKENS: [TokenType; 5] = [
-                                        TokenType::String,
-                                        TokenType::Bool,
-                                        TokenType::Int,
-                                        TokenType::Ident,
-                                        TokenType::Comma,
-                                    ];
+        while next.ty != TokenType::RightParen {
+            match next.ty {
+                TokenType::String | TokenType::Bool | TokenType::Int | TokenType::Ident => {
+                    params.push(self.ident_literal()?);
+                }
 
-                                    self.error = true;
-                                    error!(
-                                        "[Parsing error on {}:{}]: Unexpected token: {:?}",
-                                        line!(),
-                                        column!(),
-                                        &t
-                                    );
-                                    return Err(Diagnostic::new(
-                                        Severity::Error,
-                                        "Unexpected token",
-                                        Label::new(
-                                            self.files[0],
-                                            self.codespan.source_span(self.files[0]),
-                                            format!(
-                                                "Found {}, expected one of {}",
-                                                t,
-                                                EXPECTED_TOKENS
-                                                    .iter()
-                                                    .map(|t| format!("'{}'", t))
-                                                    .collect::<Vec<String>>()
-                                                    .join(", "),
-                                            ),
-                                        ),
-                                    ));
-                                }
-                            }
+                TokenType::Comma => {
+                    self.eat(TokenType::Comma)
+                        .unwrap_or_else(|_| unreachable!("Peek was Comma"));
+                }
 
-                            next = self.peek()?;
-                        }
-
-                        let span_end = self.eat(TokenType::RightParen)?.range.1;
-
-                        if self.peek()?.ty != TokenType::Dedent {
-                            self.eat(TokenType::Newline)?;
-                        }
-
-                        (
-                            FuncExpr::FuncCall(FuncCall {
-                                func_name: ident,
-                                params,
-                                info: LocInfo {
-                                    span: Span::new(span_start, span_end),
-                                    file: self.current_file,
-                                },
-                            }),
-                            span_end,
-                        )
-                    }
-
-                    TokenType::Equal => {
-                        self.eat(TokenType::Equal)?;
-
-                        let span_end = self.peek()?.range.1;
-
-                        let assignment = self.ident_literal()?;
-
-                        self.eat(TokenType::Newline)?;
-
-                        (
-                            FuncExpr::Assign(Assign {
-                                name: ident,
-                                val: assignment,
-                                info: LocInfo {
-                                    span: Span::new(span_start, span_end),
-                                    file: self.current_file,
-                                },
-                            }),
-                            span_end,
-                        )
-                    }
-
-                    t => unimplemented!("Token: {:?}", t),
+                t => {
+                    self.error = true;
+                    error!(
+                        "[Parsing error on {}:{}]: Unexpected token: {:?}",
+                        line!(),
+                        column!(),
+                        &t
+                    );
+                    return Err(Diagnostic::new(
+                        Severity::Error,
+                        "Unexpected token",
+                        Label::new(
+                            self.files[0],
+                            self.codespan.source_span(self.files[0]),
+                            format!(
+                                "Found {}, expected one of {}",
+                                t,
+                                [
+                                    TokenType::String,
+                                    TokenType::Bool,
+                                    TokenType::Int,
+                                    TokenType::Ident,
+                                    TokenType::Comma,
+                                ]
+                                .iter()
+                                .map(|t| format!("'{}'", t))
+                                .collect::<Vec<String>>()
+                                .join(", "),
+                            ),
+                        ),
+                    ));
                 }
             }
 
-            TokenType::Let => {
-                self.eat(TokenType::Let)?;
+            next = self.peek()?;
+        }
+        self.eat(TokenType::RightParen)?;
 
-                let name = Ident::from_token(self.eat(TokenType::Ident)?, self.current_file);
+        Ok(params)
+    }
 
-                let ty = if self.peek().unwrap().ty == TokenType::Colon {
-                    self.eat(TokenType::Colon)
-                        .unwrap_or_else(|_| unreachable!("Peek was Colon"));
+    fn parse_ident_exprs(&mut self) -> Result<FuncExpr<'a>> {
+        let ident = Ident::from_token(self.eat(TokenType::Ident)?, self.current_file);
 
-                    self.parse_type()?.0
-                } else {
-                    Type::Infer
-                };
+        let ident_expr = match dbg!(self.peek()?.ty) {
+            TokenType::LeftParen => {
+                let params = self.parse_inline_parameters()?;
+                self.eat(TokenType::Newline)?;
 
+                FuncExpr::FuncCall(FuncCall {
+                    func_name: ident,
+                    params,
+                    info: LocInfo {
+                        span: Span::new(0, 0),
+                        file: self.current_file,
+                    },
+                })
+            }
+
+            TokenType::Equal => {
                 self.eat(TokenType::Equal)?;
 
-                let val = self.parse_binding_val()?;
-                if self.peek()?.ty != TokenType::Dedent {
-                    self.eat(TokenType::Newline)?;
-                }
+                let assignment = self.ident_literal()?;
+                self.eat(TokenType::Newline)?;
 
-                (
-                    FuncExpr::Binding(Box::new(Binding {
-                        name,
-                        val,
-                        ty,
-                        info: LocInfo {
-                            span: Span::new(span_start, span_start),
-                            file: self.current_file,
-                        },
-                    })),
-                    span_start,
-                )
+                FuncExpr::Assign(Assign {
+                    name: ident,
+                    val: assignment,
+                    info: LocInfo {
+                        span: Span::new(0, 0),
+                        file: self.current_file,
+                    },
+                })
             }
+
+            t => unimplemented!("Token: {:?}", t),
+        };
+
+        Ok(ident_expr)
+    }
+
+    fn parse_binding_expr(&mut self) -> Result<Binding<'a>> {
+        self.eat(TokenType::Let)?;
+
+        let name = Ident::from_token(self.eat(TokenType::Ident)?, self.current_file);
+
+        let ty = if self.peek().unwrap().ty == TokenType::Colon {
+            self.eat(TokenType::Colon)
+                .unwrap_or_else(|_| unreachable!("Peek was Colon"));
+
+            self.parse_type()?.0
+        } else {
+            Type::Infer
+        };
+
+        self.eat(TokenType::Equal)?;
+
+        let val = self.parse_binding_val()?;
+        self.eat(TokenType::Newline)?;
+
+        Ok(Binding {
+            name,
+            val,
+            ty,
+            info: LocInfo {
+                span: Span::new(0, 0),
+                file: self.current_file,
+            },
+        })
+    }
+
+    fn parse_expr(&mut self) -> Result<Option<FuncExpr<'a>>> {
+        let token = self.peek()?;
+
+        let expr = match token.ty {
+            TokenType::Ident => self.parse_ident_exprs()?,
+
+            TokenType::Let => FuncExpr::Binding(Box::new(self.parse_binding_expr()?)),
 
             TokenType::Print => {
                 self.eat(TokenType::Print)?;
 
-                let (mut params, mut peek) = (Vec::new(), self.peek()?);
+                let params = self.parse_inline_parameters_parenless()?;
+                self.eat(TokenType::Newline)?;
 
-                while peek.ty != TokenType::Newline && peek.ty != TokenType::Comma {
-                    params.push(self.ident_literal()?);
-
-                    if self.peek()?.ty == TokenType::Comma {
-                        self.eat(TokenType::Comma)
-                            .unwrap_or_else(|_| unreachable!("Peek was Comma"));
-                    }
-
-                    peek = self.peek()?;
-                }
-
-                if self.peek()?.ty != TokenType::Dedent {
-                    self.eat(TokenType::Newline)?;
-                }
-
-                (FuncExpr::Builtin(Builtin::Print(params)), span_start)
+                FuncExpr::Builtin(Builtin::Print(params))
             }
 
             TokenType::Collect => {
                 self.eat(TokenType::Collect)?;
-                if self.peek()?.ty != TokenType::Dedent {
-                    self.eat(TokenType::Newline)?;
-                }
-                (FuncExpr::Builtin(Builtin::Collect), token.range.1)
+                self.eat(TokenType::Newline)?;
+
+                FuncExpr::Builtin(Builtin::Collect)
             }
 
             TokenType::Halt => {
                 self.eat(TokenType::Halt)?;
-                if self.peek()?.ty != TokenType::Dedent {
-                    self.eat(TokenType::Newline)?;
-                }
-                (FuncExpr::Builtin(Builtin::Halt), token.range.1)
-            }
+                self.eat(TokenType::Newline)?;
 
-            TokenType::SyscallExit => {
-                self.eat(TokenType::SyscallExit)?;
-
-                let peek = self.peek()?;
-
-                let exit_code = if peek.ty != TokenType::Newline
-                    && peek.ty != TokenType::Comma
-                    && peek.ty != TokenType::Dedent
-                {
-                    self.ident_literal()?
-                } else {
-                    self.error = true;
-                    error!(
-                        "[Parsing error on {}:{}]: Invalid function parameter",
-                        line!(),
-                        column!(),
-                    );
-                    return Err(Diagnostic::new(
-                        Severity::Error,
-                        "Invalid Function Parameters",
-                        Label::new(
-                            self.files[0],
-                            self.codespan.source_span(self.files[0]),
-                            "Exit takes one parameter".to_string(),
-                        ),
-                    ));
-                };
-
-                if self.peek()?.ty != TokenType::Dedent {
-                    self.eat(TokenType::Newline)?;
-                }
-
-                (
-                    FuncExpr::Builtin(Builtin::SyscallExit(exit_code)),
-                    span_start,
-                )
+                FuncExpr::Builtin(Builtin::Halt)
             }
 
             TokenType::If => {
@@ -673,37 +617,37 @@ impl<'a> Parser<'a> {
 
                     peek = self.peek()?.ty;
                 }
-                self.eat(TokenType::Newline)?;
+                self.eat(TokenType::EndBlock)?;
 
-                (
-                    FuncExpr::Conditional(Conditional {
-                        if_clauses,
-                        else_body,
-                    }),
-                    span_start,
-                )
+                FuncExpr::Conditional(Conditional {
+                    if_clauses,
+                    else_body,
+                })
             }
 
-            token => unimplemented!(
-                "Haven't implemented all possible function body expressions: {:?}",
-                token
-            ),
+            TokenType::Newline => {
+                self.eat(TokenType::Newline)?;
+                return self.parse_expr();
+            }
+
+            TokenType::EndBlock => return Ok(None),
+
+            // TokenType::EndBlock => {
+            //     return Err(Diagnostic::new(
+            //         Severity::Error,
+            //         "Expression terminated with an endblock, should be caught by compiler",
+            //         Label::new(
+            //             self.files[0],
+            //             self.codespan.source_span(self.files[0]),
+            //             "Expression terminated with an endblock, should be caught by compiler"
+            //                 .to_string(),
+            //         ),
+            //     ));
+            // }
+            token => unimplemented!("Haven't implemented all possible expressions: {:?}", token),
         };
 
-        info!(
-            "[{} {}:{}] Finished parsing Func Body",
-            loc.file(),
-            loc.line(),
-            loc.column()
-        );
-
-        Ok(FuncBody {
-            expr,
-            info: LocInfo {
-                span: Span::new(span_start, span_end),
-                file: self.current_file,
-            },
-        })
+        Ok(Some(expr))
     }
 
     fn conditional(&mut self) -> Result<Either<If<'a>, Vec<FuncExpr<'a>>>> {
@@ -738,18 +682,17 @@ impl<'a> Parser<'a> {
         };
         self.eat(TokenType::Newline)?;
 
-        self.eat(TokenType::Indent)?;
         let (mut token, mut body) = (self.peek()?, Vec::new());
-        while token.ty != TokenType::Dedent {
-            if let Ok(func_body) = self.parse_func_body(token.range.0) {
-                body.push(func_body.expr);
+        while token.ty != TokenType::EndBlock && token.ty != TokenType::Else {
+            if let Some(expr) = self.parse_expr()? {
+                body.push(expr);
             } else {
+                trace!("`parse_expr` hit a EndBlock, finishing conditional parsing");
                 break;
             }
 
             token = self.peek()?;
         }
-        self.eat(TokenType::Dedent)?;
 
         trace!("Finished parsing conditional");
 
@@ -804,11 +747,12 @@ impl<'a> Parser<'a> {
 
         let val = match self.peek()?.ty {
             TokenType::String | TokenType::Bool | TokenType::Int | TokenType::Ident => {
-                const TOKENS: [TokenType; 4] = [
+                const TOKENS: [TokenType; 5] = [
                     TokenType::Plus,
                     TokenType::Minus,
                     TokenType::Divide,
                     TokenType::Star,
+                    TokenType::IsEqual,
                 ];
 
                 let left = self.parse_bin_op_side()?;
@@ -1274,6 +1218,9 @@ mod tests {
     fn parse_test() {
         const CODE: &str = include_str!("../../examples/parse_test.crunch");
         const FILENAME: &str = "parse_test.crunch";
+
+        color_backtrace::install();
+        simple_logger::init().unwrap();
 
         println!(
             "{:#?}",

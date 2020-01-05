@@ -131,7 +131,7 @@ pub struct Function<'a> {
 }
 
 impl<'a> Function<'a> {
-    const JIT_USAGE_THRESHOLD: usize = 0;
+    // const JIT_USAGE_THRESHOLD: usize = 0;
 
     pub fn new(function: Vec<Instruction>) -> Self {
         Self {

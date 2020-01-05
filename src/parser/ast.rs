@@ -148,7 +148,7 @@ pub struct Func<'a> {
     pub name: Ident<'a>,
     pub params: Vec<FuncParam<'a>>,
     pub returns: Type<'a>,
-    pub body: Vec<FuncBody<'a>>,
+    pub body: Vec<FuncExpr<'a>>,
     pub info: LocInfo,
 }
 
@@ -156,12 +156,6 @@ pub struct Func<'a> {
 pub struct FuncParam<'a> {
     pub name: Ident<'a>,
     pub ty: Type<'a>,
-    pub info: LocInfo,
-}
-
-#[derive(Debug, Clone)]
-pub struct FuncBody<'a> {
-    pub expr: FuncExpr<'a>,
     pub info: LocInfo,
 }
 
@@ -236,6 +230,7 @@ pub enum Op {
     Sub,
     Div,
     Mult,
+    IsEqual,
 }
 
 impl std::convert::TryFrom<TokenType> for Op {
@@ -247,6 +242,7 @@ impl std::convert::TryFrom<TokenType> for Op {
             TokenType::Minus => Self::Sub,
             TokenType::Divide => Self::Div,
             TokenType::Star => Self::Mult,
+            TokenType::IsEqual => Self::IsEqual,
             token => return Err(token),
         })
     }

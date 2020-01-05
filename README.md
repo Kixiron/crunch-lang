@@ -93,17 +93,22 @@ type Syven
             name: name,
             age: age,
         }
+    end
 
     fn greet(self) -> void
         @print "Hello {}! You are {} years old!\n", self.name, self.age
+    end
+end
 
 :: Functions can also be untyped
 fn hello(name, age)
     @print "Hello {}! You are {} years old!\n", name, age
+end
     
 :: This untyped function will be desugared into a generic function like this
 fn hello<T, E>(name: T, age E) -> void
     @print "Hello {}! You are {} years old!\n", name, age
+end
 
 :: Functions that do not specify a return type default to `void`
 fn main()
@@ -119,8 +124,15 @@ fn main()
     }
     syv.greet()
 
+    if syv.name != 'Syven'
+        @print "You aren't Syven!"
+    else
+        syv.greet()
+    end
+
     let syv = Syven.new("Syven", 22)
     syv.greet()
+end
 ```
 
 For imports, follow this structure
@@ -159,7 +171,7 @@ import lib 'my_library'
 To specify information about your package, use the `Compacter.crunch` file in the root of the project
 
 ```crunch
-import build exposing *
+import build exposing * :: Note: `build` is an intrinsic package, and so no decorator or quotes are needed
 
 :: Specify package information
 let package: Package = {
@@ -170,7 +182,7 @@ let package: Package = {
     homepage: "yourwebsite.com",            :: A link to the homepage of your package (Optional)
     repository: "github.com/yourpackage",   :: A link to the repository of your package (Optional)
     license: "MIT",                         :: The license your package is under (Optional)
-    license_file: "./MIT",                  :: The license file of your package (Optional, only needed for non-standard licenses)
+    license_file: "./LICENSE-MIT",                  :: The license file of your package (Optional, only needed for non-standard licenses)
     readme: "README.md",                    :: The link you your readme file (Optional)
     build: "build.crunch",                  :: The build script of your package (Optional)
 }
@@ -188,6 +200,8 @@ let dependencies: [Dependency] = [
     { name: "dependency-name", version: "0.1.0" }, :: Inline dependency
     dependency,                                    :: Previously declared dependency
 ]
+
+build(package, dependencies) :: `build` takes in a `Package` and a `[Dependency]`
 ```
 
 ## String Escapes:  
@@ -232,12 +246,41 @@ Bit Escape Codes: `\b{00000000}`
         #"         String
         #"             Literals
     ```
+    <details>
+    <summary>Possible alternative syntax</summary>
+    
+    ```
+    let string = 
+        ' Multi
+        '     Line
+        '         String
+        '             Literals
+    end
+
+    :: Alternatively,
+    let string = 
+        " Multi
+        "     Line
+        "         String
+        "             Literals
+    end
+    ```
+
+    </details>
 - [Poni-style](https://tutorial.ponylang.io/gotchas/divide-by-zero.html) operators  
     `+` vs `+?` vs `+!`  
     `int / int = int` Normal Divide (Division by zero results in zero)  
     `int /? int = result<int>` Checked Division (Dividing by zero will result in an error)  
     `int /! int = int` Crashing Division (Division by zero will result in a program halt)  
 - `<ret> if <cond> else <ret>`
+- `then` clauses on loops for if the loop executes un-broken
+    ```crunch
+    while true
+        :: ..snip
+    then
+        :: ..snip
+    end
+    ```
 
 ## CLI Options
 
