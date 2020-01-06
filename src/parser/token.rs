@@ -166,7 +166,6 @@ impl<'a> TokenIter<'a> {
         self.current = Token::new(self.lexer.token, self.lexer.slice(), self.lexer.range());
         self.lexer.advance();
 
-        //println!("{:?}", self.current);
         match self.current.ty {
             TokenType::End => None,
             _ => Some(self.current),

@@ -509,7 +509,7 @@ impl<'a> Parser<'a> {
     fn parse_ident_exprs(&mut self) -> Result<FuncExpr<'a>> {
         let ident = Ident::from_token(self.eat(TokenType::Ident)?, self.current_file);
 
-        let ident_expr = match dbg!(self.peek()?.ty) {
+        let ident_expr = match self.peek()?.ty {
             TokenType::LeftParen => {
                 let params = self.parse_inline_parameters()?;
                 self.eat(TokenType::Newline)?;
@@ -662,14 +662,11 @@ impl<'a> Parser<'a> {
 
         let cond = self.eat_of(&[TokenType::If, TokenType::Else])?;
         let cond = if cond.ty == TokenType::If {
-            println!("if");
             CondType::If
         } else if cond.ty == TokenType::Else && self.peek()?.ty == TokenType::If {
-            println!("else if");
             self.eat(TokenType::If)?;
             CondType::ElseIf
         } else if cond.ty == TokenType::Else {
-            println!("else");
             CondType::Else
         } else {
             unreachable!("The only valid conditionals should be `if`, `else if` and `else`")
@@ -897,6 +894,7 @@ impl<'a> Parser<'a> {
                 "str" => Type::String,
                 "int" => Type::Int,
                 "bool" => Type::Bool,
+                "any" => Type::Any,
                 custom => Type::Custom(Ident {
                     name: custom,
                     info: LocInfo {
@@ -1219,8 +1217,40 @@ mod tests {
         const CODE: &str = include_str!("../../examples/parse_test.crunch");
         const FILENAME: &str = "parse_test.crunch";
 
+        /*
+        use token::TokenType::*;
+        let _ = [
+            [
+                Load(I32(10), 31),
+                Load(Bool(true), 30),
+                Load(I32(1), 29),
+                Load(I32(10), 28),
+                Eq(29, 28),
+                OpToReg(29),
+                Drop(28),
+                Eq(29, 30),
+                Drop(29),
+                JumpComp(2),
+                Jump(5),
+                JumpPoint(2),
+                Load(Str("1 == 10"), 0),
+                Func(1),
+                Jump(5),
+                JumpPoint(3),
+                Load(Str("1 != 10"), 1),
+                Func(2),
+                Jump(1),
+                JumpPoint(1),
+                Drop(30),
+                Return,
+            ],
+            [Print(0), Return],
+            [Print(0), Load(Str("\n"), 31), Print(31), Drop(31), Return],
+        ];
+        */
+
         color_backtrace::install();
-        simple_logger::init().unwrap();
+        // simple_logger::init().unwrap();
 
         println!(
             "{:#?}",
@@ -1234,15 +1264,14 @@ mod tests {
                 println!("Parsing Successful\n{:#?}", &ast);
 
                 let options = crate::OptionBuilder::new("./examples/parse_test.crunch").build();
-                let bytecode = match crate::interpreter::Interpreter::new(ast.0.clone(), &options)
-                    .interpret()
-                {
-                    Ok(interp) => interp,
-                    Err(err) => {
-                        err.emit();
-                        panic!("Runtime error while compiling");
-                    }
-                };
+                let bytecode =
+                    match crate::interpreter::Interpreter::new(&options).interpret(ast.0.clone()) {
+                        Ok(interp) => interp,
+                        Err(err) => {
+                            err.emit();
+                            panic!("Runtime error while compiling");
+                        }
+                    };
                 println!("Bytecode: {:?}", bytecode);
 
                 crate::Crunch::run_source_file(

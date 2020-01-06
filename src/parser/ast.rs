@@ -26,6 +26,7 @@ pub enum Type<'a> {
     Bool,
     Void,
     Infer,
+    Any,
     Custom(Ident<'a>),
 }
 
@@ -38,6 +39,7 @@ impl<'a> fmt::Display for Type<'a> {
             Self::Bool => "bool",
             Self::Void => "void",
             Self::Infer => "infer",
+            Self::Any => "any",
             Self::Custom(ident) => &*ident.name,
         };
 

@@ -114,7 +114,7 @@ pub struct Register(pub u8);
 
 impl std::fmt::Debug for Register {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "r{:03}", self.0)
+        write!(f, "{:?}", self.0)
     }
 }
 

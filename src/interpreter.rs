@@ -5,7 +5,7 @@ use crate::{
     parser::*,
     Instruction, Options, Register, RuntimeValue,
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 use string_interner::Sym;
 
 #[derive(Debug, Copy, Clone)]
@@ -22,8 +22,7 @@ impl From<&Options> for InterpOptions {
 }
 
 #[derive(Debug, Clone)]
-pub struct Interpreter<'a> {
-    pub ast: Vec<Node<'a>>,
+pub struct Interpreter {
     pub gc: u32,
     pub functions: HashMap<String, (Vec<Instruction>, Option<usize>)>,
     pub current_function: Vec<Instruction>,
@@ -32,10 +31,9 @@ pub struct Interpreter<'a> {
     pub builder: CodeBuilder,
 }
 
-impl<'a> Interpreter<'a> {
-    pub fn new(ast: Vec<Node<'a>>, options: &Options) -> Self {
+impl Interpreter {
+    pub fn new(options: &Options) -> Self {
         Self {
-            ast,
             gc: 0,
             functions: HashMap::new(),
             current_function: Vec::new(),
@@ -46,8 +44,17 @@ impl<'a> Interpreter<'a> {
     }
 
     /// Interpret the contained ast and return the instructions
-    pub fn interpret(mut self) -> Result<Vec<Vec<Instruction>>> {
-        while let Some(node) = self.ast.pop() {
+    pub fn interpret<'a>(mut self, ast: Vec<Node<'a>>) -> Result<Vec<Vec<Instruction>>> {
+        self.interpret_module(ast)?;
+        let functions = self.builder.build()?;
+
+        trace!("Interp Output: {:?}", functions);
+
+        Ok(functions)
+    }
+
+    fn interpret_module<'a>(&mut self, mut ast: Vec<Node<'a>>) -> Result<()> {
+        while let Some(node) = ast.pop() {
             match node {
                 Node::Func(func) => {
                     // Interpret the function
@@ -63,44 +70,26 @@ impl<'a> Interpreter<'a> {
                     self.functions.insert(name, (func, index));
                 }
 
-                n => {
-                    error!("Top level node can not yet be interpreted: {:?}", n);
-                    continue;
+                Node::Import(import) => {
+                    self.interpret_import(import)?;
                 }
             }
         }
 
-        let functions = self.builder.build()?;
-
-        trace!("Interp Output: {:?}", functions);
-
-        Ok(functions)
+        Ok(())
     }
 
-    /*
-    unsafe fn interpret_external_file(
-        &mut self,
-        node_index: usize,
-    ) -> Result<(Vec<Node<'a>>, Vec<codespan_reporting::diagnostic::Diagnostic>), Vec<codespan_reporting::diagnostic::Diagnostic>> {
-        let import = if let Node::Import(import) = self.ast.remove(node_index) {
-            import
-        } else {
-            unreachable!("Should be an already confirmed import");
-        };
-
-        // pub struct Import<'a> {
-        //     pub file: std::path::PathBuf,
-        //     pub alias: Option<Ident<'a>>,
-        //     pub exposes: Exposes<'a>,
-        //     pub ty: ImportType,
-        // }
-
+    fn interpret_import<'a>(&mut self, import: Import<'a>) -> Result<()> {
         if import.ty == ImportType::File {
-            // Opens the imported file and reads it's contents to a string
+            // TODO: allow importing folders
+
             let contents = {
                 use std::{fs::File, io::Read};
 
-                let mut file = match File::open(&import.file) {
+                let mut path = PathBuf::from("./");
+                path.push(&import.file);
+
+                let mut file = match File::open(&path.with_extension("crunch")) {
                     Ok(file) => file,
                     Err(err) => {
                         error!("Error opening imported file: {:?}", err);
@@ -126,19 +115,33 @@ impl<'a> Interpreter<'a> {
                 contents
             };
 
-            let parser = Parser::new(Some(&import.file), &contents);
+            let file_name = import.file.to_string_lossy();
+            let parser = match Parser::new(Some(&*file_name), &contents).parse() {
+                Ok((ast, _diagnostics)) => {
+                    // TODO: Emit errors
+                    ast
+                }
+                Err(_err) => {
+                    // TODO: Emit errors
+                    return Err(RuntimeError {
+                        ty: RuntimeErrorTy::CompilationError,
+                        message: format!("The dependency '{}' failed to compile", file_name),
+                    });
+                }
+            };
 
-            let parsed
+            self.interpret_module(parser)?;
         } else {
             unimplemented!(
                 "The import type {:?} has not been implemented yet",
                 import.ty
             );
         }
-    }
-    */
 
-    fn load_binding_val(
+        Ok(())
+    }
+
+    fn load_binding_val<'a>(
         &mut self,
         builder: &mut CodeBuilder,
         ctx: &mut FunctionContext,
@@ -253,10 +256,11 @@ impl<'a> Interpreter<'a> {
     }
 
     /// Interpret a function
-    fn interp_func(&mut self, mut func: Func<'a>) -> Result<(String, Option<usize>)> {
+    fn interp_func<'a>(&mut self, mut func: Func<'a>) -> Result<(String, Option<usize>)> {
         let mut builder = CodeBuilder::new();
         std::mem::swap(&mut builder, &mut self.builder);
 
+        let function_name = func.name.name.to_string();
         let body = {
             let mut body = Vec::new();
             std::mem::swap(&mut func.body, &mut body);
@@ -264,6 +268,10 @@ impl<'a> Interpreter<'a> {
         };
 
         builder.function(func.name.name, |builder, ctx| {
+            for param in func.params.into_iter().take(5) {
+                ctx.reserve_caller_reg(builder.intern(param.name.name))?;
+            }
+
             // For each expression in the function, evaluate it into instructions
             for expr in body {
                 self.interp_func_body(builder, ctx, expr)?
@@ -275,12 +283,12 @@ impl<'a> Interpreter<'a> {
         std::mem::swap(&mut builder, &mut self.builder);
         drop(builder);
 
-        let index = match func.name.name {
+        let index = match &*function_name {
             "main" => None,
             _ => Some(self.get_next_func_id()),
         };
 
-        Ok((func.name.name.to_string(), index))
+        Ok((function_name.to_string(), index))
     }
 
     pub fn get_next_func_id(&mut self) -> usize {
@@ -288,7 +296,7 @@ impl<'a> Interpreter<'a> {
         self.func_index
     }
 
-    fn interp_func_body(
+    fn interp_func_body<'a>(
         &mut self,
         builder: &mut CodeBuilder,
         ctx: &mut FunctionContext,
@@ -306,7 +314,7 @@ impl<'a> Interpreter<'a> {
                 let mut bodies: Vec<
                     Box<
                         dyn FnOnce(
-                            &mut Interpreter<'a>,
+                            &mut Interpreter,
                             &mut CodeBuilder,
                             &mut FunctionContext,
                         ) -> Result<()>,
@@ -363,7 +371,6 @@ impl<'a> Interpreter<'a> {
             FuncExpr::Binding(binding) => {
                 let name = builder.intern(binding.name.name);
                 self.load_binding_val(builder, ctx, binding.val, name)?;
-                dbg!(&ctx.registers);
             }
 
             // Compiler builtin functions
@@ -489,12 +496,51 @@ impl<'a> Interpreter<'a> {
             FuncExpr::FuncCall(func_call) => {
                 let func_name = builder.intern(func_call.func_name.name);
 
-                // TODO: Pass parameters somehow
+                let mut caller_registers = Vec::with_capacity(func_call.params.len());
+                for param in func_call.params {
+                    caller_registers.push(self.reserve_ident_literal(param, builder, ctx)?);
+                }
+
                 ctx.inst_func_call(func_name);
+
+                for register in caller_registers {
+                    ctx.inst_drop(register);
+                }
             }
             FuncExpr::Assign(_) => unimplemented!(),
         }
 
         Ok(())
+    }
+
+    fn reserve_ident_literal<'a>(
+        &mut self,
+        ident_literal: IdentLiteral<'a>,
+        builder: &mut CodeBuilder,
+        ctx: &mut FunctionContext,
+    ) -> Result<Register> {
+        match ident_literal {
+            IdentLiteral::Literal(literal) => {
+                let reg = ctx.reserve_caller_reg(None)?;
+                ctx.inst_load(reg, literal.val.into());
+
+                Ok(reg)
+            }
+
+            IdentLiteral::Variable(variable) => {
+                let ident = builder.intern(variable.name);
+                let reg = if let Ok(reg) = ctx.get_cached_reg(ident) {
+                    reg
+                } else {
+                    error!("Failed to find variable for Print parameter");
+                    return Err(RuntimeError {
+                        ty: RuntimeErrorTy::NullVar,
+                        message: format!("The variable {:?} does not exist", variable.name),
+                    });
+                };
+
+                Ok(reg)
+            }
+        }
     }
 }

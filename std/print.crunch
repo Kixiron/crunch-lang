@@ -1,0 +1,7 @@
+fn print(string: str)
+    @print string
+end
+
+fn println(string: str)
+    @print string, '\n'
+end

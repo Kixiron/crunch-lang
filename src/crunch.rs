@@ -68,7 +68,7 @@ impl Crunch {
         );
 
         match parser.parse() {
-            Ok(ast) => match Interpreter::new(ast.0.clone(), &options).interpret() {
+            Ok(ast) => match Interpreter::new(&options).interpret(ast.0.clone()) {
                 Ok(functions) => {
                     info!("Executing Crunch Program");
 
@@ -214,7 +214,7 @@ impl Crunch {
                         println!("[Program AST]: {:#?}", &ast);
                     }
 
-                    match Interpreter::new(ast.0.clone(), &options).interpret() {
+                    match Interpreter::new(&options).interpret(ast.0.clone()) {
                         Ok(functions) => {
                             if repl_outputs.contains(&ReplOutput::Bytecode) {
                                 println!(

@@ -1,0 +1,7 @@
+base_url = "https://crunch-lang.dev"
+compile_sass = true
+highlight_code = true
+build_search_index = true
+theme = "book"
+
+[extra]

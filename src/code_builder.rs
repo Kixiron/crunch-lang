@@ -17,6 +17,7 @@ use string_interner::{StringInterner, Sym};
 pub trait Ident: Into<String> + AsRef<str> {}
 impl<T: Into<String> + AsRef<str>> Ident for T {}
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum MangleStatus {
     Function,
     Global,
@@ -24,27 +25,42 @@ pub enum MangleStatus {
     Type,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Visibility {
+    Namespace,
+    Private,
+    Public,
+}
+
+#[derive(Debug, Clone)]
+pub struct Namespace {
+    functions: HashMap<Sym, (Visibility, FunctionContext)>,
+    types: HashMap<Sym, (Visibility, TypeContext)>,
+}
+
 #[derive(Debug, Clone)]
 pub struct CodeBuilder {
-    functions: HashMap<Sym, (FunctionContext, Option<u32>)>,
-    pub interner: StringInterner<Sym>,
+    namespaces: HashMap<Sym, HashMap<Sym, (FunctionContext, Option<u32>)>>,
+    interner: StringInterner<Sym>,
     gc_ids: HashSet<u32>,
     local_symbols: HashMap<Sym, u32>,
     rng: SmallRng,
     func_index: u32,
     last_jump_id: u32,
+    current_namespace: Option<Sym>,
 }
 
 impl CodeBuilder {
     pub fn new() -> Self {
         Self {
-            functions: HashMap::new(),
+            namespaces: HashMap::new(),
             interner: StringInterner::new(),
             gc_ids: HashSet::new(),
             local_symbols: HashMap::new(),
             rng: SmallRng::from_entropy(),
             func_index: 1,
             last_jump_id: 0,
+            current_namespace: None,
         }
     }
 
@@ -53,14 +69,23 @@ impl CodeBuilder {
         N: Ident,
         F: FnOnce(&mut Self, &mut FunctionContext) -> Result<()>,
     {
-        let name = self.intern(name);
-        let mut context = FunctionContext::new();
+        if let Some(namespace) = self.current_namespace {
+            let namespace = self
+                .namespaces
+                .get_mut(&namespace)
+                .expect("If in a namespace, then the namespace should be in namespaces");
 
-        (function)(self, &mut context)?;
+            let name = self.intern(name);
+            let mut context = FunctionContext::new();
 
-        self.functions.insert(name, (context, None));
+            (function)(self, &mut context)?;
 
-        Ok(())
+            namespace.insert(name, (context, None));
+
+            Ok(())
+        } else {
+            panic!("Attempted to build a function without entering a namespace");
+        }
     }
 
     #[inline]
@@ -134,21 +159,25 @@ impl CodeBuilder {
     pub fn build(mut self) -> Result<Vec<Vec<Instruction>>> {
         let mut functions = Vec::new();
 
-        for (sym, (func, _index)) in self.functions.clone() {
-            let mut func = func.build(&mut self)?;
+        let mut namespaces = HashMap::new();
 
-            if func[func.len() - 1] != Instruction::Return {
-                func.push(Instruction::Return);
-            }
+        for (sym, namespace) in self.namespaces.into_iter() {
+            for (sym, (func, index)) in namespace.into_iter() {
+                let mut func = func.build(&mut self)?;
 
-            if let Some(ident) = self.interner.resolve(sym) {
-                if ident == "main" {
-                    functions.insert(0, func);
-                } else {
-                    functions.push(func);
+                if func[func.len() - 1] != Instruction::Return {
+                    func.push(Instruction::Return);
                 }
-            } else {
-                error!("Unresolved function name: {:?}", sym);
+
+                if let Some(ident) = self.interner.resolve(sym) {
+                    if ident == "main" {
+                        functions.insert(0, func);
+                    } else {
+                        functions.push(func);
+                    }
+                } else {
+                    error!("Unresolved function name: {:?}", sym);
+                }
             }
         }
 
@@ -166,10 +195,29 @@ impl Scope {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Type {
+    Int,
+    Float,
+    String,
+    Bool,
+    Void,
+    Infer,
+    Any,
+    Custom(Sym),
+}
+
+#[derive(Debug, Clone)]
+pub struct TypeContext {
+    name: Sym,
+    members: HashMap<Sym, Type>,
+    methods: HashMap<Sym, (Visibility, FunctionContext)>,
+}
+
+#[derive(Debug, Clone)]
 pub struct FunctionContext {
-    pub registers: [Option<Option<Sym>>; NUMBER_REGISTERS],
-    pub variables: HashSet<Sym>,
+    registers: [Option<Option<Sym>>; NUMBER_REGISTERS],
+    variables: HashSet<Sym>,
     block: Vec<PartialInstruction>,
     pub scope: Scope,
 }
@@ -196,15 +244,40 @@ impl FunctionContext {
     }
 
     #[inline]
-    pub fn reserve_reg(&mut self, sym: impl Into<Option<Sym>>) -> Result<Register> {
-        match self.registers.iter().rev().position(|r| r.is_none()) {
-            Some(pos) => {
+    pub fn reserve_caller_reg(&mut self, sym: impl Into<Option<Sym>>) -> Result<Register> {
+        match self.registers.iter().take(5).position(Option::is_none) {
+            Some(idx) => {
                 let sym = sym.into();
-                trace!("Reserving register {} for {:?}", pos, sym);
+                trace!("Reserving register {} for {:?}", idx, sym);
 
-                self.registers[pos] = Some(sym);
-                dbg!(self.registers[pos]);
-                Ok((pos as u8).into())
+                self.registers[idx] = Some(sym);
+                Ok((idx as u8).into())
+            }
+            None => {
+                error!("Failed to find avaliable register");
+                Err(RuntimeError {
+                    ty: RuntimeErrorTy::CompilationError,
+                    message: "Failed to fetch available register".to_string(),
+                })
+            }
+        }
+    }
+
+    #[inline]
+    pub fn reserve_reg(&mut self, sym: impl Into<Option<Sym>>) -> Result<Register> {
+        match self
+            .registers
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_idx, r)| r.is_none())
+        {
+            Some((idx, _)) => {
+                let sym = sym.into();
+                trace!("Reserving register {} for {:?}", idx, sym);
+
+                self.registers[idx] = Some(sym);
+                Ok((idx as u8).into())
             }
             None => {
                 error!("Failed to find avaliable register");
@@ -437,27 +510,6 @@ impl FunctionContext {
     }
 }
 
-impl fmt::Debug for FunctionContext {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("FunctionContext")
-            .field("block", &self.block)
-            .field(
-                "registers",
-                &("[".to_string()
-                    + &self
-                        .registers
-                        .iter()
-                        .map(|v| format!("{:?}", v))
-                        .collect::<Vec<String>>()
-                        .join(", ")
-                    + "]"),
-            )
-            .field("variables", &self.variables)
-            .field("block", &self.block)
-            .finish()
-    }
-}
-
 #[derive(Clone, Debug)]
 struct PartialInstruction {
     uninit_inst: Instruction,
@@ -504,7 +556,7 @@ impl PartialInstruction {
                     };
 
                     let entry = builder
-                        .functions
+                        .namespaces
                         .get_mut(
                             &self
                                 .func_sym
