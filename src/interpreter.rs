@@ -6,7 +6,7 @@ use crate::{
     Instruction, Options, Register, RuntimeValue,
 };
 use std::{collections::HashMap, path::PathBuf};
-use string_interner::Sym;
+use string_interner::{StringInterner, Sym};
 
 #[derive(Debug, Copy, Clone)]
 pub struct InterpOptions {
@@ -24,7 +24,7 @@ impl From<&Options> for InterpOptions {
 #[derive(Debug, Clone)]
 pub struct Interpreter {
     pub gc: u32,
-    pub functions: HashMap<String, (Vec<Instruction>, Option<usize>)>,
+    pub functions: HashMap<Sym, (Vec<Instruction>, Option<usize>)>,
     pub current_function: Vec<Instruction>,
     pub options: InterpOptions,
     pub func_index: usize,
@@ -43,8 +43,19 @@ impl Interpreter {
         }
     }
 
+    pub fn from_interner(options: &Options, interner: StringInterner<Sym>) -> Self {
+        Self {
+            gc: 0,
+            functions: HashMap::new(),
+            current_function: Vec::new(),
+            options: InterpOptions::from(options),
+            func_index: 0,
+            builder: CodeBuilder::from_interner(interner),
+        }
+    }
+
     /// Interpret the contained ast and return the instructions
-    pub fn interpret<'a>(mut self, ast: Vec<Node<'a>>) -> Result<Vec<Vec<Instruction>>> {
+    pub fn interpret<'a>(mut self, ast: Vec<Program>) -> Result<Vec<Vec<Instruction>>> {
         self.interpret_module(ast)?;
         let functions = self.builder.build()?;
 
@@ -53,10 +64,10 @@ impl Interpreter {
         Ok(functions)
     }
 
-    fn interpret_module<'a>(&mut self, mut ast: Vec<Node<'a>>) -> Result<()> {
+    fn interpret_module<'a>(&mut self, mut ast: Vec<Program>) -> Result<()> {
         while let Some(node) = ast.pop() {
             match node {
-                Node::Func(func) => {
+                Program::FunctionDecl(func) => {
                     // Interpret the function
                     let (name, index) = self.interp_func(func)?;
 
@@ -70,77 +81,88 @@ impl Interpreter {
                     self.functions.insert(name, (func, index));
                 }
 
-                Node::Import(import) => {
+                Program::Import(import) => {
                     self.interpret_import(import)?;
                 }
+
+                _ => todo!("Implement all Program-level nodes"),
             }
         }
 
         Ok(())
     }
 
-    fn interpret_import<'a>(&mut self, import: Import<'a>) -> Result<()> {
-        if import.ty == ImportType::File {
-            // TODO: allow importing folders
+    fn interpret_import<'a>(&mut self, import: Import) -> Result<()> {
+        match import.source {
+            ImportSource::File(relative_path) => {
+                // TODO: allow importing folders
 
-            let contents = {
-                use std::{fs::File, io::Read};
+                let contents = {
+                    use std::{fs::File, io::Read};
 
-                let mut path = PathBuf::from("./");
-                path.push(&import.file);
+                    let mut path = PathBuf::from("./");
+                    path.push(&relative_path);
 
-                let mut file = match File::open(&path.with_extension("crunch")) {
-                    Ok(file) => file,
-                    Err(err) => {
-                        error!("Error opening imported file: {:?}", err);
+                    let mut file = match File::open(&path.with_extension("crunch")) {
+                        Ok(file) => file,
+                        Err(err) => {
+                            error!("Error opening imported file: {:?}", err);
+
+                            return Err(RuntimeError {
+                                ty: RuntimeErrorTy::FileError,
+                                message: format!(
+                                    "The file '{}' does not exist",
+                                    relative_path.display()
+                                ),
+                            });
+                        }
+                    };
+
+                    let mut contents = String::new();
+
+                    if let Err(err) = file.read_to_string(&mut contents) {
+                        error!("Error reading imported file: {:?}", err);
 
                         return Err(RuntimeError {
                             ty: RuntimeErrorTy::FileError,
-                            message: format!("The file '{}' does not exist", import.file.display()),
+                            message: format!("Cannot read the file '{}'", relative_path.display()),
+                        });
+                    }
+
+                    contents
+                };
+
+                let file_name = relative_path.to_string_lossy();
+                let parser = match Parser::new(Some(&*file_name), &contents).parse() {
+                    Ok((ast, _diagnostics)) => {
+                        // TODO: Emit errors
+                        ast
+                    }
+                    Err(_err) => {
+                        // TODO: Emit errors
+                        return Err(RuntimeError {
+                            ty: RuntimeErrorTy::CompilationError,
+                            message: format!("The dependency '{}' failed to compile", file_name),
                         });
                     }
                 };
 
-                let mut contents = String::new();
-
-                if let Err(err) = file.read_to_string(&mut contents) {
-                    error!("Error reading imported file: {:?}", err);
-
-                    return Err(RuntimeError {
-                        ty: RuntimeErrorTy::FileError,
-                        message: format!("Cannot read the file '{}'", import.file.display()),
-                    });
-                }
-
-                contents
-            };
-
-            let file_name = import.file.to_string_lossy();
-            let parser = match Parser::new(Some(&*file_name), &contents).parse() {
-                Ok((ast, _diagnostics)) => {
-                    // TODO: Emit errors
-                    ast
-                }
-                Err(_err) => {
-                    // TODO: Emit errors
-                    return Err(RuntimeError {
-                        ty: RuntimeErrorTy::CompilationError,
-                        message: format!("The dependency '{}' failed to compile", file_name),
-                    });
-                }
-            };
-
-            self.interpret_module(parser)?;
-        } else {
-            unimplemented!(
-                "The import type {:?} has not been implemented yet",
-                import.ty
-            );
+                self.interpret_module(parser)?;
+            }
+            ImportSource::Package(sym) => {
+                let _package = self.builder.interner.resolve(sym).unwrap();
+                todo!("Package code loading")
+            }
+            ImportSource::Native(sym) => {
+                let _path = self.builder.interner.resolve(sym).unwrap();
+                todo!("Native code loading")
+            }
         }
 
         Ok(())
     }
 
+    /*
     fn load_binding_val<'a>(
         &mut self,
         builder: &mut CodeBuilder,
@@ -254,27 +276,23 @@ impl Interpreter {
             _ => unimplemented!(),
         }
     }
+    */
 
     /// Interpret a function
-    fn interp_func<'a>(&mut self, mut func: Func<'a>) -> Result<(String, Option<usize>)> {
+    fn interp_func(&mut self, func: FunctionDecl) -> Result<(Sym, Option<usize>)> {
         let mut builder = CodeBuilder::new();
         std::mem::swap(&mut builder, &mut self.builder);
 
-        let function_name = func.name.name.to_string();
-        let body = {
-            let mut body = Vec::new();
-            std::mem::swap(&mut func.body, &mut body);
-            body
-        };
-
-        builder.function(func.name.name, |builder, ctx| {
-            for param in func.params.into_iter().take(5) {
-                ctx.reserve_caller_reg(builder.intern(param.name.name))?;
+        let func_name = func.name;
+        builder.function(func_name, |builder, ctx| {
+            // TODO: Accept more than 5 arguments
+            for (arg_name, _arg_type) in func.arguments.into_iter().take(5) {
+                ctx.reserve_caller_reg(arg_name)?;
             }
 
             // For each expression in the function, evaluate it into instructions
-            for expr in body {
-                self.interp_func_body(builder, ctx, expr)?
+            for statement in func.body {
+                self.statement(statement, builder, ctx)?;
             }
 
             Ok(())
@@ -283,12 +301,12 @@ impl Interpreter {
         std::mem::swap(&mut builder, &mut self.builder);
         drop(builder);
 
-        let index = match &*function_name {
-            "main" => None,
+        let index = match self.builder.interner.resolve(func_name) {
+            Some("main") => None,
             _ => Some(self.get_next_func_id()),
         };
 
-        Ok((function_name.to_string(), index))
+        Ok((func_name, index))
     }
 
     pub fn get_next_func_id(&mut self) -> usize {
@@ -296,16 +314,122 @@ impl Interpreter {
         self.func_index
     }
 
-    fn interp_func_body<'a>(
+    fn expr<'a>(
         &mut self,
         builder: &mut CodeBuilder,
         ctx: &mut FunctionContext,
-        expr: FuncExpr<'a>,
-    ) -> Result<()> {
+        expr: Expr,
+    ) -> Result<Register> {
         match expr {
-            FuncExpr::NoOp => return Ok(()),
+            Expr::Literal(literal) => {
+                let addr = ctx.reserve_reg(None)?;
 
-            FuncExpr::Conditional(conditional) => {
+                let value = match literal {
+                    Literal::String(sym) => RuntimeValue::Str(Box::leak(
+                        builder
+                            .interner
+                            .resolve(sym)
+                            .unwrap()
+                            .to_string()
+                            .into_boxed_str(),
+                    )),
+                    Literal::Integer(int) => RuntimeValue::I32(int),
+                    Literal::Boolean(boolean) => RuntimeValue::Bool(boolean),
+                };
+
+                ctx.inst_load(addr, value);
+
+                Ok(addr)
+            }
+            Expr::Range(_range) => todo!("What even do I do here?"),
+            Expr::Comparison(comparison) => {
+                let (left, right) = (
+                    self.expr(builder, ctx, *comparison.left)?,
+                    self.expr(builder, ctx, *comparison.right)?,
+                );
+
+                match comparison.comparison {
+                    Comparator::Equal => ctx.inst_eq(left, right),
+                    Comparator::NotEqual => ctx.inst_not_eq(left, right),
+                    Comparator::LessEqual => todo!("Make this instruction"),
+                    Comparator::GreaterEqual => todo!("Make this instruction"),
+                    Comparator::Less => todo!("Make this instruction"),
+                    Comparator::Greater => todo!("Make this instruction"),
+                };
+
+                todo!("Do I return a register?")
+            }
+            Expr::BinaryOperation(bin_op) => {
+                let (left, right) = (
+                    self.expr(builder, ctx, *bin_op.left)?,
+                    self.expr(builder, ctx, *bin_op.right)?,
+                );
+                let output = ctx.reserve_reg(None)?;
+
+                // TODO: Handle different operation types
+                match bin_op.op {
+                    (BinaryOp::Plus, _ty) => ctx.inst_add(left, right),
+                    (BinaryOp::Minus, _ty) => ctx.inst_sub(left, right),
+                    (BinaryOp::Mult, _ty) => ctx.inst_mult(left, right),
+                    (BinaryOp::Div, _ty) => ctx.inst_div(left, right),
+                    (BinaryOp::And, _ty) => ctx.inst_and(left, right),
+                    (BinaryOp::Or, _ty) => ctx.inst_or(left, right),
+                    (BinaryOp::Xor, _ty) => ctx.inst_xor(left, right),
+                };
+                ctx.inst_op_to_reg(output);
+
+                Ok(output)
+            }
+            Expr::Ident(sym) => ctx.get_cached_reg(sym),
+            Expr::Expr(expr) => self.expr(builder, ctx, *expr),
+
+            Expr::FunctionCall(func_call) => {
+                let mut caller_registers = Vec::with_capacity(func_call.arguments.len());
+                for expr in func_call.arguments {
+                    caller_registers.push(self.expr(builder, ctx, expr)?);
+                }
+
+                ctx.inst_func_call(func_call.name);
+
+                todo!("Resolve function's symbol, get return type(s) and acknowledge the returns")
+            }
+        }
+    }
+
+    fn statement(
+        &mut self,
+        statement: Statement,
+        builder: &mut CodeBuilder,
+        ctx: &mut FunctionContext,
+    ) -> Result<()> {
+        match statement {
+            Statement::Assign(assign) => {
+                let reg = ctx.get_cached_reg(assign.var)?;
+                let loaded = self.expr(builder, ctx, assign.expr)?;
+
+                ctx.inst_mov(reg, loaded).inst_drop(loaded);
+            }
+
+            Statement::While(_while_loop) => todo!(),
+            Statement::Loop(_loop_loop) => todo!(),
+            Statement::For(_for_loop) => todo!(),
+
+            Statement::VarDecl(var_decl) => {
+                let reg = ctx.reserve_reg(var_decl.name)?;
+                let loaded = self.expr(builder, ctx, var_decl.expr)?;
+
+                ctx.inst_mov(reg, loaded).inst_drop(loaded);
+            }
+
+            Statement::Return(_ret) => todo!(),
+            Statement::Continue => todo!(),
+            Statement::Break => todo!(),
+            Statement::Expr(expr) => {
+                self.expr(builder, ctx, expr)?;
+            }
+            Statement::Empty => {}
+
+            Statement::Conditional(conditional) => {
                 let endif = builder.next_jump_id();
 
                 let true_reg = ctx.reserve_reg(None)?;
@@ -321,19 +445,17 @@ impl Interpreter {
                     >,
                 > = Vec::new();
 
-                for If { condition, body } in conditional.if_clauses {
-                    let comparison = self.load_binding_val(builder, ctx, condition, None)?;
+                for If { condition, body } in conditional._if {
+                    self.expr(builder, ctx, condition)?;
                     let block_start = builder.next_jump_id();
 
-                    ctx.inst_eq(comparison, true_reg)
-                        .inst_drop(comparison)
-                        .inst_jump_comp(block_start);
+                    ctx.inst_jump_comp(block_start);
 
                     bodies.push(Box::new(move |interp, builder, ctx| {
                         ctx.inst_jump_point(block_start);
 
-                        for expr in body {
-                            interp.interp_func_body(builder, ctx, expr)?;
+                        for statement in body {
+                            interp.statement(statement, builder, ctx)?;
                         }
 
                         ctx.inst_jump(endif);
@@ -342,15 +464,15 @@ impl Interpreter {
                     }));
                 }
 
-                if let Some(body) = conditional.else_body {
+                if let Some(_else) = conditional._else {
                     let else_jump = builder.next_jump_id();
                     ctx.inst_jump(else_jump);
 
                     bodies.push(Box::new(move |interp, builder, ctx| {
                         ctx.inst_jump_point(else_jump);
 
-                        for expr in body {
-                            interp.interp_func_body(builder, ctx, expr)?;
+                        for statement in _else.body {
+                            interp.statement(statement, builder, ctx)?;
                         }
 
                         ctx.inst_jump(endif);
@@ -363,157 +485,15 @@ impl Interpreter {
                     (func)(self, builder, ctx)?;
                 }
 
-                ctx.inst_jump_point(endif);
-                ctx.inst_drop(true_reg);
+                ctx.inst_jump_point(endif).inst_drop(true_reg);
             }
-
-            // Bind a variable to a value
-            FuncExpr::Binding(binding) => {
-                let name = builder.intern(binding.name.name);
-                self.load_binding_val(builder, ctx, binding.val, name)?;
-            }
-
-            // Compiler builtin functions
-            FuncExpr::Builtin(builtin) => match builtin {
-                // GC Collection cycle
-                Builtin::Collect => {
-                    ctx.inst_collect();
-                }
-
-                // Halt execution
-                Builtin::Halt => {
-                    ctx.inst_halt();
-                }
-
-                Builtin::SyscallExit(_exit_code) => {
-                    unimplemented!("Syscalls have not been implemented");
-
-                    /*
-                    #[allow(unreachable_code)]
-                    match exit_code {
-                        // For literals fed into the print function, load them, print them, and drop them
-                        IdentLiteral::Literal(literal) => {
-                            let reg = ctx.reserve_reg()?;
-
-                            ctx.inst_load(reg, literal.val.into()).free_reg(reg);
-                        }
-
-                        // For existing variables, fetch them and print them
-                        IdentLiteral::Variable(variable) => {
-                            let ident = builder.intern(&*variable.name);
-                            let (_reg, _faulted) =
-                                if let Ok(reg) = ctx.get_cached_reg(ident) {
-                                    (reg, false)
-                                } else if self.options.fault_tolerant {
-                                    let reg = ctx.reserve_reg()?;
-                                    ctx.inst_load(reg, RuntimeValue::None);
-
-                                    (reg, true)
-                                } else {
-                                    return Err(RuntimeError {
-                                        ty: RuntimeErrorTy::NullVar,
-                                        message: format!(
-                                            "The variable {:?} does not exist",
-                                            &*variable.name
-                                        ),
-                                    });
-                                };
-                        }
-                    }
-                    */
-                }
-
-                // Print values
-                Builtin::Print(params) => {
-                    for param in params {
-                        match param {
-                            // For literals fed into the print function, load them, print them, and drop them
-                            IdentLiteral::Literal(literal) => {
-                                let reg = ctx.reserve_reg(None)?;
-
-                                // Literals can just be moved into a register
-                                ctx.inst_load(reg, literal.val.into())
-                                    .inst_print(reg)
-                                    .inst_drop(reg);
-                            }
-
-                            // For existing variables, fetch them and print them
-                            IdentLiteral::Variable(variable) => {
-                                let ident = builder.intern(variable.name);
-                                let (reg, faulted) = if let Ok(reg) = ctx.get_cached_reg(ident) {
-                                    (reg, false)
-                                } else if self.options.fault_tolerant {
-                                    let reg = ctx.reserve_reg(builder.intern(variable.name))?;
-                                    ctx.inst_load(reg, RuntimeValue::None);
-
-                                    (reg, true)
-                                } else {
-                                    error!("Failed to find variable for Print parameter");
-                                    return Err(RuntimeError {
-                                        ty: RuntimeErrorTy::NullVar,
-                                        message: format!(
-                                            "The variable {:?} does not exist",
-                                            variable.name
-                                        ),
-                                    });
-                                };
-
-                                ctx.inst_print(reg);
-
-                                if faulted {
-                                    ctx.free_reg(reg);
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-
-            // FuncExpr::Assign(assign) => {
-            //     // pub struct Assign<'a> {
-            //     //     pub name: Ident<'a>,
-            //     //     pub val: IdentLiteral<'a>,
-            //     //     pub info: LocInfo,
-            //     // }
-            //
-            //     // variables: HashMap<String, (Location, Type<'a>)>,
-            //
-            //     let var = if let Some(var) =
-            //         self.current_scope.variables.get(&*assign.name.name)
-            //     {
-            //         var
-            //     } else {
-            //         return Err(RuntimeError {
-            //             ty: RuntimeErrorTy::MissingValue,
-            //             message: "The variable being assigned to does not exist".to_string(),
-            //         });
-            //     };
-            //
-            //     let reg = self.reserve_reg(Some(var.0), None);
-            //
-            //     self.add_to_current(&[Instruction::Load( )]);
-            // }
-            FuncExpr::FuncCall(func_call) => {
-                let func_name = builder.intern(func_call.func_name.name);
-
-                let mut caller_registers = Vec::with_capacity(func_call.params.len());
-                for param in func_call.params {
-                    caller_registers.push(self.reserve_ident_literal(param, builder, ctx)?);
-                }
-
-                ctx.inst_func_call(func_name);
-
-                for register in caller_registers {
-                    ctx.inst_drop(register);
-                }
-            }
-            FuncExpr::Assign(_) => unimplemented!(),
         }
 
         Ok(())
     }
 
-    fn reserve_ident_literal<'a>(
+    /*
+    fn reserve_ident_literal(
         &mut self,
         ident_literal: IdentLiteral<'a>,
         builder: &mut CodeBuilder,
@@ -543,4 +523,5 @@ impl Interpreter {
             }
         }
     }
+    */
 }

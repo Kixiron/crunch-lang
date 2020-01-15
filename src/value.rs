@@ -559,3 +559,95 @@ impl fmt::Display for RuntimeValue {
         fmt.write_str(self.name())
     }
 }
+
+macro_rules! bytes {
+    ($discrim:tt, $int:expr, $ty:ty) => {{
+        let mut vec = Vec::with_capacity(size_of::<$ty>() + 1);
+        vec.push($discrim);
+        vec.extend_from_slice(&$int.to_le_bytes());
+        vec
+    }};
+}
+
+impl Into<Vec<u8>> for RuntimeValue {
+    fn into(self) -> Vec<u8> {
+        use std::mem::size_of;
+
+        match self {
+            Self::None => vec![0x00],
+            Self::Null => vec![0x01],
+
+            Self::Byte(int) => vec![0x02, int],
+            Self::U16(int) => bytes!(0x03, int, u16),
+            Self::U32(int) => bytes!(0x04, int, u32),
+            Self::U64(int) => bytes!(0x05, int, u64),
+            Self::U128(int) => bytes!(0x06, int, u128),
+
+            Self::IByte(int) => vec![0x07, int as u8],
+            Self::I16(int) => bytes!(0x08, int, i16),
+            Self::I32(int) => bytes!(0x09, int, i32),
+            Self::I64(int) => bytes!(0x0A, int, i64),
+            Self::I128(int) => bytes!(0x0B, int, i128),
+
+            Self::F32(int) => bytes!(0x0C, int, f32),
+            Self::F64(int) => bytes!(0x0D, int, f64),
+
+            Self::Pointer(int) => bytes!(0x0E, int, u16),
+
+            Self::Bool(boolean) => vec![0x0F, boolean as u8],
+
+            Self::Char(character) => bytes!(0x10, character as u32, u32),
+            Self::Str(string) => {
+                let bytes = string.as_bytes();
+
+                let mut vec = Vec::with_capacity(bytes.len() + 1);
+                vec.push(0x11);
+                vec.extend_from_slice(&bytes);
+                vec
+            }
+
+            _ => unimplemented!(),
+        }
+    }
+}
+
+impl From<&[u8]> for RuntimeValue {
+    fn from(bytes: &[u8]) -> Self {
+        use std::convert::TryInto;
+
+        match bytes[0] {
+            0x00 => Self::None,
+            0x01 => Self::Null,
+
+            0x02 => Self::Byte(bytes[1]),
+            0x03 => Self::U16(u16::from_le_bytes(bytes[1..].try_into().unwrap())),
+            0x04 => Self::U32(u32::from_le_bytes(bytes[1..].try_into().unwrap())),
+            0x05 => Self::U64(u64::from_le_bytes(bytes[1..].try_into().unwrap())),
+            0x06 => Self::U128(u128::from_le_bytes(bytes[1..].try_into().unwrap())),
+
+            0x07 => Self::IByte(bytes[1] as i8),
+            0x08 => Self::I16(i16::from_le_bytes(bytes[1..].try_into().unwrap())),
+            0x09 => Self::I32(i32::from_le_bytes(bytes[1..].try_into().unwrap())),
+            0x0A => Self::I64(i64::from_le_bytes(bytes[1..].try_into().unwrap())),
+            0x0B => Self::I128(i128::from_le_bytes(bytes[1..].try_into().unwrap())),
+
+            0x0C => Self::F32(f32::from_le_bytes(bytes[1..].try_into().unwrap())),
+            0x0D => Self::F64(f64::from_le_bytes(bytes[1..].try_into().unwrap())),
+
+            0x0E => Self::Pointer(usize::from_le_bytes(bytes[1..].try_into().unwrap())),
+
+            0x0F => Self::Bool(bytes[1] > 0),
+
+            0x10 => Self::Char(
+                std::char::from_u32(u32::from_le_bytes(bytes[1..].try_into().unwrap())).unwrap(),
+            ),
+            0x11 => Self::Str(Box::leak(
+                String::from_utf8(bytes[1..].to_vec())
+                    .unwrap()
+                    .into_boxed_str(),
+            )),
+
+            _ => unimplemented!(),
+        }
+    }
+}

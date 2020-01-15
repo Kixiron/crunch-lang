@@ -57,10 +57,6 @@ pub enum TokenType {
     Space,
     #[regex = "::[^\r\n]*"]
     Comment,
-    #[token = "    "]
-    #[token = "\t"]
-    Indent,
-    Dedent,
     #[token = "\n"]
     #[token = "\r\n"]
     Newline,
@@ -89,10 +85,28 @@ pub enum TokenType {
     SyscallExit,
     #[token = "lib"]
     Library,
-    #[token = "pkg"]
-    Package,
     #[token = "end"]
     EndBlock,
+    #[token = "<"]
+    LeftCaret,
+    #[token = ">"]
+    RightCaret,
+    #[token = "bin"]
+    Binary,
+    #[token = "exposed"]
+    Exposed,
+    #[token = "empty"]
+    Empty,
+    #[token = "then"]
+    Then,
+    #[token = "for"]
+    For,
+    #[token = "return"]
+    Return,
+    #[token = "continue"]
+    Continue,
+    #[token = "break"]
+    Break,
 }
 
 impl std::fmt::Display for TokenType {
@@ -121,12 +135,10 @@ impl std::fmt::Display for TokenType {
             Self::LeftBracket => "{",
             Self::RightBracket => "}",
             Self::Ident => "Ident",
-            Self::Dedent => "Dedent",
             Self::Int => "int",
             Self::String => "str",
             Self::Space => " ",
             Self::Comment => "Comment",
-            Self::Indent => "Indent",
             Self::Newline => "Newline",
             Self::RightArrow => "->",
             Self::LeftArrow => "<-",
@@ -140,8 +152,17 @@ impl std::fmt::Display for TokenType {
             Self::As => "as",
             Self::SyscallExit => "@exit",
             Self::Library => "lib",
-            Self::Package => "pkg",
             Self::EndBlock => "end",
+            Self::LeftCaret => "<",
+            Self::RightCaret => ">",
+            Self::Return => "return",
+            Self::Continue => "continue",
+            Self::Break => "break",
+            Self::Binary => "bin",
+            Self::Exposed => "exposed",
+            Self::Empty => "empty",
+            Self::Then => "then",
+            Self::For => "for",
         };
 
         write!(f, "{}", string)
@@ -278,7 +299,7 @@ impl<'a> TokenStream<'a> {
     pub fn next_token(&mut self) -> Option<Token<'a>> {
         if let Some(token) = self.token_stream.next() {
             match token.ty {
-                TokenType::Space | TokenType::Indent | TokenType::Dedent => self.next_token(),
+                TokenType::Space => self.next_token(),
                 TokenType::Comment if self.skip_comments => self.next_token(),
                 TokenType::End => None,
                 _ => Some(token),

@@ -8,10 +8,7 @@ use rand::{
     rngs::SmallRng,
     Rng, SeedableRng,
 };
-use std::{
-    collections::{HashMap, HashSet},
-    fmt,
-};
+use std::collections::{HashMap, HashSet};
 use string_interner::{StringInterner, Sym};
 
 pub trait Ident: Into<String> + AsRef<str> {}
@@ -40,8 +37,8 @@ pub struct Namespace {
 
 #[derive(Debug, Clone)]
 pub struct CodeBuilder {
-    namespaces: HashMap<Sym, HashMap<Sym, (FunctionContext, Option<u32>)>>,
-    interner: StringInterner<Sym>,
+    functions: HashMap<Sym, (FunctionContext, Option<u32>)>,
+    pub interner: StringInterner<Sym>,
     gc_ids: HashSet<u32>,
     local_symbols: HashMap<Sym, u32>,
     rng: SmallRng,
@@ -53,7 +50,7 @@ pub struct CodeBuilder {
 impl CodeBuilder {
     pub fn new() -> Self {
         Self {
-            namespaces: HashMap::new(),
+            functions: HashMap::new(),
             interner: StringInterner::new(),
             gc_ids: HashSet::new(),
             local_symbols: HashMap::new(),
@@ -64,28 +61,30 @@ impl CodeBuilder {
         }
     }
 
-    pub fn function<N, F>(&mut self, name: N, function: F) -> Result<()>
+    pub fn from_interner(interner: StringInterner<Sym>) -> Self {
+        Self {
+            functions: HashMap::new(),
+            interner,
+            gc_ids: HashSet::new(),
+            local_symbols: HashMap::new(),
+            rng: SmallRng::from_entropy(),
+            func_index: 1,
+            last_jump_id: 0,
+            current_namespace: None,
+        }
+    }
+
+    pub fn function<F>(&mut self, name: Sym, function: F) -> Result<()>
     where
-        N: Ident,
         F: FnOnce(&mut Self, &mut FunctionContext) -> Result<()>,
     {
-        if let Some(namespace) = self.current_namespace {
-            let namespace = self
-                .namespaces
-                .get_mut(&namespace)
-                .expect("If in a namespace, then the namespace should be in namespaces");
+        let mut context = FunctionContext::new();
 
-            let name = self.intern(name);
-            let mut context = FunctionContext::new();
+        (function)(self, &mut context)?;
 
-            (function)(self, &mut context)?;
+        self.functions.insert(name, (context, None));
 
-            namespace.insert(name, (context, None));
-
-            Ok(())
-        } else {
-            panic!("Attempted to build a function without entering a namespace");
-        }
+        Ok(())
     }
 
     #[inline]
@@ -159,25 +158,21 @@ impl CodeBuilder {
     pub fn build(mut self) -> Result<Vec<Vec<Instruction>>> {
         let mut functions = Vec::new();
 
-        let mut namespaces = HashMap::new();
+        for (sym, (func, _index)) in self.functions.clone().into_iter() {
+            let mut func = func.build(&mut self)?;
 
-        for (sym, namespace) in self.namespaces.into_iter() {
-            for (sym, (func, index)) in namespace.into_iter() {
-                let mut func = func.build(&mut self)?;
+            if func[func.len() - 1] != Instruction::Return {
+                func.push(Instruction::Return);
+            }
 
-                if func[func.len() - 1] != Instruction::Return {
-                    func.push(Instruction::Return);
-                }
-
-                if let Some(ident) = self.interner.resolve(sym) {
-                    if ident == "main" {
-                        functions.insert(0, func);
-                    } else {
-                        functions.push(func);
-                    }
+            if let Some(ident) = self.interner.resolve(sym) {
+                if ident == "main" {
+                    functions.insert(0, func);
                 } else {
-                    error!("Unresolved function name: {:?}", sym);
+                    functions.push(func);
                 }
+            } else {
+                error!("Unresolved function name: {:?}", sym);
             }
         }
 
@@ -334,6 +329,16 @@ impl FunctionContext {
     pub fn inst_load(&mut self, register: impl Into<Register>, value: RuntimeValue) -> &mut Self {
         self.block
             .push(Instruction::Load(value, register.into()).into());
+
+        self
+    }
+    pub fn inst_mov(
+        &mut self,
+        target: impl Into<Register>,
+        source: impl Into<Register>,
+    ) -> &mut Self {
+        self.block
+            .push(Instruction::Move(target.into(), source.into()).into());
 
         self
     }
@@ -556,7 +561,7 @@ impl PartialInstruction {
                     };
 
                     let entry = builder
-                        .namespaces
+                        .functions
                         .get_mut(
                             &self
                                 .func_sym
@@ -595,8 +600,9 @@ mod tests {
     fn codebuilder_test() {
         let mut builder = CodeBuilder::new();
 
+        let main = builder.intern("main");
         builder
-            .function("main", |builder, ctx| {
+            .function(main, |builder, ctx| {
                 ctx.inst_load(0, RuntimeValue::Str("Hello from the main function!\n"))
                     .inst_print(0)
                     .inst_drop(0)
@@ -613,8 +619,9 @@ mod tests {
             })
             .unwrap();
 
+        let test = builder.intern("test");
         builder
-            .function("test", |_builder, ctx| {
+            .function(test, |_builder, ctx| {
                 ctx.inst_load(0, RuntimeValue::Str("Hello from the test function!\n"))
                     .inst_print(0)
                     .inst_drop(0)

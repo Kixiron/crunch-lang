@@ -86,7 +86,7 @@ util_ops! {
 }
 
 /// The id of a currently allocated object
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct AllocId(pub usize);
 

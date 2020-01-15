@@ -119,7 +119,7 @@ impl Instruction {
             Self::CompToReg(reg) => functions::comp_to_reg(vm, **reg)?,
             Self::OpToReg(reg) => functions::comp_to_reg(vm, **reg)?,
             Self::Drop(reg) => functions::drop(vm, **reg)?,
-            Self::Move(input, output) => functions::mov(vm, **input, **output)?,
+            Self::Move(target, source) => functions::mov(vm, **target, **source)?,
 
             Self::Add(left, right) => functions::add(vm, **left, **right)?,
             Self::Sub(left, right) => functions::sub(vm, **left, **right)?,
@@ -556,7 +556,7 @@ mod tests {
                 let (discard, discard_id) = vm.gc.allocate(std::mem::size_of::<RuntimeValue>()).unwrap();
                 unsafe {
                     vm.gc
-                        .write(discard_id, RuntimeValue::I32(int), Some(&discard))
+                        .write(discard_id, &<RuntimeValue as Into<Vec<u8>>>::into(RuntimeValue::I32(int)), Some(&discard))
                         .expect("here");
                 }
                 vm.gc.add_root(discard);

@@ -41,10 +41,10 @@ pub fn drop(vm: &mut Vm, reg: u8) -> Result<()> {
     Ok(())
 }
 
-pub fn mov(vm: &mut Vm, input: u8, output: u8) -> Result<()> {
-    trace!("Moving {} to {}", input, output);
+pub fn mov(vm: &mut Vm, target: u8, source: u8) -> Result<()> {
+    trace!("Moving {} to {}", source, target);
 
-    vm.registers[output as usize] = vm.registers[input as usize].clone();
+    vm.registers[target as usize] = vm.registers[source as usize].clone();
     vm.index += Index(1);
 
     Ok(())

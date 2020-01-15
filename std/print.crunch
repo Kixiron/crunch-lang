@@ -1,7 +1,7 @@
 fn print(string: str)
-    @print string
+    empty
 end
 
 fn println(string: str)
-    @print string, '\n'
+    empty
 end

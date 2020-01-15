@@ -1,349 +1,229 @@
-use super::TokenType;
-use crate::RuntimeValue;
-use codespan::{FileId, Span};
-use std::fmt;
-
-#[derive(Clone)]
-pub enum Node<'a> {
-    Func(Func<'a>),
-    Import(Import<'a>),
-}
-
-impl<'a> fmt::Debug for Node<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Func(func) => write!(f, "{:#?}", func),
-            Self::Import(import) => write!(f, "{:#?}", import),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Type<'a> {
-    Int,
-    Float,
-    String,
-    Bool,
-    Void,
-    Infer,
-    Any,
-    Custom(Ident<'a>),
-}
-
-impl<'a> fmt::Display for Type<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let string = match self {
-            Self::Int => "int",
-            Self::Float => "float",
-            Self::String => "str",
-            Self::Bool => "bool",
-            Self::Void => "void",
-            Self::Infer => "infer",
-            Self::Any => "any",
-            Self::Custom(ident) => &*ident.name,
-        };
-
-        write!(f, "{}", string)
-    }
-}
-
-#[derive(Clone)]
-pub struct LocInfo {
-    pub span: Span,
-    pub file: FileId,
-}
-
-impl fmt::Display for LocInfo {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "LocInfo {{ file: {}, span: {}..{} }}",
-            format!("{:?}", self.file)
-                .replace("FileId", "")
-                .replace("(", "")
-                .replace(")", ""),
-            self.span.start(),
-            self.span.end()
-        )
-    }
-}
-
-impl fmt::Debug for LocInfo {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "LocInfo {{ file: {}, span: {}..{} }}",
-            format!("{:?}", self.file)
-                .replace("FileId", "")
-                .replace("(", "")
-                .replace(")", ""),
-            self.span.start(),
-            self.span.end()
-        )
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Ident<'a> {
-    pub name: &'a str,
-    pub info: LocInfo,
-}
-
-impl<'a> PartialEq for Ident<'a> {
-    fn eq(&self, other: &Self) -> bool {
-        *self.name == *other.name
-    }
-}
-
-impl<'a> Eq for Ident<'a> {}
-
-impl<'a> Ident<'a> {
-    #[must_use]
-    pub fn from_token(token: super::Token<'a>, file: FileId) -> Self {
-        Self {
-            name: token.source,
-            info: LocInfo {
-                span: Span::new(token.range.0, token.range.1),
-                file,
-            },
-        }
-    }
-}
-
-// #[derive(Debug, Clone)]
-// pub struct TypeDecl<'a> {
-//     pub name: Ident<'a>,
-//     pub members: Vec<TypeMember<'a>>,
-//     pub methods: Vec<TypeMethod<'a>>,
-// }
-//
-// #[derive(Debug, Clone)]
-// pub enum TypeMemberOrMethod<'a> {
-//     Member(TypeMember<'a>),
-//     Method(TypeMethod<'a>),
-// }
-
-#[derive(Debug, Clone)]
-pub struct Import<'a> {
-    pub file: std::path::PathBuf,
-    pub alias: Option<Ident<'a>>,
-    pub exposes: Exposes<'a>,
-    pub ty: ImportType,
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum ImportType {
-    File,
-    Package,
-    Library,
-}
-
-#[derive(Debug, Clone)]
-pub enum Exposes<'a> {
-    All,
-    File,
-    Some(Vec<(Ident<'a>, Option<Ident<'a>>)>),
-}
-
-#[derive(Debug, Clone)]
-pub struct Func<'a> {
-    pub name: Ident<'a>,
-    pub params: Vec<FuncParam<'a>>,
-    pub returns: Type<'a>,
-    pub body: Vec<FuncExpr<'a>>,
-    pub info: LocInfo,
-}
-
-#[derive(Debug, Clone)]
-pub struct FuncParam<'a> {
-    pub name: Ident<'a>,
-    pub ty: Type<'a>,
-    pub info: LocInfo,
-}
-
-#[derive(Clone, Debug)]
-pub enum FuncExpr<'a> {
-    Binding(Box<Binding<'a>>),
-    FuncCall(FuncCall<'a>),
-    Assign(Assign<'a>),
-    Builtin(Builtin<'a>),
-    Conditional(Conditional<'a>),
-    NoOp,
-}
-
-#[derive(Debug, Clone)]
-pub struct Conditional<'a> {
-    pub if_clauses: Vec<If<'a>>,
-    pub else_body: Option<Vec<FuncExpr<'a>>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct If<'a> {
-    pub condition: BindingVal<'a>,
-    pub body: Vec<FuncExpr<'a>>,
-}
-
-#[derive(Debug, Clone)]
-pub enum Builtin<'a> {
-    Print(Vec<IdentLiteral<'a>>),
-    SyscallExit(IdentLiteral<'a>),
-    Collect,
-    Halt,
-}
-
-#[derive(Debug, Clone)]
-pub struct Binding<'a> {
-    pub name: Ident<'a>,
-    pub val: BindingVal<'a>,
-    pub ty: Type<'a>,
-    pub info: LocInfo,
-}
-
-#[derive(Clone)]
-pub enum BindingVal<'a> {
-    Literal(Literal),
-    Variable(Ident<'a>),
-    BinOp(BinOp<'a>),
-    FuncCall(FuncCall<'a>),
-}
-
-impl<'a> fmt::Debug for BindingVal<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Variable(i) => write!(f, "{:#?}", i),
-            Self::Literal(l) => write!(f, "{:#?}", l),
-            Self::BinOp(b) => write!(f, "{:#?}", b),
-            Self::FuncCall(fu) => write!(f, "{:#?}", fu),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct BinOp<'a> {
-    pub op: Op,
-    pub left: BinOpSide<'a>,
-    pub right: BinOpSide<'a>,
-    pub info: LocInfo,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Op {
-    Add,
-    Sub,
-    Div,
-    Mult,
-    IsEqual,
-}
-
-impl std::convert::TryFrom<TokenType> for Op {
-    type Error = TokenType;
-
-    fn try_from(token: TokenType) -> Result<Self, Self::Error> {
-        Ok(match token {
-            TokenType::Plus => Self::Add,
-            TokenType::Minus => Self::Sub,
-            TokenType::Divide => Self::Div,
-            TokenType::Star => Self::Mult,
-            TokenType::IsEqual => Self::IsEqual,
-            token => return Err(token),
-        })
-    }
-}
-
-#[derive(Clone)]
-pub enum BinOpSide<'a> {
-    Literal(Literal),
-    Variable(Ident<'a>),
-}
-
-impl<'a> fmt::Debug for BinOpSide<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Variable(i) => write!(f, "{:#?}", i),
-            Self::Literal(l) => write!(f, "{:#?}", l),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct FuncCall<'a> {
-    pub func_name: Ident<'a>,
-    pub params: Vec<IdentLiteral<'a>>,
-    pub info: LocInfo,
-}
-
-#[derive(Clone)]
-pub enum IdentLiteral<'a> {
-    Variable(Ident<'a>),
-    Literal(Literal),
-}
-
-impl<'a> fmt::Debug for IdentLiteral<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Variable(i) => write!(f, "{:#?}", i),
-            Self::Literal(l) => write!(f, "{:#?}", l),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Assign<'a> {
-    pub name: Ident<'a>,
-    pub val: IdentLiteral<'a>,
-    pub info: LocInfo,
-}
-
-#[derive(Debug, Clone)]
-pub struct Literal {
-    pub val: LiteralInner,
-    pub info: LocInfo,
-}
-
-#[derive(Clone)]
-pub enum LiteralInner {
-    String(String),
-    Int(i32),
-    Float(f32),
-    Bool(bool),
-}
-
-impl<'a> LiteralInner {
-    #[must_use]
-    pub fn to_type(&self) -> Type<'a> {
-        match self {
-            Self::String(_) => Type::String,
-            Self::Int(_) => Type::Int,
-            Self::Float(_) => Type::Float,
-            Self::Bool(_) => Type::Bool,
-        }
-    }
-}
-
-impl<'a> Into<RuntimeValue> for LiteralInner {
-    fn into(self) -> RuntimeValue {
-        match self {
-            Self::String(string) => RuntimeValue::Str(Box::leak(string.into_boxed_str())),
-            Self::Int(i) => RuntimeValue::I32(i),
-            Self::Float(f) => RuntimeValue::F32(f),
-            Self::Bool(b) => RuntimeValue::Bool(b),
-        }
-    }
-}
-
-impl<'a> fmt::Debug for LiteralInner {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::String(s) => write!(f, "String({:?})", s),
-            Self::Int(i) => write!(f, "Int({:?})", i),
-            Self::Float(fl) => write!(f, "Float({:?})", fl),
-            Self::Bool(b) => write!(f, "Bool({:?})", b),
-        }
-    }
-}
+use std::path::PathBuf;
+use string_interner::Sym;
 
 #[derive(Debug, Clone)]
 pub enum Either<L, R> {
     Left(L),
     Right(R),
+}
+
+#[derive(Debug, Clone)]
+pub enum Program {
+    FunctionDecl(FunctionDecl),
+    TypeDecl(TypeDecl),
+    Import(Import),
+}
+
+#[derive(Debug, Clone)]
+pub struct FunctionDecl {
+    pub visibility: Visibility,
+    pub name: Sym,
+    pub generics: Vec<Type>,
+    pub arguments: Vec<(Sym, Type)>,
+    pub returns: Type,
+    pub body: Vec<Statement>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypeDecl {
+    pub visibility: Visibility,
+    pub name: Sym,
+    pub generics: Vec<Type>,
+    pub members: Vec<(Sym, Type)>,
+    pub methods: Vec<FunctionDecl>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Type {
+    Int,
+    Float,
+    String,
+    Bool,
+    Unit,
+    Infer,
+    Any,
+    Custom(Sym),
+}
+
+impl Default for Type {
+    fn default() -> Self {
+        Self::Unit
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Import {
+    pub source: ImportSource,
+    pub alias: Option<Sym>,
+    pub exposes: Exposes,
+}
+
+#[derive(Debug, Clone)]
+pub enum ImportSource {
+    File(PathBuf),
+    Package(Sym),
+    Native(Sym),
+}
+
+#[derive(Debug, Clone)]
+pub enum Exposes {
+    All,
+    File,
+    Some(Vec<(Sym, Option<Sym>)>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Visibility {
+    Library,
+    Exposed,
+}
+
+#[derive(Debug, Clone)]
+pub struct VarDecl {
+    pub name: Sym,
+    pub ty: Type,
+    pub expr: Expr,
+}
+
+#[derive(Debug, Clone)]
+pub struct Assign {
+    pub var: Sym,
+    pub expr: Expr,
+    pub ty: AssignType,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum AssignType {
+    Normal,
+    BinaryOp(BinaryOp),
+}
+
+#[derive(Debug, Clone)]
+pub struct FunctionCall {
+    pub name: Sym,
+    pub generics: Vec<Type>,
+    pub arguments: Vec<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Conditional {
+    pub _if: Vec<If>,
+    pub _else: Option<Else>,
+}
+
+#[derive(Debug, Clone)]
+pub struct If {
+    pub condition: Expr,
+    pub body: Vec<Statement>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Else {
+    pub body: Vec<Statement>,
+}
+
+#[derive(Debug, Clone)]
+pub struct While {
+    pub condition: Expr,
+    pub body: Vec<Statement>,
+    pub then: Option<Else>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Loop {
+    pub body: Vec<Statement>,
+}
+
+#[derive(Debug, Clone)]
+pub struct For {
+    pub element: Sym,
+    pub range: Expr,
+    pub body: Vec<Statement>,
+    pub then: Option<Else>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BinaryOperation {
+    pub left: Box<Expr>,
+    pub op: (BinaryOp, OperandType),
+    pub right: Box<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Comparison {
+    pub left: Box<Expr>,
+    pub comparison: Comparator,
+    pub right: Box<Expr>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum OperandType {
+    Normal,
+    Fallible,
+    Panicking,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum BinaryOp {
+    Plus,
+    Minus,
+    Mult,
+    Div,
+    Xor,
+    Or,
+    And,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Comparator {
+    Equal,
+    NotEqual,
+    LessEqual,
+    GreaterEqual,
+    Less,
+    Greater,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Literal {
+    String(Sym),
+    Integer(i32),
+    Boolean(bool),
+}
+
+#[derive(Debug, Clone)]
+pub struct Range {
+    start: Box<Expr>,
+    end: Box<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Return {
+    pub expr: Expr,
+}
+
+#[derive(Debug, Clone)]
+pub enum Expr {
+    Literal(Literal),
+    Range(Range),
+    Comparison(Comparison),
+    BinaryOperation(BinaryOperation),
+    FunctionCall(FunctionCall),
+    Ident(Sym),
+    Expr(Box<Expr>),
+}
+
+#[derive(Debug, Clone)]
+pub enum Statement {
+    Conditional(Conditional),
+    While(While),
+    Loop(Loop),
+    For(For),
+    Assign(Assign),
+    VarDecl(VarDecl),
+    Return(Return),
+    Continue,
+    Break,
+    Expr(Expr),
+    Empty,
 }
