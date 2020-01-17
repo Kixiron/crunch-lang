@@ -553,20 +553,20 @@ mod tests {
 
                 let collect = Instruction::Collect;
 
-                let (discard, discard_id) = vm.gc.allocate(std::mem::size_of::<RuntimeValue>()).unwrap();
+                let discard = vm.gc.alloc(std::mem::size_of::<RuntimeValue>()).unwrap();
                 unsafe {
                     vm.gc
-                        .write(discard_id, &<RuntimeValue as Into<Vec<u8>>>::into(RuntimeValue::I32(int)), Some(&discard))
+                        .write(discard, &<RuntimeValue as Into<Vec<u8>>>::into(RuntimeValue::I32(int)))
                         .expect("here");
                 }
                 vm.gc.add_root(discard);
 
-                assert!(vm.gc.contains(discard_id));
-                assert!(vm.gc.fetch(discard_id) == Ok(RuntimeValue::I32(int)));
-                vm.gc.remove_root(discard_id).unwrap();
+                assert!(vm.gc.contains(discard));
+                assert!(vm.gc.fetch(discard) == Ok(&RuntimeValue::I32(int)));
+                vm.gc.remove_root(discard).unwrap();
 
                 collect.execute(&mut vm).unwrap();
-                assert!(!vm.gc.contains(discard_id));
+                assert!(!vm.gc.contains(discard));
 
                 let gc_str = crate::GcStr::new(&string, &mut vm.gc).unwrap();
 

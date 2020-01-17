@@ -120,7 +120,7 @@ impl Gc {
     }
 
     /// Allocate the space for an object
-    pub fn allocate(&mut self, size: usize) -> Result<AllocId> {
+    pub fn alloc(&mut self, size: usize) -> Result<AllocId> {
         trace!("Allocating size {}", size);
 
         if self.options.burn_gc {
@@ -169,7 +169,7 @@ impl Gc {
     }
 
     /// Allocate the space for an object
-    pub fn allocate_id<Id: Into<AllocId>>(&mut self, size: usize, id: Id) -> Result<AllocId> {
+    pub fn alloc_id<Id: Into<AllocId>>(&mut self, size: usize, id: Id) -> Result<AllocId> {
         let id = id.into();
 
         trace!("Allocating for size {} and id {}", size, id.0);
@@ -226,12 +226,13 @@ impl Gc {
 
         // The allocations to be transferred over to the new heap
         let mut keep = HashMap::with_capacity(self.roots.len());
+        let mut queue = Vec::with_capacity(self.allocations.len());
+        queue.extend_from_slice(&self.roots);
 
-        // Get the valid allocations of roots and all children
-        for root in &self.roots {
-            if let Some((ptr, root)) = self.allocations.get(root) {
+        while let Some(val) = queue.pop() {
+            if let Some((ptr, root)) = self.allocations.get_mut(&val) {
                 if !root.marked {
-                    root.collect(*ptr, &self.allocations, &mut keep);
+                    root.collect(*ptr, &mut queue, &mut keep);
                 }
             }
         }
@@ -248,20 +249,20 @@ impl Gc {
 
         let mut new_allocations = HashMap::with_capacity(keep.len());
         // Iterate over allocations to keep to move them onto the new heap
-        for (id, (old_ptr, val)) in keep.iter() {
+        for (id, (old_ptr, val)) in keep.into_iter() {
             // Unsafe Usage: Get the bytes from the object on the old heap and copy them onto the new heap
             unsafe {
                 let target: &mut [u8] = slice::from_raw_parts_mut(*self.latest as *mut _, val.size);
-                target.copy_from_slice(slice::from_raw_parts(**old_ptr, val.size));
+                target.copy_from_slice(slice::from_raw_parts(*old_ptr, val.size));
             }
-
-            // Push the new allocation to new_allocations
-            new_allocations.insert(*id, (self.latest, *val));
-
-            trace!("Saving allocation {:?}", id);
 
             // Increment by the size of the moved object
             self.latest = self.latest.wrapping_add(val.size).into();
+
+            // Push the new allocation to new_allocations
+            new_allocations.insert(id, (self.latest, val));
+
+            trace!("Saving allocation {:?}", id);
         }
         self.allocations = new_allocations;
 
@@ -279,11 +280,13 @@ impl Gc {
         // Change the current side
         self.current_side = !self.current_side;
 
-        // There has to be a better way to unmark all allocations
-        for root in &self.roots {
-            if let Some((ptr, root)) = self.allocations.get_mut(root) {
+        let mut queue = Vec::with_capacity(self.allocations.len());
+        queue.extend_from_slice(&self.roots);
+
+        while let Some(val) = queue.pop() {
+            if let Some((_ptr, root)) = self.allocations.get_mut(&val) {
                 if root.marked {
-                    root.unmark(&mut self.allocations);
+                    root.unmark(&mut queue);
                 }
             }
         }
@@ -291,13 +294,45 @@ impl Gc {
         Ok(())
     }
 
-    /// Fetch a currently allocated value
-    fn fetch_value<Id: Into<AllocId>>(&self, id: Id) -> Result<&GcValue> {
-        let id = id.into();
+    pub fn get_ptr(&self, id: AllocId) -> Result<HeapPointer> {
+        let (ptr, _val) = self.allocations.get(&id).ok_or(RuntimeError {
+            ty: RuntimeErrorTy::GcError,
+            message: "Requested value does not exist".to_string(),
+        })?;
 
-        for root in &self.roots {
-            if let Some(target) = self.__search_children(root, id) {
-                return Ok(target);
+        Ok(*ptr)
+    }
+
+    /// Fetch an object's value
+    pub fn fetch<'gc, T: Sized>(&'gc self, id: AllocId) -> Result<T> {
+        let bytes = self.fetch_bytes(id.into())?.as_ptr();
+
+        Ok(unsafe { ptr::read(bytes as *const T) })
+    }
+
+    fn fetch_bytes<'gc>(&'gc self, id: AllocId) -> Result<&'gc [u8]> {
+        if let Some((_, (ptr, val))) = self.allocations.iter().find(|(i, _)| **i == id.into()) {
+            Ok(unsafe { std::slice::from_raw_parts(**ptr, val.size) })
+        } else {
+            Err(RuntimeError {
+                ty: RuntimeErrorTy::GcError,
+                message: "Requested value does not exist".to_string(),
+            })
+        }
+    }
+
+    /// Fetch a currently allocated value
+    fn fetch_value(&self, id: AllocId) -> Result<&GcValue> {
+        let mut queue = Vec::with_capacity(self.allocations.len());
+        queue.extend_from_slice(&self.roots);
+
+        while let Some(val) = queue.pop() {
+            if let Some((_ptr, root)) = self.allocations.get(&val) {
+                if root.id == id {
+                    return Ok(root);
+                } else {
+                    queue.extend_from_slice(&root.children);
+                }
             }
         }
 
@@ -307,29 +342,24 @@ impl Gc {
         })
     }
 
-    fn __search_children(&self, parent: &AllocId, target: AllocId) -> Option<&GcValue> {
-        if let Some((_ptr, parent)) = self.allocations.get(parent) {
-            if parent.id == target {
-                return Some(parent);
-            } else {
-                for child in parent.children {
-                    if let Some(target) = self.__search_children(&child, target) {
-                        return Some(target);
-                    }
-                }
-            }
-        }
-
-        None
-    }
-
     /// Fetch a currently allocated value
-    fn fetch_value_mut<Id: Into<AllocId>>(&self, id: Id) -> Result<&mut GcValue> {
-        let id = id.into();
+    fn fetch_value_mut(&mut self, id: AllocId) -> Result<&mut GcValue> {
+        let mut queue = Vec::with_capacity(self.allocations.len());
+        queue.extend_from_slice(&self.roots);
 
-        for root in &mut self.roots {
-            if let Some(target) = self.__search_children_mut(root, id) {
-                return Ok(target);
+        let allocs = &mut self.allocations;
+
+        while let Some(val) = queue.pop() {
+            if allocs.get(&val).map(|v| v.1.id == id).unwrap_or(false) {
+                return allocs
+                    .get_mut(&val)
+                    .map(|(_, root)| &mut *root)
+                    .ok_or(RuntimeError {
+                        ty: RuntimeErrorTy::GcError,
+                        message: "Requested value does not exist".to_string(),
+                    });
+            } else if let Some((_, root)) = allocs.get(&val) {
+                queue.extend_from_slice(&root.children);
             }
         }
 
@@ -338,21 +368,35 @@ impl Gc {
             message: "Requested value does not exist".to_string(),
         })
     }
+    /*
+    TODO: When polonius lands, replace current implementation
+    fn fetch_value_mut(&mut self, id: AllocId) -> Result<&mut GcValue> {
+        let mut queue = Vec::with_capacity(self.allocations.len());
+        queue.extend_from_slice(&self.roots);
 
-    fn __search_children_mut(&self, parent: &AllocId, target: AllocId) -> Option<&mut GcValue> {
-        if let Some((_ptr, parent)) = self.allocations.get_mut(parent) {
-            if parent.id == target {
-                return Some(parent);
-            } else {
-                for child in parent.children {
-                    if let Some(target) = self.__search_children_mut(&child, target) {
-                        return Some(target);
-                    }
+        let mut value;
+        while let Some(val) = queue.pop() {
+            value = self.allocations.get_mut(&val);
+            if let Some((_ptr, root)) = value {
+                if root.id == id {
+                    return Ok(root);
+                } else {
+                    queue.extend_from_slice(&root.children);
                 }
             }
         }
 
-        None
+        Err(RuntimeError {
+            ty: RuntimeErrorTy::GcError,
+            message: "Requested value does not exist".to_string(),
+        })
+    }
+    */
+
+    pub fn add_child(&mut self, parent: AllocId, child: AllocId) -> Result<()> {
+        self.fetch_value_mut(parent)?.add_child(child);
+
+        Ok(())
     }
 
     /// Add a root object
@@ -388,33 +432,28 @@ impl Gc {
     ///
     /// # Safety
     /// Any object passed as `data` **must** be owned
-    pub unsafe fn write<Id>(
-        &self,
-        id: Id,
-        data: &[u8],
-        concrete_value: Option<&GcValue>,
-    ) -> Result<()>
+    pub unsafe fn write<Id>(&self, id: Id, data: &[u8]) -> Result<()>
     where
         Id: Into<AllocId> + Copy,
     {
-        match (self.get_ptr(id), self.fetch_value(id), concrete_value) {
-            (Ok(ptr), Ok(value), _) | (Ok(ptr), Err(_), Some(value)) => {
-                if data.len() == value.size {
-                    ptr::copy(data.as_ptr(), *ptr as *mut u8, data.len());
+        let id = id.into();
 
-                    Ok(())
-                } else {
-                    Err(RuntimeError {
-                        ty: RuntimeErrorTy::GcError,
-                        message: format!("Size Misalign: {} != {}", value.size, data.len(),),
-                    })
-                }
+        if let Some((ptr, val)) = self.allocations.get(&id) {
+            if data.len() == val.size {
+                ptr::copy(data.as_ptr(), **ptr, data.len());
+
+                Ok(())
+            } else {
+                Err(RuntimeError {
+                    ty: RuntimeErrorTy::GcError,
+                    message: format!("Size Misalign: {} != {}", val.size, data.len(),),
+                })
             }
-
-            _ => Err(RuntimeError {
+        } else {
+            Err(RuntimeError {
                 ty: RuntimeErrorTy::GcError,
                 message: "Object to be written to does not exist".to_string(),
-            }),
+            })
         }
     }
 
@@ -424,60 +463,29 @@ impl Gc {
     /// Any object passed as `data` **must** be owned  
     /// With great power comes great danger, just don't use this unless you have to  
     /// Currently only used inside of `GcStr` because it's broken with the normal `write`  
-    pub unsafe fn write_unchecked<T, Id>(
-        &self,
-        id: Id,
-        data: T,
-        concrete_value: Option<&GcValue>,
-    ) -> Result<()>
+    pub unsafe fn write_unchecked<T, Id>(&self, id: Id, data: &[u8]) -> Result<()>
     where
         Id: Into<AllocId> + Copy,
     {
-        match (self.get_ptr(id), self.fetch_value(id), concrete_value) {
-            (Ok(ptr), Ok(value), _) | (Ok(ptr), Err(_), Some(value)) => {
-                if mem::size_of::<T>() != value.size {
-                    warn!(
-                        "Non-fatal Size Misalign: {} != {}",
-                        value.size,
-                        mem::size_of::<T>(),
-                    );
-                }
+        let id = id.into();
 
-                ptr::write(*ptr as *mut T, data);
-                Ok(())
+        if let Some((ptr, val)) = self.allocations.get(&id) {
+            if mem::size_of::<T>() != val.size {
+                warn!(
+                    "Non-fatal Size Misalign: {} != {}",
+                    val.size,
+                    mem::size_of::<T>(),
+                );
             }
 
-            _ => Err(RuntimeError {
-                ty: RuntimeErrorTy::GcError,
-                message: "Object to be written to does not exist".to_string(),
-            }),
-        }
-    }
-
-    /// Fetch an object's value
-    pub fn fetch<'gc, Id: Into<AllocId> + Copy>(
-        &'gc self,
-        size: usize,
-        id: Id,
-    ) -> Result<&'gc [u8]> {
-        if let Some((_, (ptr, val))) = self.allocations.iter().find(|(i, _)| *i == id.into()) {
-            Ok(unsafe { std::slice::from_raw_parts(**ptr, size) })
+            ptr::copy(data.as_ptr(), **ptr, data.len());
+            Ok(())
         } else {
             Err(RuntimeError {
                 ty: RuntimeErrorTy::GcError,
-                message: "Requested value does not exist".to_string(),
+                message: "Object to be written to does not exist".to_string(),
             })
         }
-
-        // TODO: Investigate this
-        // Strange bug, the above code works fine, but replacing it with
-        // if let Some(ptr) = self.get_ptr(id) {
-        //     Some(unsafe { ptr::read(*ptr as *const T) })
-        // } else {
-        //     None
-        // }
-        // causes an immediate and silent crash
-        // Definitely the sign of a deeper problem
     }
 
     /// Gets the current heap side
@@ -581,72 +589,31 @@ impl GcValue {
     /// Fetches The id and size of all children
     #[inline]
     pub fn collect(
-        &self,
+        &mut self,
         ptr: HeapPointer,
-        allocations: &HashMap<AllocId, (HeapPointer, Self)>,
+        queue: &mut Vec<AllocId>,
         map: &mut HashMap<AllocId, (HeapPointer, Self)>,
     ) {
         self.marked = true;
         map.insert(self.id, (ptr, self.clone())); // Avoid clone
-
-        for child in &self.children {
-            if let Some((ptr, child)) = allocations.get(child) {
-                if !child.marked {
-                    child.collect(*ptr, allocations, &mut map);
-                }
-            }
-        }
-    }
-
-    /// Fetches a child of the Value
-    #[inline]
-    pub fn fetch_child<Id: Into<AllocId> + Copy>(&self, id: Id) -> Option<&Self> {
-        for child in &self.children {
-            if child.id == id.into() {
-                return Some(child);
-            } else if let Some(value) = child.fetch_child(id) {
-                return Some(value);
-            }
-        }
-
-        None
-    }
-
-    #[inline]
-    pub fn fetch_child_mut<Id: Into<AllocId> + Copy>(&mut self, id: Id) -> Option<&mut Self> {
-        for child in &mut self.children {
-            if child.id == id.into() {
-                return Some(child);
-            } else if let Some(value) = child.fetch_child_mut(id) {
-                return Some(value);
-            }
-        }
-
-        None
+        queue.extend_from_slice(&self.children);
     }
 
     /// Adds a child
     #[inline]
-    pub fn add_child(&mut self, child: Self) {
+    pub fn add_child(&mut self, child: AllocId) {
         self.children.push(child);
     }
 
-    pub fn remove_child(&mut self, child: &Self) {
-        self.children.remove_item(child);
+    pub fn remove_child(&mut self, child: AllocId) {
+        self.children.remove_item(&child);
     }
 
     /// Unmarks self and all children
     #[inline]
-    pub fn unmark(&mut self, allocations: &mut HashMap<AllocId, (HeapPointer, GcValue)>) {
+    pub fn unmark(&mut self, queue: &mut Vec<AllocId>) {
         self.marked = false;
-
-        for child in &mut self.children {
-            if let Some((_ptr, child)) = allocations.get_mut(child) {
-                if child.marked {
-                    child.unmark(allocations);
-                }
-            }
-        }
+        queue.extend_from_slice(&self.children);
     }
 }
 
@@ -661,114 +628,104 @@ mod tests {
 
         let mut gc = Gc::new(&crate::OptionBuilder::new("./alloc_value").build());
 
-        let (int, int_id) = gc.allocate(size_of::<RuntimeValue>()).unwrap();
+        let int = gc.alloc(std::mem::size_of::<RuntimeValue>()).unwrap();
         unsafe {
             gc.write(
-                int_id,
+                int,
                 &<RuntimeValue as Into<Vec<u8>>>::into(RuntimeValue::I32(10)),
-                Some(&int),
             )
             .unwrap();
         }
         gc.add_root(int);
-        assert!(gc.contains(int_id));
-        assert!(gc.fetch(int_id) == Ok(RuntimeValue::I32(10)));
+        assert!(gc.contains(int));
+        assert!(gc.fetch(int) == Ok(&RuntimeValue::I32(10)));
 
-        let (int_2, int_2_id) = gc.allocate_id(size_of::<RuntimeValue>(), 0).unwrap();
+        let int_2 = gc.alloc_id(size_of::<RuntimeValue>(), 0).unwrap();
         unsafe {
             gc.write(
-                int_2_id,
+                int_2,
                 &<RuntimeValue as Into<Vec<u8>>>::into(RuntimeValue::I32(20)),
-                Some(&int_2),
             )
             .unwrap();
         }
         gc.add_root(int_2);
-        assert_eq!(AllocId(0), int_2_id);
-        assert!(gc.contains(int_2_id));
-        assert!(gc.fetch(int_2_id) == Ok(RuntimeValue::I32(20)));
+        assert_eq!(AllocId(0), int_2);
+        assert!(gc.contains(int_2));
+        assert!(gc.fetch(int_2) == Ok(&RuntimeValue::I32(20)));
     }
 
     #[test]
     fn alloc_usizes() {
         let mut gc = Gc::new(&crate::OptionBuilder::new("./alloc_usizes").build());
 
-        let (keep, keep_id) = gc.allocate(size_of::<usize>()).unwrap();
+        let keep = gc.alloc(size_of::<usize>()).unwrap();
         unsafe {
-            gc.write(keep_id, &usize::max_value().to_le_bytes(), Some(&keep))
-                .unwrap();
+            gc.write(keep, &usize::max_value().to_le_bytes()).unwrap();
         }
         gc.add_root(keep);
-        assert!(gc.contains(keep_id));
-        assert!(gc.fetch(keep_id) == Ok(usize::max_value()));
+        assert!(gc.contains(keep));
+        assert!(gc.fetch(keep) == Ok(&usize::max_value()));
 
-        let (discard, discard_id) = gc.allocate(size_of::<usize>()).unwrap();
+        let discard = gc.alloc(size_of::<usize>()).unwrap();
         unsafe {
-            gc.write(
-                discard_id,
-                &(usize::max_value() - 1).to_le_bytes(),
-                Some(&discard),
-            )
-            .unwrap();
+            gc.write(discard, &(usize::max_value() - 1).to_le_bytes())
+                .unwrap();
         }
-        assert!(gc.contains(discard_id));
-        assert!(gc.fetch(discard_id) == Ok(usize::max_value() - 1));
+        assert!(gc.contains(discard));
+        assert!(gc.fetch(discard) == Ok(&(usize::max_value() - 1)));
 
         gc.collect().unwrap();
 
-        assert!(gc.contains(keep_id));
-        assert!(gc.fetch(keep_id) == Ok(usize::max_value()));
+        assert!(gc.contains(keep));
+        assert!(gc.fetch(keep) == Ok(&usize::max_value()));
 
-        assert!(!gc.contains(discard_id));
-        assert!(gc.fetch::<usize, AllocId>(discard_id).is_err());
-
-        gc.collect().unwrap();
-
-        assert!(gc.contains(keep_id));
-        assert!(gc.fetch(keep_id) == Ok(usize::max_value()));
-
-        assert!(!gc.contains(discard_id));
-        assert!(gc.fetch::<usize, AllocId>(discard_id).is_err());
-
-        assert!(gc.remove_root(keep_id).is_ok());
+        assert!(!gc.contains(discard));
+        assert!(gc.fetch::<usize>(discard).is_err());
 
         gc.collect().unwrap();
 
-        assert!(!gc.contains(keep_id));
-        assert!(gc.fetch::<usize, AllocId>(keep_id).is_err());
+        assert!(gc.contains(keep));
+        assert!(gc.fetch(keep) == Ok(&usize::max_value()));
+
+        assert!(!gc.contains(discard));
+        assert!(gc.fetch::<usize>(discard).is_err());
+
+        assert!(gc.remove_root(keep).is_ok());
 
         gc.collect().unwrap();
 
-        assert!(!gc.contains(keep_id));
-        assert!(gc.fetch::<usize, AllocId>(keep_id).is_err());
+        assert!(!gc.contains(keep));
+        assert!(gc.fetch::<usize>(keep).is_err());
+
+        gc.collect().unwrap();
+
+        assert!(!gc.contains(keep));
+        assert!(gc.fetch::<usize>(keep).is_err());
     }
 
     #[test]
     fn gc_test() {
         let mut gc = Gc::new(&crate::OptionBuilder::new("./gc_test").build());
 
-        let (mut ten, ten_id) = gc.allocate(size_of::<usize>()).unwrap();
-        println!("Allocated usize: Ptr: {:p}", gc.get_ptr(ten_id).unwrap());
+        let ten = gc.alloc(size_of::<usize>()).unwrap();
+        println!("Allocated usize: Ptr: {:p}", gc.get_ptr(ten).unwrap());
         unsafe {
-            gc.write(ten_id, &10_usize.to_le_bytes(), Some(&ten))
-                .unwrap();
+            gc.write(ten, &10_usize.to_le_bytes()).unwrap();
         }
 
-        let (eleven, eleven_id) = gc.allocate(size_of::<usize>()).unwrap();
-        println!("Allocated usize: Ptr: {:p}", gc.get_ptr(eleven_id).unwrap());
+        let eleven = gc.alloc(size_of::<usize>()).unwrap();
+        println!("Allocated usize: Ptr: {:p}", gc.get_ptr(eleven).unwrap());
         unsafe {
-            gc.write(eleven_id, &11_usize.to_le_bytes(), Some(&eleven))
-                .unwrap();
+            gc.write(eleven, &11_usize.to_le_bytes()).unwrap();
         }
 
-        let (twelve, twelve_id) = gc.allocate(size_of::<usize>()).unwrap();
-        println!("Allocated usize: Ptr: {:p}", gc.get_ptr(twelve_id).unwrap());
+        let twelve = gc.alloc(size_of::<usize>()).unwrap();
+        println!("Allocated usize: Ptr: {:p}", gc.get_ptr(twelve).unwrap());
         unsafe {
-            gc.write(twelve_id, &12_usize.to_le_bytes(), Some(&twelve))
-                .unwrap();
+            gc.write(twelve, &12_usize.to_le_bytes()).unwrap();
         }
 
-        ten.add_child(eleven);
+        gc.add_child(ten, eleven).unwrap();
         println!("Added Child to ten: {:?}", ten);
 
         gc.add_root(ten);
@@ -777,9 +734,9 @@ mod tests {
         println!("\n=> Before Collect\n{}\n", gc.data());
 
         {
-            let ten = gc.fetch::<usize, AllocId>(ten_id);
-            let eleven = gc.fetch::<usize, AllocId>(eleven_id);
-            let twelve = gc.fetch::<usize, AllocId>(twelve_id);
+            let ten = gc.fetch::<usize>(ten);
+            let eleven = gc.fetch::<usize>(eleven);
+            let twelve = gc.fetch::<usize>(twelve);
 
             println!("Ten: {:?}, Eleven: {:?}, Twelve: {:?}", ten, eleven, twelve);
         }
@@ -788,9 +745,9 @@ mod tests {
         println!("\n=> After Collect\n{}\n", gc.data());
 
         {
-            let ten = gc.fetch::<usize, AllocId>(ten_id);
-            let eleven = gc.fetch::<usize, AllocId>(eleven_id);
-            let twelve = gc.fetch::<usize, AllocId>(twelve_id);
+            let ten = gc.fetch::<usize>(ten);
+            let eleven = gc.fetch::<usize>(eleven);
+            let twelve = gc.fetch::<usize>(twelve);
 
             println!("Ten: {:?}, Eleven: {:?}, Twelve: {:?}", ten, eleven, twelve);
         }
@@ -799,9 +756,9 @@ mod tests {
         println!("\n=> After Second Collect\n{}\n", gc.data());
 
         {
-            let ten = gc.fetch::<usize, AllocId>(ten_id);
-            let eleven = gc.fetch::<usize, AllocId>(eleven_id);
-            let twelve = gc.fetch::<usize, AllocId>(twelve_id);
+            let ten = gc.fetch::<usize>(ten);
+            let eleven = gc.fetch::<usize>(eleven);
+            let twelve = gc.fetch::<usize>(twelve);
 
             println!("Ten: {:?}, Eleven: {:?}, Twelve: {:?}", ten, eleven, twelve);
         }

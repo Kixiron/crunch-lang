@@ -1,11 +1,6 @@
 use super::*;
-use crate::{AllocId, HeapPointer, Result, RuntimeError, RuntimeErrorTy};
-use std::{
-    alloc,
-    marker::PhantomData,
-    mem::{self, ManuallyDrop},
-    ptr, slice,
-};
+use crate::{AllocId, Result, RuntimeError, RuntimeErrorTy};
+use std::{marker::PhantomData, mem::ManuallyDrop};
 
 #[derive(Debug, Clone, Copy)]
 pub struct GcVec<T> {
@@ -23,27 +18,23 @@ where
 
         let len = vec.len();
 
-        let (obj, id) = gc.allocate(size_of::<T>() * len)?;
+        let id = gc.alloc(size_of::<T>() * len)?;
         #[cfg(debug_assertions)]
         unsafe {
-            gc.write(
-                id,
-                {
-                    let ptr = vec.as_ptr() as *const u8;
-                    std::slice::from_raw_parts(ptr, vec.len() * std::mem::size_of::<T>())
-                },
-                Some(&obj),
-            )?;
+            gc.write(id, {
+                let ptr = vec.as_ptr() as *const u8;
+                std::slice::from_raw_parts(ptr, vec.len() * std::mem::size_of::<T>())
+            })?;
         }
         #[cfg(not(debug_assertions))]
         unsafe {
-            gc.write(id, &vec, Some(&obj))?;
+            gc.write(id, &vec)?;
         }
-        gc.add_root(obj);
+        gc.add_root(id);
 
         #[cfg(debug_assertions)]
         {
-            let raw = gc.fetch::<&[u8], AllocId>(id)?;
+            let raw = gc.fetch::<&[u8]>(id)?;
             let v = unsafe {
                 Vec::from_raw_parts(
                     raw.as_ptr() as *mut T,
@@ -66,7 +57,7 @@ where
     pub fn to_vec<'a>(&self, gc: &'a Gc) -> Result<BorrowedOwned<'a, Vec<T>>> {
         use std::mem::size_of;
 
-        let raw = gc.fetch::<&[u8], AllocId>(self.id)?;
+        let raw = gc.fetch::<&[u8]>(self.id)?;
         Ok(unsafe {
             BorrowedOwned::new(Vec::from_raw_parts(
                 raw.as_ptr() as *mut T,
@@ -141,21 +132,21 @@ macro_rules! new_ops {
                     };
                     let len = int.len();
 
-                    let (obj, id) = gc.allocate(len)?;
+                    let id = gc.alloc(len)?;
                     #[cfg(debug_assertions)]
                     unsafe {
-                        gc.write(id, &int, Some(&obj))?;
+                        gc.write(id, &int)?;
                     }
                     #[cfg(not(debug_assertions))]
                     unsafe {
-                        gc.write(id, &int, Some(&obj))?;
+                        gc.write(id, &int)?;
                     }
-                    gc.add_root(obj);
+                    gc.add_root(id);
 
                     #[cfg(debug_assertions)]
                     debug_assert_eq!(
                         $internal::from_signed_bytes_be(&int),
-                        $internal::from_signed_bytes_be(gc.fetch(id).expect("Value does not exist")),
+                        $internal::from_signed_bytes_be(gc.fetch::<&[u8]>(id).expect("Value does not exist")),
                     );
 
                     Ok(Self { id, len })
@@ -184,21 +175,21 @@ macro_rules! new_ops {
                     };
                     let len = int.len();
 
-                    let (obj, id) = gc.allocate(len)?;
+                    let id = gc.alloc(len)?;
                     #[cfg(debug_assertions)]
                     unsafe {
-                        gc.write(id, &int, Some(&obj))?;
+                        gc.write(id, &int)?;
                     }
                     #[cfg(not(debug_assertions))]
                     unsafe {
-                        gc.write(id, &int, Some(&obj))?;
+                        gc.write(id, &int)?;
                     }
-                    gc.add_root(obj);
+                    gc.add_root(id);
 
                     #[cfg(debug_assertions)]
                     debug_assert_eq!(
                         $internal::from_bytes_be(&int),
-                        $internal::from_bytes_be(gc.fetch(id).expect("Value does not exist")),
+                        $internal::from_bytes_be(gc.fetch::<&[u8]>(id).expect("Value does not exist")),
                     );
 
                     Ok(Self { id, len })
@@ -226,21 +217,23 @@ impl GcBigInt {
         };
         let len = int.len();
 
-        let (obj, id) = gc.allocate(len)?;
+        let id = gc.alloc(len)?;
         #[cfg(debug_assertions)]
         unsafe {
-            gc.write(id, &int, Some(&obj))?;
+            gc.write(id, &int)?;
         }
         #[cfg(not(debug_assertions))]
         unsafe {
-            gc.write(id, &int, Some(&obj))?;
+            gc.write(id, &int)?;
         }
-        gc.add_root(obj);
+        gc.add_root(id);
 
         #[cfg(debug_assertions)]
         debug_assert_eq!(
             num_bigint::BigInt::from_signed_bytes_be(&int),
-            num_bigint::BigInt::from_signed_bytes_be(gc.fetch(id).expect("Value does not exist")),
+            num_bigint::BigInt::from_signed_bytes_be(
+                gc.fetch::<&[u8]>(id).expect("Value does not exist")
+            ),
         );
 
         Ok(Self { id, len })
@@ -249,7 +242,7 @@ impl GcBigInt {
     pub fn bit_not<'a>(self, gc: &'a mut Gc) -> Result<Self> {
         let int = self.to_int(gc)?;
         unsafe {
-            gc.write(self.id, &(!(*int).clone()).to_signed_bytes_le(), None)?;
+            gc.write(self.id, &(!(*int).clone()).to_signed_bytes_le())?;
         }
 
         Ok(self)
@@ -257,7 +250,7 @@ impl GcBigInt {
 
     pub fn to_int<'a>(&self, gc: &'a Gc) -> Result<BorrowedOwned<'a, num_bigint::BigInt>> {
         Ok(BorrowedOwned::new(
-            num_bigint::BigInt::from_signed_bytes_be(gc.fetch(self.id)?),
+            num_bigint::BigInt::from_signed_bytes_be(gc.fetch::<&[u8]>(self.id)?),
         ))
     }
 
@@ -305,21 +298,23 @@ impl GcBigUint {
         };
         let len = int.len();
 
-        let (obj, id) = gc.allocate(len)?;
+        let id = gc.alloc(len)?;
         #[cfg(debug_assertions)]
         unsafe {
-            gc.write(id, &int, Some(&obj))?;
+            gc.write(id, &int)?;
         }
         #[cfg(not(debug_assertions))]
         unsafe {
-            gc.write(id, &int, Some(&obj))?;
+            gc.write(id, &int)?;
         }
-        gc.add_root(obj);
+        gc.add_root(id);
 
         #[cfg(debug_assertions)]
         debug_assert_eq!(
             num_bigint::BigUint::from_bytes_be(&int),
-            num_bigint::BigUint::from_bytes_be(gc.fetch(id).expect("Value does not exist")),
+            num_bigint::BigUint::from_bytes_be(
+                gc.fetch::<&[u8]>(id).expect("Value does not exist")
+            ),
         );
 
         Ok(Self { id, len })
@@ -338,7 +333,7 @@ impl GcBigUint {
 
     pub fn to_uint<'a>(&self, gc: &'a Gc) -> Result<BorrowedOwned<'a, num_bigint::BigUint>> {
         Ok(BorrowedOwned::new(num_bigint::BigUint::from_bytes_be(
-            gc.fetch(self.id)?,
+            gc.fetch::<&[u8]>(self.id)?,
         )))
     }
 
@@ -379,17 +374,17 @@ impl GcStr {
     pub fn new(string: impl AsRef<str>, gc: &mut Gc) -> Result<Self> {
         let string = string.as_ref();
 
-        let (obj, id) = gc.allocate(string.len())?;
+        let id = gc.alloc(string.as_bytes().len())?;
         // FIXME: If the normal `write` function is used, it does not work,
         // as the sizes are always mis-aligned
         unsafe {
-            gc.write_unchecked(id, string.as_bytes(), Some(&obj))?;
+            gc.write(id, string.as_bytes())?;
         }
-        gc.add_root(obj);
+        gc.add_root(id);
 
         debug_assert_eq!(
             string,
-            std::str::from_utf8(gc.fetch(id).expect("Value does not exist"))
+            std::str::from_utf8(gc.fetch::<&[u8]>(id).expect("Value does not exist"))
                 .expect("Not valid utf-8")
         );
 
@@ -403,20 +398,16 @@ impl GcStr {
     pub fn new_adding(left: impl AsRef<str>, right: impl AsRef<str>, gc: &mut Gc) -> Result<Self> {
         let (left, right) = (left.as_ref(), right.as_ref());
 
-        let (obj, id) = gc.allocate(left.len() + right.len())?;
+        let id = gc.alloc(left.len() + right.len())?;
         unsafe {
-            gc.write(
-                id,
-                &{
-                    let mut vec = Vec::with_capacity(left.len() + right.len());
-                    vec.extend_from_slice(left.as_bytes());
-                    vec.extend_from_slice(right.as_bytes());
-                    vec
-                },
-                Some(&obj),
-            )?;
+            gc.write(id, &{
+                let mut vec = Vec::with_capacity(left.len() + right.len());
+                vec.extend_from_slice(left.as_bytes());
+                vec.extend_from_slice(right.as_bytes());
+                vec
+            })?;
         }
-        gc.add_root(obj);
+        gc.add_root(id);
 
         debug_assert_eq!(
             {
@@ -424,7 +415,7 @@ impl GcStr {
                 left.push_str(right);
                 left
             },
-            std::str::from_utf8(gc.fetch(id).expect("Value does not exist"))
+            std::str::from_utf8(gc.fetch::<&[u8]>(id).expect("Value does not exist"))
                 .expect("Not valid utf-8")
         );
 
@@ -449,11 +440,12 @@ impl GcStr {
     }
 
     pub fn to_str<'a>(&self, gc: &'a Gc) -> Result<&'a str> {
-        debug_assert!(
-            std::str::from_utf8(gc.fetch(self.id).expect("Value does not exist")).is_ok()
-        );
+        debug_assert!(std::str::from_utf8(
+            gc.fetch::<&[u8]>(self.id).expect("Value does not exist")
+        )
+        .is_ok());
 
-        unsafe { Ok(std::str::from_utf8_unchecked(gc.fetch(self.id)?)) }
+        unsafe { Ok(std::str::from_utf8_unchecked(gc.fetch::<&[u8]>(self.id)?)) }
     }
 
     pub fn drop(self, gc: &mut Gc) -> Result<()> {
@@ -480,59 +472,46 @@ pub struct Stub {
     size: usize,
 }
 
-use bytemuck::Pod;
-
-pub trait Collectable: Pod {
+pub trait Collectable: Sized {
     fn allocate(&self, gc: &mut Gc) -> Result<Stub> {
-        let bytes = Pod::bytes_of(self);
+        let bytes = unsafe {
+            std::slice::from_raw_parts(self as *const _ as *const u8, std::mem::size_of_val(self))
+        };
 
-        let (obj, id) = gc.allocate(bytes.len())?;
+        let id = gc.alloc(bytes.len())?;
         unsafe {
-            gc.write(id, bytes, Some(&obj))?;
+            gc.write(id, bytes)?;
         }
-
-        debug_assert_eq!(
-            &self,
-            &Pod::from_bytes(gc.fetch(id).expect("Value does not exist"))
-        );
 
         Ok(Stub {
             id,
             size: bytes.len(),
         })
     }
+
     fn fetch<'gc>(stub: &Stub, gc: &'gc Gc) -> Result<&'gc Self> {
-        Pod::from_bytes(gc.fetch(stub.id)?)
+        gc.fetch(stub.id)
     }
 
     fn root(stub: &Stub, gc: &mut Gc) -> Result<()> {
-        gc.add_root(gc.fetch(stub.id)?);
+        gc.add_root(stub.id);
 
         Ok(())
     }
 
     fn unroot(stub: &Stub, gc: &mut Gc) -> Result<()> {
-        gc.remove_root(stub.id)?;
-
-        Ok(())
+        gc.remove_root(stub.id)
     }
 
     fn add_child(stub: &Stub, child: &Stub, gc: &mut Gc) -> Result<()> {
-        if !gc.roots.iter().find(|root| root.id == stub.id).is_some() {
-            gc.add_child(stub.id, child.id)?;
-
-            Ok(())
-        } else {
-            Err(RuntimeError {
-                ty: RuntimeErrorTy::GcError,
-                message: "Attempted to add child that was already rooted".to_string(),
-            })
-        }
+        gc.add_child(stub.id, child.id)
     }
 }
 
+impl<T> Collectable for T {}
+
 #[test]
-fn tadsfa() {
+fn tadsfa() -> Result<()> {
     simple_logger::init().unwrap();
 
     let mut gc = super::Gc::new(&crate::OptionBuilder::new("./gc_test").build());
@@ -541,25 +520,27 @@ fn tadsfa() {
 
     let stub = string.allocate(&mut gc).unwrap();
     println!("here");
-    assert_eq!(Ok("Test"), str::fetch(&stub, &mut gc));
+    assert_eq!("Test", *<&str>::fetch(&stub, &mut gc)?);
 
     println!("here");
-    str::root(&stub, &mut gc).unwrap();
+    <&str>::root(&stub, &mut gc).unwrap();
     println!("here");
-    assert_eq!(Ok("Test"), str::fetch(&stub, &mut gc));
-
-    println!("here");
-    gc.collect().unwrap();
-    println!("here");
-    assert_eq!(Ok("Test"), str::fetch(&stub, &mut gc));
-
-    println!("here");
-    str::unroot(&stub, &mut gc).unwrap();
-    println!("here");
-    assert_eq!(Ok("Test"), str::fetch(&stub, &mut gc));
+    assert_eq!("Test", *<&str>::fetch(&stub, &mut gc)?);
 
     println!("here");
     gc.collect().unwrap();
     println!("here");
-    assert!(str::fetch(&stub, &mut gc).is_err());
+    assert_eq!("Test", *<&str>::fetch(&stub, &mut gc)?);
+
+    println!("here");
+    <&str>::unroot(&stub, &mut gc).unwrap();
+    println!("here");
+    assert_eq!("Test", *<&str>::fetch(&stub, &mut gc)?);
+
+    println!("here");
+    gc.collect().unwrap();
+    println!("here");
+    assert!(<&str>::fetch(&stub, &mut gc).is_err());
+
+    Ok(())
 }
