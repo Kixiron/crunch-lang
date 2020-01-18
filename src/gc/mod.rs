@@ -304,13 +304,17 @@ impl Gc {
     }
 
     /// Fetch an object's value
-    pub fn fetch<'gc, T: Sized>(&'gc self, id: AllocId) -> Result<T> {
+    pub fn fetch<'gc, T: Sized + std::fmt::Debug>(&'gc self, id: AllocId) -> Result<T> {
+        trace!("Fetching {}", id);
+
         let bytes = self.fetch_bytes(id.into())?.as_ptr();
 
-        Ok(unsafe { ptr::read(bytes as *const T) })
+        Ok(unsafe { dbg!(ptr::read(bytes as *const T)) })
     }
 
     fn fetch_bytes<'gc>(&'gc self, id: AllocId) -> Result<&'gc [u8]> {
+        trace!("Fetching the bytes of {}", id);
+
         if let Some((_, (ptr, val))) = self.allocations.iter().find(|(i, _)| **i == id.into()) {
             Ok(unsafe { std::slice::from_raw_parts(**ptr, val.size) })
         } else {
@@ -323,6 +327,8 @@ impl Gc {
 
     /// Fetch a currently allocated value
     fn fetch_value(&self, id: AllocId) -> Result<&GcValue> {
+        trace!("Fetching allocation {}", id);
+
         let mut queue = Vec::with_capacity(self.allocations.len());
         queue.extend_from_slice(&self.roots);
 
@@ -344,6 +350,8 @@ impl Gc {
 
     /// Fetch a currently allocated value
     fn fetch_value_mut(&mut self, id: AllocId) -> Result<&mut GcValue> {
+        trace!("Fetching allocation {} mutably", id);
+
         let mut queue = Vec::with_capacity(self.allocations.len());
         queue.extend_from_slice(&self.roots);
 
@@ -438,9 +446,16 @@ impl Gc {
     {
         let id = id.into();
 
+        trace!(
+            "Writing to allocation {} with data of len {}",
+            id,
+            data.len()
+        );
+
         if let Some((ptr, val)) = self.allocations.get(&id) {
-            if data.len() == val.size {
+            if data.len() <= val.size {
                 ptr::copy(data.as_ptr(), **ptr, data.len());
+                trace!("Wrote to allocation {}, ptr {:p}", id, *ptr);
 
                 Ok(())
             } else {
@@ -449,37 +464,6 @@ impl Gc {
                     message: format!("Size Misalign: {} != {}", val.size, data.len(),),
                 })
             }
-        } else {
-            Err(RuntimeError {
-                ty: RuntimeErrorTy::GcError,
-                message: "Object to be written to does not exist".to_string(),
-            })
-        }
-    }
-
-    /// Write to an object
-    ///
-    /// # Safety
-    /// Any object passed as `data` **must** be owned  
-    /// With great power comes great danger, just don't use this unless you have to  
-    /// Currently only used inside of `GcStr` because it's broken with the normal `write`  
-    pub unsafe fn write_unchecked<T, Id>(&self, id: Id, data: &[u8]) -> Result<()>
-    where
-        Id: Into<AllocId> + Copy,
-    {
-        let id = id.into();
-
-        if let Some((ptr, val)) = self.allocations.get(&id) {
-            if mem::size_of::<T>() != val.size {
-                warn!(
-                    "Non-fatal Size Misalign: {} != {}",
-                    val.size,
-                    mem::size_of::<T>(),
-                );
-            }
-
-            ptr::copy(data.as_ptr(), **ptr, data.len());
-            Ok(())
         } else {
             Err(RuntimeError {
                 ty: RuntimeErrorTy::GcError,
@@ -625,6 +609,9 @@ mod tests {
     #[test]
     fn alloc_value() {
         use crate::RuntimeValue;
+
+        color_backtrace::install();
+        simple_logger::init().unwrap();
 
         let mut gc = Gc::new(&crate::OptionBuilder::new("./alloc_value").build());
 

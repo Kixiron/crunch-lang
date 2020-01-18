@@ -472,7 +472,7 @@ pub struct Stub {
     size: usize,
 }
 
-pub trait Collectable: Sized {
+pub trait Collectable: Sized + std::fmt::Debug {
     fn allocate(&self, gc: &mut Gc) -> Result<Stub> {
         let bytes = unsafe {
             std::slice::from_raw_parts(self as *const _ as *const u8, std::mem::size_of_val(self))
@@ -508,7 +508,7 @@ pub trait Collectable: Sized {
     }
 }
 
-impl<T> Collectable for T {}
+impl<T: std::fmt::Debug> Collectable for T {}
 
 #[test]
 fn tadsfa() -> Result<()> {
