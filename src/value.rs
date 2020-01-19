@@ -1,4 +1,5 @@
-use super::{Gc, GcBigInt, GcBigUint, GcStr, GcVec, Result, RuntimeError, RuntimeErrorTy};
+use super::{AllocId, Collectable, Gc, Heap, Result, RuntimeError, RuntimeErrorTy};
+use num_bigint::{BigInt, BigUint};
 use std::fmt;
 
 // TODO: Test all implemented operations
@@ -11,7 +12,7 @@ pub enum RuntimeValue {
     U32(u32),
     U64(u64),
     U128(u128),
-    GcUint(GcBigUint),
+    GcUint(Heap<BigUint>),
 
     // Signed integers
     IByte(i8),
@@ -19,7 +20,7 @@ pub enum RuntimeValue {
     I32(i32),
     I64(i64),
     I128(i128),
-    GcInt(GcBigInt),
+    GcInt(Heap<BigInt>),
 
     // Floats
     F32(f32),
@@ -28,14 +29,14 @@ pub enum RuntimeValue {
     // Strings
     Char(char),
     Str(&'static str),
-    GcString(GcStr),
+    GcString(Heap<&'static str>),
 
     // Boolean
     Bool(bool),
     // Pointer
-    Pointer(usize),
+    Pointer(AllocId),
     // Vec
-    GcVec(GcVec<RuntimeValue>),
+    // GcVec(GcVec<RuntimeValue>),
     // Null
     Null,
 
@@ -64,7 +65,6 @@ impl RuntimeValue {
             Self::GcString(_) | Self::Str(_) => "str",
             Self::GcInt(_) => "bigint",
             Self::GcUint(_) => "biguint",
-            Self::GcVec(_) => "vec",
             Self::Null => "null",
             Self::None => "NoneType",
         }
@@ -78,16 +78,14 @@ impl RuntimeValue {
             (Self::U32(left), Self::U32(right)) => left == right,
             (Self::U64(left), Self::U64(right)) => left == right,
             (Self::U128(left), Self::U128(right)) => left == right,
-            (Self::GcUint(left), Self::GcUint(right)) => {
-                *left.to_uint(gc)? == *right.to_uint(gc)?
-            }
+            (Self::GcUint(left), Self::GcUint(right)) => left.fetch(gc)? == right.fetch(gc)?,
 
             (Self::IByte(left), Self::IByte(right)) => left == right,
             (Self::I16(left), Self::I16(right)) => left == right,
             (Self::I32(left), Self::I32(right)) => left == right,
             (Self::I64(left), Self::I64(right)) => left == right,
             (Self::I128(left), Self::I128(right)) => left == right,
-            (Self::GcInt(left), Self::GcInt(right)) => *left.to_int(gc)? == *right.to_int(gc)?,
+            (Self::GcInt(left), Self::GcInt(right)) => left.fetch(gc)? == right.fetch(gc)?,
 
             (Self::F32(_left), Self::F32(_right)) => unimplemented!("No idea how floats work"),
             (Self::F64(_left), Self::F64(_right)) => unimplemented!("No idea how floats work"),
@@ -127,24 +125,24 @@ impl RuntimeValue {
             Self::Bool(int) => int.to_string(),
             Self::Pointer(int) => format!("{:p}", int as *const _),
             Self::Char(c) => c.to_string(),
-            Self::GcString(string) => string.to_str(gc)?.to_string(),
+            Self::GcString(string) => string.fetch(gc)?,
             Self::Str(string) => (*string).to_string(),
-            Self::GcInt(int) => int.to_int(gc)?.to_string(),
-            Self::GcUint(int) => int.to_uint(gc)?.to_string(),
-            Self::GcVec(vec) => format!("{:?}", *vec.to_vec(gc)?),
+            Self::GcInt(int) => int.fetch(gc)?.to_string(),
+            Self::GcUint(int) => int.fetch(gc)?.to_string(),
             Self::Null => "null".to_string(),
             Self::None => "NoneType".to_string(),
         })
     }
 
-    pub fn drop(self, gc: &mut Gc) -> Result<()> {
+    pub fn drop(&mut self, gc: &Gc) -> Result<()> {
         match self {
-            Self::GcString(string) => string.drop(gc)?,
             Self::GcInt(int) => int.drop(gc)?,
-            Self::GcUint(int) => int.drop(gc)?,
-            Self::GcVec(vec) => vec.drop(gc)?,
+            Self::GcUint(uint) => uint.drop(gc)?,
+            Self::GcString(string) => string.drop(gc)?,
             _ => {}
         }
+
+        *self = Self::None;
 
         Ok(())
     }
@@ -196,10 +194,10 @@ impl RuntimeValue {
                 if let Some(result) = left.checked_add(*right) {
                     Self::U128(result)
                 } else {
-                    Self::GcInt(GcBigInt::new_adding(*left, *right, gc)?)
+                    todo!()
                 }
             }
-            (Self::GcUint(left), Self::GcUint(right)) => Self::GcUint(left.add(*right, gc)?),
+            (Self::GcUint(_left), Self::GcUint(_right)) => todo!(),
 
             (Self::IByte(left), Self::IByte(right)) => {
                 if let Some(result) = left.checked_add(*right) {
@@ -233,32 +231,32 @@ impl RuntimeValue {
                 if let Some(result) = left.checked_add(*right) {
                     Self::I128(result)
                 } else {
-                    Self::GcInt(GcBigInt::new_adding(*left, *right, gc)?)
+                    todo!()
                 }
             }
-            (Self::GcInt(left), Self::GcInt(right)) => Self::GcInt(left.add(*right, gc)?),
+            (Self::GcInt(_left), Self::GcInt(_right)) => todo!(),
 
             (Self::F32(_left), Self::F32(_right)) => unimplemented!("No idea how floats work"),
             (Self::F64(_left), Self::F64(_right)) => unimplemented!("No idea how floats work"),
 
-            (Self::Pointer(left), Self::Pointer(right)) => {
-                if let Some(ptr) = left.checked_add(*right) {
-                    Self::Pointer(ptr)
-                } else {
-                    return Err(RuntimeError {
-                        ty: RuntimeErrorTy::IntegerOverflow,
-                        message: format!(
-                            "The attempted subtract is too large to fit in a '{}'",
-                            self.name()
-                        ),
-                    });
-                }
+            (Self::Str(left), Self::Str(right)) => {
+                let unallocated = left.to_string() + right;
+                let new = <&str>::alloc(
+                    unsafe { std::mem::transmute::<&str, &'static str>(&unallocated) },
+                    gc,
+                )?;
+
+                Self::GcString(new)
             }
 
-            (Self::Str(left), Self::Str(right)) => {
-                Self::GcString(GcStr::new_adding(left, right, gc)?)
+            (Self::GcString(left), Self::GcString(right)) => {
+                let unallocated = left.fetch(gc)? + &right.fetch(gc)?;
+                let new = <&str>::alloc(
+                    unsafe { std::mem::transmute::<&str, &'static str>(&unallocated) },
+                    gc,
+                )?;
+                Self::GcString(new)
             }
-            (Self::GcString(left), Self::GcString(right)) => Self::GcString(left.add(*right, gc)?),
 
             (left, right) if left == &Self::None || right == &Self::None => {
                 error!(
@@ -293,26 +291,22 @@ impl RuntimeValue {
         })
     }
 
-    pub fn bit_not(self, gc: &mut Gc) -> Result<Self> {
+    pub fn bit_not(self, _gc: &mut Gc) -> Result<Self> {
         Ok(match self {
             Self::Byte(int) => Self::Byte(!int),
             Self::U16(int) => Self::U16(!int),
             Self::U32(int) => Self::U32(!int),
             Self::U64(int) => Self::U64(!int),
             Self::U128(int) => Self::U128(!int),
-            Self::GcUint(int) => Self::GcUint(int.bit_not(gc)?),
-
+            // Self::GcUint(int) => Self::GcUint(int.bit_not(gc)?),
             Self::IByte(int) => Self::IByte(!int),
             Self::I16(int) => Self::I16(!int),
             Self::I32(int) => Self::I32(!int),
             Self::I64(int) => Self::I64(!int),
             Self::I128(int) => Self::I128(!int),
-            Self::GcInt(int) => Self::GcInt(int.bit_not(gc)?),
-
+            // Self::GcInt(int) => Self::GcInt(int.bit_not(gc)?),
             Self::F32(_int) => unimplemented!("No idea how floats work"),
             Self::F64(_int) => unimplemented!("No idea how floats work"),
-
-            Self::Pointer(int) => Self::Pointer(!int),
 
             val => {
                 return Err(RuntimeError {
@@ -362,10 +356,10 @@ macro_rules! upflowing {
                             if let Some(result) = left.$func(*right) {
                                 Self::U128(result)
                             } else {
-                                Self::GcInt(GcBigInt::$func_three(*left, *right, gc)?)
+                                todo!()
                             }
                         }
-                        (Self::GcUint(left), Self::GcUint(right)) => Self::GcUint(left.$func_two(*right, gc)?),
+                        // (Self::GcUint(left), Self::GcUint(right)) => Self::GcUint(left.$func_two(*right, gc)?),
 
                         (Self::IByte(left), Self::IByte(right)) => {
                             if let Some(result) = left.$func(*right) {
@@ -399,27 +393,13 @@ macro_rules! upflowing {
                             if let Some(result) = left.$func(*right) {
                                 Self::I128(result)
                             } else {
-                                Self::GcInt(GcBigInt::$func_three(*left, *right, gc)?)
+                               todo!()
                             }
                         }
-                        (Self::GcInt(left), Self::GcInt(right)) => Self::GcInt(left.$func_two(*right, gc)?),
+                        // (Self::GcInt(left), Self::GcInt(right)) => Self::GcInt(left.$func_two(*right, gc)?),
 
                         (Self::F32(_left), Self::F32(_right)) => unimplemented!("No idea how floats work"),
                         (Self::F64(_left), Self::F64(_right)) => unimplemented!("No idea how floats work"),
-
-                        (Self::Pointer(left), Self::Pointer(right)) => {
-                            if let Some(ptr) = left.$func(*right) {
-                                Self::Pointer(ptr)
-                            } else {
-                                return Err(RuntimeError {
-                                    ty: RuntimeErrorTy::IntegerOverflow,
-                                    message: format!(
-                                        $err_one,
-                                        self.name()
-                                    ),
-                                });
-                            }
-                        }
 
                         (left, right) if left == &Self::None || right == &Self::None => {
                             return Err(RuntimeError {
@@ -452,26 +432,24 @@ macro_rules! binary_op {
     ($ty:ty, $([$name:tt, $op:tt, $func:tt, $err:literal]),*) => {
         impl $ty {
             $(
-                pub fn $name(self, other: Self, gc: &mut Gc) -> Result<Self> {
+                pub fn $name(self, other: Self, _gc: &mut Gc) -> Result<Self> {
                     Ok(match (self, other) {
                         (Self::Byte(left), Self::Byte(right)) => Self::Byte(left $op right),
                         (Self::U16(left), Self::U16(right)) => Self::U16(left $op right),
                         (Self::U32(left), Self::U32(right)) => Self::U32(left $op right),
                         (Self::U64(left), Self::U64(right)) => Self::U64(left $op right),
                         (Self::U128(left), Self::U128(right)) => Self::U128(left $op right),
-                        (Self::GcUint(left), Self::GcUint(right)) => Self::GcUint(left.$func(right, gc)?),
+                        // (Self::GcUint(left), Self::GcUint(right)) => Self::GcUint(left.$func(right, gc)?),
 
                         (Self::IByte(left), Self::IByte(right)) => Self::IByte(left $op right),
                         (Self::I16(left), Self::I16(right)) => Self::I16(left $op right),
                         (Self::I32(left), Self::I32(right)) => Self::I32(left $op right),
                         (Self::I64(left), Self::I64(right)) => Self::I64(left $op right),
                         (Self::I128(left), Self::I128(right)) => Self::I128(left $op right),
-                        (Self::GcInt(left), Self::GcInt(right)) => Self::GcInt(left.$func(right, gc)?),
+                        // (Self::GcInt(left), Self::GcInt(right)) => Self::GcInt(left.$func(right, gc)?),
 
                         (Self::F32(_left), Self::F32(_right)) => unimplemented!("No idea how floats work"),
                         (Self::F64(_left), Self::F64(_right)) => unimplemented!("No idea how floats work"),
-
-                        (Self::Pointer(left), Self::Pointer(right)) => Self::Pointer(left $op right),
 
                         (left, right) if left == Self::None || right == Self::None => {
                             return Err(RuntimeError {
@@ -634,7 +612,9 @@ impl From<&[u8]> for RuntimeValue {
             0x0C => Self::F32(f32::from_le_bytes(bytes[1..].try_into().unwrap())),
             0x0D => Self::F64(f64::from_le_bytes(bytes[1..].try_into().unwrap())),
 
-            0x0E => Self::Pointer(usize::from_le_bytes(bytes[1..].try_into().unwrap())),
+            0x0E => Self::Pointer(AllocId(usize::from_le_bytes(
+                bytes[1..].try_into().unwrap(),
+            ))),
 
             0x0F => Self::Bool(bytes[1] > 0),
 

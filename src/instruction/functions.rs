@@ -35,7 +35,7 @@ pub fn op_to_reg(mut vm: &mut Vm, reg: u8) -> Result<()> {
 pub fn drop(vm: &mut Vm, reg: u8) -> Result<()> {
     trace!("Clearing register {}", reg);
 
-    vm.registers[reg as usize].clone().drop(&mut vm.gc)?;
+    (&mut vm.registers[reg as usize]).drop(&mut vm.gc)?;
     vm.index += Index(1);
 
     Ok(())

@@ -221,7 +221,7 @@ mod tests {
                 Drop(0.into()),
                 Drop(1.into()),
                 Collect,
-                Load(RuntimeValue::Pointer(0), 0.into()),
+                Load(RuntimeValue::Pointer(0.into()), 0.into()),
                 Print(0.into()),
                 Halt,
             ],

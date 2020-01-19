@@ -1,45 +1,39 @@
 use crate::{AllocId, HeapPointer, Result, RuntimeError, RuntimeErrorTy};
-use std::{alloc, collections::HashMap, mem, ptr, slice};
+use std::{alloc, collections::HashMap, mem, pin::Pin, ptr, slice};
 
 mod collectable;
 pub use collectable::*;
 
 /// Gets the memory page size
-#[inline]
+#[inline(always)]
 #[cfg(target_family = "unix")]
 pub(crate) fn page_size() -> usize {
-    let val = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
-
-    if val <= 0 {
-        panic!("could not determine page size.");
-    }
+    let val = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as usize;
 
     trace!("Memory Page Size: {}", val);
+    assert!(size != 0);
 
-    val as usize
+    size
 }
 
 /// Gets the memory page size
-#[inline]
+#[inline(always)]
 #[cfg(target_family = "windows")]
 pub(crate) fn page_size() -> usize {
     use std::mem::MaybeUninit;
     use winapi::um::sysinfoapi::{GetSystemInfo, SYSTEM_INFO};
 
-    let val = unsafe {
+    let size = unsafe {
         let mut system_info: MaybeUninit<SYSTEM_INFO> = MaybeUninit::zeroed();
         GetSystemInfo(system_info.as_mut_ptr());
 
         system_info.assume_init().dwPageSize as usize
     };
 
-    if val == 0 {
-        panic!("could not determine page size.");
-    }
+    trace!("Memory Page Size: {}", size);
+    assert!(size != 0);
 
-    trace!("Memory Page Size: {}", val);
-
-    val
+    size
 }
 
 /// The options for an initialized GC
@@ -65,7 +59,7 @@ impl From<&crate::Options> for GcOptions {
 }
 
 /// The Crunch Garbage Collector
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Gc {
     /// The current root objects
     roots: Vec<AllocId>,
@@ -90,11 +84,7 @@ impl Gc {
 
         let (left, right) = {
             // Get the memory page size
-            let page_size = {
-                let size = page_size();
-                assert!(size > 0);
-                size
-            };
+            let page_size = page_size();
 
             // Create the layout for a heap half
             let layout = alloc::Layout::from_size_align(options.heap_size, page_size)
@@ -103,6 +93,7 @@ impl Gc {
             // Left heap
             let left = HeapPointer::new(unsafe { alloc::alloc_zeroed(layout) });
             trace!("Left Heap: {:p}", left);
+
             // Right heap
             let right = HeapPointer::new(unsafe { alloc::alloc_zeroed(layout) });
             trace!("Right Heap: {:p}", right);
@@ -122,7 +113,7 @@ impl Gc {
     }
 
     /// Allocate the space for an object
-    pub fn alloc(&mut self, size: usize) -> Result<AllocId> {
+    pub fn allocate(&mut self, size: usize) -> Result<(HeapPointer, AllocId)> {
         trace!("Allocating size {}", size);
 
         if self.options.burn_gc {
@@ -164,60 +155,25 @@ impl Gc {
             new_id += 1.into();
         }
 
-        // end = self.latest + size
         self.latest = HeapPointer::new(block_end as *mut u8);
 
-        Ok(new_id)
+        Ok((HeapPointer::new(block_start), new_id))
     }
 
-    /// Allocate the space for an object
-    pub fn alloc_id<Id: Into<AllocId>>(&mut self, size: usize, id: Id) -> Result<AllocId> {
-        let id = id.into();
+    pub fn allocate_heap<T: Collectable>(&mut self, item: T) -> Result<AllocId> {
+        trace!("Allocating an item to the heap");
 
-        trace!("Allocating for size {} and id {}", size, id.0);
+        let (ptr, id) = self.allocate(mem::size_of::<T>())?;
+        unsafe { (*ptr as *mut T).write(item) };
 
-        if self.options.burn_gc {
-            self.collect()?;
-        }
+        Ok(id)
+    }
 
-        let (block_end, block_start) = (
-            *self.latest as usize + size + 1,
-            (*self.latest as usize + 1) as *mut u8,
-        );
-        let heap = self.get_side();
+    pub fn allocate_zeroed(&mut self, size: usize) -> Result<AllocId> {
+        trace!("Allocating the zeroed for size {}", size);
 
-        // If the object is too large return None
-        if block_end - *heap as usize > self.options.heap_size {
-            trace!("Object too large, failing allocation");
-            self.collect()?; // Collect garbage
-            return Err(RuntimeError {
-                ty: RuntimeErrorTy::GcError,
-                message: "The heap is full".to_string(),
-            });
-        }
-
-        if self.allocations.iter().any(|(i, _)| *i != id) {
-            // Create the GcValue
-            let value = GcValue {
-                id,
-                size,
-                children: Vec::new(),
-                marked: false,
-            };
-
-            self.allocations
-                .insert(id, (HeapPointer::new(block_start), value));
-        } else {
-            trace!("Requested Id {:?} already exists, failing allocation", id);
-            trace!("Gc Dump: {:?}", self);
-            return Err(RuntimeError {
-                ty: RuntimeErrorTy::GcError,
-                message: "The requested ID already exists".to_string(),
-            });
-        }
-
-        // end = self.latest + size
-        self.latest = HeapPointer::new(block_end as *mut u8);
+        let (ptr, id) = self.allocate(size)?;
+        unsafe { ptr.write_bytes(0x00, size) };
 
         Ok(id)
     }
@@ -296,7 +252,7 @@ impl Gc {
         Ok(())
     }
 
-    pub fn get_ptr(&self, id: AllocId) -> Result<HeapPointer> {
+    pub unsafe fn get_ptr(&self, id: AllocId) -> Result<HeapPointer> {
         let (ptr, _val) = self.allocations.get(&id).ok_or(RuntimeError {
             ty: RuntimeErrorTy::GcError,
             message: "Requested value does not exist".to_string(),
@@ -322,8 +278,8 @@ impl Gc {
         Ok(())
     }
 
-    /// Fetch an object's value
-    pub fn fetch<'gc, T: Sized>(&'gc self, id: AllocId) -> Result<&[u8]> {
+    /// Fetch an object's raw bytes
+    pub fn fetch_bytes<'gc>(&'gc self, id: AllocId) -> Result<&[u8]> {
         trace!("Fetching {}", id);
 
         if let Some((_, (ptr, val))) = self.allocations.iter().find(|(i, _)| **i == id.into()) {
@@ -459,32 +415,23 @@ impl Gc {
         })
     }
 
-    /// Write to an object
-    ///
-    /// # Safety
-    /// Any object passed as `data` **must** be owned
-    pub unsafe fn write<Id>(&self, id: Id, data: &[u8]) -> Result<()>
+    pub unsafe fn write<Id, T>(&self, id: Id, data: T) -> Result<()>
     where
         Id: Into<AllocId> + Copy,
     {
         let id = id.into();
-
-        trace!(
-            "Writing to allocation {} with data of len {}",
-            id,
-            data.len()
-        );
+        trace!("Writing to allocation {}", id);
 
         if let Some((ptr, val)) = self.allocations.get(&id) {
-            if data.len() <= val.size {
-                ptr::copy(data.as_ptr(), **ptr, data.len());
+            if mem::size_of::<T>() != val.size {
+                (**ptr as *mut T).write(data);
                 trace!("Wrote to allocation {}, ptr {:p}", id, *ptr);
 
                 Ok(())
             } else {
                 Err(RuntimeError {
                     ty: RuntimeErrorTy::GcError,
-                    message: format!("Size Misalign: {} != {}", val.size, data.len(),),
+                    message: format!("Size Misalign: {} != {}", val.size, mem::size_of::<T>()),
                 })
             }
         } else {
@@ -621,124 +568,5 @@ impl GcValue {
     pub fn unmark(&mut self, queue: &mut Vec<AllocId>) {
         self.marked = false;
         queue.extend_from_slice(&self.children);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::mem::size_of;
-
-    #[test]
-    fn alloc_usizes() {
-        color_backtrace::install();
-        simple_logger::init().unwrap();
-
-        let mut gc = Gc::new(&crate::OptionBuilder::new("./alloc_usizes").build());
-
-        let keep = gc.alloc(size_of::<usize>()).unwrap();
-        unsafe {
-            gc.write(keep, &usize::max_value().to_le_bytes()).unwrap();
-        }
-        gc.add_root(keep);
-        assert!(gc.contains(keep));
-        assert!(gc.fetch::<usize>(keep) == Ok(&usize::max_value().to_le_bytes()));
-
-        let discard = gc.alloc(size_of::<usize>()).unwrap();
-        unsafe {
-            gc.write(discard, &(usize::max_value() - 1).to_le_bytes())
-                .unwrap();
-        }
-        assert!(gc.contains(discard));
-        assert!(gc.fetch::<usize>(discard) == Ok(&(usize::max_value() - 1).to_le_bytes()));
-
-        gc.collect().unwrap();
-
-        assert!(gc.contains(keep));
-        assert!(dbg!(gc.fetch::<usize>(keep).unwrap()) == &usize::max_value().to_le_bytes());
-
-        assert!(!gc.contains(discard));
-        assert!(gc.fetch::<usize>(discard).is_err());
-
-        gc.collect().unwrap();
-
-        assert!(gc.contains(keep));
-        assert!(gc.fetch::<usize>(keep).unwrap() == &usize::max_value().to_le_bytes());
-
-        assert!(!gc.contains(discard));
-        assert!(gc.fetch::<usize>(discard).is_err());
-
-        assert!(gc.remove_root(keep).is_ok());
-
-        gc.collect().unwrap();
-
-        assert!(!gc.contains(keep));
-        assert!(gc.fetch::<usize>(keep).is_err());
-
-        gc.collect().unwrap();
-
-        assert!(!gc.contains(keep));
-        assert!(gc.fetch::<usize>(keep).is_err());
-    }
-
-    #[test]
-    fn gc_test() {
-        let mut gc = Gc::new(&crate::OptionBuilder::new("./gc_test").build());
-
-        let ten = gc.alloc(size_of::<usize>()).unwrap();
-        println!("Allocated usize: Ptr: {:p}", gc.get_ptr(ten).unwrap());
-        unsafe {
-            gc.write(ten, &10_usize.to_le_bytes()).unwrap();
-        }
-
-        let eleven = gc.alloc(size_of::<usize>()).unwrap();
-        println!("Allocated usize: Ptr: {:p}", gc.get_ptr(eleven).unwrap());
-        unsafe {
-            gc.write(eleven, &11_usize.to_le_bytes()).unwrap();
-        }
-
-        let twelve = gc.alloc(size_of::<usize>()).unwrap();
-        println!("Allocated usize: Ptr: {:p}", gc.get_ptr(twelve).unwrap());
-        unsafe {
-            gc.write(twelve, &12_usize.to_le_bytes()).unwrap();
-        }
-
-        gc.add_child(ten, eleven).unwrap();
-        println!("Added Child to ten: {:?}", ten);
-
-        gc.add_root(ten);
-        println!("Added root to GC: {:?}", gc.roots);
-
-        println!("\n=> Before Collect\n{}\n", gc.data());
-
-        {
-            let ten = gc.fetch::<usize>(ten);
-            let eleven = gc.fetch::<usize>(eleven);
-            let twelve = gc.fetch::<usize>(twelve);
-
-            println!("Ten: {:?}, Eleven: {:?}, Twelve: {:?}", ten, eleven, twelve);
-        }
-
-        gc.collect().unwrap();
-        println!("\n=> After Collect\n{}\n", gc.data());
-
-        {
-            let ten = gc.fetch::<usize>(ten);
-            let eleven = gc.fetch::<usize>(eleven);
-            let twelve = gc.fetch::<usize>(twelve);
-
-            println!("Ten: {:?}, Eleven: {:?}, Twelve: {:?}", ten, eleven, twelve);
-        }
-
-        gc.collect().unwrap();
-        println!("\n=> After Second Collect\n{}\n", gc.data());
-
-        {
-            let ten = gc.fetch::<usize>(ten);
-            let eleven = gc.fetch::<usize>(eleven);
-            let twelve = gc.fetch::<usize>(twelve);
-
-            println!("Ten: {:?}, Eleven: {:?}, Twelve: {:?}", ten, eleven, twelve);
-        }
     }
 }

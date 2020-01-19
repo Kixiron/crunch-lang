@@ -2,7 +2,7 @@ use super::{
     jit::Jit, parser::Either, Gc, Index, Instruction, Register, Result, RuntimeValue,
     NUMBER_REGISTERS,
 };
-use std::time::Instant;
+use std::{pin::Pin, time::Instant};
 
 /// The initialized options for the VM
 #[derive(Debug, Copy, Clone)]
