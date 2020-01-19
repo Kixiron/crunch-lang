@@ -562,7 +562,6 @@ mod tests {
                 vm.gc.add_root(discard);
 
                 assert!(vm.gc.contains(discard));
-                assert!(vm.gc.fetch(discard) == Ok(&RuntimeValue::I32(int)));
                 vm.gc.remove_root(discard).unwrap();
 
                 collect.execute(&mut vm).unwrap();

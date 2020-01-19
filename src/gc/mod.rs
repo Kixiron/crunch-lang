@@ -50,6 +50,7 @@ pub struct GcOptions {
     /// Overwrites the heap on a side swap
     pub overwrite_heap: bool,
     pub heap_size: usize,
+    pub debug: bool,
 }
 
 impl From<&crate::Options> for GcOptions {
@@ -58,6 +59,7 @@ impl From<&crate::Options> for GcOptions {
             burn_gc: options.burn_gc,
             overwrite_heap: options.overwrite_heap,
             heap_size: options.heap_size,
+            debug: options.debug_log,
         }
     }
 }
@@ -128,8 +130,8 @@ impl Gc {
         }
 
         let (block_end, block_start) = (
-            *self.latest as usize + size + 1,
-            (*self.latest as usize + 1) as *mut u8,
+            *self.latest as usize + size,
+            (*self.latest as usize) as *mut u8,
         );
         let heap = self.get_side();
 
@@ -303,19 +305,40 @@ impl Gc {
         Ok(*ptr)
     }
 
-    /// Fetch an object's value
-    pub fn fetch<'gc, T: Sized + std::fmt::Debug>(&'gc self, id: AllocId) -> Result<T> {
-        trace!("Fetching {}", id);
+    fn dump_heap(&self, side: Side) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        use std::io::Write;
 
-        let bytes = self.fetch_bytes(id.into())?.as_ptr();
+        let mut f = std::fs::File::create("right.dump")?;
+        f.write_all(unsafe {
+            std::slice::from_raw_parts(
+                match side {
+                    Side::Left => *self.left,
+                    Side::Right => *self.right,
+                },
+                self.options.heap_size,
+            )
+        })?;
 
-        Ok(unsafe { dbg!(ptr::read(bytes as *const T)) })
+        Ok(())
     }
 
-    fn fetch_bytes<'gc>(&'gc self, id: AllocId) -> Result<&'gc [u8]> {
-        trace!("Fetching the bytes of {}", id);
+    /// Fetch an object's value
+    pub fn fetch<'gc, T: Sized>(&'gc self, id: AllocId) -> Result<&[u8]> {
+        trace!("Fetching {}", id);
 
         if let Some((_, (ptr, val))) = self.allocations.iter().find(|(i, _)| **i == id.into()) {
+            if self.options.debug {
+                self.dump_heap(Side::Right).unwrap();
+                self.dump_heap(Side::Left).unwrap();
+            }
+
+            println!(
+                "Ptr: {:p}, Heap: {:p}, Heap - Ptr: {:p}",
+                **ptr,
+                *self.get_side(),
+                (**ptr as usize - *self.get_side() as usize) as *const u8
+            );
+
             Ok(unsafe { std::slice::from_raw_parts(**ptr, val.size) })
         } else {
             Err(RuntimeError {
@@ -607,42 +630,10 @@ mod tests {
     use std::mem::size_of;
 
     #[test]
-    fn alloc_value() {
-        use crate::RuntimeValue;
-
+    fn alloc_usizes() {
         color_backtrace::install();
         simple_logger::init().unwrap();
 
-        let mut gc = Gc::new(&crate::OptionBuilder::new("./alloc_value").build());
-
-        let int = gc.alloc(std::mem::size_of::<RuntimeValue>()).unwrap();
-        unsafe {
-            gc.write(
-                int,
-                &<RuntimeValue as Into<Vec<u8>>>::into(RuntimeValue::I32(10)),
-            )
-            .unwrap();
-        }
-        gc.add_root(int);
-        assert!(gc.contains(int));
-        assert!(gc.fetch(int) == Ok(&RuntimeValue::I32(10)));
-
-        let int_2 = gc.alloc_id(size_of::<RuntimeValue>(), 0).unwrap();
-        unsafe {
-            gc.write(
-                int_2,
-                &<RuntimeValue as Into<Vec<u8>>>::into(RuntimeValue::I32(20)),
-            )
-            .unwrap();
-        }
-        gc.add_root(int_2);
-        assert_eq!(AllocId(0), int_2);
-        assert!(gc.contains(int_2));
-        assert!(gc.fetch(int_2) == Ok(&RuntimeValue::I32(20)));
-    }
-
-    #[test]
-    fn alloc_usizes() {
         let mut gc = Gc::new(&crate::OptionBuilder::new("./alloc_usizes").build());
 
         let keep = gc.alloc(size_of::<usize>()).unwrap();
@@ -651,7 +642,7 @@ mod tests {
         }
         gc.add_root(keep);
         assert!(gc.contains(keep));
-        assert!(gc.fetch(keep) == Ok(&usize::max_value()));
+        assert!(gc.fetch::<usize>(keep) == Ok(&usize::max_value().to_le_bytes()));
 
         let discard = gc.alloc(size_of::<usize>()).unwrap();
         unsafe {
@@ -659,12 +650,12 @@ mod tests {
                 .unwrap();
         }
         assert!(gc.contains(discard));
-        assert!(gc.fetch(discard) == Ok(&(usize::max_value() - 1)));
+        assert!(gc.fetch::<usize>(discard) == Ok(&(usize::max_value() - 1).to_le_bytes()));
 
         gc.collect().unwrap();
 
         assert!(gc.contains(keep));
-        assert!(gc.fetch(keep) == Ok(&usize::max_value()));
+        assert!(dbg!(gc.fetch::<usize>(keep).unwrap()) == &usize::max_value().to_le_bytes());
 
         assert!(!gc.contains(discard));
         assert!(gc.fetch::<usize>(discard).is_err());
@@ -672,7 +663,7 @@ mod tests {
         gc.collect().unwrap();
 
         assert!(gc.contains(keep));
-        assert!(gc.fetch(keep) == Ok(&usize::max_value()));
+        assert!(gc.fetch::<usize>(keep).unwrap() == &usize::max_value().to_le_bytes());
 
         assert!(!gc.contains(discard));
         assert!(gc.fetch::<usize>(discard).is_err());
