@@ -208,17 +208,19 @@ impl Gc {
         let mut new_allocations = HashMap::with_capacity(keep.len());
         // Iterate over allocations to keep to move them onto the new heap
         for (id, (old_ptr, val)) in keep.into_iter() {
-            // Unsafe Usage: Get the bytes from the object on the old heap and copy them onto the new heap
-            unsafe {
-                let target: &mut [u8] = slice::from_raw_parts_mut(*self.latest as *mut _, val.size);
-                target.copy_from_slice(slice::from_raw_parts(*old_ptr, val.size));
-            }
+            let size = val.size;
 
-            // Increment by the size of the moved object
-            self.latest = self.latest.wrapping_add(val.size).into();
+            // Safety: Copying bytes from one heap to the other
+            unsafe {
+                let target: &mut [u8] = slice::from_raw_parts_mut(*self.latest as *mut _, size);
+                target.copy_from_slice(slice::from_raw_parts(*old_ptr, size));
+            }
 
             // Push the new allocation to new_allocations
             new_allocations.insert(id, (self.latest, val));
+
+            // Increment by the size of the moved object
+            self.latest = self.latest.wrapping_offset(size as isize).into();
 
             trace!("Saving allocation {:?}", id);
         }

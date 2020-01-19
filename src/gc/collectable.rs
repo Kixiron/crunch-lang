@@ -174,7 +174,7 @@ impl<T: Collectable> Collectable for Vec<T> {
 
         let mut offset = 0;
         for val in self {
-            unsafe { ptr.offset(offset).write(val) };
+            ptr.wrapping_offset(offset).write(val);
         }
 
         Ok(Heap::new(id, size))
@@ -195,34 +195,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn collection() -> Result<()> {
+    fn collectable() -> Result<()> {
         simple_logger::init().unwrap();
 
         let mut gc = super::Gc::new(&crate::OptionBuilder::new("./gc_test").build());
 
         let int = 1000_usize;
         let stub = int.alloc(&mut gc)?;
-        println!("here");
         assert_eq!(int, stub.fetch(&mut gc)?);
 
-        println!("here");
         stub.root(&mut gc)?;
-        println!("here");
         assert_eq!(int, stub.fetch(&mut gc)?);
 
-        println!("here");
         gc.collect()?;
-        println!("here");
         assert_eq!(int, stub.fetch(&mut gc)?);
 
-        println!("here");
         stub.unroot(&mut gc)?;
-        println!("here");
         assert_eq!(int, stub.fetch(&mut gc)?);
 
-        println!("here");
         gc.collect()?;
-        println!("here");
         assert!(stub.fetch(&mut gc).is_err());
 
         Ok(())
