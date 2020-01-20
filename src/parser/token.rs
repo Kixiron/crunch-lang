@@ -347,7 +347,7 @@ impl<'a> std::fmt::Debug for Token<'a> {
 
 #[test]
 fn token_test() {
-    const CODE: &str = include_str!("../../examples/parse_test.crunch");
+    const CODE: &str = include_str!("../../tests/parse_test.crunch");
 
     let tokens = TokenStream::new(CODE, true)
         .into_iter()

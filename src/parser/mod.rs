@@ -1098,7 +1098,7 @@ mod tests {
 
     #[test]
     fn parse_test() {
-        const CODE: &str = include_str!("../../examples/parse_test.crunch");
+        const CODE: &str = include_str!("../../tests/parse_test.crunch");
         const FILENAME: &str = "parse_test.crunch";
 
         /*
