@@ -77,7 +77,7 @@
 
 ## Target Syntax
 
-The entry point of every Crunch program is a `main` function that returns `void`
+The entry point of every Crunch program is a `main` function that returns `unit`
 
 ```crunch
 :: Declare a type
@@ -95,7 +95,7 @@ type Syven
         }
     end
 
-    fn greet(self) -> void
+    fn greet(self) -> unit
         @print "Hello {}! You are {} years old!\n", self.name, self.age
     end
 end
@@ -106,11 +106,11 @@ fn hello(name, age)
 end
     
 :: This untyped function will be desugared into a generic function like this
-fn hello<T, E>(name: T, age E) -> void
+fn hello<T, E>(name: T, age E) -> unit
     @print "Hello {}! You are {} years old!\n", name, age
 end
 
-:: Functions that do not specify a return type default to `void`
+:: Functions that do not specify a return type default to `unit`
 fn main()
     let name: str = "Syven"
     let age: nullable<int> = null
@@ -215,7 +215,7 @@ Bit Escape Codes: `\b{00000000}`
 `str`: A dynamically growable string stored on the Heap  
 `int`: A semi-dynamically sized signed integer ~~of up to 128 bits~~  
 `float`: A semi-dynamically sized float ~~of up to 64 bits~~  
-`void`: Nothing. The void consumes all foolish enough to attempt usage, for it is naught, zilch, nada. A purely typesystem-sided construct that is clobbered by the compiler  
+`unit`: Nothing. The void consumes all foolish enough to attempt usage, for it is naught, zilch, nada. A purely typesystem-sided construct that is clobbered by the compiler  
 `nullable<ty>`: Makes a type able to be null. `ty` is the contained type. The contained value can be `ty` or `null`  
 `bool`: A boolean value of either `true` or `false`  
 `vector<ty>`: A vector of values. `ty` is the contained type  

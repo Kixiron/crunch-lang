@@ -605,10 +605,10 @@ impl<'a> Parser<'a> {
             unreachable!("The only valid conditionals should be `if`, `else if` and `else`")
         };
 
-        let condition = if cond != CondType::Else {
-            Some(self.expr()?)
-        } else {
+        let condition = if cond == CondType::Else {
             None
+        } else {
+            Some(self.expr()?)
         };
         self.eat(TokenType::Newline)?;
 

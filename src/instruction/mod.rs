@@ -33,7 +33,9 @@ impl PartialEq for RuntimeError {
 /// The type of [`RuntimeError`] that occurred
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeErrorTy {
-    /// An error in the [`GC`]
+    /// An error in the `Gc`
+    ///
+    /// [`Gc`]: crate.Gc
     GcError,
     /// The user attempted to divide by zero
     DivideByZero,

@@ -6,12 +6,14 @@ macro_rules! binary_ops {
             impl std::ops::Add for $ty {
                 type Output = Self;
 
+                #[inline]
                 fn add(self, other: Self) -> Self::Output {
                     Self(self.0 + other.0)
                 }
             }
 
             impl std::ops::AddAssign for $ty {
+                #[inline]
                 fn add_assign(&mut self, other: Self) {
                     self.0 += other.0;
                 }
@@ -20,12 +22,14 @@ macro_rules! binary_ops {
             impl std::ops::Sub for $ty {
                 type Output = Self;
 
+                #[inline]
                 fn sub(self, other: Self) -> Self::Output {
                     Self(self.0 - other.0)
                 }
             }
 
             impl std::ops::SubAssign for $ty {
+                #[inline]
                 fn sub_assign(&mut self, other: Self) {
                     self.0 -= other.0;
                 }
@@ -40,18 +44,21 @@ macro_rules! util_ops {
             impl std::ops::Deref for $ty {
                 type Target = $target;
 
+                #[inline]
                 fn deref(&self) -> &Self::Target {
                     &self.0
                 }
             }
 
             impl From<$ty> for $target {
+                #[inline]
                 fn from(ty: $ty) -> $target {
                     ty.0
                 }
             }
 
             impl From<$target> for $ty {
+                #[inline]
                 fn from(target: $target) -> Self {
                     Self(target)
                 }

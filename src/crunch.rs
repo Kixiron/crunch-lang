@@ -15,6 +15,7 @@ pub struct Crunch {
 /// The main usage of Crunch
 impl Crunch {
     #[inline]
+    #[must_use]
     pub fn new(options: Options) -> Self {
         Self {
             vm: Vm::new(&options, Box::new(std::io::stdout())),
@@ -68,8 +69,7 @@ impl Crunch {
         );
 
         match parser.parse() {
-            Ok(ast) => match Interpreter::from_interner(&options, parser.interner)
-                .interpret(ast.0.clone())
+            Ok(ast) => match Interpreter::from_interner(&options, parser.interner).interpret(ast.0)
             {
                 Ok(functions) => {
                     info!("Executing Crunch Program");

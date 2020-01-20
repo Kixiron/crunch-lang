@@ -257,7 +257,7 @@ pub fn ret(mut vm: &mut Vm) -> Result<()> {
 pub fn collect(vm: &mut Vm) -> Result<()> {
     trace!("Forcing a GC collect");
 
-    vm.gc.collect()?;
+    vm.gc.collect();
     vm.index += Index(1);
 
     Ok(())
@@ -282,8 +282,8 @@ pub fn jump_point(vm: &mut Vm) -> Result<()> {
 }
 
 pub fn illegal(_vm: &mut Vm) -> Result<()> {
-    return Err(RuntimeError {
+    Err(RuntimeError {
         ty: RuntimeErrorTy::IllegalInstruction,
         message: "Illegal Instruction".to_string(),
-    });
+    })
 }

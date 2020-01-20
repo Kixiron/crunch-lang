@@ -2,7 +2,7 @@ use super::{
     jit::Jit, parser::Either, Gc, Index, Instruction, Register, Result, RuntimeValue,
     NUMBER_REGISTERS,
 };
-use std::{pin::Pin, time::Instant};
+use std::time::Instant;
 
 /// The initialized options for the VM
 #[derive(Debug, Copy, Clone)]
@@ -133,6 +133,7 @@ pub struct Function<'a> {
 impl<'a> Function<'a> {
     // const JIT_USAGE_THRESHOLD: usize = 0;
 
+    #[must_use]
     pub fn new(function: Vec<Instruction>) -> Self {
         Self {
             function: Either::Left(function),
@@ -160,7 +161,7 @@ impl<'a> Function<'a> {
         match self.function {
             Either::Left(ref instructions) => {
                 while !vm.finished_execution {
-                    &instructions[*vm.index as usize].execute(vm)?;
+                    instructions[*vm.index as usize].execute(vm)?;
                 }
             }
             Either::Right(jit) => unsafe { jit.as_mut().unwrap().run(vm)? },
@@ -193,7 +194,13 @@ pub struct RuntimeFunctionMeta {
 }
 
 impl RuntimeFunctionMeta {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self { usages: 0 }
+    }
+}
+
+impl Default for RuntimeFunctionMeta {
+    fn default() -> Self {
+        Self::new()
     }
 }

@@ -1,48 +1,85 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 
 fn instructions(c: &mut Criterion) {
-    use crunch::{Instruction::*, *};
+    use crunch::*;
 
-    let inst = vec![
-        Load(RuntimeValue::I32(10), 0.into()),
-        Print(0.into()),
-        Load(RuntimeValue::I32(20), 1.into()),
-        Print(1.into()),
-        Add(0.into(), 1.into()),
-        OpToReg(2.into()),
-        Print(2.into()),
-        Halt,
-    ];
+    c.bench_function("GC Collect 10000 usizes", |b| {
+        let mut gc = Gc::new(
+            &OptionBuilder::new("./alloc_10000_usizes")
+                .heap_size(std::mem::size_of::<usize>() * 10_000)
+                .build(),
+        );
 
-    let mut crunch = Crunch::from((
-        inst,
-        Vec::new(),
-        OptionBuilder::new("./ten_plus_twenty").build(),
-    ));
+        for i in 0..10_000usize {
+            i.alloc(&mut gc).unwrap();
+        }
 
-    c.bench_function("Ten Plus Twenty", |b| {
-        b.iter(|| crunch.execute());
-    });
+        b.iter(|| {
+            gc.collect();
+        });
+    })
+    .bench_function("GC Allocate and Collect 10000 usizes exact heap", |b| {
+        let mut gc = Gc::new(
+            &OptionBuilder::new("./alloc_10000_usizes")
+                .heap_size(std::mem::size_of::<usize>() * 10_000)
+                .build(),
+        );
 
-    let inst = vec![
-        Load(RuntimeValue::Str("Test"), 0.into()),
-        Print(0.into()),
-        Load(RuntimeValue::Str(" Me"), 1.into()),
-        Print(1.into()),
-        Add(0.into(), 1.into()),
-        OpToReg(2.into()),
-        Print(2.into()),
-        Halt,
-    ];
+        b.iter(|| {
+            for i in 0..10_000usize {
+                i.alloc(&mut gc).unwrap();
+            }
 
-    let mut crunch = Crunch::from((
-        inst,
-        Vec::new(),
-        OptionBuilder::new("./ten_plus_twenty").build(),
-    ));
+            gc.collect();
+        });
+    })
+    .bench_function("GC Allocate 10000 usizes exact heap", |b| {
+        let mut gc = Gc::new(
+            &OptionBuilder::new("./alloc_10000_usizes")
+                .heap_size(std::mem::size_of::<usize>() * 10_000)
+                .build(),
+        );
 
-    c.bench_function("Add Strings", |b| {
-        b.iter(|| crunch.execute());
+        b.iter(|| {
+            for i in 0..10_000usize {
+                i.alloc(&mut gc).unwrap();
+            }
+        });
+
+        gc.collect();
+    })
+    .bench_function(
+        "GC Allocate and Collect 10000 usizes constrained heap",
+        |b| {
+            let mut gc = Gc::new(
+                &OptionBuilder::new("./alloc_10000_usizes")
+                    .heap_size(1024 * 1024 * 2)
+                    .build(),
+            );
+
+            b.iter(|| {
+                for i in 0..10_000usize {
+                    i.alloc(&mut gc).unwrap();
+                }
+
+                gc.collect();
+            });
+        },
+    )
+    .bench_function("GC Allocate 10000 usizes constrained heap", |b| {
+        let mut gc = Gc::new(
+            &OptionBuilder::new("./alloc_10000_usizes")
+                .heap_size(1024 * 1024 * 2)
+                .build(),
+        );
+
+        b.iter(|| {
+            for i in 0..10_000usize {
+                i.alloc(&mut gc).unwrap();
+            }
+        });
+
+        gc.collect();
     });
 }
 

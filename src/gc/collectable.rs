@@ -11,6 +11,7 @@ pub struct Heap<T: Collectable + Sized> {
 }
 
 impl<T: Collectable + Sized> Heap<T> {
+    #[must_use]
     pub fn new(id: AllocId, size: usize) -> Self {
         Heap {
             id,
@@ -69,12 +70,14 @@ macro_rules! collectable_int {
             impl Collectable for $int {
                 type Owned = Self;
 
+                #[inline]
                 fn alloc(self, gc: &mut Gc) -> Result<Heap<Self>> {
                     let id = gc.allocate_heap(self)?;
 
                     Ok(Heap::new(id, mem::size_of::<Self>()))
                 }
 
+                #[inline]
                 fn fetch(stub: &Heap<Self>, gc: &Gc) -> Result<Self::Owned> {
                     use std::convert::TryInto;
 
@@ -107,14 +110,20 @@ collectable_int! {
 impl Collectable for &str {
     type Owned = String;
 
+    #[inline]
     fn alloc(self, gc: &mut Gc) -> Result<Heap<Self>> {
         let bytes = self.as_bytes();
-        let id = gc.allocate_zeroed(bytes.len())?;
-        unsafe { gc.write(id, bytes)? };
+        let (ptr, id) = gc.allocate_zeroed(bytes.len())?;
+
+        unsafe {
+            let target = slice::from_raw_parts_mut(*ptr, bytes.len());
+            target.copy_from_slice(bytes);
+        }
 
         Ok(Heap::new(id, bytes.len()))
     }
 
+    #[inline]
     fn fetch(stub: &Heap<Self>, gc: &Gc) -> Result<Self::Owned> {
         let bytes = gc.fetch_bytes(stub.id)?.to_vec();
         let string = String::from_utf8(bytes).map_err(|_| RuntimeError {
@@ -131,9 +140,12 @@ impl Collectable for BigInt {
 
     fn alloc(self, gc: &mut Gc) -> Result<Heap<Self>> {
         let bytes = self.to_signed_bytes_le();
-        let id = gc.allocate_zeroed(bytes.len())?;
+        let (ptr, id) = gc.allocate_zeroed(bytes.len())?;
 
-        unsafe { gc.write(id, &bytes)? };
+        unsafe {
+            let target = slice::from_raw_parts_mut(*ptr, bytes.len());
+            target.copy_from_slice(&bytes);
+        }
 
         Ok(Heap::new(id, bytes.len()))
     }
@@ -148,9 +160,12 @@ impl Collectable for BigUint {
 
     fn alloc(self, gc: &mut Gc) -> Result<Heap<Self>> {
         let bytes = self.to_bytes_le();
-        let id = gc.allocate_zeroed(bytes.len())?;
+        let (ptr, id) = gc.allocate_zeroed(bytes.len())?;
 
-        unsafe { gc.write(id, &bytes)? };
+        unsafe {
+            let target = slice::from_raw_parts_mut(*ptr, bytes.len());
+            target.copy_from_slice(&bytes);
+        }
 
         Ok(Heap::new(id, bytes.len()))
     }
@@ -207,13 +222,13 @@ mod tests {
         stub.root(&mut gc)?;
         assert_eq!(int, stub.fetch(&mut gc)?);
 
-        gc.collect()?;
+        gc.collect();
         assert_eq!(int, stub.fetch(&mut gc)?);
 
         stub.unroot(&mut gc)?;
         assert_eq!(int, stub.fetch(&mut gc)?);
 
-        gc.collect()?;
+        gc.collect();
         assert!(stub.fetch(&mut gc).is_err());
 
         Ok(())

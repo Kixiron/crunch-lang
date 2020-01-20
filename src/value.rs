@@ -36,7 +36,7 @@ pub enum RuntimeValue {
     // Pointer
     Pointer(AllocId),
     // Vec
-    // GcVec(GcVec<RuntimeValue>),
+    // GcVec(Vec<RuntimeValue>),
     // Null
     Null,
 
@@ -240,7 +240,7 @@ impl RuntimeValue {
             (Self::F64(_left), Self::F64(_right)) => unimplemented!("No idea how floats work"),
 
             (Self::Str(left), Self::Str(right)) => {
-                let unallocated = left.to_string() + right;
+                let unallocated = (*left).to_string() + right;
                 let new = <&str>::alloc(
                     unsafe { std::mem::transmute::<&str, &'static str>(&unallocated) },
                     gc,

@@ -1,5 +1,6 @@
 use crate::{AllocId, HeapPointer, Result, RuntimeError, RuntimeErrorTy};
-use std::{alloc, collections::HashMap, mem, pin::Pin, ptr, slice};
+use fxhash::FxBuildHasher;
+use std::{alloc, collections::HashMap, mem, ptr, slice};
 
 mod collectable;
 pub use collectable::*;
@@ -39,11 +40,17 @@ pub(crate) fn page_size() -> usize {
 /// The options for an initialized GC
 #[derive(Debug, Copy, Clone)]
 pub struct GcOptions {
-    /// Activates a GC collect at every opportunity
+    /// Activates a GC collect at every opportunity  
     pub burn_gc: bool,
-    /// Overwrites the heap on a side swap
+    /// Overwrites the heap on a side swap and on the `Gc` drop
+    ///
+    /// [`Gc`]: crate.Gc
     pub overwrite_heap: bool,
+    /// Sets the size of one half of the heap  
+    /// Note: This means that the total allocated memory is `heap_size * 2`, while the avaliable
+    /// memory is only `heap_size`
     pub heap_size: usize,
+    /// Enables additional debug output
     pub debug: bool,
 }
 
@@ -72,15 +79,31 @@ pub struct Gc {
     /// The heap side currently in use
     current_side: Side,
     /// A vector of each allocation's id and current pointer
-    allocations: HashMap<AllocId, (HeapPointer, GcValue)>,
+    allocations: HashMap<AllocId, (HeapPointer, GcValue), FxBuildHasher>,
+    /// The next `AllocId` to be used for an `allocated` value
+    ///
+    /// [`AllocId`]: crate.AllocId
+    /// [`allocated`]: #allocate.crate.Gc
+    next_id: usize,
+    /// The options configured for the Gc
     options: GcOptions,
 }
 
 impl Gc {
-    /// Create a new GC instance
+    /// Create a new GC instance, using `options.heap_size` as the starting heap size.  
+    /// Note: This means that the total allocated memory is `heap_size * 2`, while the avaliable
+    /// memory is only `heap_size`
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `options.heap_size` or the memory `page_size` are `0`
+    ///
+    /// [`options.heap_size`]: #heap_size.crate.GcOptions
     #[must_use]
     pub fn new(options: &crate::Options) -> Self {
         trace!("Initializing GC");
+
+        assert!(options.heap_size != 0);
 
         let (left, right) = {
             // Get the memory page size
@@ -104,62 +127,86 @@ impl Gc {
         Self {
             left,
             right,
-            allocations: HashMap::new(),
+            allocations: HashMap::with_hasher(FxBuildHasher::default()),
             roots: Vec::new(),
             current_side: Side::Left,
             latest: left,
+            next_id: 0,
             options: GcOptions::from(options),
         }
     }
 
-    /// Allocate the space for an object
+    /// Allocates a region of `size` bytes and returns the `HeapPointer` and `AllocId` of said allocation
+    ///
+    /// # Safety
+    /// The `HeapPointer` returned can be invalidated by a `Gc` collection cycle (See `collect`)
+    ///
+    /// [`HeapPointer`]: crate.HeapPointer
+    /// [`AllocId`]: crate.AllocId
+    /// [`Gc`]: crate.Gc
+    /// [`collect`]: #collect.crate.Gc
+    #[must_use]
     pub fn allocate(&mut self, size: usize) -> Result<(HeapPointer, AllocId)> {
+        self.allocate_inner(size, 0)
+    }
+
+    /// The inner workings of `allocate`, used to allow retrying allocation when the heap is out of memory.  
+    /// See `allocate` for more information
+    ///
+    /// [`allocate`]: #allocate.crate.Gc
+    #[inline]
+    #[must_use]
+    fn allocate_inner(&mut self, size: usize, attempt: u8) -> Result<(HeapPointer, AllocId)> {
         trace!("Allocating size {}", size);
 
         if self.options.burn_gc {
-            self.collect()?;
+            self.collect();
         }
 
-        let (block_end, block_start) = (
-            *self.latest as usize + size,
+        let (block_start, block_end) = (
             (*self.latest as usize) as *mut u8,
+            *self.latest as usize + size,
         );
-        let heap = self.get_side();
 
-        // If the object is too large return None
-        if block_end - *heap as usize > self.options.heap_size {
-            self.collect()?; // Collect garbage
-            return Err(RuntimeError {
-                ty: RuntimeErrorTy::GcError,
-                message: "The heap is full".to_string(),
-            });
+        // If the object is too large return an error
+        if !(block_start as usize >= *self.get_side() as usize
+            && block_end < *self.get_side() as usize + self.options.heap_size)
+        {
+            self.collect(); // Collect garbage
+
+            if attempt < 1 {
+                return self.allocate_inner(size, attempt + 1);
+            } else {
+                return Err(RuntimeError {
+                    ty: RuntimeErrorTy::GcError,
+                    message: "The heap is full".to_string(),
+                });
+            }
         }
 
         // Generate the Id of the new allocation based off of its pointer
-        let mut new_id: AllocId = AllocId::new(block_start as usize >> 2);
-        loop {
-            if !self.allocations.iter().any(|(id, _)| *id == new_id) {
-                // Create the GcValue
-                let value = GcValue {
-                    id: new_id,
-                    size,
-                    children: Vec::new(),
-                    marked: false,
-                };
+        let new_id: AllocId = AllocId::new(self.next_id);
+        self.next_id += 1;
 
-                self.allocations
-                    .insert(new_id, (HeapPointer::new(block_start), value));
+        let value = GcValue {
+            id: new_id,
+            size,
+            children: Vec::new(),
+            marked: false,
+        };
 
-                break;
-            }
-            new_id += 1.into();
-        }
+        self.allocations
+            .insert(new_id, (HeapPointer::new(block_start), value));
 
         self.latest = HeapPointer::new(block_end as *mut u8);
 
         Ok((HeapPointer::new(block_start), new_id))
     }
 
+    /// Allocates and writes `T` directly to the heap, returning its `AllocId`.  
+    ///
+    /// [`AllocId`]: crate.AllocId
+    #[must_use]
     pub fn allocate_heap<T: Collectable>(&mut self, item: T) -> Result<AllocId> {
         trace!("Allocating an item to the heap");
 
@@ -169,21 +216,40 @@ impl Gc {
         Ok(id)
     }
 
-    pub fn allocate_zeroed(&mut self, size: usize) -> Result<AllocId> {
+    /// Allocates a region of `size` bytes, zeroes it and returns the `HeapPointer` and `AllocId` of said allocation
+    ///
+    /// # Safety
+    /// The `HeapPointer` returned can be invalidated by a `Gc` collection cycle (See `collect`)
+    ///
+    /// [`HeapPointer`]: crate.HeapPointer
+    /// [`AllocId`]: crate.AllocId
+    /// [`Gc`]: crate.Gc
+    /// [`collect`]: #collect.crate.Gc
+    #[must_use]
+    pub fn allocate_zeroed(&mut self, size: usize) -> Result<(HeapPointer, AllocId)> {
         trace!("Allocating the zeroed for size {}", size);
 
         let (ptr, id) = self.allocate(size)?;
         unsafe { ptr.write_bytes(0x00, size) };
 
-        Ok(id)
+        Ok((ptr, id))
     }
 
-    /// Collect all unused objects and shift to the other heap half
-    pub fn collect(&mut self) -> Result<()> {
+    /// Collect all unused objects and shifts to the other heap half
+    ///
+    /// # Collection
+    ///
+    /// All reachable allocations (Decided by the gc's current `roots`) are marked, extending the
+    /// allocations to be marked by all of the allocation's children.  
+    /// All marked allocations are then moved to the opposite heap side.
+    ///
+    /// [`roots`]: #roots.crate.Gc
+    pub fn collect(&mut self) {
         trace!("GC Collecting");
 
         // The allocations to be transferred over to the new heap
-        let mut keep = HashMap::with_capacity(self.roots.len());
+        let mut keep =
+            HashMap::with_capacity_and_hasher(self.roots.len(), FxBuildHasher::default());
         let mut queue = Vec::with_capacity(self.allocations.len());
         queue.extend_from_slice(&self.roots);
 
@@ -205,9 +271,11 @@ impl Gc {
 
         trace!("Allocations before collect: {}", self.allocations.len());
 
-        let mut new_allocations = HashMap::with_capacity(keep.len());
+        let mut new_allocations =
+            HashMap::with_capacity_and_hasher(keep.len(), FxBuildHasher::default());
+
         // Iterate over allocations to keep to move them onto the new heap
-        for (id, (old_ptr, val)) in keep.into_iter() {
+        for (id, (old_ptr, val)) in keep {
             let size = val.size;
 
             // Safety: Copying bytes from one heap to the other
@@ -220,7 +288,7 @@ impl Gc {
             new_allocations.insert(id, (self.latest, val));
 
             // Increment by the size of the moved object
-            self.latest = self.latest.wrapping_offset(size as isize).into();
+            self.latest = unsafe { self.latest.offset(size as isize) }.into();
 
             trace!("Saving allocation {:?}", id);
         }
@@ -240,7 +308,7 @@ impl Gc {
         // Change the current side
         self.current_side = !self.current_side;
 
-        let mut queue = Vec::with_capacity(self.allocations.len());
+        // Use the pre-existing queue
         queue.extend_from_slice(&self.roots);
 
         while let Some(val) = queue.pop() {
@@ -250,10 +318,27 @@ impl Gc {
                 }
             }
         }
-
-        Ok(())
     }
 
+    /// Get the concrete `HeapPointer` to an object stored in the `Gc`
+    ///
+    /// # Safety
+    ///
+    /// This returns a pointer to the `AllocId`'s *current* location in memory.  
+    /// Said pointer can be invalidated at any time by a collection cycle, so use immediately.  
+    /// Additionally, the pointer has no related type info, so the user is trusted to not overwrite
+    /// their allocated space.
+    ///
+    /// # Errors
+    ///
+    /// Throws a `RuntimeError` with the type of `GcError` if the requested `AllocId` does not exist
+    ///
+    /// [`HeapPointer`]: crate.HeapPointer
+    /// [`Gc`]: crate.Gc
+    /// [`AllocId`]: crate.AllocId
+    /// [`RuntimeError`]: crate.RuntimeError
+    /// [`GcError`]: crate.RuntimeErrorTy
+    #[must_use]
     pub unsafe fn get_ptr(&self, id: AllocId) -> Result<HeapPointer> {
         let (ptr, _val) = self.allocations.get(&id).ok_or(RuntimeError {
             ty: RuntimeErrorTy::GcError,
@@ -263,10 +348,15 @@ impl Gc {
         Ok(*ptr)
     }
 
-    fn dump_heap(&self, side: Side) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    /// Creates two dump files, one for each heap half, containing the raw bytes of each
+    fn dump_heap(&self, side: Side) -> std::result::Result<(), std::io::Error> {
         use std::io::Write;
 
-        let mut f = std::fs::File::create("right.dump")?;
+        let mut f = std::fs::File::create(match side {
+            Side::Left => "left.dump",
+            Side::Right => "right.dump",
+        })?;
+
         f.write_all(unsafe {
             std::slice::from_raw_parts(
                 match side {
@@ -281,6 +371,7 @@ impl Gc {
     }
 
     /// Fetch an object's raw bytes
+    #[must_use]
     pub fn fetch_bytes<'gc>(&'gc self, id: AllocId) -> Result<&[u8]> {
         trace!("Fetching {}", id);
 
@@ -307,6 +398,7 @@ impl Gc {
     }
 
     /// Fetch a currently allocated value
+    #[allow(dead_code)]
     fn fetch_value(&self, id: AllocId) -> Result<&GcValue> {
         trace!("Fetching allocation {}", id);
 
@@ -329,7 +421,31 @@ impl Gc {
         })
     }
 
-    /// Fetch a currently allocated value
+    /// Fetch a currently allocated value mutably
+    /*
+    TODO: When polonius lands, replace current implementation
+    fn fetch_value_mut(&mut self, id: AllocId) -> Result<&mut GcValue> {
+        let mut queue = Vec::with_capacity(self.allocations.len());
+        queue.extend_from_slice(&self.roots);
+
+        let mut value;
+        while let Some(val) = queue.pop() {
+            value = self.allocations.get_mut(&val);
+            if let Some((_ptr, root)) = value {
+                if root.id == id {
+                    return Ok(root);
+                } else {
+                    queue.extend_from_slice(&root.children);
+                }
+            }
+        }
+
+        Err(RuntimeError {
+            ty: RuntimeErrorTy::GcError,
+            message: "Requested value does not exist".to_string(),
+        })
+    }
+    */
     fn fetch_value_mut(&mut self, id: AllocId) -> Result<&mut GcValue> {
         trace!("Fetching allocation {} mutably", id);
 
@@ -357,38 +473,26 @@ impl Gc {
             message: "Requested value does not exist".to_string(),
         })
     }
-    /*
-    TODO: When polonius lands, replace current implementation
-    fn fetch_value_mut(&mut self, id: AllocId) -> Result<&mut GcValue> {
-        let mut queue = Vec::with_capacity(self.allocations.len());
-        queue.extend_from_slice(&self.roots);
 
-        let mut value;
-        while let Some(val) = queue.pop() {
-            value = self.allocations.get_mut(&val);
-            if let Some((_ptr, root)) = value {
-                if root.id == id {
-                    return Ok(root);
-                } else {
-                    queue.extend_from_slice(&root.children);
-                }
-            }
-        }
-
-        Err(RuntimeError {
-            ty: RuntimeErrorTy::GcError,
-            message: "Requested value does not exist".to_string(),
-        })
-    }
-    */
-
+    /// Adds a child to the requested parent
+    ///
+    /// # Errors
+    ///
+    /// Returns an `RuntimeError` if the parent doesn't exist, but does not check if the
+    /// child exists.
+    ///
+    /// [`RuntimeError`]: crate.RuntimeError
     pub fn add_child(&mut self, parent: AllocId, child: AllocId) -> Result<()> {
         self.fetch_value_mut(parent)?.add_child(child);
 
         Ok(())
     }
 
-    /// Add a root object
+    /// Add a root object to the `Gc`.  
+    /// Note: No checks are preformed to see if the `AllocId` exists
+    ///
+    /// [`Gc`]: crate.Gc
+    /// [`AllocId`]: crate.AllocId
     #[inline]
     pub fn add_root(&mut self, id: AllocId) {
         trace!("Adding GC Root: {:?}", id);
@@ -396,7 +500,14 @@ impl Gc {
     }
 
     /// Remove a root object
-    pub fn remove_root(&mut self, id: impl Into<AllocId> + Copy) -> Result<()> {
+    ///
+    /// # Errors
+    /// Returns a `RuntimeError` if the requested `AllocId` is not rooted. This
+    /// error can be safely ignored if that behavior is desired.
+    ///
+    /// [`RuntimeError`]: crate.RuntimeError
+    /// [`AllocId`]: crate.AllocId
+    pub fn remove_root(&mut self, id: AllocId) -> Result<()> {
         let id = id.into();
 
         trace!("Removing GC Root: {:?}", id);
@@ -405,7 +516,7 @@ impl Gc {
             self.roots.remove(index);
 
             if self.options.burn_gc {
-                self.collect()?;
+                self.collect();
             }
 
             return Ok(());
@@ -417,15 +528,21 @@ impl Gc {
         })
     }
 
-    pub unsafe fn write<Id, T>(&self, id: Id, data: T) -> Result<()>
-    where
-        Id: Into<AllocId> + Copy,
-    {
-        let id = id.into();
+    /// Write the data `T` to the specified `AllocId`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `RuntimeError` if any of the following conditions are met:  
+    /// * The requested `AllocId` does not exist  
+    /// * The size of `T` and the allocated space are not equal  
+    ///
+    /// [`AllocId`]: crate.AllocId
+    /// [`RuntimeError`]: crate.RuntimeError
+    pub unsafe fn write<Id, T>(&self, id: AllocId, data: T) -> Result<()> {
         trace!("Writing to allocation {}", id);
 
         if let Some((ptr, val)) = self.allocations.get(&id) {
-            if mem::size_of::<T>() != val.size {
+            if mem::size_of::<T>() == val.size {
                 (**ptr as *mut T).write(data);
                 trace!("Wrote to allocation {}, ptr {:p}", id, *ptr);
 
@@ -444,16 +561,22 @@ impl Gc {
         }
     }
 
-    /// Gets the current heap side
+    /// Gets the current heap side as a `HeapPointer`
+    ///
+    /// [`HeapPointer`]: crate.HeapPointer
     #[must_use]
-    pub fn get_side(&self) -> HeapPointer {
+    fn get_side(&self) -> HeapPointer {
         match self.current_side {
             Side::Left => self.left,
             Side::Right => self.right,
         }
     }
 
-    /// Information about the state of the GC
+    /// Information about the state of the `Gc`. See `GcData` for details on the
+    /// returned information
+    ///
+    /// [`Gc`]: crate.Gc
+    /// [`GcData`]: crate.GcData
     #[must_use]
     pub fn data(&self) -> GcData {
         trace!(
@@ -471,16 +594,37 @@ impl Gc {
         }
     }
 
-    /// See if the GC contains an Id
+    /// See if the `Gc` contains an `AllocId`
+    ///
+    /// [`Gc`]: crate.Gc
+    /// [`HeapPointer`]: crate.HeapPointer
     #[inline]
-    pub fn contains<Id: Into<AllocId> + Copy>(&self, id: Id) -> bool {
-        self.allocations.iter().any(|(__id, _)| *__id == id.into())
+    pub fn contains(&self, id: AllocId) -> bool {
+        self.allocations.iter().any(|(__id, _)| *__id == id)
     }
 }
 
 impl Drop for Gc {
     fn drop(&mut self) {
-        // TODO: This should do things
+        // Get the memory page size
+        let page_size = page_size();
+
+        // Create the layout for a heap half
+        let layout = alloc::Layout::from_size_align(self.options.heap_size, page_size)
+            .expect("Failed to create GC memory block layout");
+
+        if self.options.overwrite_heap {
+            unsafe {
+                ptr::write_bytes(*self.left, 0x00, self.options.heap_size);
+                ptr::write_bytes(*self.right, 0x00, self.options.heap_size);
+            }
+        }
+
+        // Deallocate the left and right heaps
+        unsafe {
+            alloc::dealloc(*self.left, layout);
+            alloc::dealloc(*self.right, layout);
+        }
     }
 }
 
@@ -548,7 +692,7 @@ impl GcValue {
         &mut self,
         ptr: HeapPointer,
         queue: &mut Vec<AllocId>,
-        map: &mut HashMap<AllocId, (HeapPointer, Self)>,
+        map: &mut HashMap<AllocId, (HeapPointer, Self), FxBuildHasher>,
     ) {
         self.marked = true;
         map.insert(self.id, (ptr, self.clone())); // Avoid clone

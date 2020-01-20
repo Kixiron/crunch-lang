@@ -123,7 +123,7 @@ impl CodeBuilder {
         };
 
         let path = path
-            .into_iter()
+            .iter()
             .map(|segment| format!("{}{}", segment.len(), segment))
             .collect::<Vec<_>>()
             .join("");
@@ -158,7 +158,7 @@ impl CodeBuilder {
     pub fn build(mut self) -> Result<Vec<Vec<Instruction>>> {
         let mut functions = Vec::new();
 
-        for (sym, (func, _index)) in self.functions.clone().into_iter() {
+        for (sym, (func, _index)) in self.functions.clone() {
             let mut func = func.build(&mut self)?;
 
             if func[func.len() - 1] != Instruction::Return {
@@ -240,47 +240,41 @@ impl FunctionContext {
 
     #[inline]
     pub fn reserve_caller_reg(&mut self, sym: impl Into<Option<Sym>>) -> Result<Register> {
-        match self.registers.iter().take(5).position(Option::is_none) {
-            Some(idx) => {
-                let sym = sym.into();
-                trace!("Reserving register {} for {:?}", idx, sym);
+        if let Some(idx) = self.registers.iter().take(5).position(Option::is_none) {
+            let sym = sym.into();
+            trace!("Reserving register {} for {:?}", idx, sym);
 
-                self.registers[idx] = Some(sym);
-                Ok((idx as u8).into())
-            }
-            None => {
-                error!("Failed to find avaliable register");
-                Err(RuntimeError {
-                    ty: RuntimeErrorTy::CompilationError,
-                    message: "Failed to fetch available register".to_string(),
-                })
-            }
+            self.registers[idx] = Some(sym);
+            Ok((idx as u8).into())
+        } else {
+            error!("Failed to find avaliable register");
+            Err(RuntimeError {
+                ty: RuntimeErrorTy::CompilationError,
+                message: "Failed to fetch available register".to_string(),
+            })
         }
     }
 
     #[inline]
     pub fn reserve_reg(&mut self, sym: impl Into<Option<Sym>>) -> Result<Register> {
-        match self
+        if let Some((idx, _)) = self
             .registers
             .iter()
             .enumerate()
             .rev()
             .find(|(_idx, r)| r.is_none())
         {
-            Some((idx, _)) => {
-                let sym = sym.into();
-                trace!("Reserving register {} for {:?}", idx, sym);
+            let sym = sym.into();
+            trace!("Reserving register {} for {:?}", idx, sym);
 
-                self.registers[idx] = Some(sym);
-                Ok((idx as u8).into())
-            }
-            None => {
-                error!("Failed to find avaliable register");
-                Err(RuntimeError {
-                    ty: RuntimeErrorTy::CompilationError,
-                    message: "Failed to fetch available register".to_string(),
-                })
-            }
+            self.registers[idx] = Some(sym);
+            Ok((idx as u8).into())
+        } else {
+            error!("Failed to find avaliable register");
+            Err(RuntimeError {
+                ty: RuntimeErrorTy::CompilationError,
+                message: "Failed to fetch available register".to_string(),
+            })
         }
     }
 
