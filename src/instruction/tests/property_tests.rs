@@ -237,7 +237,6 @@ macro_rules! number_proptest {
 /*
 #[test]
 fn collect(int: i32, string in "\\PC*") {
-    /*
     TODO: Rework this
     let mut vm = Vm::new(
         &crate::OptionBuilder::new("./misc_ops").build(),
@@ -268,58 +267,57 @@ fn collect(int: i32, string in "\\PC*") {
     gc_str.drop(&mut vm.gc).unwrap();
     collect.execute(&mut vm).unwrap();
     assert!(!vm.gc.contains(gc_str.id));
-    */
 }*/
 
 number_proptest! {
     u16_ops {
-        internal: U16, 
+        internal: U16,
         primitive: u16,
         bitwise: bitwise
     }
     u32_ops {
-        internal: U32, 
+        internal: U32,
         primitive: u32,
         bitwise: bitwise
     }
     u64_ops {
-        internal: U64, 
+        internal: U64,
         primitive: u64,
         bitwise: bitwise
     }
     u128_ops {
-        internal: U128, 
+        internal: U128,
         primitive: u128,
         bitwise: bitwise
     }
 
     i16_ops {
-        internal: I16, 
+        internal: I16,
         primitive: i16,
         bitwise: bitwise
     }
     i32_ops {
-        internal: I32, 
+        internal: I32,
         primitive: i32,
         bitwise: bitwise
     }
     i64_ops {
-        internal: I64, 
+        internal: I64,
         primitive: i64,
         bitwise: bitwise
     }
     i128_ops {
-        internal: I128, 
+        internal: I128,
         primitive: i128,
         bitwise: bitwise
     }
 
     f32_ops {
-        internal: F32, 
+        internal: F32,
         primitive: f32
     }
     f64_ops {
-        internal: F64, 
+        internal: F64,
         primitive: f64
     }
 }

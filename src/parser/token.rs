@@ -174,6 +174,7 @@ impl std::fmt::Display for TokenType {
             Self::Empty => "empty",
             Self::Then => "then",
             Self::For => "for",
+            Self::Type => "type",
         };
 
         write!(f, "{}", string)
@@ -250,62 +251,6 @@ impl<'a> TokenStream<'a> {
             current: None,
         }
     }
-
-    // pub fn next_token_no_end(&mut self) -> Option<Token<'a>> {
-    //     let current = if self.current.is_some() {
-    //         let mut token = None;
-    //         std::mem::swap(&mut token, &mut self.current);
-    //         return token;
-    //     } else if let Some(current) = self.token_stream.next() {
-    //         current
-    //     } else if self.indent_level > 0 {
-    //         self.indent_level -= 1;
-    //         return Some(Token::new(TokenType::Dedent, "", 0..0));
-    //     } else {
-    //         return None;
-    //     };
-    //
-    //     let mut token = match current.ty {
-    //         // Skip Indents while incrementing the indentation level
-    //         TokenType::Indent => {
-    //             self.line_indent_level += 1;
-    //             self.next_token()
-    //         }
-    //         TokenType::Newline => {
-    //             self.line_start = true;
-    //             return Some(current);
-    //         }
-    //
-    //         // Skip whitespace
-    //         TokenType::Space => self.next_token(),
-    //         TokenType::Comment if self.skip_comments => self.next_token(),
-    //
-    //         _ => Some(current),
-    //     };
-    //
-    //     if self.line_start {
-    //         self.line_start = false;
-    //         let indent_insert = if self.line_indent_level < self.indent_level {
-    //             self.current = token;
-    //             Some(Token::new(TokenType::Dedent, "", 0..0))
-    //         } else if self.line_indent_level > self.indent_level {
-    //             self.current = token;
-    //             Some(Token::new(TokenType::Indent, "", 0..0))
-    //         } else if self.current.is_some() {
-    //             std::mem::swap(&mut self.current, &mut token);
-    //             token
-    //         } else {
-    //             token
-    //         };
-    //
-    //         self.indent_level = self.line_indent_level;
-    //         self.line_indent_level = 0;
-    //
-    //         indent_insert
-    //     } else {
-    //         token
-    //     }
-    // }
 
     pub fn next_token(&mut self) -> Option<Token<'a>> {
         if let Some(token) = self.token_stream.next() {

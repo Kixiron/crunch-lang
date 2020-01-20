@@ -1,13 +1,12 @@
-use super::{
-    parser::Either, Gc, Index, Instruction, Register, Result, RuntimeValue, NUMBER_REGISTERS,
-};
+use super::{Gc, Index, Instruction, Register, Result, RuntimeValue, NUMBER_REGISTERS};
 use std::time::Instant;
 
 /// The initialized options for the VM
 #[derive(Debug, Copy, Clone)]
-pub struct VmOptions {
+pub(crate) struct VmOptions {
     pub fault_tolerant: bool,
 }
+
 impl Default for VmOptions {
     fn default() -> Self {
         Self {
@@ -15,6 +14,7 @@ impl Default for VmOptions {
         }
     }
 }
+
 impl From<&crate::Options> for VmOptions {
     fn from(&crate::Options { fault_tolerant, .. }: &crate::Options) -> Self {
         Self { fault_tolerant }
@@ -22,7 +22,7 @@ impl From<&crate::Options> for VmOptions {
 }
 
 #[derive(Debug, Clone)]
-pub struct ReturnFrame {
+pub(crate) struct ReturnFrame {
     pub registers: [RuntimeValue; NUMBER_REGISTERS - 5],
     pub index: Index,
     // If function_index is None, then the main function is being returned to
@@ -33,33 +33,39 @@ pub struct ReturnFrame {
 /// The VM environment for Crunch
 pub struct Vm {
     /// The active VM Registers
-    pub registers: [RuntimeValue; NUMBER_REGISTERS],
+    pub(crate) registers: [RuntimeValue; NUMBER_REGISTERS],
     /// The register snapshots for function calls
-    pub return_stack: Vec<ReturnFrame>,
+    pub(crate) return_stack: Vec<ReturnFrame>,
     /// The index of the current function
-    pub current_func: u32,
+    pub(crate) current_func: u32,
     /// The current instruction index of the current function
-    pub index: Index,
+    pub(crate) index: Index,
     /// Whether or not program execution is done
-    pub finished_execution: bool,
+    pub(crate) finished_execution: bool,
     /// Whether or not the program is currently returning
     // TODO: Needed?
-    pub returning: bool,
+    pub(crate) returning: bool,
     /// The value of the previous operation
-    pub prev_op: RuntimeValue,
+    pub(crate) prev_op: RuntimeValue,
     /// The status of the previous comparison
-    pub prev_comp: bool,
+    pub(crate) prev_comp: bool,
     /// The Garbage Collector
-    pub gc: Gc,
+    pub(crate) gc: Gc,
     /// The options initialized with the VM
-    pub options: VmOptions,
+    pub(crate) options: VmOptions,
     /// The stdout that the program will print to, recommended to be `std::io::stdout()`
-    pub stdout: Box<dyn std::io::Write>,
-    pub start_time: Option<Instant>,
+    ///
+    /// [`std::io::stdout()`]: #stdout.std::io
+    pub(crate) stdout: Box<dyn std::io::Write>,
+    pub(crate) start_time: Option<Instant>,
 }
 
 impl Vm {
-    /// Creates a new VM from functions and options
+    /// Creates a new `Vm` from `options` and the selected `stdout` target (Required to be `Write`)
+    ///
+    /// [`Vm`]: crate.Vm
+    /// [`options`]: crate.Options
+    /// [`Write`]: std::io::Write
     #[inline]
     #[must_use]
     pub fn new(options: &crate::Options, stdout: Box<dyn std::io::Write>) -> Self {
@@ -79,12 +85,18 @@ impl Vm {
         }
     }
 
+    /// Uses the current `Vm` to execute the given `functions`  
+    /// Note: this means that any data left in the `Gc` will transfer to the new program's runtime
+    ///
+    /// # Errors
+    ///
+    /// Will return any `RuntimeError` thrown and not caught by the running program and program runtime
+    ///
+    /// [`Vm`]: crate.Vm
+    /// [`functions`]: crate.Function
+    /// [`Gc`]: crate.Gc
+    /// [`RuntimeError`]: crate.RuntimeError
     pub fn execute(&mut self, functions: Vec<Vec<Instruction>>) -> Result<()> {
-        // let functions = functions
-        //     .into_iter()
-        //     .map(|function| Function::new(function))
-        //     .collect::<Vec<_>>();
-
         while !self.finished_execution {
             functions[self.current_func as usize][*self.index as usize].execute(self)?;
         }
@@ -93,23 +105,23 @@ impl Vm {
     }
 
     #[inline]
-    pub fn clear(&mut self, reg: Register) {
+    pub(crate) fn clear(&mut self, reg: Register) {
         self.registers[*reg as usize] = RuntimeValue::None;
     }
 
     #[inline]
-    pub fn load(&mut self, value: RuntimeValue, reg: Register) {
+    pub(crate) fn load(&mut self, value: RuntimeValue, reg: Register) {
         self.registers[*reg as usize] = value;
     }
 
     #[inline]
     #[must_use]
-    pub fn get(&self, reg: Register) -> &RuntimeValue {
+    pub(crate) fn get(&self, reg: Register) -> &RuntimeValue {
         &self.registers[*reg as usize]
     }
 
     #[inline]
-    pub fn get_mut(&mut self, reg: Register) -> &mut RuntimeValue {
+    pub(crate) fn get_mut(&mut self, reg: Register) -> &mut RuntimeValue {
         &mut self.registers[*reg as usize]
     }
 }
@@ -132,7 +144,7 @@ impl std::fmt::Debug for Vm {
 }
 
 #[derive(Debug, Clone)]
-pub struct Function {
+pub(crate) struct Function {
     pub function: Vec<Instruction>,
     pub meta: RuntimeFunctionMeta,
 }
@@ -149,7 +161,8 @@ impl Function {
     }
 
     pub fn execute(&self, vm: &mut Vm) -> Result<()> {
-        self.meta.usages += 1;
+        // TODO: Collect runtime function information somehow
+        // Possibly with indexes into associated metas?
 
         while !vm.finished_execution {
             self.function[*vm.index as usize].execute(vm)?;
@@ -160,7 +173,7 @@ impl Function {
 }
 
 #[derive(Debug, Copy, Clone)]
-pub struct RuntimeFunctionMeta {
+pub(crate) struct RuntimeFunctionMeta {
     pub usages: usize,
 }
 
