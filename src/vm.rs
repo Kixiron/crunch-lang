@@ -149,8 +149,6 @@ impl Function {
     }
 
     pub fn execute(&self, vm: &mut Vm) -> Result<()> {
-        self.meta.usages += 1;
-
         while !vm.finished_execution {
             self.function[*vm.index as usize].execute(vm)?;
         }
