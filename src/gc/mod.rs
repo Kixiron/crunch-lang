@@ -339,7 +339,7 @@ impl Gc {
     /// [`RuntimeError`]: crate.RuntimeError
     /// [`GcError`]: crate.RuntimeErrorTy
     #[must_use]
-    pub unsafe fn get_ptr(&self, id: AllocId) -> Result<HeapPointer> {
+    pub fn get_ptr(&self, id: AllocId) -> Result<HeapPointer> {
         let (ptr, _val) = self.allocations.get(&id).ok_or(RuntimeError {
             ty: RuntimeErrorTy::GcError,
             message: "Requested value does not exist".to_string(),
