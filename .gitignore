@@ -12,3 +12,6 @@ void
 tmp
 left.dump
 right.dump
+
+*.swp
+*.swo
