@@ -294,37 +294,6 @@ fn jump_ops() {
 }
 
 #[test]
-fn int_eq_ops() {
-    let mut vm = Vm::new(
-        &crate::OptionBuilder::new("./eq_ops").build(),
-        Box::new(stdout()),
-    );
-
-    vm.registers[0] = RuntimeValue::I32(10);
-    vm.registers[1] = RuntimeValue::I32(10);
-
-    let eq = Instruction::Eq(0.into(), 1.into());
-    eq.execute(&mut vm).unwrap();
-    assert_eq!(vm.prev_comp, true);
-
-    vm.registers[0] = RuntimeValue::I32(20);
-
-    let not_eq = Instruction::NotEq(0.into(), 1.into());
-    not_eq.execute(&mut vm).unwrap();
-    assert_eq!(vm.prev_comp, true);
-
-    let greater_than = Instruction::GreaterThan(0.into(), 1.into());
-    greater_than.execute(&mut vm).unwrap();
-    assert_eq!(vm.prev_comp, true);
-
-    vm.registers[0] = RuntimeValue::I32(0);
-
-    let less_than = Instruction::LessThan(0.into(), 1.into());
-    less_than.execute(&mut vm).unwrap();
-    assert_eq!(vm.prev_comp, true);
-}
-
-#[test]
 fn incompatible_eq_ops() {
     let mut vm = Vm::new(
         &crate::OptionBuilder::new("./eq_ops").build(),
@@ -346,53 +315,121 @@ fn incompatible_eq_ops() {
     assert_eq!(vm.prev_comp, false);
 }
 
-macro_rules! float_eq_ops_tests {
-        ( $( $fn_name:ident: $float_type:tt $(,)? )* ) => { $(
-            #[test]
-            fn $fn_name() {
-                let mut vm = Vm::new(
-                    &crate::OptionBuilder::new("./eq_ops").build(),
-                    Box::new(stdout()),
-                    );
+macro_rules! test_eq_ops {
+    ( $( $fn_name:ident { internal: $internal:tt , hi: $hi:literal, mid: $mid:literal, lo: $lo:literal } $(,)? )* ) => { $(
+        #[test]
+        fn $fn_name() {
+            let mut vm = Vm::new(
+                &crate::OptionBuilder::new("./eq_ops").build(),
+                Box::new(stdout()),
+            );
 
-                // test incompatible types
-                vm.registers[0] = RuntimeValue::$float_type(10.0);
-                vm.registers[1] = RuntimeValue::$float_type(9.7);
+            // test incompatible types
+            vm.registers[0] = RuntimeValue::$internal($mid);
+            vm.registers[1] = RuntimeValue::$internal($lo);
 
-                let greater_than = Instruction::GreaterThan(0.into(), 1.into());
-                greater_than.execute(&mut vm).unwrap();
-                assert_eq!(vm.prev_comp, true);
+            let greater_than = Instruction::GreaterThan(0.into(), 1.into());
+            greater_than.execute(&mut vm).unwrap();
+            assert_eq!(vm.prev_comp, true);
 
-                let not_eq = Instruction::NotEq(0.into(), 1.into());
-                not_eq.execute(&mut vm).unwrap();
-                assert_eq!(vm.prev_comp, true);
+            let not_eq = Instruction::NotEq(0.into(), 1.into());
+            not_eq.execute(&mut vm).unwrap();
+            assert_eq!(vm.prev_comp, true);
 
-                vm.registers[1] = RuntimeValue::$float_type(10.0);
+            let lete = Instruction::LessThanEq(0.into(), 1.into());
+            lete.execute(&mut vm).unwrap();
+            assert_eq!(vm.prev_comp, false);
 
-                let eq = Instruction::Eq(0.into(), 1.into());
-                eq.execute(&mut vm).unwrap();
-                assert_eq!(vm.prev_comp, true);
+            vm.registers[1] = RuntimeValue::$internal($mid);
 
-                vm.registers[1] = RuntimeValue::$float_type(10.1);
+            let grte = Instruction::GreaterThanEq(0.into(), 1.into());
+            grte.execute(&mut vm).unwrap();
+            assert_eq!(vm.prev_comp, true);
 
-                greater_than.execute(&mut vm).unwrap();
-                assert_eq!(vm.prev_comp, false);
+            let eq = Instruction::Eq(0.into(), 1.into());
+            eq.execute(&mut vm).unwrap();
+            assert_eq!(vm.prev_comp, true);
 
-                let less_than = Instruction::LessThan(0.into(), 1.into());
-                less_than.execute(&mut vm).unwrap();
-                assert_eq!(vm.prev_comp, true);
+            vm.registers[1] = RuntimeValue::$internal($hi);
 
-                // should return false with parameters flipped
-                let less_than = Instruction::LessThan(1.into(), 0.into());
-                less_than.execute(&mut vm).unwrap();
-                assert_eq!(vm.prev_comp, false);
-            }
-        )*}
+            greater_than.execute(&mut vm).unwrap();
+            assert_eq!(vm.prev_comp, false);
+
+            let less_than = Instruction::LessThan(0.into(), 1.into());
+            less_than.execute(&mut vm).unwrap();
+            assert_eq!(vm.prev_comp, true);
+
+            // should return false with parameters flipped
+            let less_than = Instruction::LessThan(1.into(), 0.into());
+            less_than.execute(&mut vm).unwrap();
+            assert_eq!(vm.prev_comp, false);
+        }
+    )*}
+}
+
+test_eq_ops! {
+    u16_ops {
+        internal: U16,
+        hi: 128,
+        mid: 20,
+        lo: 0
+    }
+    u32_ops {
+        internal: U32,
+        hi: 20,
+        mid: 10,
+        lo: 0
+    }
+    u64_ops {
+        internal: U64,
+        hi: 128,
+        mid: 20,
+        lo: 0
+    }
+    u128_ops {
+        internal: U128, 
+        hi: 20,
+        mid: 10,
+        lo: 0
     }
 
-float_eq_ops_tests! {
-    f32_eq_ops: F32,
-    f64_eq_ops: F64
+    i16_ops {
+        internal: I16, 
+        hi: 128,
+        mid: 0,
+        lo: -1
+    }
+    i32_eq_ops {
+        internal: I32,
+        hi: 1,
+        mid: 0,
+        lo: -1
+    }
+    i64_ops {
+        internal: I64, 
+        hi: 128,
+        mid: 20,
+        lo: 0
+    }
+    i128_ops {
+        internal: I128, 
+        hi: 20,
+        mid: 10,
+        lo: -0
+    }
+
+    f32_eq_ops {
+        internal: F32,
+        hi: 10.1,
+        mid: 10.0,
+        lo: 9.7
+    }
+    f64_eq_ops {
+        internal: F64,
+        hi: 10.1,
+        mid: 10.0,
+        lo: 9.7
+    }
 }
 
 #[test]

@@ -1,7 +1,3 @@
-use super::super::*;
-use proptest::prelude::*;
-use std::io::stdout;
-
 macro_rules! number_proptest {
     ( $( $mod_name:ident { internal: $value_variant:ident, primitive: $primitive:ty $( , bitwise: $bitwise:ident )? } )* ) => {$(
         mod $mod_name {

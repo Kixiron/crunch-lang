@@ -120,6 +120,7 @@ pub enum TokenType {
 impl std::fmt::Display for TokenType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let string = match self {
+            Self::Type => "type",
             Self::End => "EOF",
             Self::Error => "Error",
             Self::Comma => ",",
@@ -174,7 +175,6 @@ impl std::fmt::Display for TokenType {
             Self::Empty => "empty",
             Self::Then => "then",
             Self::For => "for",
-            Self::Type => "type",
         };
 
         write!(f, "{}", string)

@@ -231,7 +231,7 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// TypeDeclaration ::= Visibility? 'type' Ident ( '<' Ident ',' '>' )? '\n' TypeArguments* Function* End
     /// ```
-    fn parse_type_decl(&mut self, visibility: Option<Visibility>) -> Result<TypeDecl> {
+    fn parse_type_decl(&mut self, type_visibility: Option<Visibility>) -> Result<TypeDecl> {
         self.eat(TokenType::Type)?;
 
         let name = self.eat(TokenType::Ident)?;
@@ -273,7 +273,7 @@ impl<'a> Parser<'a> {
         }
 
         Ok(TypeDecl {
-            visibility: visibility.unwrap_or_default(),
+            visibility: type_visibility.unwrap_or_default(),
             name,
             generics,
             members,
@@ -573,6 +573,7 @@ impl<'a> Parser<'a> {
         Ok(VarDecl { name, ty, expr })
     }
 
+    #[allow(dead_code)]
     fn optionally_typed_argument(&mut self) -> Result<Vec<(Sym, Type)>> {
         self.eat(TokenType::LeftParen)?;
 

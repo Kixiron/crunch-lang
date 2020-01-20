@@ -1,5 +1,5 @@
-use super::{Gc, Index, Instruction, Register, Result, RuntimeValue, NUMBER_REGISTERS};
-use std::time::Instant;
+use super::{Gc, Index, Instruction, Result, RuntimeValue, NUMBER_REGISTERS};
+use std::{fmt, time::Instant};
 
 /// The initialized options for the VM
 #[derive(Debug, Copy, Clone)]
@@ -58,6 +58,7 @@ pub struct Vm {
     /// [`std::io::stdout()`]: #stdout.std::io
     pub(crate) stdout: Box<dyn std::io::Write>,
     pub(crate) start_time: Option<Instant>,
+    pub(crate) finish_time: Option<Instant>,
 }
 
 impl Vm {
@@ -82,6 +83,7 @@ impl Vm {
             options: VmOptions::from(options),
             stdout,
             start_time: None,
+            finish_time: None,
         }
     }
 
@@ -97,37 +99,38 @@ impl Vm {
     /// [`Gc`]: crate.Gc
     /// [`RuntimeError`]: crate.RuntimeError
     pub fn execute(&mut self, functions: Vec<Vec<Instruction>>) -> Result<()> {
+        self.finish_time = None;
+        self.start_time = Some(Instant::now());
+
         while !self.finished_execution {
             functions[self.current_func as usize][*self.index as usize].execute(self)?;
         }
 
+        self.finish_time = Some(Instant::now());
+
         Ok(())
     }
 
-    #[inline]
-    pub(crate) fn clear(&mut self, reg: Register) {
-        self.registers[*reg as usize] = RuntimeValue::None;
-    }
-
-    #[inline]
-    pub(crate) fn load(&mut self, value: RuntimeValue, reg: Register) {
-        self.registers[*reg as usize] = value;
-    }
-
-    #[inline]
-    #[must_use]
-    pub(crate) fn get(&self, reg: Register) -> &RuntimeValue {
-        &self.registers[*reg as usize]
-    }
-
-    #[inline]
-    pub(crate) fn get_mut(&mut self, reg: Register) -> &mut RuntimeValue {
-        &mut self.registers[*reg as usize]
+    /// Gets the time taken to execute the last program ran.
+    ///
+    /// # Returns
+    /// Returns `Some`(`Duration`) if a program was fully executed and timed,
+    /// and `None` if a program has either not been executed or is in the midst of executing
+    ///
+    /// [`Some`]: std.option.Option
+    /// [`None`]: std.option.Option
+    /// [`Duration`]: std.time.Duration
+    pub fn execution_time(&self) -> Option<std::time::Duration> {
+        if let (Some(start), Some(finish)) = (self.start_time, self.finish_time) {
+            Some(finish.duration_since(start))
+        } else {
+            None
+        }
     }
 }
 
-impl std::fmt::Debug for Vm {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for Vm {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_struct("Vm")
             .field("registers", &self.registers)
             .field("return_stack", &self.return_stack)
@@ -139,52 +142,8 @@ impl std::fmt::Debug for Vm {
             .field("prev_comp", &self.prev_comp)
             .field("gc", &self.gc)
             .field("options", &self.options)
+            .field("start_time", &self.start_time)
+            .field("finish_time", &self.finish_time)
             .finish()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct Function {
-    pub function: Vec<Instruction>,
-    pub meta: RuntimeFunctionMeta,
-}
-
-impl Function {
-    // const JIT_USAGE_THRESHOLD: usize = 0;
-
-    #[must_use]
-    pub fn new(function: Vec<Instruction>) -> Self {
-        Self {
-            function,
-            meta: RuntimeFunctionMeta::new(),
-        }
-    }
-
-    pub fn execute(&self, vm: &mut Vm) -> Result<()> {
-        // TODO: Collect runtime function information somehow
-        // Possibly with indexes into associated metas?
-
-        while !vm.finished_execution {
-            self.function[*vm.index as usize].execute(vm)?;
-        }
-
-        Ok(())
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-pub(crate) struct RuntimeFunctionMeta {
-    pub usages: usize,
-}
-
-impl RuntimeFunctionMeta {
-    pub const fn new() -> Self {
-        Self { usages: 0 }
-    }
-}
-
-impl Default for RuntimeFunctionMeta {
-    fn default() -> Self {
-        Self::new()
     }
 }

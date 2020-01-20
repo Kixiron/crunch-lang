@@ -321,11 +321,25 @@ impl<'a> Jit<'a> {
                         ;; call!(asm, externals::greater_than)
                     );
                 }
+                Instruction::GreaterThanEq(left, right) => {
+                    dynasm!(asm
+                        ; mov rdx, BYTE **left as _
+                        ; mov r8, BYTE **right as _
+                        ;; call!(asm, externals::greater_than_eq)
+                    );
+                }
                 Instruction::LessThan(left, right) => {
                     dynasm!(asm
                         ; mov rdx, BYTE **left as _
                         ; mov r8, BYTE **right as _
                         ;; call!(asm, externals::less_than)
+                    );
+                }
+                Instruction::LessThanEq(left, right) => {
+                    dynasm!(asm
+                        ; mov rdx, BYTE **left as _
+                        ; mov r8, BYTE **right as _
+                        ;; call!(asm, externals::less_than_eq)
                     );
                 }
 
