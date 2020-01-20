@@ -1,3 +1,3 @@
 +++
-redirect_to = "chapter1"
+redirect_to = "user_guide"
 +++
