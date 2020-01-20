@@ -288,6 +288,8 @@ Bit Escape Codes: `\b{00000000}`
 - enums
 - use a stack for excess arguments/returns
   - Push/Pop instructions
+- traits
+- modules
 
 
 ## CLI Options
@@ -371,7 +373,7 @@ Return ::= 'return' Expr '\n'
 Continue ::= 'continue' '\n'
 Break ::= 'break' '\n'
 
-Visibility ::= 'exposed' | 'private'
+Visibility ::= 'exposed' | 'lib'
 End ::= 'end'
 
 Expr ::= Literal | Range | Comparison | BinaryOperation | Ident | ( '(' Expr ')' )

@@ -29,7 +29,7 @@ pub struct TypeDecl {
     pub visibility: Visibility,
     pub name: Sym,
     pub generics: Vec<Type>,
-    pub members: Vec<(Sym, Type)>,
+    pub members: Vec<(Visibility, Sym, Type)>,
     pub methods: Vec<FunctionDecl>,
 }
 
@@ -76,6 +76,13 @@ pub enum Exposes {
 pub enum Visibility {
     Library,
     Exposed,
+    File,
+}
+
+impl Default for Visibility {
+    fn default() -> Self {
+        Self::File
+    }
 }
 
 #[derive(Debug, Clone)]

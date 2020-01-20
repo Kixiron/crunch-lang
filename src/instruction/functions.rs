@@ -214,10 +214,12 @@ macro_rules! comparison_operator {
 }
 
 comparison_operator! {
-    eq:           Equal   => true  || false,
-    not_eq:       Equal   => false || true,
-    greater_than: Greater => true  || false,
-    less_than:    Less    => true  || false
+    eq:              Equal     => true  || false,
+    not_eq:          Equal     => false || true,
+    greater_than:    Greater   => true  || false,
+    less_than:       Less      => true  || false,
+    greater_than_eq: GreaterEq => true  || false,
+    less_than_eq:    LessEq    => true  || false
 }
 
 pub fn func(mut vm: &mut Vm, func: u32) -> Result<()> {

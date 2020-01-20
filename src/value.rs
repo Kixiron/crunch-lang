@@ -44,7 +44,7 @@ pub enum RuntimeValue {
 }
 
 #[derive(Debug, Clone, Copy)]
-/// Guages the relationship between two Values,
+/// Gauges the relationship between two Values,
 /// Always reflects Equivalency, sometimes also reflects Greater/Less than.
 pub enum Compare {
     Equal,
@@ -59,6 +59,7 @@ pub enum Compare {
     /// (trying to compare a Bool to a BigInt, are ya?)
     Incomparable,
 }
+
 impl Compare {
     /// Generates a Comparison which respects the nuances of greater than and equal to.
     /// Usually only applicable for numbers.
@@ -249,10 +250,10 @@ impl RuntimeValue {
                 if let Some(result) = left.checked_add(*right) {
                     Self::U128(result)
                 } else {
-                    todo!()
+                    todo!("Implement upflowing into a BigUint")
                 }
             }
-            (Self::GcUint(_left), Self::GcUint(_right)) => todo!(),
+            (Self::GcUint(_left), Self::GcUint(_right)) => todo!("Implement adding BigUints"),
 
             (Self::IByte(left), Self::IByte(right)) => {
                 if let Some(result) = left.checked_add(*right) {
@@ -286,10 +287,10 @@ impl RuntimeValue {
                 if let Some(result) = left.checked_add(*right) {
                     Self::I128(result)
                 } else {
-                    todo!()
+                    todo!("Implement BigInt upflowing")
                 }
             }
-            (Self::GcInt(_left), Self::GcInt(_right)) => todo!(),
+            (Self::GcInt(_left), Self::GcInt(_right)) => todo!("Implement adding BigInts"),
 
             (Self::F32(left), Self::F32(right)) => Self::F32(left + right),
             (Self::F64(left), Self::F64(right)) => Self::F64(left + right),
@@ -411,7 +412,7 @@ macro_rules! upflowing {
                             if let Some(result) = left.$func(*right) {
                                 Self::U128(result)
                             } else {
-                                todo!()
+                                todo!("Implement flowing BigUint operations")
                             }
                         }
                         // (Self::GcUint(left), Self::GcUint(right)) => Self::GcUint(left.$func_two(*right, gc)?),
@@ -448,7 +449,7 @@ macro_rules! upflowing {
                             if let Some(result) = left.$func(*right) {
                                 Self::I128(result)
                             } else {
-                               todo!()
+                               todo!("Implement flowing BigInt operations")
                             }
                         }
                         // (Self::GcInt(left), Self::GcInt(right)) => Self::GcInt(left.$func_two(*right, gc)?),

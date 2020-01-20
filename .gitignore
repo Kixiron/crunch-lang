@@ -1,17 +1,11 @@
 **/target
 **/*.rs.bk
-/.vscode
-sizes.txt
-example.crunched
-/examples/hello_world.crunched
-/examples/parse_test.crunch
-OUTPUT.md
-utility_commands
-void
-/pkg
-tmp
+
 left.dump
 right.dump
 
+/.vscode
 *.swp
 *.swo
+
+/docs/public

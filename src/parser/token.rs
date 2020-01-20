@@ -20,6 +20,12 @@ pub enum TokenType {
     Equal,
     #[token = "=="]
     IsEqual,
+    #[token = "!="]
+    IsNotEqual,
+    #[token = ">="]
+    GreaterThanEqual,
+    #[token = "<="]
+    LessThanEqual,
     #[token = "["]
     LeftBrace,
     #[token = "]"]
@@ -107,6 +113,8 @@ pub enum TokenType {
     Continue,
     #[token = "break"]
     Break,
+    #[token = "type"]
+    Type,
 }
 
 impl std::fmt::Display for TokenType {
@@ -121,6 +129,9 @@ impl std::fmt::Display for TokenType {
             Self::Minus => "-",
             Self::Equal => "=",
             Self::IsEqual => "==",
+            Self::IsNotEqual => "!=",
+            Self::GreaterThanEqual => ">=",
+            Self::LessThanEqual => "<=",
             Self::LeftBrace => "[",
             Self::RightBrace => "]",
             Self::Divide => "/",
@@ -347,7 +358,7 @@ impl<'a> std::fmt::Debug for Token<'a> {
 
 #[test]
 fn token_test() {
-    const CODE: &str = include_str!("../../examples/parse_test.crunch");
+    const CODE: &str = include_str!("../../tests/parse_test.crunch");
 
     let tokens = TokenStream::new(CODE, true)
         .into_iter()

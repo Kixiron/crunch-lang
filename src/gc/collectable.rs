@@ -211,8 +211,6 @@ mod tests {
 
     #[test]
     fn collectable() -> Result<()> {
-        simple_logger::init().unwrap();
-
         let mut gc = super::Gc::new(&crate::OptionBuilder::new("./gc_test").build());
 
         let int = 1000_usize;
