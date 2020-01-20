@@ -6,11 +6,19 @@ use std::time::Instant;
 
 /// The initialized options for the VM
 #[derive(Debug, Copy, Clone)]
-pub struct VmOptions {}
-
+pub struct VmOptions {
+    pub fault_tolerant: bool,
+}
+impl Default for VmOptions {
+    fn default() -> Self {
+        Self {
+            fault_tolerant: false,
+        }
+    }
+}
 impl From<&crate::Options> for VmOptions {
-    fn from(_options: &crate::Options) -> Self {
-        Self {}
+    fn from(&crate::Options { fault_tolerant, .. }: &crate::Options) -> Self {
+        Self { fault_tolerant }
     }
 }
 

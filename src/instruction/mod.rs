@@ -313,7 +313,7 @@ mod tests {
             load.execute(&mut vm).unwrap();
 
             // Assert that the registers contain the correct value
-            assert!(vm.registers[0].clone().is_equal(val, &vm.gc).unwrap());
+            assert!(vm.registers[0].is_equal(&val, &vm.gc).unwrap());
         }
 
         // Do a GC Reset
@@ -328,16 +328,14 @@ mod tests {
             vm.prev_comp = true;
             comp_to_reg.execute(&mut vm).unwrap();
             assert!(vm.registers[0]
-                .clone()
-                .is_equal(RuntimeValue::Bool(true), &vm.gc)
+                .is_equal(&RuntimeValue::Bool(true), &vm.gc)
                 .unwrap());
 
             // Set the previous comparison to `false`
             vm.prev_comp = false;
             comp_to_reg.execute(&mut vm).unwrap();
             assert!(vm.registers[0]
-                .clone()
-                .is_equal(RuntimeValue::Bool(false), &vm.gc)
+                .is_equal(&RuntimeValue::Bool(false), &vm.gc)
                 .unwrap());
         }
 
@@ -353,9 +351,9 @@ mod tests {
                 vm.prev_op,
                 vm.registers[0].clone(),
                 val.clone(),
-                vm.registers[0].clone().is_equal(val.clone(), &vm.gc)
+                vm.registers[0].is_equal(&val, &vm.gc)
             );
-            assert!(vm.registers[0].clone().is_equal(val, &vm.gc).unwrap());
+            assert!(vm.registers[0].is_equal(&val, &vm.gc).unwrap());
         }
 
         // Do a GC Reset
@@ -367,8 +365,7 @@ mod tests {
             let drop_reg = Instruction::Drop(0.into());
             drop_reg.execute(&mut vm).unwrap();
             assert!(vm.registers[0]
-                .clone()
-                .is_equal(RuntimeValue::Str("test string"), &vm.gc)
+                .is_equal(&RuntimeValue::Str("test string"), &vm.gc)
                 .unwrap());
         }
     }
@@ -526,6 +523,19 @@ mod tests {
         let less_than = Instruction::LessThan(0.into(), 1.into());
         less_than.execute(&mut vm).unwrap();
         assert_eq!(vm.prev_comp, true);
+
+        // test incompatible types
+        vm.registers[0] = RuntimeValue::Bool(true);
+
+        let less_than = Instruction::LessThan(0.into(), 1.into());
+        assert_eq!(
+            less_than.execute(&mut vm).unwrap_err().message,
+            "Values of types 'bool' and 'int' cannot be 'less_than'ed".to_string(),
+        );
+
+        vm.options.fault_tolerant = true;
+        less_than.execute(&mut vm).unwrap();
+        assert_eq!(vm.prev_comp, false);
     }
 
     #[test]
@@ -597,7 +607,7 @@ mod tests {
                 let and = Instruction::And(0.into(), 1.into());
                 and.execute(&mut vm).unwrap();
 
-                assert!(vm.prev_op.is_equal(RuntimeValue::I32(left & right), &vm.gc).unwrap());
+                assert!(vm.prev_op.is_equal(&RuntimeValue::I32(left & right), &vm.gc).unwrap());
             }
 
             #[test]
@@ -613,7 +623,7 @@ mod tests {
                 let or = Instruction::Or(0.into(), 1.into());
                 or.execute(&mut vm).unwrap();
 
-                assert!(vm.prev_op.is_equal(RuntimeValue::I32(left | right), &vm.gc).unwrap());
+                assert!(vm.prev_op.is_equal(&RuntimeValue::I32(left | right), &vm.gc).unwrap());
             }
 
             #[test]
@@ -629,7 +639,7 @@ mod tests {
                 let xor = Instruction::Xor(0.into(), 1.into());
                 xor.execute(&mut vm).unwrap();
 
-                assert!(vm.prev_op.is_equal(RuntimeValue::I32(left ^ right), &vm.gc).unwrap());
+                assert!(vm.prev_op.is_equal(&RuntimeValue::I32(left ^ right), &vm.gc).unwrap());
             }
 
             #[test]
@@ -644,7 +654,7 @@ mod tests {
                 let not = Instruction::Not(0.into());
                 not.execute(&mut vm).unwrap();
 
-                assert!(vm.prev_op.is_equal(RuntimeValue::I32(!int), &vm.gc).unwrap());
+                assert!(vm.prev_op.is_equal(&RuntimeValue::I32(!int), &vm.gc).unwrap());
             }
 
             #[test]
@@ -660,7 +670,7 @@ mod tests {
                 let add = Instruction::Add(0.into(), 1.into());
                 add.execute(&mut vm).unwrap();
 
-                assert!(vm.prev_op.is_equal(RuntimeValue::I32(left).add_upflowing(RuntimeValue::I32(right), &mut vm.gc).unwrap(), &vm.gc).unwrap());
+                assert!(vm.prev_op.is_equal(&RuntimeValue::I32(left).add_upflowing(RuntimeValue::I32(right), &mut vm.gc).unwrap(), &vm.gc).unwrap());
             }
 
             #[test]
@@ -676,7 +686,7 @@ mod tests {
                 let sub = Instruction::Sub(0.into(), 1.into());
                 sub.execute(&mut vm).unwrap();
 
-                assert!(vm.prev_op.is_equal(RuntimeValue::I32(left).sub_upflowing(RuntimeValue::I32(right), &mut vm.gc).unwrap(), &vm.gc).unwrap());
+                assert!(vm.prev_op.is_equal(&RuntimeValue::I32(left).sub_upflowing(RuntimeValue::I32(right), &mut vm.gc).unwrap(), &vm.gc).unwrap());
             }
 
             #[test]
@@ -692,7 +702,7 @@ mod tests {
                 let mult = Instruction::Mult(0.into(), 1.into());
                 mult.execute(&mut vm).unwrap();
 
-                assert!(vm.prev_op.is_equal(RuntimeValue::I32(left).mult_upflowing(RuntimeValue::I32(right), &mut vm.gc).unwrap(), &vm.gc).unwrap());
+                assert!(vm.prev_op.is_equal(&RuntimeValue::I32(left).mult_upflowing(RuntimeValue::I32(right), &mut vm.gc).unwrap(), &vm.gc).unwrap());
             }
 
             #[test]
@@ -708,7 +718,7 @@ mod tests {
                 let div = Instruction::Div(0.into(), 1.into());
                 div.execute(&mut vm).unwrap();
 
-                assert!(vm.prev_op.is_equal(RuntimeValue::I32(left).div_upflowing(RuntimeValue::I32(right), &mut vm.gc).unwrap(), &vm.gc).unwrap());
+                assert!(vm.prev_op.is_equal(&RuntimeValue::I32(left).div_upflowing(RuntimeValue::I32(right), &mut vm.gc).unwrap(), &vm.gc).unwrap());
             }
         }
     }
