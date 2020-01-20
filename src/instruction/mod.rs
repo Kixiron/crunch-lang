@@ -521,6 +521,19 @@ mod tests {
         let less_than = Instruction::LessThan(0.into(), 1.into());
         less_than.execute(&mut vm).unwrap();
         assert_eq!(vm.prev_comp, true);
+
+        // test incompatible types
+        vm.registers[0] = RuntimeValue::Bool(true);
+
+        let less_than = Instruction::LessThan(0.into(), 1.into());
+        assert_eq!(
+            less_than.execute(&mut vm).unwrap_err().message,
+            "Values of types 'bool' and 'int' cannot be 'less_than'ed".to_string(),
+        );
+
+        vm.options.fault_tolerant = true;
+        less_than.execute(&mut vm).unwrap();
+        assert_eq!(vm.prev_comp, false);
     }
 
     #[test]

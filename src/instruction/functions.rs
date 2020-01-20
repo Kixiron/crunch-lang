@@ -196,7 +196,7 @@ macro_rules! operator {
                     message: format!(
                         concat!(
                             "Values of types '{}' and '{}' cannot be '",
-                            stringify!(op_name),
+                            stringify!($op_name),
                             "'ed",
                         ),
                         left.name(),
