@@ -20,6 +20,12 @@ pub enum TokenType {
     Equal,
     #[token = "=="]
     IsEqual,
+    #[token = "!="]
+    IsNotEqual,
+    #[token = ">="]
+    GreaterThanEqual,
+    #[token = "<="]
+    LessThanEqual,
     #[token = "["]
     LeftBrace,
     #[token = "]"]
@@ -121,6 +127,9 @@ impl std::fmt::Display for TokenType {
             Self::Minus => "-",
             Self::Equal => "=",
             Self::IsEqual => "==",
+            Self::IsNotEqual => "!=",
+            Self::GreaterThanEqual => ">=",
+            Self::LessThanEqual => "<=",
             Self::LeftBrace => "[",
             Self::RightBrace => "]",
             Self::Divide => "/",

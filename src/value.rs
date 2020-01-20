@@ -44,7 +44,7 @@ pub enum RuntimeValue {
 }
 
 #[derive(Debug, Clone, Copy)]
-/// Guages the relationship between two Values,
+/// Gauges the relationship between two Values,
 /// Always reflects Equivalency, sometimes also reflects Greater/Less than.
 pub enum Compare {
     Equal,
@@ -59,6 +59,7 @@ pub enum Compare {
     /// (trying to compare a Bool to a BigInt, are ya?)
     Incomparable,
 }
+
 impl Compare {
     /// Generates a Comparison which respects the nuances of greater than and equal to.
     /// Usually only applicable for Integers.

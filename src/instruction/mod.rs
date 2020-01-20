@@ -93,6 +93,8 @@ pub enum Instruction {
     NotEq(Register, Register),
     GreaterThan(Register, Register),
     LessThan(Register, Register),
+    GreaterThanEq(Register, Register),
+    LessThanEq(Register, Register),
 
     Func(u32),
     Yield,
@@ -144,6 +146,8 @@ impl Instruction {
             Self::NotEq(left, right) => functions::not_eq(vm, **left, **right)?,
             Self::GreaterThan(left, right) => functions::greater_than(vm, **left, **right)?,
             Self::LessThan(left, right) => functions::less_than(vm, **left, **right)?,
+            Self::GreaterThanEq(left, right) => functions::greater_than_equal(vm, **left, **right)?,
+            Self::LessThanEq(left, right) => functions::less_than_equal(vm, **left, **right)?,
 
             Self::Func(func) => functions::func(vm, *func)?,
             Self::Yield => functions::yield_generator(vm)?,
@@ -189,6 +193,8 @@ impl Instruction {
             Self::NotEq(_, _) => "neq",
             Self::GreaterThan(_, _) => "grt",
             Self::LessThan(_, _) => "let",
+            Self::GreaterThanEqual(_, _) => "grte",
+            Self::LessThanEqual(_, _) => "lete",
 
             Self::Func(_) => "call",
             Self::Yield => "yield",

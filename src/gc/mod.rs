@@ -271,9 +271,7 @@ impl Gc {
 
         trace!("Allocations before collect: {}", self.allocations.len());
 
-        // let mut new_allocations =
-        //     HashMap::with_capacity_and_hasher(keep.len(), FxBuildHasher::default());
-
+        // Clear the current allocations
         self.allocations.clear();
 
         // Iterate over allocations to keep to move them onto the new heap
@@ -286,7 +284,7 @@ impl Gc {
                 target.copy_from_slice(slice::from_raw_parts(*old_ptr, size));
             }
 
-            // Push the new allocation to new_allocations
+            // Push the new allocation to self.allocations
             self.allocations.insert(id, (self.latest, val));
 
             // Increment by the size of the moved object
@@ -294,7 +292,6 @@ impl Gc {
 
             trace!("Saving allocation {:?}", id);
         }
-        // self.allocations = new_allocations;
 
         trace!("Allocations after collect: {}", self.allocations.len());
 

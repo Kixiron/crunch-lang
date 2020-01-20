@@ -6,9 +6,19 @@ fn main()
     let i = 10
 
     if 1 == 10
-        println("1 == 10")
+        empty
+    else if 3 != 4
+        empty
+    else if 3 >= 5
+        empty
+    else if 6 <= 1
+        empty
+    else if 6 < 5
+        empty
+    else if 5 > 5
+        empty
     else
-        print("1 != 10")
+        empty
     end
     
     :: Comment

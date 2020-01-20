@@ -32,6 +32,7 @@ pub struct Interpreter {
 }
 
 impl Interpreter {
+    #[allow(dead_code)]
     pub fn new(options: &Options) -> Self {
         Self {
             gc: 0,
@@ -351,13 +352,21 @@ impl Interpreter {
                 match comparison.comparison {
                     Comparator::Equal => ctx.inst_eq(left, right),
                     Comparator::NotEqual => ctx.inst_not_eq(left, right),
-                    Comparator::LessEqual => todo!("Make this instruction"),
-                    Comparator::GreaterEqual => todo!("Make this instruction"),
-                    Comparator::Less => todo!("Make this instruction"),
-                    Comparator::Greater => todo!("Make this instruction"),
+                    Comparator::LessEqual => ctx.inst_less_than_eq(left, right),
+                    Comparator::GreaterEqual => ctx.inst_greater_than_eq(left, right),
+                    Comparator::Less => ctx.inst_less_than(left, right),
+                    Comparator::Greater => ctx.inst_greater_than(left, right),
                 };
+                /*
+                    GreaterThan(Register, Register),
+                    LessThan(Register, Register),
+                */
 
-                todo!("Do I return a register?")
+                warn!(
+                    "Expr::Comparison returns the left register as a return value, but the Comparison Operation \
+                    does not have a meaningful return value, as the comparison is stored in `vm.prev_op`"
+                );
+                Ok(left)
             }
             Expr::BinaryOperation(bin_op) => {
                 let (left, right) = (

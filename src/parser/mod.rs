@@ -463,12 +463,32 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// Parses a Variable's Declaration, eg.
+    ///
+    /// ```crunch
+    /// let i = 10
+    /// let i: int = 10
+    /// ```
+    ///
+    /// ```ebnf
+    /// VarDeclaration ::= 'let' Ident ( ':' Ident )? '=' Expr '\n'
+    /// ```
     fn variable_decl(&mut self) -> Result<VarDecl> {
         self.eat(TokenType::Let)?;
         let name = self.eat(TokenType::Ident)?;
         let name = self.intern(name.source);
-        let ty = self.parse_type()?;
+
+        let ty = if self.peek()?.ty == TokenType::Colon {
+            self.eat(TokenType::Colon)?;
+            self.parse_type()?
+        } else {
+            Type::Infer
+        };
+
+        self.eat(TokenType::Equal)?;
         let expr = self.expr()?;
+
+        self.eat(TokenType::Newline)?;
 
         Ok(VarDecl { name, ty, expr })
     }
@@ -497,13 +517,7 @@ impl<'a> Parser<'a> {
 
         let mut params = Vec::new();
         while self.peek()?.ty != TokenType::RightParen {
-            params.push(if self.peek()?.ty == TokenType::Colon {
-                self.eat(TokenType::Colon)?;
-
-                self.expr()?
-            } else {
-                break;
-            });
+            params.push(self.expr()?);
 
             if self.peek()?.ty == TokenType::Comma {
                 self.eat(TokenType::Comma)?;
@@ -608,7 +622,15 @@ impl<'a> Parser<'a> {
         let condition = if cond == CondType::Else {
             None
         } else {
-            Some(self.expr()?)
+            let left = Box::new(self.expr()?);
+            let comparison = self.comparator()?;
+            let right = Box::new(self.expr()?);
+
+            Some(Expr::Comparison(Comparison {
+                left,
+                comparison,
+                right,
+            }))
         };
         self.eat(TokenType::Newline)?;
 
@@ -622,6 +644,37 @@ impl<'a> Parser<'a> {
                 body,
             }),
             CondType::Else => Either::Right(body),
+        })
+    }
+
+    fn comparator(&mut self) -> Result<Comparator> {
+        Ok(match self.peek()?.ty {
+            TokenType::IsEqual => {
+                self.eat(TokenType::IsEqual)?;
+                Comparator::Equal
+            }
+            TokenType::IsNotEqual => {
+                self.eat(TokenType::IsNotEqual)?;
+                Comparator::NotEqual
+            }
+            TokenType::GreaterThanEqual => {
+                self.eat(TokenType::GreaterThanEqual)?;
+                Comparator::GreaterEqual
+            }
+            TokenType::LessThanEqual => {
+                self.eat(TokenType::LessThanEqual)?;
+                Comparator::LessEqual
+            }
+            TokenType::LeftCaret => {
+                self.eat(TokenType::LeftCaret)?;
+                Comparator::Less
+            }
+            TokenType::RightCaret => {
+                self.eat(TokenType::RightCaret)?;
+                Comparator::Greater
+            }
+
+            _ => todo!("Implement further equality tokens and handle invalid ones"),
         })
     }
 
@@ -665,10 +718,26 @@ impl<'a> Parser<'a> {
                         _ => todo!("Write the error"),
                     }
                 }
-                TokenType::Return => Statement::Return(Return { expr: self.expr()? }),
-                TokenType::Continue => Statement::Continue,
-                TokenType::Break => Statement::Break,
-                TokenType::Empty => Statement::Empty,
+                TokenType::Return => {
+                    self.eat(TokenType::Return)?;
+                    Statement::Return(Return { expr: self.expr()? })
+                }
+                TokenType::Continue => {
+                    self.eat(TokenType::Continue)?;
+                    Statement::Continue
+                }
+                TokenType::Break => {
+                    self.eat(TokenType::Break)?;
+                    Statement::Break
+                }
+                TokenType::Empty => {
+                    self.eat(TokenType::Empty)?;
+                    Statement::Empty
+                }
+                TokenType::Newline => {
+                    self.eat(TokenType::Newline)?;
+                    continue;
+                }
                 // TODO: ( Expr '\n' )
                 _ => break,
             };
@@ -1101,39 +1170,7 @@ mod tests {
         const CODE: &str = include_str!("../../tests/parse_test.crunch");
         const FILENAME: &str = "parse_test.crunch";
 
-        /*
-        use token::TokenType::*;
-        let _ = [
-            [
-                Load(I32(10), 31),
-                Load(Bool(true), 30),
-                Load(I32(1), 29),
-                Load(I32(10), 28),
-                Eq(29, 28),
-                OpToReg(29),
-                Drop(28),
-                Eq(29, 30),
-                Drop(29),
-                JumpComp(2),
-                Jump(5),
-                JumpPoint(2),
-                Load(Str("1 == 10"), 0),
-                Func(1),
-                Jump(5),
-                JumpPoint(3),
-                Load(Str("1 != 10"), 1),
-                Func(2),
-                Jump(1),
-                JumpPoint(1),
-                Drop(30),
-                Return,
-            ],
-            [Print(0), Return],
-            [Print(0), Load(Str("\n"), 31), Print(31), Drop(31), Return],
-        ];
-        */
-
-        color_backtrace::install();
+        // color_backtrace::install();
         // simple_logger::init().unwrap();
 
         println!(
@@ -1158,6 +1195,7 @@ mod tests {
                             panic!("Runtime error while compiling");
                         }
                     };
+
                 println!("Bytecode: {:?}", bytecode);
 
                 crate::Crunch::run_source_file(
