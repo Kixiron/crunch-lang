@@ -16,10 +16,9 @@ impl Default for VmOptions {
         }
     }
 }
-
 impl From<&crate::Options> for VmOptions {
-    fn from(_options: &crate::Options) -> Self {
-        Self { ..Self::default() }
+    fn from(&crate::Options { fault_tolerant, .. }: &crate::Options) -> Self {
+        Self { fault_tolerant }
     }
 }
 
