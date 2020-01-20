@@ -191,31 +191,25 @@ macro_rules! operator {
 
             vm.prev_comp = match left.compare(right, &vm.gc)? {
                 Compare::$compare => Ok($found_bool),
-                Compare::Incomparable => {
-                    if !vm.options.fault_tolerant {
-                        Ok($else_bool)
-                    } else {
-                        Err(RuntimeError {
-                            ty: RuntimeErrorTy::IncompatibleTypes,
-                            message: format!(
-                                concat!(
-                                    "Values of types '{}' and '{}' cannot be '",
-                                    stringify!(op_name),
-                                    "'ed",
-                                ),
-                                left.name(),
-                                right.name()
-                            )
-                        })
-                    }
-                }
-                _ => Ok($else_bool)
+                Compare::Incomparable if !vm.options.fault_tolerant => Err(RuntimeError {
+                    ty: RuntimeErrorTy::IncompatibleTypes,
+                    message: format!(
+                        concat!(
+                            "Values of types '{}' and '{}' cannot be '",
+                            stringify!(op_name),
+                            "'ed",
+                        ),
+                        left.name(),
+                        right.name()
+                    ),
+                }),
+                _ => Ok($else_bool),
             }?;
             vm.index += Index(1);
 
             Ok(())
         }
-    }
+    };
 }
 
 operator!(eq,           Equal   => true, || false);

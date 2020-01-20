@@ -57,7 +57,7 @@ pub enum Compare {
 
     /// Sometimes, things just don't line up.
     /// (trying to compare a Bool to a BigInt, are ya?)
-    Incomparable
+    Incomparable,
 }
 impl Compare {
     /// Generates a Comparison which respects the nuances of greater than and equal to.
@@ -117,14 +117,18 @@ impl RuntimeValue {
             (Self::U32(left), Self::U32(right)) => Compare::full(left, right),
             (Self::U64(left), Self::U64(right)) => Compare::full(left, right),
             (Self::U128(left), Self::U128(right)) => Compare::full(left, right),
-            (Self::GcUint(left), Self::GcUint(right)) => Compare::full(&left.fetch(gc)?, &right.fetch(gc)?),
+            (Self::GcUint(left), Self::GcUint(right)) => {
+                Compare::full(&left.fetch(gc)?, &right.fetch(gc)?)
+            }
 
             (Self::IByte(left), Self::IByte(right)) => Compare::full(left, right),
             (Self::I16(left), Self::I16(right)) => Compare::full(left, right),
             (Self::I32(left), Self::I32(right)) => Compare::full(left, right),
             (Self::I64(left), Self::I64(right)) => Compare::full(left, right),
             (Self::I128(left), Self::I128(right)) => Compare::full(left, right),
-            (Self::GcInt(left), Self::GcInt(right)) => Compare::full(&left.fetch(gc)?, &right.fetch(gc)?),
+            (Self::GcInt(left), Self::GcInt(right)) => {
+                Compare::full(&left.fetch(gc)?, &right.fetch(gc)?)
+            }
 
             (Self::F32(_left), Self::F32(_right)) => unimplemented!("No idea how floats work"),
             (Self::F64(_left), Self::F64(_right)) => unimplemented!("No idea how floats work"),
@@ -151,7 +155,7 @@ impl RuntimeValue {
     pub(crate) fn is_equal(&self, other: &Self, gc: &Gc) -> Result<bool> {
         Ok(match self.compare(other, gc)? {
             Compare::Equal => true,
-            _ => false
+            _ => false,
         })
     }
 

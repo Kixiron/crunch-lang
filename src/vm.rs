@@ -19,9 +19,7 @@ impl Default for VmOptions {
 
 impl From<&crate::Options> for VmOptions {
     fn from(_options: &crate::Options) -> Self {
-        Self {
-            ..Self::default()
-        }
+        Self { ..Self::default() }
     }
 }
 
