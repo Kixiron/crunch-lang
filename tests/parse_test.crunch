@@ -1,25 +1,137 @@
-import 'std.print' exposing *
+:: Note: The code in this file is horribly formatted for a reason
+
+                                                                                                                        import 'std.print' exposing * :: Comment
 
 :: Comment
+:: Comment
 
-fn main()
-    let i = 10
+                        :: Comment :: Comment :: Comment :: Comment
+:: Comment
 
-    if 1 == 10
+:: Comment
+                  fn main() :: Comment
+ 
+
+
+let i = 10
+
+                                        if 1 == 10
         empty
+
     else if 3 != 4
+empty
+        else if 3 >= 5
+
+
+                                    empty
+      else if 6 <= 1
+
         empty
-    else if 3 >= 5
-        empty
-    else if 6 <= 1
-        empty
-    else if 6 < 5
+     else if 6 < 5
+
         empty
     else if 5 > 5
         empty
-    else
-        empty
+
+import 'std.fs'
+
+else
+    empty
+
+
+
     end
     
     :: Comment
+                                                    end
+
+                import                   'std.fs'    exposing      *     ::           Comment
+
+fn generic_function<T, E>(i: T) -> E :: Comment
+    empty
+
+
+
 end
+
+exposed     fn    exposed_generic_function<  T ,       E>( i   :   T    )   ->   E   :: Comment
+    empty
+
+
+
+end
+
+                                                type Test<T, E>
+                :: Comment
+        member1      :            int :: Comment
+                                member2: str
+
+
+
+    
+    :: Comment :: Comment
+
+
+
+    member3  :   T
+
+                member4: E
+    
+    :: Comment
+    fn     test(         )         ->    T :: Comment
+    :: Comment
+        println("Hello from Test!") :: Comment
+    end :: Comment
+
+    :: Comment
+
+                                                fn else_to_hell()
+        let i = 10 :: Comment
+
+        if 1 == 10 :: Comment
+            empty
+        else if 3 != 4 :: Comment
+            empty
+          else if 3 >= 5
+                          empty
+else        if          6         <=        1
+    empty
+                                                            else if 6 < 5
+                                                                                empty
+else if 5 > 5
+
+
+
+
+
+
+            empty
+
+
+        else :: Comment
+            empty :: Comment
+            end
+    
+        :: Comment
+    end
+
+                                        end :: Comment
+
+:: Comment
+
+        exposed type ExposedType<T, E> :: Comment
+    :: Comment
+    exposed      member1:       int  :: Comment
+        member2: str
+
+    :: Comment
+    exposed fn test() -> T :: Comment
+:: Comment
+            println("Hello from Test!") :: Comment
+                        end :: Comment
+
+    :: Comment
+
+    end :: Comment
+
+:: Comment

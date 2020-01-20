@@ -113,6 +113,8 @@ pub enum TokenType {
     Continue,
     #[token = "break"]
     Break,
+    #[token = "type"]
+    Type,
 }
 
 impl std::fmt::Display for TokenType {

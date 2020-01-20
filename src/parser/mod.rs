@@ -72,7 +72,7 @@ impl<'a> Parser<'a> {
 
         while let Ok(token) = self.peek() {
             match token.ty {
-                TokenType::Library | TokenType::Binary => {
+                TokenType::Library | TokenType::Exposed => {
                     visibility = match self.visibility() {
                         Ok(vis) => Some(vis),
                         Err(err) => {
@@ -108,6 +108,20 @@ impl<'a> Parser<'a> {
                             continue;
                         }
                     }))
+                }
+
+                TokenType::Type => {
+                    info!("Top Level Loop: Type");
+                    ast.push(Program::TypeDecl(
+                        match self.parse_type_decl(visibility.take()) {
+                            Ok(node) => node,
+                            Err(err) => {
+                                self.error = true;
+                                self.diagnostics.push(err);
+                                continue;
+                            }
+                        },
+                    ))
                 }
 
                 TokenType::End => break,
@@ -194,10 +208,76 @@ impl<'a> Parser<'a> {
                 Visibility::Exposed
             }
             TokenType::Library => {
-                self.eat(TokenType::Binary)?;
+                self.eat(TokenType::Library)?;
                 Visibility::Library
             }
-            _ => Visibility::Library,
+            _ => Visibility::File,
+        })
+    }
+
+    /// Parses a type declaration
+    ///
+    /// ```crunch
+    /// type Name<T>
+    ///     generic: T
+    ///     something: str
+    ///
+    ///     fn test()
+    ///         println("Test")
+    ///     end
+    /// end
+    /// ```
+    ///
+    /// ```ebnf
+    /// TypeDeclaration ::= Visibility? 'type' Ident ( '<' Ident ',' '>' )? '\n' TypeArguments* Function* End
+    /// ```
+    fn parse_type_decl(&mut self, visibility: Option<Visibility>) -> Result<TypeDecl> {
+        self.eat(TokenType::Type)?;
+
+        let name = self.eat(TokenType::Ident)?;
+        let name = self.intern(name.source);
+
+        let generics = self.generics()?;
+        self.eat(TokenType::Newline)?;
+
+        let mut visibility = None;
+        let mut members = Vec::new();
+        let mut peek = self.peek()?;
+
+        while peek.ty != TokenType::Function && peek.ty != TokenType::End {
+            if peek.ty == TokenType::Library || peek.ty == TokenType::Exposed {
+                visibility = Some(self.visibility()?);
+                continue;
+            }
+
+            let member = self.eat(TokenType::Ident)?;
+            let member = self.intern(member.source);
+
+            self.eat(TokenType::Colon)?;
+            let ty = self.parse_type()?;
+
+            self.eat(TokenType::Newline)?;
+
+            members.push((visibility.take().unwrap_or_default(), member, ty));
+            peek = self.peek()?;
+        }
+
+        let mut methods = Vec::new();
+        while peek.ty != TokenType::End {
+            if peek.ty == TokenType::Library || peek.ty == TokenType::Exposed {
+                visibility = Some(self.visibility()?);
+            }
+
+            methods.push(self.function_declaration(visibility.take())?);
+            peek = self.peek()?;
+        }
+
+        Ok(TypeDecl {
+            visibility: visibility.unwrap_or_default(),
+            name,
+            generics,
+            members,
+            methods,
         })
     }
 

@@ -419,9 +419,9 @@ impl Interpreter {
                 ctx.inst_mov(reg, loaded).inst_drop(loaded);
             }
 
-            Statement::While(_while_loop) => todo!(),
-            Statement::Loop(_loop_loop) => todo!(),
-            Statement::For(_for_loop) => todo!(),
+            Statement::While(_while_loop) => todo!("Compile While loops"),
+            Statement::Loop(_loop_loop) => todo!("Compile Loops"),
+            Statement::For(_for_loop) => todo!("Compile For loops"),
 
             Statement::VarDecl(var_decl) => {
                 let reg = ctx.reserve_reg(var_decl.name)?;
@@ -430,13 +430,13 @@ impl Interpreter {
                 ctx.inst_mov(reg, loaded).inst_drop(loaded);
             }
 
-            Statement::Return(_ret) => todo!(),
-            Statement::Continue => todo!(),
-            Statement::Break => todo!(),
+            Statement::Return(_ret) => todo!("Compile return statements"),
+            Statement::Continue => todo!("Compile Continue statements"),
+            Statement::Break => todo!("Compile break statements"),
             Statement::Expr(expr) => {
                 self.expr(builder, ctx, expr)?;
             }
-            Statement::Empty => {}
+            Statement::Empty => { /* Do nothing for `empty` */ }
 
             Statement::Conditional(conditional) => {
                 let endif = builder.next_jump_id();
