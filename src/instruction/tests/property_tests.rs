@@ -3,7 +3,7 @@ use proptest::prelude::*;
 use std::io::stdout;
 
 macro_rules! number_proptest {
-    ( $( $mod_name:ident [ $value_variant:ident, $primitive:ty ] $( $bitwise:ident )? , )* ) => {$(
+    ( $( $mod_name:ident { internal: $value_variant:ident, primitive: $primitive:ty $( , bitwise: $bitwise:ident )? } )* ) => {$(
         mod $mod_name {
             use super::super::super::*;
             use proptest::prelude::*;
@@ -272,16 +272,54 @@ fn collect(int: i32, string in "\\PC*") {
 }*/
 
 number_proptest! {
-    u16_ops [U16, u16] bitwise,
-    u32_ops [U32, u32] bitwise,
-    u64_ops [U64, u64] bitwise,
-    u128_ops [U128, u128] bitwise,
+    u16_ops {
+        internal: U16, 
+        primitive: u16,
+        bitwise: bitwise
+    }
+    u32_ops {
+        internal: U32, 
+        primitive: u32,
+        bitwise: bitwise
+    }
+    u64_ops {
+        internal: U64, 
+        primitive: u64,
+        bitwise: bitwise
+    }
+    u128_ops {
+        internal: U128, 
+        primitive: u128,
+        bitwise: bitwise
+    }
 
-    i16_ops [I16, i16] bitwise,
-    i32_ops [I32, i32] bitwise,
-    i64_ops [I64, i64] bitwise,
-    i128_ops [I128, i128] bitwise,
+    i16_ops {
+        internal: I16, 
+        primitive: i16,
+        bitwise: bitwise
+    }
+    i32_ops {
+        internal: I32, 
+        primitive: i32,
+        bitwise: bitwise
+    }
+    i64_ops {
+        internal: I64, 
+        primitive: i64,
+        bitwise: bitwise
+    }
+    i128_ops {
+        internal: I128, 
+        primitive: i128,
+        bitwise: bitwise
+    }
 
-    f32_ops [F32, f32],
-    f64_ops [F64, f64],
+    f32_ops {
+        internal: F32, 
+        primitive: f32
+    }
+    f64_ops {
+        internal: F64, 
+        primitive: f64
+    }
 }

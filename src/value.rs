@@ -291,8 +291,8 @@ impl RuntimeValue {
             }
             (Self::GcInt(_left), Self::GcInt(_right)) => todo!(),
 
-            (Self::F32(_left), Self::F32(_right)) => unimplemented!("No idea how floats work"),
-            (Self::F64(_left), Self::F64(_right)) => unimplemented!("No idea how floats work"),
+            (Self::F32(left), Self::F32(right)) => Self::F32(left + right),
+            (Self::F64(left), Self::F64(right)) => Self::F64(left + right),
 
             (Self::Str(left), Self::Str(right)) => {
                 let unallocated = (*left).to_string() + right;
@@ -374,7 +374,7 @@ impl RuntimeValue {
 }
 
 macro_rules! upflowing {
-    ($ty:ty, $([$name:tt, $func:tt, $func_two:tt, $func_three:tt, $err_one:literal, $err_two:literal]),*) => {
+    ($ty:ty, $([$name:tt, $func:tt, $func_two:tt, $for_floats:tt, $func_three:tt, $err_one:literal, $err_two:literal]),*) => {
         impl $ty {
             $(
                 pub fn $name(self, other: Self, gc: &mut Gc) -> Result<Self> {
@@ -453,8 +453,8 @@ macro_rules! upflowing {
                         }
                         // (Self::GcInt(left), Self::GcInt(right)) => Self::GcInt(left.$func_two(*right, gc)?),
 
-                        (Self::F32(_left), Self::F32(_right)) => unimplemented!("No idea how floats work"),
-                        (Self::F64(_left), Self::F64(_right)) => unimplemented!("No idea how floats work"),
+                        (Self::F32(left), Self::F32(right)) => Self::F32(left $for_floats right),
+                        (Self::F64(left), Self::F64(right)) => Self::F64(left $for_floats right),
 
                         (left, right) if left == &Self::None || right == &Self::None => {
                             return Err(RuntimeError {
@@ -539,22 +539,25 @@ upflowing!(
         sub_upflowing,
         checked_sub,
         sub,
+        -,
         new_subtracting,
-        "The attempted subtract is too large to fit in a '{}'",
+        "The attempted subtraction is too large to fit in a '{}'",
         "Values of types '{}' and '{}' cannot be subtracted"
     ],
     [
         mult_upflowing,
         checked_mul,
         mult,
+        *,
         new_multiplying,
-        "The attempted multiply is too large to fit in a '{}'",
+        "The attempted multiplication is too large to fit in a '{}'",
         "Values of types '{}' and '{}' cannot be multiplied"
     ],
     [
         div_upflowing,
         checked_div,
         div,
+        /,
         new_dividing,
         "The attempted divide is too large to fit in a '{}'",
         "Values of types '{}' and '{}' cannot be divided"
