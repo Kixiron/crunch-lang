@@ -196,8 +196,8 @@ impl Instruction {
             Self::NotEq(_, _) => "neq",
             Self::GreaterThan(_, _) => "grt",
             Self::LessThan(_, _) => "let",
-            Self::GreaterThanEqual(_, _) => "grte",
-            Self::LessThanEqual(_, _) => "lete",
+            Self::GreaterThanEq(_, _) => "grte",
+            Self::LessThanEq(_, _) => "lete",
 
             Self::Func(_) => "call",
             Self::Yield => "yield",
