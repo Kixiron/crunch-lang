@@ -160,6 +160,9 @@ mod gc;
 mod instruction;
 /// The Interpreter
 mod interpreter;
+/// Compiler Intrinsics
+mod intrinsics;
+#[cfg(feature = "jit")]
 mod jit;
 mod native_lib;
 /// Helper types

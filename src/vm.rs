@@ -1,6 +1,5 @@
 use super::{
-    jit::Jit, parser::Either, Gc, Index, Instruction, Register, Result, RuntimeValue,
-    NUMBER_REGISTERS,
+    parser::Either, Gc, Index, Instruction, Register, Result, RuntimeValue, NUMBER_REGISTERS,
 };
 use std::time::Instant;
 
@@ -133,66 +132,30 @@ impl std::fmt::Debug for Vm {
 }
 
 #[derive(Debug, Clone)]
-pub struct Function<'a> {
-    pub function: Either<Vec<Instruction>, *mut Jit<'a>>,
+pub struct Function {
+    pub function: Vec<Instruction>,
     pub meta: RuntimeFunctionMeta,
 }
 
-impl<'a> Function<'a> {
+impl Function {
     // const JIT_USAGE_THRESHOLD: usize = 0;
 
     #[must_use]
     pub fn new(function: Vec<Instruction>) -> Self {
         Self {
-            function: Either::Left(function),
+            function,
             meta: RuntimeFunctionMeta::new(),
         }
     }
 
     pub fn execute(&self, vm: &mut Vm) -> Result<()> {
-        // self.meta.usages += 1;
-        //
-        // let handle = if self.meta.usages > Function::JIT_USAGE_THRESHOLD {
-        //     if let Either::Left(ref func) = self.function {
-        //         let func = func.clone();
-        //
-        //         let handle = std::thread::spawn(|| Jit::new(func));
-        //
-        //         Some(handle)
-        //     } else {
-        //         None
-        //     }
-        // } else {
-        //     None
-        // };
+        self.meta.usages += 1;
 
-        match self.function {
-            Either::Left(ref instructions) => {
-                while !vm.finished_execution {
-                    instructions[*vm.index as usize].execute(vm)?;
-                }
-            }
-            Either::Right(jit) => unsafe { jit.as_mut().unwrap().run(vm)? },
+        while !vm.finished_execution {
+            self.function[*vm.index as usize].execute(vm)?;
         }
-
-        // if let Some(handle) = handle {
-        //     if let Ok(jit) = handle.join().unwrap() {
-        //         let jit = Box::into_raw(Box::new(jit));
-        //
-        //         self.function = Either::Right(jit)
-        //     }
-        // }
 
         Ok(())
-    }
-}
-
-impl<'a> Drop for Function<'a> {
-    fn drop(&mut self) {
-        if let Either::Right(jit) = self.function {
-            let jit = unsafe { Box::from_raw(jit) };
-            drop(jit);
-        }
     }
 }
 
