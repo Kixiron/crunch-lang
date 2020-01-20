@@ -181,31 +181,47 @@ pub fn not(vm: &mut Vm, reg: u8) -> Result<()> {
     Ok(())
 }
 
-pub fn eq(vm: &mut Vm, left: u8, right: u8) -> Result<()> {
-    vm.prev_comp = vm.registers[left as usize]
-        .clone()
-        .is_equal(vm.registers[right as usize].clone(), &vm.gc)?;
-    vm.index += Index(1);
+macro_rules! operator {
+    ( $op_name:ident, $compare:ident => $found_bool:expr, || $else_bool:expr ) => {
+        pub fn $op_name(vm: &mut Vm, left: u8, right: u8) -> Result<()> {
+            use crate::value::Compare;
 
-    Ok(())
+            let left = &vm.registers[left as usize];
+            let right = &vm.registers[right as usize];
+
+            vm.prev_comp = match left.compare(right, &vm.gc)? {
+                Compare::$compare => Ok($found_bool),
+                Compare::Incomparable => {
+                    if !vm.options.fault_tolerant {
+                        Ok($else_bool)
+                    } else {
+                        Err(RuntimeError {
+                            ty: RuntimeErrorTy::IncompatibleTypes,
+                            message: format!(
+                                concat!(
+                                    "Values of types '{}' and '{}' cannot be '",
+                                    stringify!(op_name),
+                                    "'ed",
+                                ),
+                                left.name(),
+                                right.name()
+                            )
+                        })
+                    }
+                }
+                _ => Ok($else_bool)
+            }?;
+            vm.index += Index(1);
+
+            Ok(())
+        }
+    }
 }
 
-pub fn not_eq(vm: &mut Vm, left: u8, right: u8) -> Result<()> {
-    vm.prev_comp = !vm.registers[left as usize]
-        .clone()
-        .is_equal(vm.registers[right as usize].clone(), &vm.gc)?;
-    vm.index += Index(1);
-
-    Ok(())
-}
-
-pub fn greater_than(_vm: &mut Vm, _left: u8, _right: u8) -> Result<()> {
-    todo!()
-}
-
-pub fn less_than(_vm: &mut Vm, _left: u8, _right: u8) -> Result<()> {
-    todo!()
-}
+operator!(eq,           Equal   => true, || false);
+operator!(not_eq,       Equal   => false,|| true);
+operator!(greater_than, Greater => true, || false);
+operator!(less_than,    Less    => true, || false);
 
 pub fn func(mut vm: &mut Vm, func: u32) -> Result<()> {
     trace!("Jumping to function {}", func);

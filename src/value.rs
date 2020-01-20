@@ -43,6 +43,45 @@ pub enum RuntimeValue {
     None,
 }
 
+#[derive(Debug, Clone, Copy)]
+/// Guages the relationship between two Values,
+/// Always reflects Equivalency, sometimes also reflects Greater/Less than.
+pub enum Compare {
+    Equal,
+
+    Less,
+
+    Greater,
+
+    Unequal,
+
+    /// Sometimes, things just don't line up.
+    /// (trying to compare a Bool to a BigInt, are ya?)
+    Incomparable
+}
+impl Compare {
+    /// Generates a Comparison which respects the nuances of greater than and equal to.
+    /// Usually only applicable for Integers.
+    fn full<O: std::cmp::Ord>(a: &O, b: &O) -> Self {
+        use std::cmp::Ordering;
+
+        match a.cmp(b) {
+            Ordering::Less => Compare::Less,
+            Ordering::Greater => Compare::Greater,
+            Ordering::Equal => Compare::Equal,
+        }
+    }
+
+    /// A Bool, for example, can't be "less than" another Bool, but it can be different.
+    /// Types that impl Ord probably shouldn't be compared this way, prefer `Compare::full`.
+    fn partial<E: Eq>(a: &E, b: &E) -> Self {
+        match a == b {
+            true => Compare::Equal,
+            false => Compare::Unequal,
+        }
+    }
+}
+
 impl RuntimeValue {
     #[must_use]
     pub fn name(&self) -> &'static str {
@@ -71,30 +110,30 @@ impl RuntimeValue {
     }
 
     // TODO: Add similar-type eq
-    pub fn is_equal(self, other: Self, gc: &Gc) -> Result<bool> {
+    pub fn compare(&self, other: &Self, gc: &Gc) -> Result<Compare> {
         Ok(match (self, other) {
-            (Self::Byte(left), Self::Byte(right)) => left == right,
-            (Self::U16(left), Self::U16(right)) => left == right,
-            (Self::U32(left), Self::U32(right)) => left == right,
-            (Self::U64(left), Self::U64(right)) => left == right,
-            (Self::U128(left), Self::U128(right)) => left == right,
-            (Self::GcUint(left), Self::GcUint(right)) => left.fetch(gc)? == right.fetch(gc)?,
+            (Self::Byte(left), Self::Byte(right)) => Compare::full(left, right),
+            (Self::U16(left), Self::U16(right)) => Compare::full(left, right),
+            (Self::U32(left), Self::U32(right)) => Compare::full(left, right),
+            (Self::U64(left), Self::U64(right)) => Compare::full(left, right),
+            (Self::U128(left), Self::U128(right)) => Compare::full(left, right),
+            (Self::GcUint(left), Self::GcUint(right)) => Compare::full(&left.fetch(gc)?, &right.fetch(gc)?),
 
-            (Self::IByte(left), Self::IByte(right)) => left == right,
-            (Self::I16(left), Self::I16(right)) => left == right,
-            (Self::I32(left), Self::I32(right)) => left == right,
-            (Self::I64(left), Self::I64(right)) => left == right,
-            (Self::I128(left), Self::I128(right)) => left == right,
-            (Self::GcInt(left), Self::GcInt(right)) => left.fetch(gc)? == right.fetch(gc)?,
+            (Self::IByte(left), Self::IByte(right)) => Compare::full(left, right),
+            (Self::I16(left), Self::I16(right)) => Compare::full(left, right),
+            (Self::I32(left), Self::I32(right)) => Compare::full(left, right),
+            (Self::I64(left), Self::I64(right)) => Compare::full(left, right),
+            (Self::I128(left), Self::I128(right)) => Compare::full(left, right),
+            (Self::GcInt(left), Self::GcInt(right)) => Compare::full(&left.fetch(gc)?, &right.fetch(gc)?),
 
             (Self::F32(_left), Self::F32(_right)) => unimplemented!("No idea how floats work"),
             (Self::F64(_left), Self::F64(_right)) => unimplemented!("No idea how floats work"),
 
-            (Self::Pointer(left), Self::Pointer(right)) => left == right,
+            (Self::Pointer(left), Self::Pointer(right)) => Compare::partial(left, right),
 
-            (Self::Bool(left), Self::Bool(right)) => left == right,
+            (Self::Bool(left), Self::Bool(right)) => Compare::partial(left, right),
 
-            (left, right) if left == Self::None || right == Self::None => {
+            (left, right) if left == &Self::None || right == &Self::None => {
                 return Err(RuntimeError {
                     ty: RuntimeErrorTy::NullVar,
                     message: format!(
@@ -104,7 +143,15 @@ impl RuntimeValue {
                     ),
                 });
             }
-            (_, _) => false,
+            (_, _) => Compare::Incomparable,
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn is_equal(&self, other: &Self, gc: &Gc) -> Result<bool> {
+        Ok(match self.compare(other, gc)? {
+            Compare::Equal => true,
+            _ => false
         })
     }
 
