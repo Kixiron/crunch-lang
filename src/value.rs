@@ -61,20 +61,24 @@ pub enum Compare {
 }
 impl Compare {
     /// Generates a Comparison which respects the nuances of greater than and equal to.
-    /// Usually only applicable for Integers.
-    fn full<O: std::cmp::Ord>(a: &O, b: &O) -> Self {
+    /// Usually only applicable for numbers.
+    ///
+    /// Comparison to i.e. `std::f32::NAN` simply yields `Unequal`, as is the case with Rust.
+    fn ordering<O: std::cmp::PartialOrd>(a: &O, b: &O) -> Self {
         use std::cmp::Ordering;
 
-        match a.cmp(b) {
-            Ordering::Less => Compare::Less,
-            Ordering::Greater => Compare::Greater,
-            Ordering::Equal => Compare::Equal,
-        }
+        a.partial_cmp(b)
+            .map(|c| match c {
+                Ordering::Less => Compare::Less,
+                Ordering::Greater => Compare::Greater,
+                Ordering::Equal => Compare::Equal,
+            })
+            .unwrap_or(Compare::Unequal)
     }
 
     /// A Bool, for example, can't be "less than" another Bool, but it can be different.
-    /// Types that impl Ord probably shouldn't be compared this way, prefer `Compare::full`.
-    fn partial<E: Eq>(a: &E, b: &E) -> Self {
+    /// Types that impl PartialOrd probably shouldn't be compared this way, prefer `Compare::full`.
+    fn just_equality<E: Eq>(a: &E, b: &E) -> Self {
         match a == b {
             true => Compare::Equal,
             false => Compare::Unequal,
@@ -112,30 +116,30 @@ impl RuntimeValue {
     // TODO: Add similar-type eq
     pub fn compare(&self, other: &Self, gc: &Gc) -> Result<Compare> {
         Ok(match (self, other) {
-            (Self::Byte(left), Self::Byte(right)) => Compare::full(left, right),
-            (Self::U16(left), Self::U16(right)) => Compare::full(left, right),
-            (Self::U32(left), Self::U32(right)) => Compare::full(left, right),
-            (Self::U64(left), Self::U64(right)) => Compare::full(left, right),
-            (Self::U128(left), Self::U128(right)) => Compare::full(left, right),
+            (Self::Byte(left), Self::Byte(right)) => Compare::ordering(left, right),
+            (Self::U16(left), Self::U16(right)) => Compare::ordering(left, right),
+            (Self::U32(left), Self::U32(right)) => Compare::ordering(left, right),
+            (Self::U64(left), Self::U64(right)) => Compare::ordering(left, right),
+            (Self::U128(left), Self::U128(right)) => Compare::ordering(left, right),
             (Self::GcUint(left), Self::GcUint(right)) => {
-                Compare::full(&left.fetch(gc)?, &right.fetch(gc)?)
+                Compare::ordering(&left.fetch(gc)?, &right.fetch(gc)?)
             }
 
-            (Self::IByte(left), Self::IByte(right)) => Compare::full(left, right),
-            (Self::I16(left), Self::I16(right)) => Compare::full(left, right),
-            (Self::I32(left), Self::I32(right)) => Compare::full(left, right),
-            (Self::I64(left), Self::I64(right)) => Compare::full(left, right),
-            (Self::I128(left), Self::I128(right)) => Compare::full(left, right),
+            (Self::IByte(left), Self::IByte(right)) => Compare::ordering(left, right),
+            (Self::I16(left), Self::I16(right)) => Compare::ordering(left, right),
+            (Self::I32(left), Self::I32(right)) => Compare::ordering(left, right),
+            (Self::I64(left), Self::I64(right)) => Compare::ordering(left, right),
+            (Self::I128(left), Self::I128(right)) => Compare::ordering(left, right),
             (Self::GcInt(left), Self::GcInt(right)) => {
-                Compare::full(&left.fetch(gc)?, &right.fetch(gc)?)
+                Compare::ordering(&left.fetch(gc)?, &right.fetch(gc)?)
             }
 
-            (Self::F32(_left), Self::F32(_right)) => unimplemented!("No idea how floats work"),
-            (Self::F64(_left), Self::F64(_right)) => unimplemented!("No idea how floats work"),
+            (Self::F32(left), Self::F32(right)) => Compare::ordering(left, right),
+            (Self::F64(left), Self::F64(right)) => Compare::ordering(left, right),
 
-            (Self::Pointer(left), Self::Pointer(right)) => Compare::partial(left, right),
+            (Self::Pointer(left), Self::Pointer(right)) => Compare::just_equality(left, right),
 
-            (Self::Bool(left), Self::Bool(right)) => Compare::partial(left, right),
+            (Self::Bool(left), Self::Bool(right)) => Compare::just_equality(left, right),
 
             (left, right) if left == &Self::None || right == &Self::None => {
                 return Err(RuntimeError {
