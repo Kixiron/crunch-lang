@@ -182,7 +182,8 @@ pub fn not(vm: &mut Vm, reg: u8) -> Result<()> {
 }
 
 macro_rules! comparison_operator {
-    ( $op_name:ident, $compare:ident => $found_bool:expr, || $else_bool:expr ) => {
+    ( $( $op_name:ident: $compare:ident => $found_bool:literal || $else_bool:literal $(,)? )* ) => {
+        $(
         pub fn $op_name(vm: &mut Vm, left: u8, right: u8) -> Result<()> {
             use crate::value::Compare;
 
@@ -208,14 +209,16 @@ macro_rules! comparison_operator {
             vm.index += Index(1);
 
             Ok(())
-        }
+        } )*
     };
 }
 
-comparison_operator!(eq,           Equal   => true, || false);
-comparison_operator!(not_eq,       Equal   => false,|| true);
-comparison_operator!(greater_than, Greater => true, || false);
-comparison_operator!(less_than,    Less    => true, || false);
+comparison_operator! {
+    eq:           Equal   => true  || false,
+    not_eq:       Equal   => false || true,
+    greater_than: Greater => true  || false,
+    less_than:    Less    => true  || false
+}
 
 pub fn func(mut vm: &mut Vm, func: u32) -> Result<()> {
     trace!("Jumping to function {}", func);
