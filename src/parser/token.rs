@@ -301,14 +301,35 @@ impl<'a> std::fmt::Debug for Token<'a> {
     }
 }
 
-#[test]
-fn token_test() {
-    const CODE: &str = include_str!("../../tests/parse_test.crunch");
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let tokens = TokenStream::new(CODE, true)
-        .into_iter()
-        .map(|t| t.ty)
-        .collect::<Vec<_>>();
+    #[test]
+    fn token_test() {
+        const CODE: &str = include_str!("../../tests/parse_test.crunch");
 
-    println!("{:#?}", tokens);
+        let tokens = TokenStream::new(CODE, true)
+            .into_iter()
+            .map(|t| t.ty)
+            .collect::<Vec<_>>();
+
+        println!("{:#?}", tokens);
+    }
+
+    #[test]
+    fn keyword_led_ident() {
+        let mut exposed_function = TokenStream::new("exposed_function", true).into_iter();
+
+        assert_eq!(
+            exposed_function.next(),
+            Some(Token {
+                ty: TokenType::Ident,
+                source: "exposed_function",
+                range: (0, 15)
+            })
+        );
+        assert_eq!(exposed_function.next(), None);
+        assert!(exposed_function.collect::<Vec<_>>().is_empty());
+    }
 }

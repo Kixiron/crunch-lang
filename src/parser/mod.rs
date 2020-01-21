@@ -201,7 +201,10 @@ impl<'a> Parser<'a> {
         self.interner.get_or_intern(string)
     }
 
+    #[track_caller]
     fn visibility(&mut self) -> Result<Visibility> {
+        trace!("Parsing Visibility: {:?}", Location::caller());
+
         Ok(match self.peek()?.ty {
             TokenType::Exposed => {
                 self.eat(TokenType::Exposed)?;
@@ -244,9 +247,14 @@ impl<'a> Parser<'a> {
         let mut members = Vec::new();
         let mut peek = self.peek()?;
 
-        while peek.ty != TokenType::Function && peek.ty != TokenType::End {
-            if peek.ty == TokenType::Library || peek.ty == TokenType::Exposed {
+        while peek.ty != TokenType::Function && peek.ty != TokenType::EndBlock {
+            if peek.ty == TokenType::Newline {
+                self.eat(TokenType::Newline)?;
+                peek = self.peek()?;
+                continue;
+            } else if peek.ty == TokenType::Library || peek.ty == TokenType::Exposed {
                 visibility = Some(self.visibility()?);
+                peek = self.peek()?;
                 continue;
             }
 
@@ -263,14 +271,20 @@ impl<'a> Parser<'a> {
         }
 
         let mut methods = Vec::new();
-        while peek.ty != TokenType::End {
-            if peek.ty == TokenType::Library || peek.ty == TokenType::Exposed {
+        while peek.ty != TokenType::EndBlock {
+            if peek.ty == TokenType::Newline {
+                self.eat(TokenType::Newline)?;
+                peek = self.peek()?;
+                continue;
+            } else if peek.ty == TokenType::Library || peek.ty == TokenType::Exposed {
                 visibility = Some(self.visibility()?);
             }
 
             methods.push(self.function_declaration(visibility.take())?);
             peek = self.peek()?;
         }
+
+        self.eat(TokenType::EndBlock)?;
 
         Ok(TypeDecl {
             visibility: type_visibility.unwrap_or_default(),
@@ -463,6 +477,8 @@ impl<'a> Parser<'a> {
         let mut generics = Vec::new();
 
         if self.peek()?.ty == TokenType::LeftCaret {
+            self.eat(TokenType::LeftCaret)?;
+
             while self.peek()?.ty != TokenType::RightCaret {
                 generics.push(self.parse_type()?);
 
@@ -643,8 +659,9 @@ impl<'a> Parser<'a> {
             let ident = self.eat(TokenType::Ident)?;
             self.intern(ident.source)
         };
-        let expr = self.expr()?;
+
         let ty = self.assign_type()?;
+        let expr = self.expr()?;
 
         Ok(Assign { var, expr, ty })
     }
@@ -660,12 +677,11 @@ impl<'a> Parser<'a> {
 
             TokenType::Ident => {
                 let ident = self.eat(TokenType::Ident)?;
+                let ident = self.intern(ident.source);
 
-                if self.peek()?.ty == TokenType::LeftParen {
-                    let ident = self.intern(ident.source);
-                    Expr::FunctionCall(self.function_call(ident)?)
-                } else {
-                    Expr::Ident(self.intern(ident.source))
+                match self.peek()?.ty {
+                    TokenType::LeftParen => Expr::FunctionCall(self.function_call(ident)?),
+                    _ => Expr::Ident(ident),
                 }
             }
 
@@ -778,6 +794,8 @@ impl<'a> Parser<'a> {
     }
 
     fn body(&mut self) -> Result<Vec<Statement>> {
+        trace!("Parsing body");
+
         let mut statements = Vec::new();
 
         loop {
@@ -829,8 +847,9 @@ impl<'a> Parser<'a> {
         Ok(statements)
     }
 
+    #[track_caller]
     fn function_declaration(&mut self, visibility: Option<Visibility>) -> Result<FunctionDecl> {
-        info!("Parsing Function");
+        info!("Parsing Function: {:?}", Location::caller());
 
         self.eat(TokenType::Function)?;
 
@@ -1252,18 +1271,13 @@ mod tests {
         const FILENAME: &str = "parse_test.crunch";
 
         // color_backtrace::install();
-        // simple_logger::init().unwrap();
-
-        println!(
-            "{:#?}",
-            TokenStream::new(CODE, true).into_iter().collect::<Vec<_>>()
-        );
+        simple_logger::init().unwrap();
 
         let mut parser = Parser::new(Some(FILENAME), CODE);
 
         match parser.parse() {
             Ok(ast) => {
-                println!("Parsing Successful\n{:#?}", &ast);
+                println!("Parsing Successful!\n{:#?}", &ast);
 
                 let options = crate::OptionBuilder::new("./examples/parse_test.crunch").build();
                 let bytecode =

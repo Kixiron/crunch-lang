@@ -380,13 +380,6 @@ impl Gc {
                 self.dump_heap(Side::Left).unwrap();
             }
 
-            println!(
-                "Ptr: {:p}, Heap: {:p}, Heap - Ptr: {:p}",
-                **ptr,
-                *self.get_side(),
-                (**ptr as usize - *self.get_side() as usize) as *const u8
-            );
-
             Ok(unsafe { std::slice::from_raw_parts(**ptr, val.size) })
         } else {
             Err(RuntimeError {
