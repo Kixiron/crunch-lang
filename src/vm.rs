@@ -21,11 +21,17 @@ impl From<&crate::Options> for VmOptions {
     }
 }
 
+/// A function's stack frame, holds enough information to continue execution where it
+/// last left off
 #[derive(Debug, Clone)]
 pub(crate) struct ReturnFrame {
+    /// The frame's registers, sans Caller/Callee registers
     pub registers: [RuntimeValue; NUMBER_REGISTERS - 5],
+    /// The current `Instruction` index of the frame
+    ///
+    /// [`Instruction`]: crate.Instruction
     pub index: Index,
-    // If function_index is None, then the main function is being returned to
+    /// The index of the function to return to
     pub function_index: u32,
     pub yield_point: Option<Index>,
 }

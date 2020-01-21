@@ -387,14 +387,14 @@ test_eq_ops! {
         lo: 0
     }
     u128_ops {
-        internal: U128, 
+        internal: U128,
         hi: 20,
         mid: 10,
         lo: 0
     }
 
     i16_ops {
-        internal: I16, 
+        internal: I16,
         hi: 128,
         mid: 0,
         lo: -1
@@ -406,13 +406,13 @@ test_eq_ops! {
         lo: -1
     }
     i64_ops {
-        internal: I64, 
+        internal: I64,
         hi: 128,
         mid: 20,
         lo: 0
     }
     i128_ops {
-        internal: I128, 
+        internal: I128,
         hi: 20,
         mid: 10,
         lo: -0
