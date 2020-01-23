@@ -158,17 +158,19 @@ impl Gc {
             *self.latest as usize + size,
         );
 
+        // TODO: Take advantage of short-circuiting here?
+
         // If the object is too large return an error
-        if !(block_start as usize >= *self.get_side() as usize
-            && block_end < *self.get_side() as usize + self.options.heap_size)
+        if block_start as usize <= *self.get_side() as usize
+            && block_end > *self.get_side() as usize + self.options.heap_size
         {
             self.collect(); // Collect garbage
 
             block_start = (*self.latest as usize) as *mut u8;
             block_end = *self.latest as usize + size;
 
-            if !(block_start as usize >= *self.get_side() as usize
-                && block_end < *self.get_side() as usize + self.options.heap_size)
+            if block_start as usize <= *self.get_side() as usize
+                && block_end > *self.get_side() as usize + self.options.heap_size
             {
                 return Err(RuntimeError {
                     ty: RuntimeErrorTy::GcError,
