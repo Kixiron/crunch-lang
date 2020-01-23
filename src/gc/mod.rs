@@ -5,7 +5,7 @@ use std::{alloc, collections::HashMap, mem, ptr, slice};
 mod collectable;
 pub use collectable::*;
 
-/// Gets the memory page size
+/// Gets the memory page size  
 #[inline(always)]
 #[cfg(target_family = "unix")]
 pub(crate) fn page_size() -> usize {
@@ -17,7 +17,7 @@ pub(crate) fn page_size() -> usize {
     size
 }
 
-/// Gets the memory page size
+/// Gets the memory page size  
 #[inline(always)]
 #[cfg(target_family = "windows")]
 pub(crate) fn page_size() -> usize {
@@ -37,18 +37,18 @@ pub(crate) fn page_size() -> usize {
     size
 }
 
-/// The options for an initialized GC
+/// The options for an initialized GC  
 #[derive(Debug, Copy, Clone)]
 pub struct GcOptions {
     /// Activates a GC collect at every opportunity  
     pub burn_gc: bool,
-    /// Overwrites the heap on a side swap and on the `Gc` drop
+    /// Overwrites the heap on a side swap and on the `Gc` drop  
     ///
     /// [`Gc`]: crate.Gc
     pub overwrite_heap: bool,
     /// Sets the size of one half of the heap  
-    /// Note: This means that the total allocated memory is `heap_size * 2`, while the avaliable
-    /// memory is only `heap_size`
+    /// Note: This means that the total allocated memory is `heap_size * 2`, while the available
+    /// memory is only `heap_size`  
     pub heap_size: usize,
     /// Enables additional debug output
     pub debug: bool,
@@ -65,22 +65,22 @@ impl From<&crate::Options> for GcOptions {
     }
 }
 
-/// The Crunch Garbage Collector
+/// The Crunch Garbage Collector  
 #[derive(Debug)]
 pub struct Gc {
-    /// The current root objects
+    /// The current root objects  
     roots: Vec<AllocId>,
-    /// The left heap
+    /// The left heap  
     left: HeapPointer,
-    /// The right heap
+    /// The right heap  
     right: HeapPointer,
-    /// The start of free memory
+    /// The start of free memory  
     latest: HeapPointer,
-    /// The heap side currently in use
+    /// The heap side currently in use  
     current_side: Side,
-    /// A vector of each allocation's id and current pointer
+    /// A vector of each allocation's id and current pointer  
     allocations: HashMap<AllocId, (HeapPointer, GcValue), FxBuildHasher>,
-    /// The next `AllocId` to be used for an `allocated` value
+    /// The next `AllocId` to be used for an `allocated` value  
     ///
     /// [`AllocId`]: crate.AllocId
     /// [`allocated`]: #allocate.crate.Gc
@@ -91,12 +91,12 @@ pub struct Gc {
 
 impl Gc {
     /// Create a new GC instance, using `options.heap_size` as the starting heap size.  
-    /// Note: This means that the total allocated memory is `heap_size * 2`, while the avaliable
-    /// memory is only `heap_size`
+    /// Note: This means that the total allocated memory is `heap_size * 2`, while the available
+    /// memory is only `heap_size`  
     ///
     /// # Panics
     ///
-    /// Will panic if `options.heap_size` or the memory `page_size` are `0`
+    /// Will panic if `options.heap_size` or the memory `page_size` are `0`  
     ///
     /// [`options.heap_size`]: #heap_size.crate.GcOptions
     #[must_use]
@@ -136,10 +136,11 @@ impl Gc {
         }
     }
 
-    /// Allocates a region of `size` bytes and returns the `HeapPointer` and `AllocId` of said allocation
+    /// Allocates a region of `size` bytes and returns the `HeapPointer` and `AllocId` of said allocation  
     ///
     /// # Safety
-    /// The `HeapPointer` returned can be invalidated by a `Gc` collection cycle (See `collect`)
+    ///
+    /// The `HeapPointer` returned can be invalidated by a `Gc` collection cycle (See `collect`)  
     ///
     /// [`HeapPointer`]: crate.HeapPointer
     /// [`AllocId`]: crate.AllocId
@@ -151,7 +152,7 @@ impl Gc {
     }
 
     /// The inner workings of `allocate`, used to allow retrying allocation when the heap is out of memory.  
-    /// See `allocate` for more information
+    /// See `allocate` for more information  
     ///
     /// [`allocate`]: #allocate.crate.Gc
     #[inline]
@@ -216,10 +217,11 @@ impl Gc {
         Ok(id)
     }
 
-    /// Allocates a region of `size` bytes, zeroes it and returns the `HeapPointer` and `AllocId` of said allocation
+    /// Allocates a region of `size` bytes, zeroes it and returns the `HeapPointer` and `AllocId` of said allocation  
     ///
     /// # Safety
-    /// The `HeapPointer` returned can be invalidated by a `Gc` collection cycle (See `collect`)
+    ///
+    /// The `HeapPointer` returned can be invalidated by a `Gc` collection cycle (See `collect`)  
     ///
     /// [`HeapPointer`]: crate.HeapPointer
     /// [`AllocId`]: crate.AllocId
@@ -241,7 +243,7 @@ impl Gc {
     ///
     /// All reachable allocations (Decided by the gc's current `roots`) are marked, extending the
     /// allocations to be marked by all of the allocation's children.  
-    /// All marked allocations are then moved to the opposite heap side.
+    /// All marked allocations are then moved to the opposite heap side.  
     ///
     /// [`roots`]: #roots.crate.Gc
     pub fn collect(&mut self) {

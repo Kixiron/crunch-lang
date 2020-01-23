@@ -1,8 +1,7 @@
-:: Note: The code in this file is horribly formatted for a reason
+import 'std.print' exposing *
+import 'std.fs'
 
-import 'std.print' exposing * :: Comment
-
-fn main() :: Comment
+fn main()
     let i = 10
 
     if 1 == 10
@@ -19,45 +18,46 @@ fn main() :: Comment
         empty
     end
 
-    :: Comment
+    print_int(five())
+
+    assert(generic_function<str, int>("test") == 1)
+    assert(generic_function<str, int>('test') == 1)
 end
 
-import 'std.fs' :: Comment
-
-fn generic_function<T, E>(i: T) -> E :: Comment
-    empty
+fn five() -> int
+    return 5
 end
 
-exposed fn _exposed_generic_function<T, E>(i: T) -> E :: Comment
+fn print_int(integer: int)
+    print(integer)
+end
+
+fn generic_function<T, E>(i: T) -> E
+    return 1
+end
+
+exposed fn _exposed_generic_function<T, E>(i: T) -> E
     empty
 end
 
 type Test<T, E>
-    :: Comment
-    member1: int :: Comment
+    member1: int
     member2: str
-
-    :: Comment :: Nested Comment
     member3: T
-
     member4: E
-    :: Comment
 
-    fn test() -> T :: Comment
-        :: Comment
-        println("Hello from Test!") :: Comment
-    end :: Comment
-
-    :: Comment
+    fn test() -> T
+        println("Hello from Test!")
+    end
 
     fn _else_to_hell()
-        let i = 10 :: Comment
+        let i = 10
 
-        i = 5 :: Comment
+        i = 5
 
-        if 1 == 10 :: Comment
+        if 1 == 10
             empty
-        else if 3 != 4 :: Comment
+        else if 3 != 4
             empty
         else if 3 >= 5
             empty
@@ -67,28 +67,18 @@ type Test<T, E>
             empty
         else if 5 > 5
             empty
-        else :: Comment
-            empty :: Comment
+        else
+            empty
         end
-    
-        :: Comment
     end
-end :: Comment
+end
 
-:: Comment
 
-exposed type ExposedType<T, E> :: Comment
-    :: Comment
-    exposed member1: int :: Comment
+exposed type ExposedType<T, E>
+    exposed member1: int
     member2: str
 
-    :: Comment
-    exposed fn test() -> T :: Comment
-        :: Comment
-        println("Hello from Test!") :: Comment
-    end :: Comment
-
-    :: Comment
-end :: Comment
-
-:: Comment
+    exposed fn test() -> T
+        println("Hello from Test!")
+    end
+end
