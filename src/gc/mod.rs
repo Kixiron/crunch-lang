@@ -148,36 +148,31 @@ impl Gc {
     /// [`collect`]: #collect.crate.Gc
     #[must_use]
     pub fn allocate(&mut self, size: usize) -> Result<(HeapPointer, AllocId)> {
-        self.allocate_inner(size, 0)
-    }
-
-    /// The inner workings of `allocate`, used to allow retrying allocation when the heap is out of memory.  
-    /// See `allocate` for more information  
-    ///
-    /// [`allocate`]: #allocate.crate.Gc
-    #[inline]
-    #[must_use]
-    fn allocate_inner(&mut self, size: usize, attempt: u8) -> Result<(HeapPointer, AllocId)> {
         trace!("Allocating size {}", size);
 
         if self.options.burn_gc {
             self.collect();
         }
 
-        let (block_start, block_end) = (
+        let (mut block_start, mut block_end) = (
             (*self.latest as usize) as *mut u8,
             *self.latest as usize + size,
         );
 
+        // TODO: Take advantage of short-circuiting here?
+
         // If the object is too large return an error
-        if !(block_start as usize >= *self.get_side() as usize
-            && block_end < *self.get_side() as usize + self.options.heap_size)
+        if block_start as usize <= *self.get_side() as usize
+            && block_end > *self.get_side() as usize + self.options.heap_size
         {
             self.collect(); // Collect garbage
 
-            if attempt < 1 {
-                return self.allocate_inner(size, attempt + 1);
-            } else {
+            block_start = (*self.latest as usize) as *mut u8;
+            block_end = *self.latest as usize + size;
+
+            if block_start as usize <= *self.get_side() as usize
+                && block_end > *self.get_side() as usize + self.options.heap_size
+            {
                 return Err(RuntimeError {
                     ty: RuntimeErrorTy::GcError,
                     message: "The heap is full".to_string(),
