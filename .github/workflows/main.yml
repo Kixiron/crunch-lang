@@ -18,32 +18,31 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      
+
     steps:
       - uses: actions/checkout@v1
       - uses: hecrj/setup-rust-action@v1
         with:
           rust-version: nightly
           components: rustfmt
-        
+
       # Check that formatting is valid
       - name: Check Formatting
         run: cargo fmt --all -- --check
-        
+
       # Check that documentation is valid
       - name: Check documentation
-        shell: bash
         run: cargo doc --no-deps
-      
+
       # TODO: Code Coverage
-      
+
       # Cache Cargo
       - name: Cache Cargo
         uses: actions/cache@v1
         with:
           path: ~/.cargo
           key: nightly-${{ matrix.target }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
-      
+
       # Cache Build
       - name: Cache Build
         uses: actions/cache@v1
@@ -54,7 +53,7 @@ jobs:
   Tests:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    
+
     strategy:
       fail-fast: false
       matrix:
@@ -120,23 +119,25 @@ jobs:
           rust-version: ${{ matrix.rust_version }}${{ matrix.platform.host }}
           targets: ${{ matrix.platform.target }}
 
+      # Print information
+      - name: Env
+        run: rustc -Vv && cargo -v
+
       # Run tests in debug mode
       - name: Run tests debug
-        shell: bash
-        run: cargo test --verbose --target ${{ matrix.target }} --features $FEATURES
-      
+        run: cargo test --target ${{ matrix.target }} --features $FEATURES
+
       # Run tests in release mode
       - name: Run tests release
-        shell: bash
-        run: cargo test --release --verbose --target ${{ matrix.target }} --features $FEATURES
-        
+        run: cargo test --release --target ${{ matrix.target }} --features $FEATURES
+
       # Cache Cargo
       - name: Cache Cargo
         uses: actions/cache@v1
         with:
           path: ~/.cargo
           key: nightly-${{ matrix.target }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
-      
+
       # Cache Build
       - name: Cache Build
         uses: actions/cache@v1
