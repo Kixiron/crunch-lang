@@ -200,6 +200,7 @@ pub fn disassemble(_bytes: &[u8]) -> String {
     "".to_string()
 }
 
+/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -254,3 +255,4 @@ mod tests {
         crunch.execute(funcs).unwrap();
     }
 }
+*/

@@ -12,6 +12,10 @@ categories = ["language"]
 license = "MIT OR Apache-2.0"
 edition = "2018"
 
+[features]
+default = []
+jit = ["dynasm", "dynasmrt", "once_cell"]
+
 [[bin]]
 name = "crunch"
 path = "src/bin.rs"
@@ -25,7 +29,6 @@ log = "0.4.8"
 simple_logger = "1.4.0"
 color-backtrace = "0.3.0"
 array-init = "0.1.1"
-logos = "0.10.0-rc2"
 structopt = "0.3.8"
 codespan = "0.6.0"
 codespan-reporting = "0.6.0"
@@ -34,10 +37,22 @@ string-interner = "0.7.1"
 lazy_static = "1.4.0"
 libloading = "0.5.2"
 num-bigint = "0.2.5"
-dynasm = "0.5.2"
-dynasmrt = "0.5.2"
-once_cell = "1.3.1"
 fxhash = "0.2.1"
+
+[dependencies.logos]
+version = "0.10.0-rc2"
+
+[dependencies.once_cell]
+version = "1.3.1"
+optional = true
+
+[dependencies.dynasm]
+version = "0.5.2"
+optional = true
+
+[dependencies.dynasmrt]
+version = "0.5.2"
+optional = true
 
 [dependencies.rand]
 version = "0.7.3"

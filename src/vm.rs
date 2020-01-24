@@ -1,14 +1,12 @@
-use super::{
-    jit::Jit, parser::Either, Gc, Index, Instruction, Register, Result, RuntimeValue,
-    NUMBER_REGISTERS,
-};
-use std::time::Instant;
+use super::{Gc, Index, Instruction, Result, RuntimeValue, NUMBER_REGISTERS};
+use std::{fmt, time::Instant};
 
 /// The initialized options for the VM
 #[derive(Debug, Copy, Clone)]
-pub struct VmOptions {
+pub(crate) struct VmOptions {
     pub fault_tolerant: bool,
 }
+
 impl Default for VmOptions {
     fn default() -> Self {
         Self {
@@ -16,17 +14,24 @@ impl Default for VmOptions {
         }
     }
 }
+
 impl From<&crate::Options> for VmOptions {
     fn from(&crate::Options { fault_tolerant, .. }: &crate::Options) -> Self {
         Self { fault_tolerant }
     }
 }
 
+/// A function's stack frame, holds enough information to continue execution where it
+/// last left off
 #[derive(Debug, Clone)]
-pub struct ReturnFrame {
+pub(crate) struct ReturnFrame {
+    /// The frame's registers, sans Caller/Callee registers
     pub registers: [RuntimeValue; NUMBER_REGISTERS - 5],
+    /// The current `Instruction` index of the frame
+    ///
+    /// [`Instruction`]: crate.Instruction
     pub index: Index,
-    // If function_index is None, then the main function is being returned to
+    /// The index of the function to return to
     pub function_index: u32,
     pub yield_point: Option<Index>,
 }
@@ -34,33 +39,40 @@ pub struct ReturnFrame {
 /// The VM environment for Crunch
 pub struct Vm {
     /// The active VM Registers
-    pub registers: [RuntimeValue; NUMBER_REGISTERS],
+    pub(crate) registers: [RuntimeValue; NUMBER_REGISTERS],
     /// The register snapshots for function calls
-    pub return_stack: Vec<ReturnFrame>,
+    pub(crate) return_stack: Vec<ReturnFrame>,
     /// The index of the current function
-    pub current_func: u32,
+    pub(crate) current_func: u32,
     /// The current instruction index of the current function
-    pub index: Index,
+    pub(crate) index: Index,
     /// Whether or not program execution is done
-    pub finished_execution: bool,
+    pub(crate) finished_execution: bool,
     /// Whether or not the program is currently returning
     // TODO: Needed?
-    pub returning: bool,
+    pub(crate) returning: bool,
     /// The value of the previous operation
-    pub prev_op: RuntimeValue,
+    pub(crate) prev_op: RuntimeValue,
     /// The status of the previous comparison
-    pub prev_comp: bool,
+    pub(crate) prev_comp: bool,
     /// The Garbage Collector
-    pub gc: Gc,
+    pub(crate) gc: Gc,
     /// The options initialized with the VM
-    pub options: VmOptions,
+    pub(crate) options: VmOptions,
     /// The stdout that the program will print to, recommended to be `std::io::stdout()`
-    pub stdout: Box<dyn std::io::Write>,
-    pub start_time: Option<Instant>,
+    ///
+    /// [`std::io::stdout()`]: #stdout.std::io
+    pub(crate) stdout: Box<dyn std::io::Write>,
+    pub(crate) start_time: Option<Instant>,
+    pub(crate) finish_time: Option<Instant>,
 }
 
 impl Vm {
-    /// Creates a new VM from functions and options
+    /// Creates a new `Vm` from `options` and the selected `stdout` target (Required to be `Write`)
+    ///
+    /// [`Vm`]: crate.Vm
+    /// [`options`]: crate.Options
+    /// [`Write`]: std::io::Write
     #[inline]
     #[must_use]
     pub fn new(options: &crate::Options, stdout: Box<dyn std::io::Write>) -> Self {
@@ -77,46 +89,54 @@ impl Vm {
             options: VmOptions::from(options),
             stdout,
             start_time: None,
+            finish_time: None,
         }
     }
 
+    /// Uses the current `Vm` to execute the given `functions`  
+    /// Note: this means that any data left in the `Gc` will transfer to the new program's runtime
+    ///
+    /// # Errors
+    ///
+    /// Will return any `RuntimeError` thrown and not caught by the running program and program runtime
+    ///
+    /// [`Vm`]: crate.Vm
+    /// [`functions`]: crate.Function
+    /// [`Gc`]: crate.Gc
+    /// [`RuntimeError`]: crate.RuntimeError
     pub fn execute(&mut self, functions: Vec<Vec<Instruction>>) -> Result<()> {
-        // let functions = functions
-        //     .into_iter()
-        //     .map(|function| Function::new(function))
-        //     .collect::<Vec<_>>();
+        self.finish_time = None;
+        self.start_time = Some(Instant::now());
 
         while !self.finished_execution {
             functions[self.current_func as usize][*self.index as usize].execute(self)?;
         }
 
+        self.finish_time = Some(Instant::now());
+
         Ok(())
     }
 
-    #[inline]
-    pub fn clear(&mut self, reg: Register) {
-        self.registers[*reg as usize] = RuntimeValue::None;
-    }
-
-    #[inline]
-    pub fn load(&mut self, value: RuntimeValue, reg: Register) {
-        self.registers[*reg as usize] = value;
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn get(&self, reg: Register) -> &RuntimeValue {
-        &self.registers[*reg as usize]
-    }
-
-    #[inline]
-    pub fn get_mut(&mut self, reg: Register) -> &mut RuntimeValue {
-        &mut self.registers[*reg as usize]
+    /// Gets the time taken to execute the last program ran.
+    ///
+    /// # Returns
+    /// Returns `Some`(`Duration`) if a program was fully executed and timed,
+    /// and `None` if a program has either not been executed or is in the midst of executing
+    ///
+    /// [`Some`]: std.option.Option
+    /// [`None`]: std.option.Option
+    /// [`Duration`]: std.time.Duration
+    pub fn execution_time(&self) -> Option<std::time::Duration> {
+        if let (Some(start), Some(finish)) = (self.start_time, self.finish_time) {
+            Some(finish.duration_since(start))
+        } else {
+            None
+        }
     }
 }
 
-impl std::fmt::Debug for Vm {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for Vm {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_struct("Vm")
             .field("registers", &self.registers)
             .field("return_stack", &self.return_stack)
@@ -128,87 +148,8 @@ impl std::fmt::Debug for Vm {
             .field("prev_comp", &self.prev_comp)
             .field("gc", &self.gc)
             .field("options", &self.options)
+            .field("start_time", &self.start_time)
+            .field("finish_time", &self.finish_time)
             .finish()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Function<'a> {
-    pub function: Either<Vec<Instruction>, *mut Jit<'a>>,
-    pub meta: RuntimeFunctionMeta,
-}
-
-impl<'a> Function<'a> {
-    // const JIT_USAGE_THRESHOLD: usize = 0;
-
-    #[must_use]
-    pub fn new(function: Vec<Instruction>) -> Self {
-        Self {
-            function: Either::Left(function),
-            meta: RuntimeFunctionMeta::new(),
-        }
-    }
-
-    pub fn execute(&self, vm: &mut Vm) -> Result<()> {
-        // self.meta.usages += 1;
-        //
-        // let handle = if self.meta.usages > Function::JIT_USAGE_THRESHOLD {
-        //     if let Either::Left(ref func) = self.function {
-        //         let func = func.clone();
-        //
-        //         let handle = std::thread::spawn(|| Jit::new(func));
-        //
-        //         Some(handle)
-        //     } else {
-        //         None
-        //     }
-        // } else {
-        //     None
-        // };
-
-        match self.function {
-            Either::Left(ref instructions) => {
-                while !vm.finished_execution {
-                    instructions[*vm.index as usize].execute(vm)?;
-                }
-            }
-            Either::Right(jit) => unsafe { jit.as_mut().unwrap().run(vm)? },
-        }
-
-        // if let Some(handle) = handle {
-        //     if let Ok(jit) = handle.join().unwrap() {
-        //         let jit = Box::into_raw(Box::new(jit));
-        //
-        //         self.function = Either::Right(jit)
-        //     }
-        // }
-
-        Ok(())
-    }
-}
-
-impl<'a> Drop for Function<'a> {
-    fn drop(&mut self) {
-        if let Either::Right(jit) = self.function {
-            let jit = unsafe { Box::from_raw(jit) };
-            drop(jit);
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct RuntimeFunctionMeta {
-    pub usages: usize,
-}
-
-impl RuntimeFunctionMeta {
-    pub const fn new() -> Self {
-        Self { usages: 0 }
-    }
-}
-
-impl Default for RuntimeFunctionMeta {
-    fn default() -> Self {
-        Self::new()
     }
 }

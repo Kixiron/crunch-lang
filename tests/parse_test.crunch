@@ -1,0 +1,84 @@
+import 'std.print' exposing *
+import 'std.fs'
+
+fn main()
+    let i = 10
+
+    if 1 == 10
+        empty
+    else if 3 != 4
+        empty
+    else if 3 >= 5
+        empty
+    else if 6 <= 1
+        empty
+    else if 6 < 5
+        empty
+    else if 5 > 5
+        empty
+    end
+
+    print_int(five())
+
+    assert(generic_function<str, int>("test") == 1)
+    assert(generic_function<str, int>('test') == 1)
+end
+
+fn five() -> int
+    return 5
+end
+
+fn print_int(integer: int)
+    print(integer)
+end
+
+fn generic_function<T, E>(i: T) -> E
+    return 1
+end
+
+exposed fn _exposed_generic_function<T, E>(i: T) -> E
+    empty
+end
+
+type Test<T, E>
+    member1: int
+    member2: str
+    member3: T
+    member4: E
+
+    fn test() -> T
+        println("Hello from Test!")
+    end
+
+    fn _else_to_hell()
+        let i = 10
+
+        i = 5
+
+        if 1 == 10
+            empty
+        else if 3 != 4
+            empty
+        else if 3 >= 5
+            empty
+        else if 6 <= 1
+            empty
+        else if 6 < 5
+            empty
+        else if 5 > 5
+            empty
+        else
+            empty
+        end
+    end
+end
+
+
+exposed type ExposedType<T, E>
+    exposed member1: int
+    member2: str
+
+    exposed fn test() -> T
+        println("Hello from Test!")
+    end
+end

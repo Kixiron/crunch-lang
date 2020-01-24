@@ -342,6 +342,25 @@ pub extern "win64" fn not_eq(vm: *mut Vm, left: u8, right: u8) -> usize {
     }
 }
 
+pub extern "win64" fn greater_than_eq(vm: *mut Vm, left: u8, right: u8) -> usize {
+    unsafe {
+        let vm = if let Some(vm) = vm.as_mut() {
+            vm
+        } else {
+            let err = Box::leak(Box::new(RuntimeError {
+                ty: RuntimeErrorTy::JitError,
+                message: "The VM pointer is null".to_string(),
+            }));
+            return err as *const RuntimeError as usize;
+        };
+
+        match crate::instruction::functions::greater_than_equal(vm, left, right) {
+            Ok(_) => 0,
+            Err(err) => Box::into_raw(Box::new(err)) as usize,
+        }
+    }
+}
+
 pub extern "win64" fn greater_than(vm: *mut Vm, left: u8, right: u8) -> usize {
     unsafe {
         let vm = if let Some(vm) = vm.as_mut() {
@@ -374,6 +393,25 @@ pub extern "win64" fn less_than(vm: *mut Vm, left: u8, right: u8) -> usize {
         };
 
         match crate::instruction::functions::less_than(vm, left, right) {
+            Ok(_) => 0,
+            Err(err) => Box::into_raw(Box::new(err)) as usize,
+        }
+    }
+}
+
+pub extern "win64" fn less_than_eq(vm: *mut Vm, left: u8, right: u8) -> usize {
+    unsafe {
+        let vm = if let Some(vm) = vm.as_mut() {
+            vm
+        } else {
+            let err = Box::leak(Box::new(RuntimeError {
+                ty: RuntimeErrorTy::JitError,
+                message: "The VM pointer is null".to_string(),
+            }));
+            return err as *const RuntimeError as usize;
+        };
+
+        match crate::instruction::functions::less_than_equal(vm, left, right) {
             Ok(_) => 0,
             Err(err) => Box::into_raw(Box::new(err)) as usize,
         }

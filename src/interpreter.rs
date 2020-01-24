@@ -32,6 +32,7 @@ pub struct Interpreter {
 }
 
 impl Interpreter {
+    #[allow(dead_code)]
     pub fn new(options: &Options) -> Self {
         Self {
             gc: 0,
@@ -351,13 +352,21 @@ impl Interpreter {
                 match comparison.comparison {
                     Comparator::Equal => ctx.inst_eq(left, right),
                     Comparator::NotEqual => ctx.inst_not_eq(left, right),
-                    Comparator::LessEqual => todo!("Make this instruction"),
-                    Comparator::GreaterEqual => todo!("Make this instruction"),
-                    Comparator::Less => todo!("Make this instruction"),
-                    Comparator::Greater => todo!("Make this instruction"),
+                    Comparator::LessEqual => ctx.inst_less_than_eq(left, right),
+                    Comparator::GreaterEqual => ctx.inst_greater_than_eq(left, right),
+                    Comparator::Less => ctx.inst_less_than(left, right),
+                    Comparator::Greater => ctx.inst_greater_than(left, right),
                 };
+                /*
+                    GreaterThan(Register, Register),
+                    LessThan(Register, Register),
+                */
 
-                todo!("Do I return a register?")
+                warn!(
+                    "Expr::Comparison returns the left register as a return value, but the Comparison Operation \
+                    does not have a meaningful return value, as the comparison is stored in `vm.prev_op`"
+                );
+                Ok(left)
             }
             Expr::BinaryOperation(bin_op) => {
                 let (left, right) = (
@@ -410,9 +419,9 @@ impl Interpreter {
                 ctx.inst_mov(reg, loaded).inst_drop(loaded);
             }
 
-            Statement::While(_while_loop) => todo!(),
-            Statement::Loop(_loop_loop) => todo!(),
-            Statement::For(_for_loop) => todo!(),
+            Statement::While(_while_loop) => todo!("Compile While loops"),
+            Statement::Loop(_loop_loop) => todo!("Compile Loops"),
+            Statement::For(_for_loop) => todo!("Compile For loops"),
 
             Statement::VarDecl(var_decl) => {
                 let reg = ctx.reserve_reg(var_decl.name)?;
@@ -421,13 +430,13 @@ impl Interpreter {
                 ctx.inst_mov(reg, loaded).inst_drop(loaded);
             }
 
-            Statement::Return(_ret) => todo!(),
-            Statement::Continue => todo!(),
-            Statement::Break => todo!(),
+            Statement::Return(_ret) => todo!("Compile return statements"),
+            Statement::Continue => todo!("Compile Continue statements"),
+            Statement::Break => todo!("Compile break statements"),
             Statement::Expr(expr) => {
                 self.expr(builder, ctx, expr)?;
             }
-            Statement::Empty => {}
+            Statement::Empty => { /* Do nothing for `empty` */ }
 
             Statement::Conditional(conditional) => {
                 let endif = builder.next_jump_id();

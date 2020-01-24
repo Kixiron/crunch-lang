@@ -80,6 +80,21 @@ fn instructions(c: &mut Criterion) {
         });
 
         gc.collect();
+    })
+    .bench_function("GC fetch usize", |b| {
+        let mut gc = Gc::new(
+            &OptionBuilder::new("./alloc_10000_usizes")
+                .heap_size(1024 * 1024 * 2)
+                .build(),
+        );
+
+        let id = 100usize.alloc(&mut gc).unwrap();
+
+        b.iter(|| {
+            let _: usize = id.fetch(&gc).unwrap();
+        });
+
+        gc.collect();
     });
 }
 

@@ -182,7 +182,7 @@ pub fn not(vm: &mut Vm, reg: u8) -> Result<()> {
 }
 
 macro_rules! comparison_operator {
-    ( $( $op_name:ident: $compare:ident => $found_bool:literal || $else_bool:literal $(,)? )* ) => {
+    ( $( $op_name:ident: $( $compare:ident $(,)? )* => $found_bool:literal || $else_bool:literal $(,)? )* ) => {
         $(
         pub fn $op_name(vm: &mut Vm, left: u8, right: u8) -> Result<()> {
             use crate::value::Compare;
@@ -191,7 +191,7 @@ macro_rules! comparison_operator {
             let right = &vm.registers[right as usize];
 
             vm.prev_comp = match left.compare(right, &vm.gc)? {
-                Compare::$compare => Ok($found_bool),
+                $( Compare::$compare => Ok($found_bool), )*
                 Compare::Incomparable if !vm.options.fault_tolerant => Err(RuntimeError {
                     ty: RuntimeErrorTy::IncompatibleTypes,
                     message: format!(
@@ -214,10 +214,12 @@ macro_rules! comparison_operator {
 }
 
 comparison_operator! {
-    eq:           Equal   => true  || false,
-    not_eq:       Equal   => false || true,
-    greater_than: Greater => true  || false,
-    less_than:    Less    => true  || false
+    eq:                 Equal           => true  || false,
+    not_eq:             Equal           => false || true,
+    greater_than:       Greater         => true  || false,
+    less_than:          Less            => true  || false,
+    greater_than_equal: Greater, Equal  => true  || false,
+    less_than_equal:    Less, Equal     => true  || false
 }
 
 pub fn func(mut vm: &mut Vm, func: u32) -> Result<()> {

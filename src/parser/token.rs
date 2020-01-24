@@ -20,6 +20,12 @@ pub enum TokenType {
     Equal,
     #[token = "=="]
     IsEqual,
+    #[token = "!="]
+    IsNotEqual,
+    #[token = ">="]
+    GreaterThanEqual,
+    #[token = "<="]
+    LessThanEqual,
     #[token = "["]
     LeftBrace,
     #[token = "]"]
@@ -107,11 +113,14 @@ pub enum TokenType {
     Continue,
     #[token = "break"]
     Break,
+    #[token = "type"]
+    Type,
 }
 
 impl std::fmt::Display for TokenType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let string = match self {
+            Self::Type => "type",
             Self::End => "EOF",
             Self::Error => "Error",
             Self::Comma => ",",
@@ -121,6 +130,9 @@ impl std::fmt::Display for TokenType {
             Self::Minus => "-",
             Self::Equal => "=",
             Self::IsEqual => "==",
+            Self::IsNotEqual => "!=",
+            Self::GreaterThanEqual => ">=",
+            Self::LessThanEqual => "<=",
             Self::LeftBrace => "[",
             Self::RightBrace => "]",
             Self::Divide => "/",
@@ -240,62 +252,6 @@ impl<'a> TokenStream<'a> {
         }
     }
 
-    // pub fn next_token_no_end(&mut self) -> Option<Token<'a>> {
-    //     let current = if self.current.is_some() {
-    //         let mut token = None;
-    //         std::mem::swap(&mut token, &mut self.current);
-    //         return token;
-    //     } else if let Some(current) = self.token_stream.next() {
-    //         current
-    //     } else if self.indent_level > 0 {
-    //         self.indent_level -= 1;
-    //         return Some(Token::new(TokenType::Dedent, "", 0..0));
-    //     } else {
-    //         return None;
-    //     };
-    //
-    //     let mut token = match current.ty {
-    //         // Skip Indents while incrementing the indentation level
-    //         TokenType::Indent => {
-    //             self.line_indent_level += 1;
-    //             self.next_token()
-    //         }
-    //         TokenType::Newline => {
-    //             self.line_start = true;
-    //             return Some(current);
-    //         }
-    //
-    //         // Skip whitespace
-    //         TokenType::Space => self.next_token(),
-    //         TokenType::Comment if self.skip_comments => self.next_token(),
-    //
-    //         _ => Some(current),
-    //     };
-    //
-    //     if self.line_start {
-    //         self.line_start = false;
-    //         let indent_insert = if self.line_indent_level < self.indent_level {
-    //             self.current = token;
-    //             Some(Token::new(TokenType::Dedent, "", 0..0))
-    //         } else if self.line_indent_level > self.indent_level {
-    //             self.current = token;
-    //             Some(Token::new(TokenType::Indent, "", 0..0))
-    //         } else if self.current.is_some() {
-    //             std::mem::swap(&mut self.current, &mut token);
-    //             token
-    //         } else {
-    //             token
-    //         };
-    //
-    //         self.indent_level = self.line_indent_level;
-    //         self.line_indent_level = 0;
-    //
-    //         indent_insert
-    //     } else {
-    //         token
-    //     }
-    // }
-
     pub fn next_token(&mut self) -> Option<Token<'a>> {
         if let Some(token) = self.token_stream.next() {
             match token.ty {
@@ -345,14 +301,35 @@ impl<'a> std::fmt::Debug for Token<'a> {
     }
 }
 
-#[test]
-fn token_test() {
-    const CODE: &str = include_str!("../../examples/parse_test.crunch");
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let tokens = TokenStream::new(CODE, true)
-        .into_iter()
-        .map(|t| t.ty)
-        .collect::<Vec<_>>();
+    #[test]
+    fn token_test() {
+        const CODE: &str = include_str!("../../tests/parse_test.crunch");
 
-    println!("{:#?}", tokens);
+        let tokens = TokenStream::new(CODE, true)
+            .into_iter()
+            .map(|t| t.ty)
+            .collect::<Vec<_>>();
+
+        println!("{:#?}", tokens);
+    }
+
+    #[test]
+    fn keyword_led_ident() {
+        let mut exposed_function = TokenStream::new("exposed_function", true).into_iter();
+
+        assert_eq!(
+            exposed_function.next(),
+            Some(Token {
+                ty: TokenType::Ident,
+                source: "exposed_function",
+                range: (0, 15)
+            })
+        );
+        assert_eq!(exposed_function.next(), None);
+        assert!(exposed_function.collect::<Vec<_>>().is_empty());
+    }
 }

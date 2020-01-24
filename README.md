@@ -174,7 +174,7 @@ To specify information about your package, use the `Compacter.crunch` file in th
 import build exposing * :: Note: `build` is an intrinsic package, and so no decorator or quotes are needed
 
 :: Specify package information
-let package: Package = {
+let package = Package
     name: "package-name",                   :: The name of the package
     description: "A Crunch package!",       :: The description of the package (Optional)
     authors: ["Author <email@domain.com>"], :: The author(s) of the package (Optional)
@@ -185,15 +185,15 @@ let package: Package = {
     license_file: "./LICENSE-MIT",                  :: The license file of your package (Optional, only needed for non-standard licenses)
     readme: "README.md",                    :: The link you your readme file (Optional)
     build: "build.crunch",                  :: The build script of your package (Optional)
-}
+end
 
 :: Specify dependencies
 :: Dependencies can also be specified in their own variables, to be inserted into the `dependencies` vector
-let dependency: Dependency = {
+let dependency = Dependency
     name: "some-package",          :: The package's name (Required)
     version: "1.0.0",              :: The version of the package to use (Required)
     git: "github.com/package.git", :: A link to the repository of the package
-}
+end
 
 :: The dependencies vector, where all dependencies will be inserted in order to be included
 let dependencies: [Dependency] = [
@@ -288,6 +288,9 @@ Bit Escape Codes: `\b{00000000}`
 - enums
 - use a stack for excess arguments/returns
   - Push/Pop instructions
+- traits
+- modules
+- match statements
 
 
 ## CLI Options
@@ -371,7 +374,7 @@ Return ::= 'return' Expr '\n'
 Continue ::= 'continue' '\n'
 Break ::= 'break' '\n'
 
-Visibility ::= 'exposed' | 'private'
+Visibility ::= 'exposed' | 'lib'
 End ::= 'end'
 
 Expr ::= Literal | Range | Comparison | BinaryOperation | Ident | ( '(' Expr ')' )

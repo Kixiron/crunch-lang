@@ -471,6 +471,26 @@ impl FunctionContext {
 
         self
     }
+    pub fn inst_less_than_eq(
+        &mut self,
+        left: impl Into<Register>,
+        right: impl Into<Register>,
+    ) -> &mut Self {
+        self.block
+            .push(Instruction::LessThanEq(left.into(), right.into()).into());
+
+        self
+    }
+    pub fn inst_greater_than_eq(
+        &mut self,
+        left: impl Into<Register>,
+        right: impl Into<Register>,
+    ) -> &mut Self {
+        self.block
+            .push(Instruction::GreaterThanEq(left.into(), right.into()).into());
+
+        self
+    }
 
     pub fn inst_collect(&mut self) -> &mut Self {
         self.block.push(Instruction::Collect.into());
