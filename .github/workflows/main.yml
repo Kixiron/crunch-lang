@@ -57,7 +57,8 @@ jobs:
     
     strategy:
       fail-fast: false
-      matrix:  
+      matrix:
+        rust_version: [nightly]
         include:
           # Windows MSVC 32 and 64bit
           - os: windows-latest
