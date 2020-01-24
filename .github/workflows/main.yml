@@ -52,44 +52,57 @@ jobs:
           key: nightly-${{ matrix.target }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
 
   Tests:
+    name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     
     strategy:
       fail-fast: false
-      matrix:
-        # Crunch only runs on Nightly
-        rust_version: [nightly]        
+      matrix:  
         include:
           # Windows MSVC 32 and 64bit
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+            rust_version: nightly
             features: ""
+            name: x86_64-pc-windows-msvc-nightly
           - os: windows-latest
             target: i686-pc-windows-msvc
+            rust_version: nightly
             features: ""
+            name: i686-pc-windows-msvc-nightly
 
           # Windows GNU 32 and 64bit
           - os: windows-latest
             target: x86_64-pc-windows-gnu
+            rust_version: nightly
             host: -x86_64-pc-windows-gnu
             features: ""
+            name: i686-pc-windows-gnu-nightly
           - os: windows-latest
             target: i686-pc-windows-gnu
+            rust_version: nightly
             host: -i686-pc-windows-gnu
             features: ""
+            name: i686-pc-windows-gnu-nightly
 
           # Linux 32 and 64bit
           - os: ubuntu-latest
             target: i686-unknown-linux-gnu
+            rust_version: nightly
             features: ""
+            name: i686-unknown-linux-gnu
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+            rust_version: nightly
             features: ""
+            name: x86_64-unknown-linux-gnu
 
           # OSX 64bit
           - os: macos-latest
             target: x86_64-apple-darwin
+            rust_version: nightly
             features: ""
+            name: x86_64-apple-darwin
 
           # TODO: once WASM is possible, test it
 
