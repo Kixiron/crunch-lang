@@ -5,13 +5,13 @@ on:
     paths:
       - "**.rs"
       - "**.toml"
-      - ".github/workflows/*.yml"
+      - ".github/workflows/main.yml"
   push:
-    branches: [master, dev]
+    branches: [master]
     paths:
       - "**.rs"
       - "**.toml"
-      - ".github/workflows/*.yml"
+      - ".github/workflows/main.yml"
 
 jobs:
   Checks:
@@ -33,7 +33,7 @@ jobs:
       # Check that documentation is valid
       - name: Check documentation
         shell: bash
-        run: cargo doc --no-deps --target ${{ matrix.target }}
+        run: cargo doc --no-deps
       
       # TODO: Code Coverage
       
