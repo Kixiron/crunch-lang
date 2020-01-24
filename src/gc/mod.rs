@@ -7,7 +7,7 @@ pub use collectable::*;
 
 /// Gets the memory page size  
 #[inline(always)]
-#[cfg(target_family = "unix")]
+#[cfg(any(target_family = "unix", target_os = "macos"))]
 pub(crate) fn page_size() -> usize {
     let val = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as usize;
 
