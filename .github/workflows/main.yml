@@ -16,6 +16,9 @@ on:
 jobs:
   Checks:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      
     steps:
       - uses: actions/checkout@v1
       - uses: hecrj/setup-rust-action@v1
@@ -30,7 +33,23 @@ jobs:
       # Check that documentation is valid
       - name: Check documentation
         shell: bash
-        run: cargo doc --no-deps --target ${{ matrix.target }} --features $FEATURES
+        run: cargo doc --no-deps --target ${{ matrix.target }}
+      
+      # TODO: Code Coverage
+      
+      # Cache Cargo
+      - name: Cache Cargo
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo
+          key: nightly-${{ matrix.target }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+      
+      # Cache Build
+      - name: Cache Build
+        uses: actions/cache@v1
+        with:
+          path: target
+          key: nightly-${{ matrix.target }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
 
   Tests:
     runs-on: ${{ matrix.os }}
@@ -38,22 +57,39 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Crunch only runs on Nightly
         rust_version: [nightly]        
         include:
           # Windows MSVC 32 and 64bit
-          - { target: x86_64-pc-windows-msvc, os: windows-latest }
-          - { target: i686-pc-windows-msvc, os: windows-latest }
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            features: ""
+          - os: windows-latest
+            target: i686-pc-windows-msvc
+            features: ""
 
           # Windows GNU 32 and 64bit
-          - { target: x86_64-pc-windows-gnu, os: windows-latest, host: -x86_64-pc-windows-gnu }
-          - { target: i686-pc-windows-gnu, os: windows-latest, host: -i686-pc-windows-gnu }
+          - os: windows-latest
+            target: x86_64-pc-windows-gnu
+            host: -x86_64-pc-windows-gnu
+            features: ""
+          - os: windows-latest
+            target: i686-pc-windows-gnu
+            host: -i686-pc-windows-gnu
+            features: ""
 
           # Linux 32 and 64bit
-          - { target: i686-unknown-linux-gnu, os: ubuntu-latest }
-          - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest }
+          - os: ubuntu-latest
+            target: i686-unknown-linux-gnu
+            features: ""
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            features: ""
 
           # OSX 64bit
-          - { target: x86_64-apple-darwin, os: macos-latest }
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            features: ""
 
           # TODO: once WASM is possible, test it
 
