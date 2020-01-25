@@ -31,7 +31,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       # Check that documentation is valid
-      - name: Check documentation
+      - name: Check Documentation
         run: cargo doc --no-deps
 
       # Cache Cargo
@@ -56,6 +56,8 @@ jobs:
       fail-fast: false
       matrix:
         rust_version: [nightly]
+        os: [windows-latest, ubuntu-latest, macos-latest]
+        target: [x86_64-pc-windows-msvc, i686-pc-windows-msvc, x86_64-pc-windows-gnu, x86_64-pc-windows-gnu, i686-pc-windows-gnu, x86_64-unknown-linux-gnu, i686-unknown-linux-gnu, x86_64-apple-darwin]        
         include:
           # Windows MSVC 32 and 64bit
           - os: windows-latest
@@ -85,15 +87,15 @@ jobs:
 
           # Linux 32 and 64bit
           - os: ubuntu-latest
-            target: i686-unknown-linux-gnu
-            rust_version: nightly
-            features: ""
-            name: i686-unknown-linux-gnu
-          - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             rust_version: nightly
             features: ""
             name: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            target: i686-unknown-linux-gnu
+            rust_version: nightly
+            features: ""
+            name: i686-unknown-linux-gnu
 
           # OSX 64bit
           - os: macos-latest
@@ -118,15 +120,15 @@ jobs:
           targets: ${{ matrix.platform.target }}
 
       # Print information
-      - name: Env
+      - name: Compiler Info
         run: rustc -Vv && cargo -v
 
       # Run tests in debug mode
-      - name: Run tests debug
+      - name: Run Tests Debug
         run: cargo test --target ${{ matrix.target }} --features $FEATURES
 
       # Run tests in release mode
-      - name: Run tests release
+      - name: Run Tests Release
         run: cargo test --release --target ${{ matrix.target }} --features $FEATURES
 
       # Cache Cargo

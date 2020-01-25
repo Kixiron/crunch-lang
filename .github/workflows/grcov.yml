@@ -28,13 +28,13 @@ jobs:
           CARGO_INCREMENTAL: 0
           RUSTFLAGS: "-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Zno-landing-pads"
 
-      - name: Gather coverage data
+      - name: Gather Coverage Data
         id: coverage
         uses: actions-rs/grcov@v0.1
         with:
           coveralls-token: ${{ secrets.COVERALLS_TOKEN }}
 
-      - name: Coveralls upload
+      - name: Coveralls Upload
         uses: coverallsapp/github-action@master
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -59,7 +59,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: grcov
     steps:
-      - name: Coveralls finalization
+      - name: Coveralls Finalization
         uses: coverallsapp/github-action@master
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}

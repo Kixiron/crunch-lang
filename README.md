@@ -1,8 +1,9 @@
 # Crunch
 
-![GitHub Workflow Status](https://img.shields.io/github/workflow/status/Kixiron/crunch-lang/CI)
+![CI](https://github.com/Kixiron/crunch-lang/workflows/CI/badge.svg)
+![Security Audit](https://github.com/Kixiron/crunch-lang/workflows/Security%20Audit/badge.svg)
 [![Coverage Status](https://coveralls.io/repos/github/Kixiron/crunch-lang/badge.svg?branch=master)](https://coveralls.io/github/Kixiron/crunch-lang?branch=master)
-[![Lines of Code](https://tokei.rs/b1/github/Kixiron/crunch-lang)](https://github.com/Kixiron/crunch-lang)
+![Lines of Code](https://tokei.rs/b1/github/Kixiron/crunch-lang)
 ![GitHub Issues](https://img.shields.io/github/issues/Kixiron/crunch-lang)
 
 ## Overarching TODOs

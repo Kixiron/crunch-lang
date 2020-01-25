@@ -14,8 +14,8 @@ on:
 
 jobs:
   Audit:
-    name: Audit
-    
+    name: Audit Dependencies
+
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
