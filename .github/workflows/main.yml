@@ -24,13 +24,8 @@ jobs:
       - name: Cache Cargo Registry
         uses: actions/cache@v1
         with:
-          path: ~/.cargo/registry
+          path: ~/.cargo
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-      - name: Cache Cargo Index
-        uses: actions/cache@v1
-        with:
-          path: ~/.cargo/git
-          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
       - name: Cache Cargo Build
         uses: actions/cache@v1
         with:
@@ -98,13 +93,8 @@ jobs:
       - name: Cache Cargo Registry
         uses: actions/cache@v1
         with:
-          path: ~/.cargo/registry
+          path: ~/.cargo
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-      - name: Cache Cargo Index
-        uses: actions/cache@v1
-        with:
-          path: ~/.cargo/git
-          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
       - name: Cache Cargo Build
         uses: actions/cache@v1
         with:
