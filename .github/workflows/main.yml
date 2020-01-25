@@ -39,14 +39,14 @@ jobs:
         uses: actions/cache@v1
         with:
           path: ~/.cargo
-          key: nightly-${{ matrix.target }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          key: nightly-${{ matrix.target }}-cargo-index-checks-${{ hashFiles('**/Cargo.lock') }}
 
       # Cache Build
       - name: Cache Build
         uses: actions/cache@v1
         with:
           path: target
-          key: nightly-${{ matrix.target }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+          key: nightly-${{ matrix.target }}-cargo-build-checks-${{ hashFiles('**/Cargo.lock') }}
 
   Tests:
     name: ${{ matrix.name }}
@@ -55,8 +55,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rust_version: [nightly]
-        os: [windows-latest, ubuntu-latest, macos-latest]
         target: [x86_64-pc-windows-msvc, i686-pc-windows-msvc, x86_64-pc-windows-gnu, i686-pc-windows-gnu, x86_64-unknown-linux-gnu, i686-unknown-linux-gnu, x86_64-apple-darwin]        
         include:
           # Windows MSVC 32 and 64bit
