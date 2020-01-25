@@ -113,10 +113,6 @@ jobs:
       - name: Run Tests Debug
         run: cargo test --target ${{ matrix.target }}
 
-      # Run tests in release mode
-      - name: Run Tests Release
-        run: cargo test --release --target ${{ matrix.target }}
-
       # Cache Cargo
       - name: Cache Cargo
         uses: actions/cache@v1
