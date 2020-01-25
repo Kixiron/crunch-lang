@@ -98,7 +98,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Install Dependences
-        if: ${{ matrix.target }} == 'i686-unknown-linux-gnu'
+        if: matrix.target == 'i686-unknown-linux-gnu'
         run: sudo apt install g++-multilib gcc-multilib
 
       # Run tests in debug mode
