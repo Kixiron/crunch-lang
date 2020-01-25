@@ -20,6 +20,8 @@ jobs:
       fail-fast: false
 
     steps:
+      - uses: actions/checkout@v2
+
       # Caching
       - name: Cache Cargo Registry
         uses: actions/cache@v1
@@ -32,7 +34,6 @@ jobs:
           path: target
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
-      - uses: actions/checkout@v1
       - uses: hecrj/setup-rust-action@v1
         with:
           rust-version: nightly
@@ -53,7 +54,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [x86_64-pc-windows-msvc, i686-pc-windows-msvc, x86_64-unknown-linux-gnu, i686-unknown-linux-gnu, x86_64-apple-darwin]        
+        target: [ x86_64-pc-windows-msvc, i686-pc-windows-msvc, x86_64-unknown-linux-gnu, i686-unknown-linux-gnu, x86_64-apple-darwin]
         include:
           # Windows MSVC 32 and 64bit
           - os: windows-latest
@@ -89,6 +90,8 @@ jobs:
       RUSTFLAGS: "-C debuginfo=0"
 
     steps:
+      - uses: actions/checkout@v2
+
       # Caching
       - name: Cache Cargo Registry
         uses: actions/cache@v1
@@ -101,7 +104,6 @@ jobs:
           path: target
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
-      - uses: actions/checkout@v1
       - uses: hecrj/setup-rust-action@v1
         with:
           rust-version: ${{ matrix.rust_version }}${{ matrix.platform.host }}
@@ -114,5 +116,4 @@ jobs:
       # Run tests in debug mode
       - name: Run Tests Debug
         run: cargo test --target ${{ matrix.target }}
-
       # TODO: Test in release mode
