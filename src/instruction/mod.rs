@@ -124,7 +124,7 @@ impl Instruction {
         match self {
             Self::Load(val, reg) => functions::load(vm, val.clone(), **reg)?,
             Self::CompToReg(reg) => functions::comp_to_reg(vm, **reg)?,
-            Self::OpToReg(reg) => functions::comp_to_reg(vm, **reg)?,
+            Self::OpToReg(reg) => functions::op_to_reg(vm, **reg)?,
             Self::Drop(reg) => functions::drop(vm, **reg)?,
             Self::Move(target, source) => functions::mov(vm, **target, **source)?,
 

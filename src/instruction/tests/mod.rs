@@ -141,13 +141,6 @@ fn variable_ops() {
         vm.prev_op = val.clone();
         op_to_reg.execute(&mut vm).unwrap();
 
-        println!(
-            "{:?}/{:?} == {:?} = {:?}",
-            vm.prev_op,
-            vm.registers[0].clone(),
-            val.clone(),
-            vm.registers[0].is_equal(&val, &vm.gc)
-        );
         assert!(vm.registers[0].is_equal(&val, &vm.gc).unwrap());
     }
 
@@ -159,9 +152,7 @@ fn variable_ops() {
         vm.registers[0] = RuntimeValue::Str("test string"); // Load the register before hand
         let drop_reg = Instruction::Drop(0.into());
         drop_reg.execute(&mut vm).unwrap();
-        assert!(vm.registers[0]
-            .is_equal(&RuntimeValue::Str("test string"), &vm.gc)
-            .unwrap());
+        assert!(vm.registers[0].is_none());
     }
 }
 

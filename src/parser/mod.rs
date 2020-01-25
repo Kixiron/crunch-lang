@@ -1268,6 +1268,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore]
     fn parse_test() {
         const CODE: &str = include_str!("../../tests/parse_test.crunch");
         const FILENAME: &str = "parse_test.crunch";

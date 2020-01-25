@@ -7,7 +7,7 @@
 ///
 /// [`RuntimeValue`]: crate.RuntimeValue
 macro_rules! number_proptest {
-    ( $( $mod_name:ident { internal: $value_variant:ident, primitive: $primitive:ty $( , bitwise: $bitwise:ident )? } ),* ) => {
+    ( $( $mod_name:ident { internal: $value_variant:ident, primitive: $primitive:ty, unsigned: $unsigned:literal $( , bitwise: $bitwise:ident )? } ),* ) => {
         $(
             mod $mod_name {
                 use super::super::super::*;
@@ -23,6 +23,10 @@ macro_rules! number_proptest {
                         proptest! {
                             #[test]
                             fn bitwise_and(left: $primitive, right: $primitive) {
+                                if $unsigned {
+                                    prop_assume!(left >= right)
+                                }
+
                                 let mut vm = Vm::new(
                                     &crate::OptionBuilder::new("./bitwise_ops").build(),
                                     Box::new(stdout()),
@@ -47,6 +51,10 @@ macro_rules! number_proptest {
 
                             #[test]
                             fn bitwise_or(left: $primitive, right: $primitive) {
+                                if $unsigned {
+                                    prop_assume!(left >= right)
+                                }
+
                                 let mut vm = Vm::new(
                                     &crate::OptionBuilder::new("./bitwise_ops").build(),
                                     Box::new(stdout()),
@@ -71,6 +79,10 @@ macro_rules! number_proptest {
 
                             #[test]
                             fn bitwise_xor(left: $primitive, right: $primitive) {
+                                if $unsigned {
+                                    prop_assume!(left >= right)
+                                }
+
                                 let mut vm = Vm::new(
                                     &crate::OptionBuilder::new("./bitwise_ops").build(),
                                     Box::new(stdout()),
@@ -120,9 +132,12 @@ macro_rules! number_proptest {
                 )?
 
                 proptest! {
-
                     #[test]
                     fn add(left: $primitive, right: $primitive) {
+                        if $unsigned {
+                            prop_assume!(left >= right)
+                        }
+
                         let mut vm = Vm::new(
                             &crate::OptionBuilder::new("./math_ops").build(),
                             Box::new(stdout()),
@@ -152,6 +167,10 @@ macro_rules! number_proptest {
 
                     #[test]
                     fn subtract(left: $primitive, right: $primitive) {
+                        if $unsigned {
+                            prop_assume!(left >= right)
+                        }
+
                         let mut vm = Vm::new(
                             &crate::OptionBuilder::new("./math_ops").build(),
                             Box::new(stdout()),
@@ -181,6 +200,10 @@ macro_rules! number_proptest {
 
                     #[test]
                     fn multiply(left: $primitive, right: $primitive) {
+                        if $unsigned {
+                            prop_assume!(left >= right)
+                        }
+
                         let mut vm = Vm::new(
                             &crate::OptionBuilder::new("./math_ops").build(),
                             Box::new(stdout()),
@@ -210,6 +233,10 @@ macro_rules! number_proptest {
 
                     #[test]
                     fn divide(left: $primitive, right: $primitive) {
+                        if $unsigned {
+                            prop_assume!(left >= right)
+                        }
+
                         let mut vm = Vm::new(
                             &crate::OptionBuilder::new("./math_ops").build(),
                             Box::new(stdout()),
@@ -239,7 +266,7 @@ macro_rules! number_proptest {
                 }
             }
         )*
-    }
+    };
 }
 
 /*
@@ -281,51 +308,61 @@ number_proptest! {
     u16_ops {
         internal: U16,
         primitive: u16,
+        unsigned: true,
         bitwise: bitwise
     },
     u32_ops {
         internal: U32,
         primitive: u32,
+        unsigned: true,
         bitwise: bitwise
     },
     u64_ops {
         internal: U64,
         primitive: u64,
+        unsigned: true,
         bitwise: bitwise
     },
     u128_ops {
         internal: U128,
         primitive: u128,
+        unsigned: true,
         bitwise: bitwise
     },
 
     i16_ops {
         internal: I16,
         primitive: i16,
+        unsigned: false,
         bitwise: bitwise
     },
     i32_ops {
         internal: I32,
         primitive: i32,
+        unsigned: false,
         bitwise: bitwise
     },
     i64_ops {
         internal: I64,
         primitive: i64,
+        unsigned: false,
         bitwise: bitwise
     },
     i128_ops {
         internal: I128,
         primitive: i128,
+        unsigned: false,
         bitwise: bitwise
     },
 
     f32_ops {
         internal: F32,
-        primitive: f32
+        primitive: f32,
+        unsigned: false
     },
     f64_ops {
         internal: F64,
-        primitive: f64
+        primitive: f64,
+        unsigned: false
     }
 }

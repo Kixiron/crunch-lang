@@ -318,6 +318,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn keyword_led_ident() {
         let mut exposed_function = TokenStream::new("exposed_function", true).into_iter();
 
