@@ -89,6 +89,7 @@ jobs:
       RUST_BACKTRACE: 1
       CARGO_INCREMENTAL: 0
       RUSTFLAGS: "-C debuginfo=0"
+      TARGET: ${{ matrix.target }}
 
     steps:
       - uses: actions/checkout@v1
@@ -98,7 +99,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Install Dependences
-        if: ${{ matrix.target }} == "i686-unknown-linux-gnu"
+        if: $TARGET == "i686-unknown-linux-gnu"
         run: sudo apt install g++-multilib gcc-multilib
 
       # Run tests in debug mode
