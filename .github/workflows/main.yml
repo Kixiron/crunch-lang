@@ -20,6 +20,23 @@ jobs:
       fail-fast: false
 
     steps:
+      # Caching
+      - name: Cache Cargo Registry
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache Cargo Index
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache Cargo Build
+        uses: actions/cache@v1
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+
       - uses: actions/checkout@v1
       - uses: hecrj/setup-rust-action@v1
         with:
@@ -33,20 +50,6 @@ jobs:
       # Check that documentation is valid
       - name: Check Documentation
         run: cargo doc --no-deps
-
-      # Cache Cargo
-      - name: Cache Cargo
-        uses: actions/cache@v1
-        with:
-          path: ~/.cargo
-          key: nightly-x86_64-unknown-linux-gnu-cargo-index-checks-${{ hashFiles('**/Cargo.lock') }}
-
-      # Cache Build
-      - name: Cache Build
-        uses: actions/cache@v1
-        with:
-          path: target
-          key: nightly-x86_64-unknown-linux-gnu-cargo-build-checks-${{ hashFiles('**/Cargo.lock') }}
 
   Tests:
     name: ${{ matrix.name }}
@@ -91,6 +94,23 @@ jobs:
       RUSTFLAGS: "-C debuginfo=0"
 
     steps:
+      # Caching
+      - name: Cache Cargo Registry
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache Cargo Index
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache Cargo Build
+        uses: actions/cache@v1
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+
       - uses: actions/checkout@v1
       - uses: hecrj/setup-rust-action@v1
         with:
@@ -106,17 +126,3 @@ jobs:
         run: cargo test --target ${{ matrix.target }}
 
       # TODO: Test in release mode
-
-      # Cache Cargo
-      - name: Cache Cargo
-        uses: actions/cache@v1
-        with:
-          path: ~/.cargo
-          key: ${{ matrix.rust_version }}-${{ matrix.target }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
-
-      # Cache Build
-      - name: Cache Build
-        uses: actions/cache@v1
-        with:
-          path: target
-          key: ${{ matrix.rust_version }}-${{ matrix.target }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
