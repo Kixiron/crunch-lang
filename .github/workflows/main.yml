@@ -25,6 +25,7 @@ jobs:
         with:
           rust-version: nightly
           components: rustfmt
+          targets: ${{ matrix.target }}
 
       # Check that formatting is valid
       - name: Check Formatting
@@ -55,7 +56,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [x86_64-pc-windows-msvc, i686-pc-windows-msvc, x86_64-pc-windows-gnu, i686-pc-windows-gnu, x86_64-unknown-linux-gnu, i686-unknown-linux-gnu, x86_64-apple-darwin]        
+        target:
+          [
+            x86_64-pc-windows-msvc,
+            i686-pc-windows-msvc,
+            x86_64-pc-windows-gnu,
+            i686-pc-windows-gnu,
+            x86_64-unknown-linux-gnu,
+            i686-unknown-linux-gnu,
+            x86_64-apple-darwin,
+          ]
         include:
           # Windows MSVC 32 and 64bit
           - os: windows-latest
