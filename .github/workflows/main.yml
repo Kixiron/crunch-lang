@@ -57,7 +57,7 @@ jobs:
       matrix:
         rust_version: [nightly]
         os: [windows-latest, ubuntu-latest, macos-latest]
-        target: [x86_64-pc-windows-msvc, i686-pc-windows-msvc, x86_64-pc-windows-gnu, x86_64-pc-windows-gnu, i686-pc-windows-gnu, x86_64-unknown-linux-gnu, i686-unknown-linux-gnu, x86_64-apple-darwin]        
+        target: [x86_64-pc-windows-msvc, i686-pc-windows-msvc, x86_64-pc-windows-gnu, i686-pc-windows-gnu, x86_64-unknown-linux-gnu, i686-unknown-linux-gnu, x86_64-apple-darwin]        
         include:
           # Windows MSVC 32 and 64bit
           - os: windows-latest
@@ -118,10 +118,6 @@ jobs:
         with:
           rust-version: ${{ matrix.rust_version }}${{ matrix.platform.host }}
           targets: ${{ matrix.platform.target }}
-
-      # Print information
-      - name: Compiler Info
-        run: rustc -Vv && cargo -v
 
       # Run tests in debug mode
       - name: Run Tests Debug
