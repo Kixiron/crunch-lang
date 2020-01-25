@@ -2,7 +2,7 @@ name: Security Audit
 
 on:
   schedule:
-    - cron: "0 0 0 * *"
+    - cron: "0 22 * * *"
   push:
     branches: [master]
     paths:
@@ -13,7 +13,9 @@ on:
     branches: [master]
 
 jobs:
-  audit:
+  Audit:
+    name: Audit
+    
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
