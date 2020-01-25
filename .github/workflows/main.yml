@@ -61,12 +61,10 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             rust_version: nightly
-            features: ""
             name: x86_64-pc-windows-msvc-nightly
           - os: windows-latest
             target: i686-pc-windows-msvc
             rust_version: nightly
-            features: ""
             name: i686-pc-windows-msvc-nightly
 
           # Windows GNU 32 and 64bit
@@ -74,32 +72,27 @@ jobs:
             target: x86_64-pc-windows-gnu
             rust_version: nightly
             host: -x86_64-pc-windows-gnu
-            features: ""
             name: i686-pc-windows-gnu-nightly
           - os: windows-latest
             target: i686-pc-windows-gnu
             rust_version: nightly
             host: -i686-pc-windows-gnu
-            features: ""
             name: i686-pc-windows-gnu-nightly
 
           # Linux 32 and 64bit
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             rust_version: nightly
-            features: ""
             name: x86_64-unknown-linux-gnu
           - os: ubuntu-latest
             target: i686-unknown-linux-gnu
             rust_version: nightly
-            features: ""
             name: i686-unknown-linux-gnu
 
           # OSX 64bit
           - os: macos-latest
             target: x86_64-apple-darwin
             rust_version: nightly
-            features: ""
             name: x86_64-apple-darwin
 
           # TODO: once WASM is possible, test it
@@ -108,7 +101,6 @@ jobs:
       RUST_BACKTRACE: 1
       CARGO_INCREMENTAL: 0
       RUSTFLAGS: "-C debuginfo=0"
-      FEATURES: ${{ format(',{0}', matrix.features ) }}
 
     steps:
       - uses: actions/checkout@v1
@@ -119,11 +111,11 @@ jobs:
 
       # Run tests in debug mode
       - name: Run Tests Debug
-        run: cargo test --target ${{ matrix.target }} --features $FEATURES
+        run: cargo test --target ${{ matrix.target }}
 
       # Run tests in release mode
       - name: Run Tests Release
-        run: cargo test --release --target ${{ matrix.target }} --features $FEATURES
+        run: cargo test --release --target ${{ matrix.target }}
 
       # Cache Cargo
       - name: Cache Cargo
