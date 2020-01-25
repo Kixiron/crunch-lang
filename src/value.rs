@@ -114,6 +114,14 @@ impl RuntimeValue {
         }
     }
 
+    pub fn is_none(&self) -> bool {
+        self == &Self::None
+    }
+
+    pub fn is_null(&self) -> bool {
+        self == &Self::Null
+    }
+
     // TODO: Add similar-type eq
     pub fn compare(&self, other: &Self, gc: &Gc) -> Result<Compare> {
         Ok(match (self, other) {
@@ -246,14 +254,27 @@ impl RuntimeValue {
                     Self::U128(*left as u128).add_upflowing(Self::U128(*right as u128), gc)?
                 }
             }
+            // TODO: Optimize bigint operations
             (Self::U128(left), Self::U128(right)) => {
                 if let Some(result) = left.checked_add(*right) {
                     Self::U128(result)
                 } else {
-                    todo!("Implement upflowing into a BigUint")
+                    let mut int = BigUint::from_bytes_le(&left.to_le_bytes());
+                    int += *right;
+
+                    let heap = int.alloc(gc)?;
+
+                    Self::GcUint(heap)
                 }
             }
-            (Self::GcUint(_left), Self::GcUint(_right)) => todo!("Implement adding BigUints"),
+            (Self::GcUint(left), Self::GcUint(right)) => {
+                let left = left.fetch(gc)?;
+                let right = right.fetch(gc)?;
+
+                let heap = (left + right).alloc(gc)?;
+
+                Self::GcUint(heap)
+            }
 
             (Self::IByte(left), Self::IByte(right)) => {
                 if let Some(result) = left.checked_add(*right) {
@@ -287,10 +308,22 @@ impl RuntimeValue {
                 if let Some(result) = left.checked_add(*right) {
                     Self::I128(result)
                 } else {
-                    todo!("Implement BigInt upflowing")
+                    let mut int = BigInt::from_signed_bytes_le(&left.to_le_bytes());
+                    int += *right;
+
+                    let heap = int.alloc(gc)?;
+
+                    Self::GcInt(heap)
                 }
             }
-            (Self::GcInt(_left), Self::GcInt(_right)) => todo!("Implement adding BigInts"),
+            (Self::GcInt(left), Self::GcInt(right)) => {
+                let left = left.fetch(gc)?;
+                let right = right.fetch(gc)?;
+
+                let heap = (left + right).alloc(gc)?;
+
+                Self::GcInt(heap)
+            }
 
             (Self::F32(left), Self::F32(right)) => Self::F32(left + right),
             (Self::F64(left), Self::F64(right)) => Self::F64(left + right),
@@ -372,6 +405,135 @@ impl RuntimeValue {
             }
         })
     }
+
+    pub fn div_upflowing(self, other: Self, gc: &mut Gc) -> Result<Self> {
+        Ok(match (&self, &other) {
+            (Self::Byte(left), Self::Byte(right)) => {
+                if let Some(result) = left.checked_div(*right) {
+                    Self::Byte(result)
+                } else {
+                    Self::U16(*left as u16).div_upflowing(Self::U16(*right as u16), gc)?
+                }
+            }
+            (Self::U16(left), Self::U16(right)) => {
+                if let Some(result) = left.checked_div(*right) {
+                    Self::U16(result)
+                } else {
+                    Self::U32(*left as u32).div_upflowing(Self::U32(*right as u32), gc)?
+                }
+            }
+            (Self::U32(left), Self::U32(right)) => {
+                if let Some(result) = left.checked_div(*right) {
+                    Self::U32(result)
+                } else {
+                    Self::U64(*left as u64).div_upflowing(Self::U64(*right as u64), gc)?
+                }
+            }
+            (Self::U64(left), Self::U64(right)) => {
+                if let Some(result) = left.checked_div(*right) {
+                    Self::U64(result)
+                } else {
+                    Self::U128(*left as u128).div_upflowing(Self::U128(*right as u128), gc)?
+                }
+            }
+            (Self::U128(left), Self::U128(right)) => {
+                if let Some(result) = left.checked_add(*right) {
+                    Self::U128(result)
+                } else {
+                    let int = BigUint::from_bytes_le(&left.to_le_bytes());
+                    let heap = (int / *right).alloc(gc)?;
+
+                    Self::GcUint(heap)
+                }
+            }
+            (Self::GcUint(left), Self::GcUint(right)) => {
+                let left = left.fetch(gc)?;
+                let right = right.fetch(gc)?;
+
+                let heap = (left / right).alloc(gc)?;
+
+                Self::GcUint(heap)
+            }
+
+            (Self::IByte(left), Self::IByte(right)) => {
+                if let Some(result) = left.checked_div(*right) {
+                    Self::IByte(result)
+                } else {
+                    Self::I16(*left as i16).div_upflowing(Self::I16(*right as i16), gc)?
+                }
+            }
+            (Self::I16(left), Self::I16(right)) => {
+                if let Some(result) = left.checked_div(*right) {
+                    Self::I16(result)
+                } else {
+                    Self::I32(*left as i32).div_upflowing(Self::I32(*right as i32), gc)?
+                }
+            }
+            (Self::I32(left), Self::I32(right)) => {
+                if let Some(result) = left.checked_div(*right) {
+                    Self::I32(result)
+                } else {
+                    Self::I64(*left as i64).div_upflowing(Self::I64(*right as i64), gc)?
+                }
+            }
+            (Self::I64(left), Self::I64(right)) => {
+                if let Some(result) = left.checked_div(*right) {
+                    Self::I64(result)
+                } else {
+                    Self::I128(*left as i128).div_upflowing(Self::I128(*right as i128), gc)?
+                }
+            }
+            (Self::I128(left), Self::I128(right)) => {
+                if let Some(result) = left.checked_div(*right) {
+                    Self::I128(result)
+                } else {
+                    let int = BigInt::from_signed_bytes_le(&left.to_le_bytes());
+                    let heap = (int / *right).alloc(gc)?;
+
+                    Self::GcInt(heap)
+                }
+            }
+            (Self::GcInt(left), Self::GcInt(right)) => {
+                let left = left.fetch(gc)?;
+                let right = right.fetch(gc)?;
+
+                let heap = (left / right).alloc(gc)?;
+
+                Self::GcInt(heap)
+            }
+
+            (Self::F32(left), Self::F32(right)) if *left != 0.0 && *right != 0.0 => {
+                Self::F32(left / right)
+            }
+            (Self::F32(_left), Self::F32(_right)) => Self::F32(0.0),
+
+            (Self::F64(left), Self::F64(right)) if *left != 0.0 && *right != 0.0 => {
+                Self::F64(left / right)
+            }
+            (Self::F64(_left), Self::F64(_right)) => Self::F64(0.0),
+
+            (left, right) if left == &Self::None || right == &Self::None => {
+                return Err(RuntimeError {
+                    ty: RuntimeErrorTy::NullVar,
+                    message: format!(
+                        "Values of types '{}' and '{}' cannot be divided",
+                        left.name(),
+                        right.name()
+                    ),
+                });
+            }
+            (left, right) => {
+                return Err(RuntimeError {
+                    ty: RuntimeErrorTy::IncompatibleTypes,
+                    message: format!(
+                        "Values of types '{}' and '{}' cannot be divided",
+                        left.name(),
+                        right.name()
+                    ),
+                });
+            }
+        })
+    }
 }
 
 macro_rules! upflowing {
@@ -409,13 +571,23 @@ macro_rules! upflowing {
                             }
                         }
                         (Self::U128(left), Self::U128(right)) => {
-                            if let Some(result) = left.$func(*right) {
+                            if let Some(result) = left.checked_add(*right) {
                                 Self::U128(result)
                             } else {
-                                todo!("Implement flowing BigUint operations")
+                                let int = BigUint::from_bytes_le(&left.to_le_bytes());
+                                let heap = (int $for_floats *right).alloc(gc)?;
+
+                                Self::GcUint(heap)
                             }
                         }
-                        // (Self::GcUint(left), Self::GcUint(right)) => Self::GcUint(left.$func_two(*right, gc)?),
+                        (Self::GcUint(left), Self::GcUint(right)) => {
+                            let left = left.fetch(gc)?;
+                            let right = right.fetch(gc)?;
+
+                            let heap = (left $for_floats right).alloc(gc)?;
+
+                            Self::GcUint(heap)
+                        }
 
                         (Self::IByte(left), Self::IByte(right)) => {
                             if let Some(result) = left.$func(*right) {
@@ -449,10 +621,20 @@ macro_rules! upflowing {
                             if let Some(result) = left.$func(*right) {
                                 Self::I128(result)
                             } else {
-                               todo!("Implement flowing BigInt operations")
+                                let int = BigInt::from_signed_bytes_le(&left.to_le_bytes());
+                                let heap = (int $for_floats *right).alloc(gc)?;
+
+                                Self::GcInt(heap)
                             }
                         }
-                        // (Self::GcInt(left), Self::GcInt(right)) => Self::GcInt(left.$func_two(*right, gc)?),
+                        (Self::GcInt(left), Self::GcInt(right)) => {
+                            let left = left.fetch(gc)?;
+                            let right = right.fetch(gc)?;
+
+                            let heap = (left $for_floats right).alloc(gc)?;
+
+                            Self::GcInt(heap)
+                        }
 
                         (Self::F32(left), Self::F32(right)) => Self::F32(left $for_floats right),
                         (Self::F64(left), Self::F64(right)) => Self::F64(left $for_floats right),
@@ -553,15 +735,6 @@ upflowing!(
         new_multiplying,
         "The attempted multiplication is too large to fit in a '{}'",
         "Values of types '{}' and '{}' cannot be multiplied"
-    ],
-    [
-        div_upflowing,
-        checked_div,
-        div,
-        /,
-        new_dividing,
-        "The attempted divide is too large to fit in a '{}'",
-        "Values of types '{}' and '{}' cannot be divided"
     ]
 );
 

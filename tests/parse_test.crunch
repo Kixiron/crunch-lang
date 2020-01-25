@@ -19,9 +19,6 @@ fn main()
     end
 
     print_int(five())
-
-    assert(generic_function<str, int>("test") == 1)
-    assert(generic_function<str, int>('test') == 1)
 end
 
 fn five() -> int

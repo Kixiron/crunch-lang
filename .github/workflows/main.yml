@@ -18,91 +18,78 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      
+
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v2
+
+      # Caching
+      - name: Cache Cargo Registry
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache Cargo Bin
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/bin
+          key: ${{ runner.os }}-cargo-bin-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache Cargo Git
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache Cargo Build
+        uses: actions/cache@v1
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+
       - uses: hecrj/setup-rust-action@v1
         with:
           rust-version: nightly
           components: rustfmt
-        
+
       # Check that formatting is valid
       - name: Check Formatting
         run: cargo fmt --all -- --check
-        
+
       # Check that documentation is valid
-      - name: Check documentation
-        shell: bash
+      - name: Check Documentation
         run: cargo doc --no-deps
-      
-      # TODO: Code Coverage
-      
-      # Cache Cargo
-      - name: Cache Cargo
-        uses: actions/cache@v1
-        with:
-          path: ~/.cargo
-          key: nightly-${{ matrix.target }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
-      
-      # Cache Build
-      - name: Cache Build
-        uses: actions/cache@v1
-        with:
-          path: target
-          key: nightly-${{ matrix.target }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
 
   Tests:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    
+
     strategy:
       fail-fast: false
       matrix:
-        rust_version: [nightly]
+        target: [ x86_64-pc-windows-msvc, i686-pc-windows-msvc, x86_64-unknown-linux-gnu, i686-unknown-linux-gnu, x86_64-apple-darwin]
         include:
           # Windows MSVC 32 and 64bit
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             rust_version: nightly
-            features: ""
             name: x86_64-pc-windows-msvc-nightly
           - os: windows-latest
             target: i686-pc-windows-msvc
             rust_version: nightly
-            features: ""
             name: i686-pc-windows-msvc-nightly
-
-          # Windows GNU 32 and 64bit
-          - os: windows-latest
-            target: x86_64-pc-windows-gnu
-            rust_version: nightly
-            host: -x86_64-pc-windows-gnu
-            features: ""
-            name: i686-pc-windows-gnu-nightly
-          - os: windows-latest
-            target: i686-pc-windows-gnu
-            rust_version: nightly
-            host: -i686-pc-windows-gnu
-            features: ""
-            name: i686-pc-windows-gnu-nightly
 
           # Linux 32 and 64bit
           - os: ubuntu-latest
-            target: i686-unknown-linux-gnu
-            rust_version: nightly
-            features: ""
-            name: i686-unknown-linux-gnu
-          - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             rust_version: nightly
-            features: ""
             name: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            target: i686-unknown-linux-gnu
+            rust_version: nightly
+            name: i686-unknown-linux-gnu
 
           # OSX 64bit
           - os: macos-latest
             target: x86_64-apple-darwin
             rust_version: nightly
-            features: ""
             name: x86_64-apple-darwin
 
           # TODO: once WASM is possible, test it
@@ -111,35 +98,42 @@ jobs:
       RUST_BACKTRACE: 1
       CARGO_INCREMENTAL: 0
       RUSTFLAGS: "-C debuginfo=0"
-      FEATURES: ${{ format(',{0}', matrix.features ) }}
 
     steps:
-      - uses: actions/checkout@v1
-      - uses: hecrj/setup-rust-action@v1
-        with:
-          rust-version: ${{ matrix.rust_version }}${{ matrix.platform.host }}
-          targets: ${{ matrix.platform.target }}
+      - uses: actions/checkout@v2
 
-      # Run tests in debug mode
-      - name: Run tests debug
-        shell: bash
-        run: cargo test --verbose --target ${{ matrix.target }} --features $FEATURES
-      
-      # Run tests in release mode
-      - name: Run tests release
-        shell: bash
-        run: cargo test --release --verbose --target ${{ matrix.target }} --features $FEATURES
-        
-      # Cache Cargo
-      - name: Cache Cargo
+      # Caching
+      - name: Cache Cargo Registry
         uses: actions/cache@v1
         with:
-          path: ~/.cargo
-          key: nightly-${{ matrix.target }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
-      
-      # Cache Build
-      - name: Cache Build
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache Cargo Bin
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/bin
+          key: ${{ runner.os }}-cargo-bin-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache Cargo Git
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache Cargo Build
         uses: actions/cache@v1
         with:
           path: target
-          key: nightly-${{ matrix.target }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+
+      - uses: hecrj/setup-rust-action@v1
+        with:
+          rust-version: ${{ matrix.rust_version }}${{ matrix.platform.host }}
+          targets: ${{ matrix.target }}
+
+      - name: Install Dependences
+        if: matrix.target == 'i686-unknown-linux-gnu'
+        run: sudo apt install g++-multilib gcc-multilib
+
+      # Run tests in debug mode
+      - name: Run Tests Debug
+        run: cargo test --target ${{ matrix.target }}
+      # TODO: Test in release mode
