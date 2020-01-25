@@ -55,7 +55,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [x86_64-pc-windows-msvc, i686-pc-windows-msvc, x86_64-pc-windows-gnu, i686-pc-windows-gnu, x86_64-unknown-linux-gnu, i686-unknown-linux-gnu, x86_64-apple-darwin]        
+        target: [x86_64-pc-windows-msvc, i686-pc-windows-msvc, x86_64-unknown-linux-gnu, i686-unknown-linux-gnu, x86_64-apple-darwin]        
         include:
           # Windows MSVC 32 and 64bit
           - os: windows-latest
@@ -66,18 +66,6 @@ jobs:
             target: i686-pc-windows-msvc
             rust_version: nightly
             name: i686-pc-windows-msvc-nightly
-
-          # Windows GNU 32 and 64bit
-          - os: windows-latest
-            target: x86_64-pc-windows-gnu
-            rust_version: nightly
-            host: -x86_64-pc-windows-gnu
-            name: i686-pc-windows-gnu-nightly
-          - os: windows-latest
-            target: i686-pc-windows-gnu
-            rust_version: nightly
-            host: -i686-pc-windows-gnu
-            name: i686-pc-windows-gnu-nightly
 
           # Linux 32 and 64bit
           - os: ubuntu-latest
@@ -109,9 +97,15 @@ jobs:
           rust-version: ${{ matrix.rust_version }}${{ matrix.platform.host }}
           targets: ${{ matrix.target }}
 
+      - name: Install Dependences
+        if: ${{ matrix.target }} == "i686-unknown-linux-gnu"
+        run: sudo apt install g++-multilib gcc-multilib
+
       # Run tests in debug mode
       - name: Run Tests Debug
         run: cargo test --target ${{ matrix.target }}
+
+      # TODO: Test in release mode
 
       # Cache Cargo
       - name: Cache Cargo
