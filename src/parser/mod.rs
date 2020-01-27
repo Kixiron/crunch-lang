@@ -1,4 +1,6 @@
 mod ast;
+#[cfg(test)]
+mod tests;
 mod token;
 
 pub use ast::*;
@@ -23,6 +25,7 @@ pub struct Parser<'a> {
     error: bool,
     indent_level: usize,
     pub interner: StringInterner<Sym>,
+    current_path: Sym,
 }
 
 impl<'a> Parser<'a> {
@@ -48,6 +51,9 @@ impl<'a> Parser<'a> {
         };
         let current_file = files[0];
 
+        let mut interner = StringInterner::new();
+        let current_path = interner.get_or_intern(filename.unwrap_or_else(|| ""));
+
         Self {
             token_stream,
             next,
@@ -58,7 +64,8 @@ impl<'a> Parser<'a> {
             diagnostics: Vec::new(),
             error: false,
             indent_level: 0,
-            interner: StringInterner::new(),
+            interner,
+            current_path,
         }
     }
 
@@ -451,26 +458,31 @@ impl<'a> Parser<'a> {
     }
 
     fn import_source(&mut self) -> Result<ImportSource> {
-        match self.peek()?.ty {
+        let source = match self.peek()?.ty {
             TokenType::Library => {
                 self.eat(TokenType::Library)?;
-                Ok(ImportSource::Package({
+                ImportSource::Package({
                     let source = self.eat(TokenType::String)?.source;
-                    self.intern(&source[1..source.len() - 1])
-                }))
+                    self.current_path = self.intern(&source[1..source.len() - 1]);
+                    self.current_path
+                })
             }
             TokenType::Binary => {
                 self.eat(TokenType::Binary)?;
-                Ok(ImportSource::Native({
+                ImportSource::Native({
                     let source = self.eat(TokenType::String)?.source;
-                    self.intern(&source[1..source.len() - 1])
-                }))
+                    self.current_path = self.intern(&source[1..source.len() - 1]);
+                    self.current_path
+                })
             }
-            _ => Ok(ImportSource::File({
+            _ => ImportSource::File({
                 let source = self.eat(TokenType::String)?.source;
+                self.current_path = self.intern(&source[1..source.len() - 1]);
                 source[1..source.len() - 1].split('.').collect()
-            })),
-        }
+            }),
+        };
+
+        Ok(source)
     }
 
     fn generics(&mut self) -> Result<Vec<Type>> {
@@ -867,7 +879,11 @@ impl<'a> Parser<'a> {
 
         self.eat(TokenType::EndBlock)?;
 
-        info!("Finished parsing Function");
+        info!(
+            "Finished parsing Function {:?}: {}",
+            name,
+            self.interner.resolve(name).unwrap()
+        );
 
         Ok(FunctionDecl {
             name,
@@ -876,6 +892,7 @@ impl<'a> Parser<'a> {
             arguments,
             returns,
             body,
+            abs_path: self.current_path,
         })
     }
 
@@ -1260,63 +1277,5 @@ fn unescape_bits(queue: &mut VecDeque<char>) -> Option<char> {
             Some(c as char)
         }
         Err(_) => None,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    #[ignore]
-    fn parse_test() {
-        const CODE: &str = include_str!("../../tests/parse_test.crunch");
-        const FILENAME: &str = "parse_test.crunch";
-
-        // color_backtrace::install();
-        simple_logger::init().unwrap();
-
-        let mut parser = Parser::new(Some(FILENAME), CODE);
-
-        match parser.parse() {
-            Ok(ast) => {
-                println!("Parsing Successful!\n{:#?}", &ast);
-
-                let options = crate::OptionBuilder::new("./examples/parse_test.crunch").build();
-                let bytecode =
-                    match crate::interpreter::Interpreter::from_interner(&options, parser.interner)
-                        .interpret(ast.0.clone())
-                    {
-                        Ok(interp) => interp,
-                        Err(err) => {
-                            err.emit();
-                            panic!("Runtime error while compiling");
-                        }
-                    };
-
-                println!("Bytecode: {:?}", bytecode);
-
-                crate::Crunch::run_source_file(
-                    crate::OptionBuilder::new("./examples/parse_test.crunch").build(),
-                );
-            }
-
-            Err(err) => {
-                println!("Parsing not successful");
-                let writer = codespan_reporting::term::termcolor::StandardStream::stderr(
-                    codespan_reporting::term::termcolor::ColorChoice::Auto,
-                );
-
-                let config = codespan_reporting::term::Config::default();
-
-                let mut files = Files::new();
-                files.add(FILENAME, CODE);
-
-                for e in err {
-                    codespan_reporting::term::emit(&mut writer.lock(), &config, &files, &e)
-                        .unwrap();
-                }
-            }
-        }
     }
 }

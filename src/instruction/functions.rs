@@ -50,6 +50,29 @@ pub fn mov(vm: &mut Vm, target: u8, source: u8) -> Result<()> {
     Ok(())
 }
 
+pub fn push(vm: &mut Vm, reg: u8) -> Result<()> {
+    trace!("Pushing register {} to the stack", reg);
+
+    let mut val = RuntimeValue::None;
+    std::mem::swap(&mut vm.registers[reg as usize], &mut val);
+    vm.stack.push(val);
+    vm.index += Index(1);
+
+    Ok(())
+}
+
+pub fn pop(vm: &mut Vm, reg: u8) -> Result<()> {
+    trace!("Popping to register {}", reg);
+
+    vm.registers[reg as usize] = vm.stack.pop().ok_or(RuntimeError {
+        ty: RuntimeErrorTy::EmptyStack,
+        message: "Attempted to pop from the stack, but no values were available".to_string(),
+    })?;
+    vm.index += Index(1);
+
+    Ok(())
+}
+
 pub fn add(mut vm: &mut Vm, left: u8, right: u8) -> Result<()> {
     trace!("Adding registers {} and {}", left, right);
 

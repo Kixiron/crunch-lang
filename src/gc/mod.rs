@@ -37,18 +37,16 @@ pub(crate) fn page_size() -> usize {
     size
 }
 
-/// The options for an initialized GC  
+/// The options for an initialized [`Gc`](crate::Gc)  
 #[derive(Debug, Copy, Clone)]
 pub struct GcOptions {
-    /// Activates a GC collect at every opportunity  
+    /// Activates a [`Gc`](crate::Gc) [`collect`](crate::Gc::collect) at every opportunity  
     pub burn_gc: bool,
-    /// Overwrites the heap on a side swap and on the `Gc` drop  
-    ///
-    /// [`Gc`]: crate.Gc
+    /// Overwrites the heap on a side swap and on the [`Gc`](crate::Gc) drop  
     pub overwrite_heap: bool,
     /// Sets the size of one half of the heap  
     /// Note: This means that the total allocated memory is `heap_size * 2`, while the available
-    /// memory is only `heap_size`  
+    /// memory is only [`heap_size`](crate::GcOptions#heap_size)  
     pub heap_size: usize,
     /// Enables additional debug output
     pub debug: bool,
@@ -80,25 +78,20 @@ pub struct Gc {
     current_side: Side,
     /// A vector of each allocation's id and current pointer  
     allocations: HashMap<AllocId, (HeapPointer, GcValue), FxBuildHasher>,
-    /// The next `AllocId` to be used for an `allocated` value  
-    ///
-    /// [`AllocId`]: crate.AllocId
-    /// [`allocated`]: #allocate.crate.Gc
+    /// The next [`AllocId`](crate::AllocId) to be used for an allocated value  
     next_id: usize,
     /// The options configured for the Gc
     options: GcOptions,
 }
 
 impl Gc {
-    /// Create a new GC instance, using `options.heap_size` as the starting heap size.  
+    /// Create a new GC instance, using [`heap_size`](crate::GcOptions#heap_size) as the starting heap size.  
     /// Note: This means that the total allocated memory is `heap_size * 2`, while the available
-    /// memory is only `heap_size`  
+    /// memory is only [`heap_size`](crate::GcOptions#heap_size)
     ///
     /// # Panics
     ///
-    /// Will panic if `options.heap_size` or the memory `page_size` are `0`  
-    ///
-    /// [`options.heap_size`]: #heap_size.crate.GcOptions
+    /// Will panic if [`heap_size`](crate::GcOptions#heap_size) or the memory `page_size` are `0`  
     #[must_use]
     pub fn new(options: &crate::Options) -> Self {
         trace!("Initializing GC");
@@ -136,16 +129,13 @@ impl Gc {
         }
     }
 
-    /// Allocates a region of `size` bytes and returns the `HeapPointer` and `AllocId` of said allocation  
+    /// Allocates a region of `size` bytes and returns the [`HeapPointer`](crate::HeapPointer)
+    /// and [`AllocId`](crate::AllocId) of said allocation  
     ///
     /// # Safety
     ///
-    /// The `HeapPointer` returned can be invalidated by a `Gc` collection cycle (See `collect`)  
-    ///
-    /// [`HeapPointer`]: crate.HeapPointer
-    /// [`AllocId`]: crate.AllocId
-    /// [`Gc`]: crate.Gc
-    /// [`collect`]: #collect.crate.Gc
+    /// The [`HeapPointer`](crate::HeapPointer) returned can be invalidated by a [`Gc`](crate::Gc)
+    /// collection cycle (See [`collect`](crate::Gc::collect))  
     #[must_use]
     pub fn allocate(&mut self, size: usize) -> Result<(HeapPointer, AllocId)> {
         trace!("Allocating size {}", size);
@@ -199,9 +189,7 @@ impl Gc {
         Ok((HeapPointer::new(block_start), new_id))
     }
 
-    /// Allocates and writes `T` directly to the heap, returning its `AllocId`.  
-    ///
-    /// [`AllocId`]: crate.AllocId
+    /// Allocates and writes `T` directly to the heap, returning its [`AllocId`](crate::AllocId).  
     #[must_use]
     pub fn allocate_heap<T: Collectable>(&mut self, item: T) -> Result<AllocId> {
         trace!("Allocating an item to the heap");
@@ -212,16 +200,13 @@ impl Gc {
         Ok(id)
     }
 
-    /// Allocates a region of `size` bytes, zeroes it and returns the `HeapPointer` and `AllocId` of said allocation  
+    /// Allocates a region of `size` bytes, zeroes it and returns the [`HeapPointer`](crate::HeapPointer)
+    /// and [`AllocId`](crate::AllocId) of said allocation  
     ///
     /// # Safety
     ///
-    /// The `HeapPointer` returned can be invalidated by a `Gc` collection cycle (See `collect`)  
-    ///
-    /// [`HeapPointer`]: crate.HeapPointer
-    /// [`AllocId`]: crate.AllocId
-    /// [`Gc`]: crate.Gc
-    /// [`collect`]: #collect.crate.Gc
+    /// The [`HeapPointer`](crate::HeapPointer) returned can be invalidated by a [`Gc`](crate::Gc) collection
+    /// cycle (See [`collect`](crate::Gc::collect))  
     #[must_use]
     pub fn allocate_zeroed(&mut self, size: usize) -> Result<(HeapPointer, AllocId)> {
         trace!("Allocating the zeroed for size {}", size);
@@ -236,11 +221,9 @@ impl Gc {
     ///
     /// # Collection
     ///
-    /// All reachable allocations (Decided by the gc's current `roots`) are marked, extending the
+    /// All reachable allocations (Decided by the gc's current [`roots`](crate::Gc#roots)) are marked, extending the
     /// allocations to be marked by all of the allocation's children.  
     /// All marked allocations are then moved to the opposite heap side.  
-    ///
-    /// [`roots`]: #roots.crate.Gc
     pub fn collect(&mut self) {
         trace!("GC Collecting");
 
@@ -316,24 +299,19 @@ impl Gc {
         }
     }
 
-    /// Get the concrete `HeapPointer` to an object stored in the `Gc`
+    /// Get the concrete [`HeapPointer`](crate::HeapPointer) to an object stored in the [`Gc`](crate::Gc)
     ///
     /// # Safety
     ///
-    /// This returns a pointer to the `AllocId`'s *current* location in memory.  
+    /// This returns a pointer to the [`AllocId`](crate::AllocId)'s *current* location in memory.  
     /// Said pointer can be invalidated at any time by a collection cycle, so use immediately.  
     /// Additionally, the pointer has no related type info, so the user is trusted to not overwrite
     /// their allocated space.
     ///
     /// # Errors
     ///
-    /// Throws a `RuntimeError` with the type of `GcError` if the requested `AllocId` does not exist
-    ///
-    /// [`HeapPointer`]: crate.HeapPointer
-    /// [`Gc`]: crate.Gc
-    /// [`AllocId`]: crate.AllocId
-    /// [`RuntimeError`]: crate.RuntimeError
-    /// [`GcError`]: crate.RuntimeErrorTy
+    /// Throws a [`RuntimeError`](crate::RuntimeError) with the type of [`GcError`](crate::RuntimeErrorTy) if
+    /// the requested [`AllocId`](crate::AllocId) does not exist
     #[must_use]
     pub fn get_ptr(&self, id: AllocId) -> Result<HeapPointer> {
         let (ptr, _val) = self.allocations.get(&id).ok_or(RuntimeError {
@@ -463,25 +441,20 @@ impl Gc {
         })
     }
 
-    /// Adds a child to the requested parent
+    /// Adds a child to the requested parent  
     ///
     /// # Errors
     ///
-    /// Returns an `RuntimeError` if the parent doesn't exist, but does not check if the
-    /// child exists.
-    ///
-    /// [`RuntimeError`]: crate.RuntimeError
+    /// Returns an [`RuntimeError`](crate::RuntimeError) if the parent doesn't
+    /// exist, but does not check if the child exists.  
     pub fn add_child(&mut self, parent: AllocId, child: AllocId) -> Result<()> {
         self.fetch_value_mut(parent)?.add_child(child);
 
         Ok(())
     }
 
-    /// Add a root object to the `Gc`.  
-    /// Note: No checks are preformed to see if the `AllocId` exists
-    ///
-    /// [`Gc`]: crate.Gc
-    /// [`AllocId`]: crate.AllocId
+    /// Add a root object to the [`Gc`](crate::Gc).  
+    /// Note: No checks are preformed to see if the [`AllocId`](crate::AllocId) exists  
     #[inline]
     pub fn add_root(&mut self, id: AllocId) {
         trace!("Adding GC Root: {:?}", id);
@@ -491,11 +464,8 @@ impl Gc {
     /// Remove a root object
     ///
     /// # Errors
-    /// Returns a `RuntimeError` if the requested `AllocId` is not rooted. This
-    /// error can be safely ignored if that behavior is desired.
-    ///
-    /// [`RuntimeError`]: crate.RuntimeError
-    /// [`AllocId`]: crate.AllocId
+    /// Returns a [`RuntimeError`](crate::RuntimeError) if the requested [`AllocId`](crate::AllocId) is not rooted.
+    /// This error can be safely ignored if that behavior is desired.  
     pub fn remove_root(&mut self, id: AllocId) -> Result<()> {
         let id = id.into();
 
@@ -517,16 +487,13 @@ impl Gc {
         })
     }
 
-    /// Write the data `T` to the specified `AllocId`.
+    /// Write the data `T` to the specified [`AllocId`](crate::AllocId).  
     ///
     /// # Errors
     ///
-    /// Returns a `RuntimeError` if any of the following conditions are met:  
-    /// * The requested `AllocId` does not exist  
+    /// Returns a [`RuntimeError`](crate::RuntimeError) if any of the following conditions are met:  
+    /// * The requested [`AllocId`](crate::AllocId) does not exist  
     /// * The size of `T` and the allocated space are not equal  
-    ///
-    /// [`AllocId`]: crate.AllocId
-    /// [`RuntimeError`]: crate.RuntimeError
     pub unsafe fn write<Id, T>(&self, id: AllocId, data: T) -> Result<()> {
         trace!("Writing to allocation {}", id);
 
@@ -550,9 +517,7 @@ impl Gc {
         }
     }
 
-    /// Gets the current heap side as a `HeapPointer`
-    ///
-    /// [`HeapPointer`]: crate.HeapPointer
+    /// Gets the current heap side as a [`HeapPointer`](crate::HeapPointer)  
     #[must_use]
     fn get_side(&self) -> HeapPointer {
         match self.current_side {
@@ -561,11 +526,8 @@ impl Gc {
         }
     }
 
-    /// Information about the state of the `Gc`. See `GcData` for details on the
-    /// returned information
-    ///
-    /// [`Gc`]: crate.Gc
-    /// [`GcData`]: crate.GcData
+    /// Information about the state of the [`Gc`](crate::Gc). See [`GcData`](crate::GcData)
+    /// for details on the returned information
     #[must_use]
     pub fn data(&self) -> GcData {
         trace!(
@@ -583,10 +545,7 @@ impl Gc {
         }
     }
 
-    /// See if the `Gc` contains an `AllocId`
-    ///
-    /// [`Gc`]: crate.Gc
-    /// [`HeapPointer`]: crate.HeapPointer
+    /// See if the [`Gc`](crate::Gc) contains an [`HeapPointer`](crate::HeapPointer)  
     #[inline]
     pub fn contains(&self, id: AllocId) -> bool {
         self.allocations.iter().any(|(__id, _)| *__id == id)
@@ -617,7 +576,7 @@ impl Drop for Gc {
     }
 }
 
-/// The status of the GC
+/// The status of the [`Gc`](crate::Gc)
 #[derive(Debug, Copy, Clone)]
 pub struct GcData {
     /// Size of the heap
@@ -661,7 +620,7 @@ impl std::ops::Not for Side {
     }
 }
 
-/// A value contained in the GC
+/// A value contained in the [`Gc`](crate::Gc)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GcValue {
     /// The id of the object, points into an hashmap containing the true pointer of the object

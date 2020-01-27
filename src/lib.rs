@@ -209,6 +209,12 @@ pub struct Options {
     pub heap_size: usize,
 }
 
+impl Default for Options {
+    fn default() -> Self {
+        OptionBuilder::new("").build()
+    }
+}
+
 // TODO: Document the option builder
 
 #[derive(Debug, Clone)]

@@ -2,6 +2,18 @@ use logos::{Lexer, Logos};
 
 #[derive(Logos, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TokenType {
+    #[regex = "[^ \t\n\r\"\'!@#$%\\^&*()-+=,.<>/?;:\\[\\]{}\\\\|`~]+"]
+    Ident,
+    #[regex = "\"[^\"]*\""]
+    #[regex = "'[^']*'"]
+    String,
+    #[regex = "[1234567890]+"]
+    Int,
+    #[regex = "::[^\r\n]*"]
+    Comment,
+    #[token = "\n"]
+    #[token = "\r\n"]
+    Newline,
     #[end]
     End,
     #[error]
@@ -52,20 +64,8 @@ pub enum TokenType {
     LeftBracket,
     #[token = "}"]
     RightBracket,
-    #[regex = "[^ \t\n\r\"\'!@#$%\\^&*()-+=,.<>/?;:\\[\\]{}\\\\|`~]+"]
-    Ident,
-    #[regex = "[1234567890]+"]
-    Int,
-    #[regex = "\"[^\"]*\""]
-    #[regex = "'[^']*'"]
-    String,
     #[token = " "]
     Space,
-    #[regex = "::[^\r\n]*"]
-    Comment,
-    #[token = "\n"]
-    #[token = "\r\n"]
-    Newline,
     #[token = "->"]
     RightArrow,
     #[token = "<-"]
@@ -318,7 +318,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn keyword_led_ident() {
         let mut exposed_function = TokenStream::new("exposed_function", true).into_iter();
 
@@ -327,7 +326,38 @@ mod tests {
             Some(Token {
                 ty: TokenType::Ident,
                 source: "exposed_function",
-                range: (0, 15)
+                range: (0, 16)
+            })
+        );
+        assert_eq!(exposed_function.next(), None);
+        assert!(exposed_function.collect::<Vec<_>>().is_empty());
+    }
+
+    #[test]
+    fn dont_capture_comments() {
+        let mut exposed_function =
+            TokenStream::new(":: fn something(int: str) -> bool {}\n", true).into_iter();
+
+        assert_eq!(
+            exposed_function.next(),
+            Some(Token {
+                ty: TokenType::Newline,
+                source: "\n",
+                range: (36, 37)
+            })
+        );
+        assert_eq!(exposed_function.next(), None);
+        assert!(exposed_function.collect::<Vec<_>>().is_empty());
+
+        let mut exposed_function =
+            TokenStream::new(":: test<int, bool>(test2)\n", true).into_iter();
+
+        assert_eq!(
+            exposed_function.next(),
+            Some(Token {
+                ty: TokenType::Newline,
+                source: "\n",
+                range: (25, 26)
             })
         );
         assert_eq!(exposed_function.next(), None);

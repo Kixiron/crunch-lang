@@ -6,26 +6,20 @@ use std::{marker::PhantomData, mem};
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Heap<T: Collectable + Sized> {
     id: AllocId,
-    size: usize,
     __ty: PhantomData<T>,
 }
 
 impl<T: Collectable + Sized> Heap<T> {
     #[must_use]
-    pub fn new(id: AllocId, size: usize) -> Self {
+    pub fn new(id: AllocId) -> Self {
         Heap {
             id,
-            size,
             __ty: PhantomData,
         }
     }
 
     pub fn id(&self) -> AllocId {
         self.id
-    }
-
-    pub fn size(&self) -> usize {
-        self.size
     }
 
     pub fn root(&self, gc: &mut Gc) -> Result<()> {
@@ -54,7 +48,7 @@ impl<T: Collectable + Sized> Heap<T> {
 pub trait Collectable: Sized {
     /// The owned version of the given type
     type Owned;
-    /// Store an object on the Heap
+    /// Store an object on the heap
     fn alloc(self, gc: &mut Gc) -> Result<Heap<Self>>;
     /// Fetch the object from the heap
     fn fetch(stub: &Heap<Self>, gc: &Gc) -> Result<Self::Owned>;
@@ -74,7 +68,7 @@ macro_rules! collectable_int {
                 fn alloc(self, gc: &mut Gc) -> Result<Heap<Self>> {
                     let id = gc.allocate_heap(self)?;
 
-                    Ok(Heap::new(id, mem::size_of::<Self>()))
+                    Ok(Heap::new(id))
                 }
 
                 #[inline]
@@ -120,7 +114,7 @@ impl Collectable for &str {
             target.copy_from_slice(bytes);
         }
 
-        Ok(Heap::new(id, bytes.len()))
+        Ok(Heap::new(id))
     }
 
     #[inline]
@@ -147,7 +141,7 @@ impl Collectable for BigInt {
             target.copy_from_slice(&bytes);
         }
 
-        Ok(Heap::new(id, bytes.len()))
+        Ok(Heap::new(id))
     }
 
     fn fetch(stub: &Heap<Self>, gc: &Gc) -> Result<Self::Owned> {
@@ -167,7 +161,7 @@ impl Collectable for BigUint {
             target.copy_from_slice(&bytes);
         }
 
-        Ok(Heap::new(id, bytes.len()))
+        Ok(Heap::new(id))
     }
 
     fn fetch(stub: &Heap<Self>, gc: &Gc) -> Result<Self::Owned> {

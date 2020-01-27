@@ -1,7 +1,8 @@
 #![allow(dead_code)]
 
 use crate::{
-    Instruction, Register, Result, RuntimeError, RuntimeErrorTy, RuntimeValue, NUMBER_REGISTERS,
+    Instruction, Register, Result, RuntimeError, RuntimeErrorTy, RuntimeValue, Type, Visibility,
+    NUMBER_REGISTERS,
 };
 use rand::{
     distributions::{Alphanumeric, Distribution, Standard},
@@ -22,13 +23,6 @@ pub enum MangleStatus {
     Type,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Visibility {
-    Namespace,
-    Private,
-    Public,
-}
-
 #[derive(Debug, Clone)]
 pub struct Namespace {
     functions: HashMap<Sym, (Visibility, FunctionContext)>,
@@ -38,6 +32,7 @@ pub struct Namespace {
 #[derive(Debug, Clone)]
 pub struct CodeBuilder {
     functions: HashMap<Sym, (FunctionContext, Option<u32>)>,
+    types: HashMap<Sym, TypeContext>,
     pub interner: StringInterner<Sym>,
     gc_ids: HashSet<u32>,
     local_symbols: HashMap<Sym, u32>,
@@ -51,6 +46,7 @@ impl CodeBuilder {
     pub fn new() -> Self {
         Self {
             functions: HashMap::new(),
+            types: HashMap::new(),
             interner: StringInterner::new(),
             gc_ids: HashSet::new(),
             local_symbols: HashMap::new(),
@@ -64,6 +60,7 @@ impl CodeBuilder {
     pub fn from_interner(interner: StringInterner<Sym>) -> Self {
         Self {
             functions: HashMap::new(),
+            types: HashMap::new(),
             interner,
             gc_ids: HashSet::new(),
             local_symbols: HashMap::new(),
@@ -74,7 +71,7 @@ impl CodeBuilder {
         }
     }
 
-    pub fn function<F>(&mut self, name: Sym, function: F) -> Result<()>
+    pub fn build_function<F>(&mut self, name: Sym, function: F) -> Result<()>
     where
         F: FnOnce(&mut Self, &mut FunctionContext) -> Result<()>,
     {
@@ -83,6 +80,19 @@ impl CodeBuilder {
         (function)(self, &mut context)?;
 
         self.functions.insert(name, (context, None));
+
+        Ok(())
+    }
+
+    pub fn build_type<T>(&mut self, name: Sym, ty: T) -> Result<()>
+    where
+        T: FnOnce(&mut Self, &mut TypeContext) -> Result<()>,
+    {
+        let mut context = TypeContext::new(name);
+
+        (ty)(self, &mut context)?;
+
+        self.types.insert(name, context);
 
         Ok(())
     }
@@ -161,7 +171,7 @@ impl CodeBuilder {
         for (sym, (func, _index)) in self.functions.clone() {
             let mut func = func.build(&mut self)?;
 
-            if func[func.len() - 1] != Instruction::Return {
+            if func.iter().last() != Some(&Instruction::Return) {
                 func.push(Instruction::Return);
             }
 
@@ -190,23 +200,47 @@ impl Scope {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Type {
-    Int,
-    Float,
-    String,
-    Bool,
-    Void,
-    Infer,
-    Any,
-    Custom(Sym),
-}
-
 #[derive(Debug, Clone)]
 pub struct TypeContext {
     name: Sym,
-    members: HashMap<Sym, Type>,
+    members: HashMap<Sym, (Visibility, Type)>,
     methods: HashMap<Sym, (Visibility, FunctionContext)>,
+}
+
+impl TypeContext {
+    #[inline]
+    pub fn new(name: Sym) -> Self {
+        Self {
+            name,
+            members: HashMap::new(),
+            methods: HashMap::new(),
+        }
+    }
+
+    pub fn add_member(&mut self, name: Sym, visibility: Visibility, ty: Type) -> &mut Self {
+        self.members.insert(name, (visibility, ty));
+
+        self
+    }
+
+    pub fn add_method<M>(
+        &mut self,
+        builder: &mut CodeBuilder,
+        name: Sym,
+        visibility: Visibility,
+        method: M,
+    ) -> Result<&mut Self>
+    where
+        M: FnOnce(&mut CodeBuilder, &mut FunctionContext) -> Result<()>,
+    {
+        let mut context = FunctionContext::new();
+
+        (method)(builder, &mut context)?;
+
+        self.methods.insert(name, (visibility, context));
+
+        Ok(self)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -247,7 +281,7 @@ impl FunctionContext {
             self.registers[idx] = Some(sym);
             Ok((idx as u8).into())
         } else {
-            error!("Failed to find avaliable register");
+            error!("Failed to find available caller register");
             Err(RuntimeError {
                 ty: RuntimeErrorTy::CompilationError,
                 message: "Failed to fetch available register".to_string(),
@@ -256,21 +290,17 @@ impl FunctionContext {
     }
 
     #[inline]
-    pub fn reserve_reg(&mut self, sym: impl Into<Option<Sym>>) -> Result<Register> {
-        if let Some((idx, _)) = self
-            .registers
+    pub fn reserve_callee_reg(&mut self) -> Result<Register> {
+        if let Some((idx, _)) = self.registers[0..4]
             .iter()
             .enumerate()
-            .rev()
             .find(|(_idx, r)| r.is_none())
         {
-            let sym = sym.into();
-            trace!("Reserving register {} for {:?}", idx, sym);
-
-            self.registers[idx] = Some(sym);
+            trace!("Reserving register {} for callee", idx);
+            self.registers[idx] = Some(None);
             Ok((idx as u8).into())
         } else {
-            error!("Failed to find avaliable register");
+            error!("Failed to find available callee register");
             Err(RuntimeError {
                 ty: RuntimeErrorTy::CompilationError,
                 message: "Failed to fetch available register".to_string(),
@@ -278,13 +308,54 @@ impl FunctionContext {
         }
     }
 
+    // TODO: Make this an option and push to the stack or something on an error
+    #[inline]
+    pub fn reserve_reg(&mut self, sym: impl Into<Option<Sym>>) -> Result<Register> {
+        let (idx, _) = self
+            .registers
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_idx, r)| r.is_none())
+            .ok_or({
+                error!("Failed to find available register");
+                RuntimeError {
+                    ty: RuntimeErrorTy::CompilationError,
+                    message: "Failed to fetch available register".to_string(),
+                }
+            })?;
+
+        let sym = sym.into();
+        trace!("Reserving register {} for {:?}", idx, sym);
+
+        self.registers[idx] = Some(sym);
+        Ok((idx as u8).into())
+    }
+
     pub fn get_cached_reg(&mut self, sym: Sym) -> Result<Register> {
         match self.registers.iter().position(|r| *r == Some(Some(sym))) {
             Some(pos) => Ok((pos as u8).into()),
-            None => Err(RuntimeError {
+            None => {
+                error!("Failed to get cached register, attempted to get {:?}", sym);
+                Err(RuntimeError {
+                    ty: RuntimeErrorTy::CompilationError,
+                    message: "Failed to fetch cached register".to_string(),
+                })
+            }
+        }
+    }
+
+    pub fn reserve_nth_reg(&mut self, reg: impl Into<u8>) -> Result<Register> {
+        let reg = reg.into();
+        if self.registers.get(reg as usize) == Some(&None) {
+            self.registers[reg as usize] = Some(None);
+            Ok(reg.into())
+        } else {
+            error!("Failed to reserve nth register, attempted to get {}", reg);
+            Err(RuntimeError {
                 ty: RuntimeErrorTy::CompilationError,
-                message: "Failed to fetch cached register".to_string(),
-            }),
+                message: "Failed to reserve register".to_string(),
+            })
         }
     }
 
@@ -333,6 +404,18 @@ impl FunctionContext {
     ) -> &mut Self {
         self.block
             .push(Instruction::Move(target.into(), source.into()).into());
+
+        self
+    }
+    pub fn inst_push(&mut self, register: impl Into<Register>) -> &mut Self {
+        let register = register.into();
+        self.block.push(Instruction::Push(register).into());
+        self.free_reg(register);
+
+        self
+    }
+    pub fn inst_pop(&mut self, register: impl Into<Register>) -> &mut Self {
+        self.block.push(Instruction::Pop(register.into()).into());
 
         self
     }
@@ -548,6 +631,11 @@ impl PartialInstruction {
                 ) {
                     entry
                 } else {
+                    error!(
+                        "Failed to find the function {:?} ({:?})",
+                        self.func_sym.unwrap(),
+                        builder.interner.resolve(self.func_sym.unwrap()).unwrap()
+                    );
                     return Err(RuntimeError {
                         ty: RuntimeErrorTy::MissingSymbol,
                         message:
@@ -616,7 +704,7 @@ mod tests {
 
         let main = builder.intern("main");
         builder
-            .function(main, |builder, ctx| {
+            .build_function(main, |builder, ctx| {
                 ctx.inst_load(0, RuntimeValue::Str("Hello from the main function!\n"))
                     .inst_print(0)
                     .inst_drop(0)
@@ -635,7 +723,7 @@ mod tests {
 
         let test = builder.intern("test");
         builder
-            .function(test, |_builder, ctx| {
+            .build_function(test, |_builder, ctx| {
                 ctx.inst_load(0, RuntimeValue::Str("Hello from the test function!\n"))
                     .inst_print(0)
                     .inst_drop(0)

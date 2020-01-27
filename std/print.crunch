@@ -1,7 +1,7 @@
-fn print(string: str)
+exposed fn print(string: str)
     empty
 end
 
-fn println(string: str)
+exposed fn println(string: str)
     empty
 end

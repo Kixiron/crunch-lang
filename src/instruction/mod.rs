@@ -63,6 +63,7 @@ pub enum RuntimeErrorTy {
     IntegerOverflow,
     MissingSymbol,
     JitError,
+    EmptyStack,
 }
 
 /// Instructions for the VM
@@ -75,6 +76,8 @@ pub enum Instruction {
     OpToReg(Register),
     Drop(Register),
     Move(Register, Register),
+    Push(Register),
+    Pop(Register),
 
     Add(Register, Register),
     Sub(Register, Register),
@@ -127,6 +130,8 @@ impl Instruction {
             Self::OpToReg(reg) => functions::op_to_reg(vm, **reg)?,
             Self::Drop(reg) => functions::drop(vm, **reg)?,
             Self::Move(target, source) => functions::mov(vm, **target, **source)?,
+            Self::Push(reg) => functions::push(vm, **reg)?,
+            Self::Pop(reg) => functions::pop(vm, **reg)?,
 
             Self::Add(left, right) => functions::add(vm, **left, **right)?,
             Self::Sub(left, right) => functions::sub(vm, **left, **right)?,
@@ -175,6 +180,8 @@ impl Instruction {
             Self::OpToReg(_) => "opr",
             Self::Drop(_) => "drop",
             Self::Move(_, _) => "mov",
+            Self::Push(_) => "push",
+            Self::Pop(_) => "pop",
 
             Self::Add(_, _) => "add",
             Self::Sub(_, _) => "sub",

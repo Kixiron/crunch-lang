@@ -31,13 +31,10 @@ pub enum RuntimeValue {
     Str(&'static str),
     GcString(Heap<&'static str>),
 
-    // Boolean
     Bool(bool),
-    // Pointer
     Pointer(AllocId),
     // Vec
     // GcVec(Vec<RuntimeValue>),
-    // Null
     Null,
 
     None,
@@ -48,13 +45,9 @@ pub enum RuntimeValue {
 /// Always reflects Equivalency, sometimes also reflects Greater/Less than.
 pub enum Compare {
     Equal,
-
     Less,
-
     Greater,
-
     Unequal,
-
     /// Sometimes, things just don't line up.
     /// (trying to compare a Bool to a BigInt, are ya?)
     Incomparable,

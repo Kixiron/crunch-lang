@@ -8,6 +8,31 @@ use crate::{
 use std::{collections::HashMap, path::PathBuf};
 use string_interner::{StringInterner, Sym};
 
+lazy_static::lazy_static! {
+    static ref INTRINSICS: HashMap<&'static str, fn(&mut CodeBuilder, &mut FunctionContext, &[Option<Register>]) -> Result<()>> = {
+        let mut intrinsics: HashMap<&'static str, fn(&mut CodeBuilder, &mut FunctionContext, &[Option<Register>]) -> Result<()>> = HashMap::with_capacity(10);
+
+        // TODO: Think through this better
+
+        intrinsics.insert("print", |_builder, ctx, registers| {
+            ctx.inst_print(registers[0].unwrap());
+
+            Ok(())
+        });
+        intrinsics.insert("println", |_builder, ctx, registers| {
+            let newline = ctx.reserve_reg(None)?;
+            ctx.inst_print(registers[0].unwrap())
+                .inst_load(newline, RuntimeValue::Str("\n"))
+                .inst_print(newline)
+                .inst_drop(newline);
+
+            Ok(())
+        });
+
+        intrinsics
+    };
+}
+
 #[derive(Debug, Copy, Clone)]
 pub struct InterpOptions {
     pub fault_tolerant: bool,
@@ -71,6 +96,9 @@ impl Interpreter {
                 Program::FunctionDecl(func) => {
                     // Interpret the function
                     let (name, index) = self.interp_func(func)?;
+                    if self.current_function.iter().last() != Some(&Instruction::Return) {
+                        self.current_function.push(Instruction::Return);
+                    }
 
                     // Will contain the newly created function
                     let mut func = Vec::new();
@@ -86,9 +114,53 @@ impl Interpreter {
                     self.interpret_import(import)?;
                 }
 
-                _ => todo!("Implement all Program-level nodes"),
+                Program::TypeDecl(ty) => {
+                    self.interpret_type(ty)?;
+                } // node => todo!("Implement all Program-level nodes: {:?}", node),
             }
         }
+
+        Ok(())
+    }
+
+    fn interpret_type(&mut self, ty: TypeDecl) -> Result<()> {
+        let mut builder = CodeBuilder::new();
+        std::mem::swap(&mut builder, &mut self.builder);
+
+        let type_name = ty.name;
+        builder.build_type(type_name, |builder, ctx| {
+            for (vis, name, ty) in ty.members {
+                ctx.add_member(name, vis, ty);
+            }
+
+            for method in ty.methods {
+                ctx.add_method(builder, method.name, Visibility::Exposed, |builder, ctx| {
+                    let (mut args, mut number) = (method.arguments.into_iter(), 0);
+                    while let Some((arg_name, _arg_type)) = args.next() {
+                        if number <= 5 {
+                            ctx.reserve_caller_reg(arg_name)?;
+                            number += 1;
+                        } else {
+                            let reg = ctx.reserve_reg(arg_name)?;
+                            ctx.inst_pop(reg);
+                        }
+                    }
+
+                    // For each expression in the method, evaluate it into instructions
+                    for statement in method.body {
+                        // TODO: This has gotta be bad
+                        self.statement(statement, builder, ctx)?;
+                    }
+
+                    Ok(())
+                })?;
+            }
+
+            Ok(())
+        })?;
+
+        std::mem::swap(&mut builder, &mut self.builder);
+        drop(builder);
 
         Ok(())
     }
@@ -134,7 +206,7 @@ impl Interpreter {
                 };
 
                 let file_name = relative_path.to_string_lossy();
-                let parser = match Parser::new(Some(&*file_name), &contents).parse() {
+                let import_ast = match Parser::new(Some(&*file_name), &contents).parse() {
                     Ok((ast, _diagnostics)) => {
                         // TODO: Emit errors
                         ast
@@ -148,7 +220,7 @@ impl Interpreter {
                     }
                 };
 
-                self.interpret_module(parser)?;
+                self.interpret_module(import_ast)?;
             }
             ImportSource::Package(sym) => {
                 let _package = self.builder.interner.resolve(sym).unwrap();
@@ -163,132 +235,22 @@ impl Interpreter {
         Ok(())
     }
 
-    /*
-    fn load_binding_val<'a>(
-        &mut self,
-        builder: &mut CodeBuilder,
-        ctx: &mut FunctionContext,
-        binding_val: BindingVal<'a>,
-        binding_name: impl Into<Option<Sym>>,
-    ) -> Result<Register> {
-        match binding_val {
-            BindingVal::Literal(literal) => {
-                let addr = ctx.reserve_reg(binding_name)?;
-
-                ctx.inst_load(addr, literal.val.into());
-
-                Ok(addr)
-            }
-
-            BindingVal::BinOp(bin_op) => match (bin_op.left, bin_op.right) {
-                (BinOpSide::Literal(left), BinOpSide::Literal(right)) => {
-                    let (left, right): (RuntimeValue, RuntimeValue) =
-                        (left.val.into(), right.val.into());
-                    let (left_reg, right_reg) =
-                        (ctx.reserve_reg(binding_name)?, ctx.reserve_reg(None)?);
-
-                    // TODO: Compile-time evaluation
-                    ctx.inst_load(left_reg, left).inst_load(right_reg, right);
-                    match bin_op.op {
-                        Op::Add => ctx.inst_add(left_reg, right_reg),
-                        Op::Sub => ctx.inst_sub(left_reg, right_reg),
-                        Op::Mult => ctx.inst_mult(left_reg, right_reg),
-                        Op::Div => ctx.inst_div(left_reg, right_reg),
-                        Op::IsEqual => ctx.inst_eq(left_reg, right_reg),
-                    };
-                    ctx.inst_op_to_reg(left_reg).inst_drop(right_reg);
-
-                    Ok(left_reg)
-                }
-
-                (BinOpSide::Literal(left), BinOpSide::Variable(right)) => {
-                    let left_reg = ctx.reserve_reg(binding_name)?;
-                    ctx.inst_load(left_reg, left.val.into());
-
-                    let right_ident = builder.intern(&*right.name);
-                    let (right_reg, faulted) = if let Ok(reg) = ctx.get_cached_reg(right_ident) {
-                        (reg, false)
-                    } else if self.options.fault_tolerant {
-                        let reg = ctx.reserve_reg(right_ident)?;
-
-                        ctx.inst_load(reg, RuntimeValue::None);
-
-                        (reg, true)
-                    } else {
-                        error!("Failed to find variable for Literal/Variable binary operation");
-                        return Err(RuntimeError {
-                            ty: RuntimeErrorTy::NullVar,
-                            message: format!("The variable {:?} does not exist", &*right.name),
-                        });
-                    };
-
-                    if let Ok(right_reg) = ctx.get_cached_reg(right_ident) {
-                        ctx.inst_add(right_reg, left_reg);
-
-                        if self.options.fault_tolerant && faulted {
-                            ctx.inst_drop(left_reg).free_reg(right_reg);
-                        }
-                    } else {
-                        let left_reg = ctx.reserve_reg(right_ident)?;
-
-                        match bin_op.op {
-                            Op::Add => ctx.inst_add(left_reg, right_reg),
-                            Op::Sub => ctx.inst_sub(left_reg, right_reg),
-                            Op::Mult => ctx.inst_mult(left_reg, right_reg),
-                            Op::Div => ctx.inst_div(left_reg, right_reg),
-                            Op::IsEqual => ctx.inst_eq(left_reg, right_reg),
-                        };
-                    }
-
-                    ctx.inst_drop(right_reg).inst_op_to_reg(left_reg);
-
-                    Ok(left_reg)
-                }
-
-                (BinOpSide::Variable(left), BinOpSide::Literal(right)) => {
-                    let left_ident = builder.intern(&*left.name);
-                    let left_reg = if let Ok(reg) = ctx.get_cached_reg(left_ident) {
-                        reg
-                    } else if self.options.fault_tolerant {
-                        let reg = ctx.reserve_reg(left_ident)?;
-                        ctx.inst_load(reg, RuntimeValue::None);
-
-                        reg
-                    } else {
-                        error!("Failed to find variable for Variable/Literal binary operation");
-                        return Err(RuntimeError {
-                            ty: RuntimeErrorTy::NullVar,
-                            message: format!("The variable {:?} does not exist", &*left.name),
-                        });
-                    };
-
-                    let right_reg = ctx.reserve_reg(None)?;
-
-                    ctx.inst_load(right_reg, right.val.into())
-                        .inst_add(left_reg, right_reg);
-
-                    let output = ctx.reserve_reg(binding_name)?;
-                    ctx.inst_drop(right_reg).inst_op_to_reg(output);
-
-                    Ok(output)
-                }
-                _ => unimplemented!(),
-            },
-            _ => unimplemented!(),
-        }
-    }
-    */
-
     /// Interpret a function
     fn interp_func(&mut self, func: FunctionDecl) -> Result<(Sym, Option<usize>)> {
         let mut builder = CodeBuilder::new();
         std::mem::swap(&mut builder, &mut self.builder);
 
         let func_name = func.name;
-        builder.function(func_name, |builder, ctx| {
-            // TODO: Accept more than 5 arguments
-            for (arg_name, _arg_type) in func.arguments.into_iter().take(5) {
-                ctx.reserve_caller_reg(arg_name)?;
+        builder.build_function(func_name, |builder, ctx| {
+            let (mut args, mut number) = (func.arguments.into_iter(), 0);
+            while let Some((arg_name, _arg_type)) = args.next() {
+                if number <= 5 {
+                    ctx.reserve_caller_reg(arg_name)?;
+                    number += 1;
+                } else {
+                    let reg = ctx.reserve_reg(arg_name)?;
+                    ctx.inst_pop(reg);
+                }
             }
 
             // For each expression in the function, evaluate it into instructions
@@ -393,14 +355,55 @@ impl Interpreter {
             Expr::Expr(expr) => self.expr(builder, ctx, *expr),
 
             Expr::FunctionCall(func_call) => {
-                let mut caller_registers = Vec::with_capacity(func_call.arguments.len());
-                for expr in func_call.arguments {
-                    caller_registers.push(self.expr(builder, ctx, expr)?);
+                // let mut caller_registers = Vec::with_capacity(func_call.arguments.len());
+                // for expr in func_call.arguments {
+                //     caller_registers.push(self.expr(builder, ctx, expr)?);
+                // }
+
+                // TODO: What?
+
+                let (mut args, mut number, mut out_args): (_, _, Vec<Option<Register>>) =
+                    (func_call.arguments.into_iter(), 0, Vec::new());
+                while let Some(arg) = args.next() {
+                    // TODO: Verify that it's the correct kind of error
+                    let arg = match self.expr(builder, ctx, arg) {
+                        Ok(reg) => Some(reg),
+                        Err(err) => {
+                            error!("Error evaluating function: {:?}", err);
+                            None
+                        }
+                    };
+
+                    if number < 5 {
+                        // TODO: Pop them back after the function call
+                        if ctx.reserve_nth_reg(number).is_err() {
+                            ctx.inst_push(number).reserve_nth_reg(number)?;
+                        }
+                        ctx.inst_mov(number, arg.unwrap());
+                        out_args.push(Some(number.into()));
+                        number += 1;
+                    } else {
+                        ctx.inst_push(arg.expect("Expected an argument register"));
+                        out_args.push(None);
+                    }
+                }
+
+                if let Some(abs_path) = builder.interner.resolve(func_call.name) {
+                    if let Some(intrinsic) = INTRINSICS.get(abs_path) {
+                        (intrinsic)(builder, ctx, &out_args)?;
+                        return Ok(0.into());
+                    }
                 }
 
                 ctx.inst_func_call(func_call.name);
 
-                todo!("Resolve function's symbol, get return type(s) and acknowledge the returns")
+                for reg in out_args {
+                    if let Some(reg) = reg {
+                        ctx.inst_pop(reg);
+                    }
+                }
+
+                Ok(0.into())
             }
         }
     }

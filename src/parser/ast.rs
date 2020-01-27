@@ -22,6 +22,7 @@ pub struct FunctionDecl {
     pub arguments: Vec<(Sym, Type)>,
     pub returns: Type,
     pub body: Vec<Statement>,
+    pub abs_path: Sym,
 }
 
 #[derive(Debug, Clone)]
