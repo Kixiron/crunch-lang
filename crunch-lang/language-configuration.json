@@ -1,0 +1,20 @@
+{
+    "comments": {
+        // symbol used for single line comment. Remove this entry if your language does not support line comments
+        "lineComment": "::",
+    },
+    // symbols used as brackets
+    "brackets": [
+        ["\n", "end"],
+    ],
+    // symbols that are auto closed when typing
+    "autoClosingPairs": [
+        ["\n", "end"],
+    ],
+    // symbols that that can be used to surround a selection
+    "surroundingPairs": [
+        ["\n", "end"],
+        ["\"", "\""],
+        ["'", "'"]
+    ]
+}

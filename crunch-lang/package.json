@@ -1,0 +1,25 @@
+{
+    "name": "crunch-lang",
+    "displayName": "crunch-lang",
+    "description": "Syntax highlighting for Crunch",
+    "version": "0.0.1",
+    "engines": {
+        "vscode": "^1.41.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "contributes": {
+        "languages": [{
+            "id": "crunch",
+            "aliases": ["Crunch", "crunch"],
+            "extensions": [".crunch"],
+            "configuration": "./language-configuration.json"
+        }],
+        "grammars": [{
+            "language": "crunch",
+            "scopeName": "source.crunch",
+            "path": "./syntaxes/crunch.tmLanguage.json"
+        }]
+    }
+}

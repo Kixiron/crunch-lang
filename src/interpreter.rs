@@ -319,10 +319,6 @@ impl Interpreter {
                     Comparator::Less => ctx.inst_less_than(left, right),
                     Comparator::Greater => ctx.inst_greater_than(left, right),
                 };
-                /*
-                    GreaterThan(Register, Register),
-                    LessThan(Register, Register),
-                */
 
                 warn!(
                     "Expr::Comparison returns the left register as a return value, but the Comparison Operation \
@@ -388,14 +384,17 @@ impl Interpreter {
                     }
                 }
 
+                let mut intrinsic_fn = false;
                 if let Some(abs_path) = builder.interner.resolve(func_call.name) {
                     if let Some(intrinsic) = INTRINSICS.get(abs_path) {
                         (intrinsic)(builder, ctx, &out_args)?;
-                        return Ok(0.into());
+                        intrinsic_fn = true;
                     }
                 }
 
-                ctx.inst_func_call(func_call.name);
+                if !intrinsic_fn {
+                    ctx.inst_func_call(func_call.name);
+                }
 
                 for reg in out_args {
                     if let Some(reg) = reg {

@@ -1,0 +1,50 @@
+{
+    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "name": "Crunch",
+    "patterns": [{
+            "include": "#keywords"
+        },
+        {
+            "include": "#strings"
+        },
+        {
+            "include": "#comments"
+        },
+        {
+            "include": "#operators"
+        },
+        {
+            "include": "#type"
+        }
+    ],
+    "repository": {
+        "keywords": {
+            "patterns": [{
+                "name": "keyword.control.crunch",
+                "match": "\\b(if|while|for|return|let|loop|for|break|import|exposing|export|end|exposed|then|empty|continue)\\b"
+            }]
+        },
+        "strings": {
+            "name": "string.quoted.double.crunch",
+            "begin": "\"|'",
+            "end": "\"|'",
+            "patterns": [{
+                "name": "constant.character.escape.crunch",
+                "match": "\\\\."
+            }]
+        },
+        "comments": {
+            "name": "comment.line.crunch",
+            "match": "::[^\r\n]*"
+        },
+        "operators": {
+            "name": "keyword.operator.crunch",
+            "match": "\\b(+|-|*|\\|=|==|>|<|>=|<=|->|<-|<<|>>|\\||&)\\b"
+        },
+        "type": {
+            "name": "storage.type.crunch",
+            "match": "\\b(type)\\b"
+        }
+    },
+    "scopeName": "source.crunch"
+}
