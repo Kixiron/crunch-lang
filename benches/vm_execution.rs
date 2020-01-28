@@ -95,6 +95,23 @@ fn instructions(c: &mut Criterion) {
         });
 
         gc.collect();
+    })
+    .bench_function("Fibonacci in Crunch", |b| {
+        const CODE: &str = include_str!("../tests/fibonacci.crunch");
+        const FILENAME: &str = "fibonacci.crunch";
+
+        let mut parser = Parser::new(Some(FILENAME), CODE);
+        let ast = parser.parse().unwrap();
+        let bytecode = crunch::Interpreter::from_interner(
+            &crunch::OptionBuilder::new("./examples/fibonacci.crunch").build(),
+            parser.interner,
+        )
+        .interpret(ast.0)
+        .unwrap();
+
+        b.iter(|| {
+            crunch::Vm::default().execute(bytecode.clone()).unwrap();
+        });
     });
 }
 

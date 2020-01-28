@@ -181,6 +181,7 @@ pub use crate::crunch::Crunch;
 pub use bytecode::*;
 pub use gc::*;
 pub use instruction::*;
+pub use interpreter::*;
 pub use newtypes::*;
 pub use parser::*;
 pub use value::*;
