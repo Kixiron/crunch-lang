@@ -1,32 +1,20 @@
+:: The main function
 fn main()
-    let i = 0
+    let integer: int = 0
 
-    eval(i)
-
-    :: let i = print_something<int, str>(test)
+    if is_zero(integer)
+        println("Zero")
+    else
+        println("Not Zero")
+    end
 end
 
-fn eval(num: int)
-    if num == 0
-        println("Zero")
-        eval(1)
-    else if num == 1
-        println("One")
-        eval(2)
-    else if num == 2
-        println("Two")
-        eval(3)
-    else if num == 3
-        println("Three")
-        eval(4)
-    else if num == 4
-        println("Four")
-        eval(5)
-    else if num == 5
-        println("Five")
-        eval(6)
+:: See if an integer is zero
+exposed fn is_zero(integer: int) -> bool
+    if integer == 0
+        return true
     else
-        println("We're done here!")
+        return false
     end
 end
 

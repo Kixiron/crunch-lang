@@ -3,6 +3,7 @@
     "displayName": "crunch-lang",
     "description": "Syntax highlighting for Crunch",
     "version": "0.0.1",
+    "publisher": "chasewilson",
     "engines": {
         "vscode": "^1.41.0"
     },

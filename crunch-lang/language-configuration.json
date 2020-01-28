@@ -6,10 +6,14 @@
     // symbols used as brackets
     "brackets": [
         ["\n", "end"],
+        ["(", ")"],
+        ["<", ">"]
     ],
     // symbols that are auto closed when typing
     "autoClosingPairs": [
         ["\n", "end"],
+        ["(", ")"],
+        ["<", ">"]
     ],
     // symbols that that can be used to surround a selection
     "surroundingPairs": [

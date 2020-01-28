@@ -1,50 +1,99 @@
 {
     "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
     "name": "Crunch",
-    "patterns": [{
-            "include": "#keywords"
-        },
-        {
-            "include": "#strings"
-        },
-        {
-            "include": "#comments"
-        },
-        {
-            "include": "#operators"
-        },
-        {
-            "include": "#type"
-        }
+    "comment": "Crunch Language support for VSCode",
+    "version": "0.0.1",
+    "fileTypes": [
+        "crunch"
     ],
-    "repository": {
-        "keywords": {
-            "patterns": [{
-                "name": "keyword.control.crunch",
-                "match": "\\b(if|while|for|return|let|loop|for|break|import|exposing|export|end|exposed|then|empty|continue)\\b"
-            }]
+    "patterns": [{
+            "name": "keyword.control.crunch",
+            "match": "\\b(if|else|while|for|loop|for)\\b"
         },
-        "strings": {
+        {
             "name": "string.quoted.double.crunch",
-            "begin": "\"|'",
-            "end": "\"|'",
+            "begin": "\"",
+            "end": "\"",
             "patterns": [{
                 "name": "constant.character.escape.crunch",
                 "match": "\\\\."
             }]
         },
-        "comments": {
+        {
+            "name": "string.quoted.double.crunch",
+            "begin": "'",
+            "end": "'",
+            "patterns": [{
+                "name": "constant.character.escape.crunch",
+                "match": "\\\\."
+            }]
+        },
+        {
+            "name": "keyword.other.crunch",
+            "match": "\\b(let|return|break|import|export|end|then|empty|continue)\\b"
+        },
+        {
+            "name": "keyword.other.fn.crunch",
+            "match": "fn"
+        },
+        {
             "name": "comment.line.crunch",
-            "match": "::[^\r\n]*"
+            "match": "::[^\r\n]*$"
         },
-        "operators": {
+        {
             "name": "keyword.operator.crunch",
-            "match": "\\b(+|-|*|\\|=|==|>|<|>=|<=|->|<-|<<|>>|\\||&)\\b"
+            "match": "\\b(\\+|-|\\*|\\|\\>\\>|\\<\\<|\\||&|!)\\b"
         },
-        "type": {
+        {
             "name": "storage.type.crunch",
             "match": "\\b(type)\\b"
+        },
+        {
+            "name": "constant.numeric.integer.decimal.crunch",
+            "match": "\\b[1234567890]+\\b"
+        },
+        {
+            "name": "constant.language.boolean.crunch",
+            "match": "\\b(true|false)\\b"
+        },
+        {
+            "name": "storage.modifier.visibility.crunch",
+            "match": "\\b(exposed|exposing)\\b"
+        },
+        {
+            "name": "keyword.operator.assignment.crunch",
+            "match": "="
+        },
+        {
+            "name": "storage.type.core.crunch",
+            "match": "\\b(int|str|bool|unit)\\b"
+        },
+        {
+            "name": "keyword.operator.comparison.crunch",
+            "match": "\\b(==|\\>=|\\<=|\\<|\\>)\\b"
+        },
+        {
+            "name": "entity.name.function.crunch",
+            "match": "(?<=fn )([a-zA-Z][a-zA-Z0-9_]+)"
+        },
+        {
+            "match": "([a-zA-Z][a-zA-Z0-9_]+)(\\<)(T)(\\>)(?=[(])",
+            "name": "entity.name.function.crunch",
+            "captures": {
+                "1": {
+                    "name": "entity.name.function.crunch"
+                }
+            }
+        },
+        {
+            "match": "(?!Err|Ok|Some)([a-zA-Z][a-zA-Z0-9_]+)(?=[(])",
+            "name": "entity.name.function.crunch"
+        },
+        {
+            "match": "(?!Err|Ok|Some)([a-zA-Z]+)(?=[(])",
+            "name": "entity.name.function.crunch"
         }
-    },
+    ],
+    "repository": {},
     "scopeName": "source.crunch"
 }
