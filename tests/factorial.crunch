@@ -1,0 +1,13 @@
+fn main()
+    println(factorial(1))
+    println(factorial(10))
+    println(factorial(20))
+end
+
+fn factorial(n: int) -> int 
+    if n < 2
+        return 1
+    else
+        return n * factorial(n - 1)
+    end
+end
