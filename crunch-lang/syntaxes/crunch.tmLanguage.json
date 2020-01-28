@@ -8,7 +8,7 @@
     ],
     "patterns": [{
             "name": "keyword.control.crunch",
-            "match": "\\b(if|else|while|for|loop|for)\\b"
+            "match": "\\b(if|else|while|for|loop|for|end)\\b"
         },
         {
             "name": "string.quoted.double.crunch",
@@ -30,7 +30,7 @@
         },
         {
             "name": "keyword.other.crunch",
-            "match": "\\b(let|return|break|import|export|end|then|empty|continue)\\b"
+            "match": "\\b(let|return|break|import|export|then|empty|continue)\\b"
         },
         {
             "name": "keyword.other.fn.crunch",
