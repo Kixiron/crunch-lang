@@ -171,6 +171,7 @@ mod newtypes;
 mod parser;
 /// Syscalls
 mod syscall;
+mod type_checker;
 /// Values contained within the VM
 mod value;
 /// The main VM
