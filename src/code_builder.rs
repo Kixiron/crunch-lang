@@ -273,39 +273,15 @@ impl FunctionContext {
     }
 
     #[inline]
-    pub fn reserve_caller_reg(&mut self, sym: impl Into<Option<Sym>>) -> Result<Register> {
-        if let Some(idx) = self.registers.iter().take(5).position(Option::is_none) {
-            let sym = sym.into();
-            trace!("Reserving register {} for {:?}", idx, sym);
-
-            self.registers[idx] = Some(sym);
-            Ok((idx as u8).into())
-        } else {
-            error!("Failed to find available caller register");
-            Err(RuntimeError {
-                ty: RuntimeErrorTy::CompilationError,
-                message: "Failed to fetch available register".to_string(),
-            })
-        }
+    pub fn reserve_caller_reg(&mut self, sym: impl Into<Option<Sym>>, idx: u8) -> Result<Register> {
+        self.registers[idx as usize] = Some(sym.into());
+        Ok((idx as u8).into())
     }
 
     #[inline]
     pub fn reserve_callee_reg(&mut self) -> Result<Register> {
-        if let Some((idx, _)) = self.registers[0..4]
-            .iter()
-            .enumerate()
-            .find(|(_idx, r)| r.is_none())
-        {
-            trace!("Reserving register {} for callee", idx);
-            self.registers[idx] = Some(None);
-            Ok((idx as u8).into())
-        } else {
-            error!("Failed to find available callee register");
-            Err(RuntimeError {
-                ty: RuntimeErrorTy::CompilationError,
-                message: "Failed to fetch available register".to_string(),
-            })
-        }
+        trace!("Reserving register {} for callee", 0);
+        Ok(0.into())
     }
 
     // TODO: Make this an option and push to the stack or something on an error
@@ -318,7 +294,6 @@ impl FunctionContext {
             .rev()
             .find(|(_idx, r)| r.is_none())
             .ok_or({
-                error!("Failed to find available register");
                 RuntimeError {
                     ty: RuntimeErrorTy::CompilationError,
                     message: "Failed to fetch available register".to_string(),
@@ -332,11 +307,16 @@ impl FunctionContext {
         Ok((idx as u8).into())
     }
 
+    #[track_caller]
     pub fn get_cached_reg(&mut self, sym: Sym) -> Result<Register> {
         match self.registers.iter().position(|r| *r == Some(Some(sym))) {
             Some(pos) => Ok((pos as u8).into()),
             None => {
-                error!("Failed to get cached register, attempted to get {:?}", sym);
+                error!(
+                    "Failed to get cached register, attempted to get {:?} Loc: {:?}",
+                    sym,
+                    std::panic::Location::caller(),
+                );
                 Err(RuntimeError {
                     ty: RuntimeErrorTy::CompilationError,
                     message: "Failed to fetch cached register".to_string(),
@@ -402,8 +382,13 @@ impl FunctionContext {
         target: impl Into<Register>,
         source: impl Into<Register>,
     ) -> &mut Self {
-        self.block
-            .push(Instruction::Move(target.into(), source.into()).into());
+        let (target, source) = (target.into(), source.into());
+
+        let mut temp = None;
+        std::mem::swap(&mut self.registers[*source as usize], &mut temp);
+        self.registers[*target as usize] = temp;
+
+        self.block.push(Instruction::Move(target, source).into());
 
         self
     }

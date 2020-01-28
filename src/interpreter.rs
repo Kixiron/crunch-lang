@@ -28,6 +28,21 @@ lazy_static::lazy_static! {
 
             Ok(())
         });
+        intrinsics.insert("assert_eq", |_builder, ctx, registers| {
+            let newline = ctx.reserve_reg(None)?;
+            ctx.inst_eq(registers[0].unwrap(), registers[1].unwrap())
+                .inst_jump_comp(u32::max_value())
+                .inst_print(registers[0].unwrap())
+                .inst_load(newline, RuntimeValue::Str(" != "))
+                .inst_print(newline)
+                .inst_print(registers[1].unwrap())
+                .inst_load(newline, RuntimeValue::Str("\n"))
+                .inst_print(newline)
+                .inst_halt()
+                .inst_jump_comp(u32::max_value());
+
+            Ok(())
+        });
 
         intrinsics
     };
@@ -138,7 +153,7 @@ impl Interpreter {
                     let (mut args, mut number) = (method.arguments.into_iter(), 0);
                     while let Some((arg_name, _arg_type)) = args.next() {
                         if number <= 5 {
-                            ctx.reserve_caller_reg(arg_name)?;
+                            ctx.reserve_caller_reg(arg_name, number as u8)?;
                             number += 1;
                         } else {
                             let reg = ctx.reserve_reg(arg_name)?;
@@ -242,10 +257,14 @@ impl Interpreter {
 
         let func_name = func.name;
         builder.build_function(func_name, |builder, ctx| {
-            let (mut args, mut number) = (func.arguments.into_iter(), 0);
-            while let Some((arg_name, _arg_type)) = args.next() {
-                if number <= 5 {
-                    ctx.reserve_caller_reg(arg_name)?;
+            let mut number = 0;
+            for (arg_name, _arg_type) in func.arguments {
+                if number < 5 {
+                    ctx.reserve_caller_reg(arg_name, number as u8)?;
+
+                    let reg = ctx.reserve_reg(arg_name)?;
+                    ctx.inst_mov(reg, number as u8);
+
                     number += 1;
                 } else {
                     let reg = ctx.reserve_reg(arg_name)?;
@@ -347,17 +366,18 @@ impl Interpreter {
 
                 Ok(output)
             }
-            Expr::Ident(sym) => ctx.get_cached_reg(sym),
+            Expr::Ident(sym) => {
+                let reg = ctx.get_cached_reg(sym);
+
+                if reg.is_err() {
+                    trace!("{:?}: {:?}", sym, builder.interner.resolve(sym));
+                }
+
+                reg
+            }
             Expr::Expr(expr) => self.expr(builder, ctx, *expr),
 
             Expr::FunctionCall(func_call) => {
-                // let mut caller_registers = Vec::with_capacity(func_call.arguments.len());
-                // for expr in func_call.arguments {
-                //     caller_registers.push(self.expr(builder, ctx, expr)?);
-                // }
-
-                // TODO: What?
-
                 let (mut args, mut number, mut out_args): (_, _, Vec<Option<Register>>) =
                     (func_call.arguments.into_iter(), 0, Vec::new());
                 while let Some(arg) = args.next() {
@@ -396,11 +416,11 @@ impl Interpreter {
                     ctx.inst_func_call(func_call.name);
                 }
 
-                for reg in out_args {
-                    if let Some(reg) = reg {
-                        ctx.inst_pop(reg);
-                    }
-                }
+                // for reg in out_args {
+                //     if let Some(reg) = reg {
+                //         ctx.inst_pop(reg);
+                //     }
+                // }
 
                 Ok(0.into())
             }
@@ -432,7 +452,12 @@ impl Interpreter {
                 ctx.inst_mov(reg, loaded).inst_drop(loaded);
             }
 
-            Statement::Return(_ret) => todo!("Compile return statements"),
+            Statement::Return(ret) => {
+                let loaded = self.expr(builder, ctx, ret.expr)?;
+                let passer = ctx.reserve_callee_reg()?;
+
+                ctx.inst_mov(passer, loaded).inst_return();
+            }
             Statement::Continue => todo!("Compile Continue statements"),
             Statement::Break => todo!("Compile break statements"),
             Statement::Expr(expr) => {

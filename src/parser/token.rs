@@ -97,8 +97,14 @@ pub enum TokenType {
     LeftCaret,
     #[token = ">"]
     RightCaret,
+    #[token = "|"]
+    Pipe,
+    #[token = "&"]
+    Ampersand,
     #[token = "bin"]
     Binary,
+    #[token = "^"]
+    Caret,
     #[token = "exposed"]
     Exposed,
     #[token = "empty"]
@@ -137,6 +143,9 @@ impl std::fmt::Display for TokenType {
             Self::RightBrace => "]",
             Self::Divide => "/",
             Self::Star => "*",
+            Self::Pipe => "|",
+            Self::Caret => "^",
+            Self::Ampersand => "&",
             Self::Loop => "loop",
             Self::While => "while",
             Self::If => "if",

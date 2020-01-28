@@ -694,7 +694,52 @@ impl<'a> Parser<'a> {
                 let ident = self.intern(ident.source);
 
                 match self.peek()?.ty {
-                    TokenType::LeftParen => Expr::FunctionCall(self.function_call(ident)?),
+                    TokenType::LeftParen => {
+                        let func = Expr::FunctionCall(self.function_call(ident)?);
+
+                        if [
+                            TokenType::Plus,
+                            TokenType::Minus,
+                            TokenType::Divide,
+                            TokenType::Star,
+                            TokenType::Pipe,
+                            TokenType::Ampersand,
+                            TokenType::Caret,
+                        ]
+                        .contains(&self.peek()?.ty)
+                        {
+                            let next = self.next()?;
+                            let op = self.binary_operand(next)?;
+                            let right = Box::new(self.expr()?);
+
+                            Expr::BinaryOperation(BinaryOperation {
+                                left: Box::new(func),
+                                op,
+                                right,
+                            })
+                        } else {
+                            func
+                        }
+                    }
+
+                    TokenType::Plus
+                    | TokenType::Minus
+                    | TokenType::Divide
+                    | TokenType::Star
+                    | TokenType::Pipe
+                    | TokenType::Ampersand
+                    | TokenType::Caret => {
+                        let next = self.next()?;
+                        let op = self.binary_operand(next)?;
+                        let right = Box::new(self.expr()?);
+
+                        Expr::BinaryOperation(BinaryOperation {
+                            left: Box::new(Expr::Ident(ident)),
+                            op,
+                            right,
+                        })
+                    }
+
                     _ => Expr::Ident(ident),
                 }
             }
@@ -702,10 +747,40 @@ impl<'a> Parser<'a> {
             TokenType::String | TokenType::Int | TokenType::Bool => {
                 Expr::Literal(self.parse_literal()?)
             }
+
             _ => todo!("Implement the rest of the expressions"),
         };
 
         Ok(expr)
+    }
+
+    fn binary_operand(
+        &mut self,
+        left: impl Into<Option<Token<'a>>>,
+    ) -> Result<(BinaryOp, OperandType)> {
+        trace!("Parsing binary operand");
+
+        if let Some(begin) = left.into() {
+            let op = match begin.ty {
+                TokenType::Plus => BinaryOp::Plus,
+                TokenType::Minus => BinaryOp::Minus,
+                TokenType::Divide => BinaryOp::Div,
+                TokenType::Star => BinaryOp::Mult,
+                TokenType::Pipe => BinaryOp::Or,
+                TokenType::Ampersand => BinaryOp::And,
+                TokenType::Caret => BinaryOp::Xor,
+                _ => todo!("Add more bin ops and/or an error"),
+            };
+
+            // TODO: Add more operand types
+            let ty = match self.peek()? {
+                _ => OperandType::Normal,
+            };
+
+            Ok((op, ty))
+        } else {
+            todo!("Implement a stand-alone binary-operand or remove the `Option` from `left`")
+        }
     }
 
     fn conditional_clause(&mut self) -> Result<Either<If, Vec<Statement>>> {
