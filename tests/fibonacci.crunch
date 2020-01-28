@@ -1,7 +1,7 @@
 fn main()
-    assert_eq(fibonacci(1), 1)
-    assert_eq(fibonacci(10), 89)
-    assert_eq(fibonacci(20), 10946)
+    println(fibonacci(1))
+    println(fibonacci(10))
+    println(fibonacci(20))
 end
 
 fn fibonacci(n: int) -> int
@@ -13,3 +13,9 @@ fn fibonacci(n: int) -> int
         return fibonacci(n - 1) + fibonacci(n - 2)
     end
 end
+
+:: fn assert_eq(left: int, right: int) -> unit
+::     if left != right
+::         halt()
+::     end
+:: end

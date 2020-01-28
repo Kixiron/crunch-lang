@@ -155,16 +155,19 @@ pub fn jump(vm: &mut Vm, index: i32) -> Result<()> {
 }
 
 pub fn jump_comp(vm: &mut Vm, index: i32) -> Result<bool> {
-    trace!(
-        "Comparison Jump: Prev Comp is {}, jump amount is {}",
-        vm.prev_comp,
-        index
-    );
-
     if vm.prev_comp {
+        trace!(
+            "Comparison Jump: Prev Comp is {}, jumping by {}",
+            vm.prev_comp,
+            index
+        );
         vm.index = Index((*vm.index as i32 + index + 1) as u32);
         Ok(true)
     } else {
+        trace!(
+            "Comparison Jump: Prev Comp is {}, not jumping",
+            vm.prev_comp,
+        );
         vm.index += Index(1);
         Ok(false)
     }
@@ -248,10 +251,10 @@ comparison_operator! {
 pub fn func(mut vm: &mut Vm, func: u32) -> Result<()> {
     trace!("Jumping to function {}", func);
 
-    let mut registers: [RuntimeValue; crate::NUMBER_REGISTERS - 5] =
+    let mut registers: [RuntimeValue; crate::NUMBER_REGISTERS] =
         array_init::array_init(|_| RuntimeValue::None);
 
-    vm.registers[5..].swap_with_slice(&mut registers[..]);
+    std::mem::swap(&mut vm.registers, &mut registers);
 
     vm.return_stack.push(ReturnFrame {
         registers,
@@ -279,7 +282,7 @@ pub fn ret(mut vm: &mut Vm) -> Result<()> {
 
         // Set the important stuff from the frame
         vm.index = frame.index;
-        vm.registers[5..].clone_from_slice(&frame.registers[..]);
+        vm.registers = frame.registers;
         vm.current_func = frame.function_index;
 
     // If there are no further stack frames, then return to main

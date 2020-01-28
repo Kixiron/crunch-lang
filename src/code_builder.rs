@@ -272,18 +272,6 @@ impl FunctionContext {
         self
     }
 
-    #[inline]
-    pub fn reserve_caller_reg(&mut self, sym: impl Into<Option<Sym>>, idx: u8) -> Result<Register> {
-        self.registers[idx as usize] = Some(sym.into());
-        Ok((idx as u8).into())
-    }
-
-    #[inline]
-    pub fn reserve_callee_reg(&mut self) -> Result<Register> {
-        trace!("Reserving register {} for callee", 0);
-        Ok(0.into())
-    }
-
     // TODO: Make this an option and push to the stack or something on an error
     #[inline]
     pub fn reserve_reg(&mut self, sym: impl Into<Option<Sym>>) -> Result<Register> {

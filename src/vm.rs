@@ -26,7 +26,7 @@ impl From<&crate::Options> for VmOptions {
 #[derive(Debug, Clone)]
 pub(crate) struct ReturnFrame {
     /// The frame's registers, sans Caller/Callee registers
-    pub registers: [RuntimeValue; NUMBER_REGISTERS - 5],
+    pub registers: [RuntimeValue; NUMBER_REGISTERS],
     /// The current [`Instruction`](crate::Instruction) index of the frame
     pub index: Index,
     /// The index of the function to return to

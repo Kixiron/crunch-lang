@@ -9,37 +9,32 @@ use std::{collections::HashMap, path::PathBuf};
 use string_interner::{StringInterner, Sym};
 
 lazy_static::lazy_static! {
-    static ref INTRINSICS: HashMap<&'static str, fn(&mut CodeBuilder, &mut FunctionContext, &[Option<Register>]) -> Result<()>> = {
-        let mut intrinsics: HashMap<&'static str, fn(&mut CodeBuilder, &mut FunctionContext, &[Option<Register>]) -> Result<()>> = HashMap::with_capacity(10);
+    static ref INTRINSICS: HashMap<&'static str, fn(&mut CodeBuilder, &mut FunctionContext) -> Result<()>> = {
+        let mut intrinsics: HashMap<&'static str, fn(&mut CodeBuilder, &mut FunctionContext) -> Result<()>> = HashMap::with_capacity(10);
 
         // TODO: Think through this better
+        // TODO: Replace the unwraps with actual errors
 
-        intrinsics.insert("print", |_builder, ctx, registers| {
-            ctx.inst_print(registers[0].unwrap());
+        intrinsics.insert("print", |_builder, ctx| {
+            let reg = ctx.reserve_reg(None)?;
+            ctx.inst_pop(reg).inst_print(reg);
 
             Ok(())
         });
-        intrinsics.insert("println", |_builder, ctx, registers| {
+        intrinsics.insert("println", |_builder, ctx| {
+            let reg = ctx.reserve_reg(None)?;
             let newline = ctx.reserve_reg(None)?;
-            ctx.inst_print(registers[0].unwrap())
+
+            ctx.inst_pop(reg)
+                .inst_print(reg)
                 .inst_load(newline, RuntimeValue::Str("\n"))
                 .inst_print(newline)
                 .inst_drop(newline);
 
             Ok(())
         });
-        intrinsics.insert("assert_eq", |_builder, ctx, registers| {
-            let newline = ctx.reserve_reg(None)?;
-            ctx.inst_eq(registers[0].unwrap(), registers[1].unwrap())
-                .inst_jump_comp(u32::max_value())
-                .inst_print(registers[0].unwrap())
-                .inst_load(newline, RuntimeValue::Str(" != "))
-                .inst_print(newline)
-                .inst_print(registers[1].unwrap())
-                .inst_load(newline, RuntimeValue::Str("\n"))
-                .inst_print(newline)
-                .inst_halt()
-                .inst_jump_comp(u32::max_value());
+        intrinsics.insert("halt", |_builder, ctx| {
+            ctx.inst_halt();
 
             Ok(())
         });
@@ -150,20 +145,13 @@ impl Interpreter {
 
             for method in ty.methods {
                 ctx.add_method(builder, method.name, Visibility::Exposed, |builder, ctx| {
-                    let (mut args, mut number) = (method.arguments.into_iter(), 0);
-                    while let Some((arg_name, _arg_type)) = args.next() {
-                        if number <= 5 {
-                            ctx.reserve_caller_reg(arg_name, number as u8)?;
-                            number += 1;
-                        } else {
-                            let reg = ctx.reserve_reg(arg_name)?;
-                            ctx.inst_pop(reg);
-                        }
+                    for (arg, _ty) in method.arguments {
+                        let loc = ctx.reserve_reg(arg)?;
+                        ctx.inst_pop(loc);
                     }
 
-                    // For each expression in the method, evaluate it into instructions
+                    // For each expression in the function, evaluate it into instructions
                     for statement in method.body {
-                        // TODO: This has gotta be bad
                         self.statement(statement, builder, ctx)?;
                     }
 
@@ -257,19 +245,9 @@ impl Interpreter {
 
         let func_name = func.name;
         builder.build_function(func_name, |builder, ctx| {
-            let mut number = 0;
-            for (arg_name, _arg_type) in func.arguments {
-                if number < 5 {
-                    ctx.reserve_caller_reg(arg_name, number as u8)?;
-
-                    let reg = ctx.reserve_reg(arg_name)?;
-                    ctx.inst_mov(reg, number as u8);
-
-                    number += 1;
-                } else {
-                    let reg = ctx.reserve_reg(arg_name)?;
-                    ctx.inst_pop(reg);
-                }
+            for (arg, _ty) in func.arguments {
+                let loc = ctx.reserve_reg(arg)?;
+                ctx.inst_pop(loc);
             }
 
             // For each expression in the function, evaluate it into instructions
@@ -366,63 +344,30 @@ impl Interpreter {
 
                 Ok(output)
             }
-            Expr::Ident(sym) => {
-                let reg = ctx.get_cached_reg(sym);
-
-                if reg.is_err() {
-                    trace!("{:?}: {:?}", sym, builder.interner.resolve(sym));
-                }
-
-                reg
-            }
+            Expr::Ident(sym) => ctx.get_cached_reg(sym),
             Expr::Expr(expr) => self.expr(builder, ctx, *expr),
 
             Expr::FunctionCall(func_call) => {
-                let (mut args, mut number, mut out_args): (_, _, Vec<Option<Register>>) =
-                    (func_call.arguments.into_iter(), 0, Vec::new());
-                while let Some(arg) = args.next() {
-                    // TODO: Verify that it's the correct kind of error
-                    let arg = match self.expr(builder, ctx, arg) {
-                        Ok(reg) => Some(reg),
-                        Err(err) => {
-                            error!("Error evaluating function: {:?}", err);
-                            None
-                        }
-                    };
-
-                    if number < 5 {
-                        // TODO: Pop them back after the function call
-                        if ctx.reserve_nth_reg(number).is_err() {
-                            ctx.inst_push(number).reserve_nth_reg(number)?;
-                        }
-                        ctx.inst_mov(number, arg.unwrap());
-                        out_args.push(Some(number.into()));
-                        number += 1;
-                    } else {
-                        ctx.inst_push(arg.expect("Expected an argument register"));
-                        out_args.push(None);
-                    }
+                for arg in func_call.arguments {
+                    let reg = self.expr(builder, ctx, arg)?;
+                    ctx.inst_push(reg);
                 }
 
                 let mut intrinsic_fn = false;
                 if let Some(abs_path) = builder.interner.resolve(func_call.name) {
                     if let Some(intrinsic) = INTRINSICS.get(abs_path) {
-                        (intrinsic)(builder, ctx, &out_args)?;
+                        (intrinsic)(builder, ctx)?;
                         intrinsic_fn = true;
                     }
                 }
 
+                let ret_val = ctx.reserve_reg(None)?;
                 if !intrinsic_fn {
                     ctx.inst_func_call(func_call.name);
+                    ctx.inst_pop(ret_val);
                 }
 
-                // for reg in out_args {
-                //     if let Some(reg) = reg {
-                //         ctx.inst_pop(reg);
-                //     }
-                // }
-
-                Ok(0.into())
+                Ok(ret_val)
             }
         }
     }
@@ -449,14 +394,12 @@ impl Interpreter {
                 let reg = ctx.reserve_reg(var_decl.name)?;
                 let loaded = self.expr(builder, ctx, var_decl.expr)?;
 
-                ctx.inst_mov(reg, loaded).inst_drop(loaded);
+                ctx.inst_mov(reg, loaded);
             }
 
             Statement::Return(ret) => {
                 let loaded = self.expr(builder, ctx, ret.expr)?;
-                let passer = ctx.reserve_callee_reg()?;
-
-                ctx.inst_mov(passer, loaded).inst_return();
+                ctx.inst_push(loaded).inst_return();
             }
             Statement::Continue => todo!("Compile Continue statements"),
             Statement::Break => todo!("Compile break statements"),
