@@ -34,11 +34,13 @@ impl PartialEq for RuntimeError {
 }
 
 /// The type of [`RuntimeError`] that occurred
+///
+/// [`RuntimeError`]: crate::RuntimeError
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeErrorTy {
-    /// An error in the `Gc`
+    /// An error in the [`Gc`]
     ///
-    /// [`Gc`]: crate.Gc
+    /// [`Gc`]: crate::Gc
     GcError,
     /// The user attempted to divide by zero
     DivideByZero,
@@ -66,7 +68,9 @@ pub enum RuntimeErrorTy {
     EmptyStack,
 }
 
-/// Instructions for the VM
+/// Instructions for the [`Vm`]
+///
+/// [`Vm`]: crate::Vm
 // TODO: Document all Instructions
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Instruction {

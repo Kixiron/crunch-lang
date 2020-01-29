@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 fn instructions(c: &mut Criterion) {
     use crunch::*;
@@ -97,10 +97,22 @@ fn instructions(c: &mut Criterion) {
         gc.collect();
     })
     .bench_function("Fibonacci in Crunch", |b| {
-        const CODE: &str = include_str!("../tests/fibonacci.crunch");
-        const FILENAME: &str = "fibonacci.crunch";
-
-        let mut parser = Parser::new(Some(FILENAME), CODE);
+        let mut parser = Parser::new(
+            Some("fibonacci.crunch"),
+            "
+    fn main()
+        fibonacci(20)
+    end
+    
+    fn fibonacci(n: int) -> int
+        if n < 2
+            return 1
+        else
+            return fibonacci(n - 1) + fibonacci(n - 2)
+        end
+    end
+    ",
+        );
         let ast = parser.parse().unwrap();
         let bytecode = crunch::Interpreter::from_interner(
             &crunch::OptionBuilder::new("./examples/fibonacci.crunch").build(),
@@ -108,10 +120,22 @@ fn instructions(c: &mut Criterion) {
         )
         .interpret(ast.0)
         .unwrap();
+        let mut vm = crunch::Vm::default();
 
         b.iter(|| {
-            crunch::Vm::default().execute(bytecode.clone()).unwrap();
+            black_box(vm.execute(&bytecode)).unwrap();
         });
+    })
+    .bench_function("Fibonacci in Rust", |b| {
+        fn fibonacci(n: u32) -> u32 {
+            if n < 2 {
+                0
+            } else {
+                fibonacci(n - 1) + fibonacci(n - 2)
+            }
+        }
+
+        b.iter(|| black_box(fibonacci(black_box(20))));
     });
 }
 

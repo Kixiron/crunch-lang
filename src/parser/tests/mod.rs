@@ -26,7 +26,7 @@ fn parse_test() {
     .unwrap();
     println!("Bytecode: {:?}", &bytecode);
 
-    crate::Vm::default().execute(bytecode).unwrap();
+    crate::Vm::default().execute(&bytecode).unwrap();
 }
 
 #[test]
@@ -51,5 +51,5 @@ fn fibonacci_test() {
     .unwrap();
     println!("Bytecode: {:?}", &bytecode);
 
-    crate::Vm::default().execute(bytecode).unwrap();
+    crate::Vm::default().execute(&bytecode).unwrap();
 }

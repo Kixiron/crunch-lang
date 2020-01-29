@@ -713,7 +713,7 @@ mod tests {
                 .debug_log(true)
                 .build(),
         )
-        .execute(functions)
+        .execute(&functions)
         .unwrap();
     }
 }

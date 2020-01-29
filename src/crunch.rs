@@ -25,7 +25,7 @@ impl Crunch {
 
     /// Execute the currently loaded program
     #[inline]
-    pub fn execute(&mut self, instructions: Vec<Vec<Instruction>>) -> Result<()> {
+    pub fn execute(&mut self, instructions: &[Vec<Instruction>]) -> Result<()> {
         trace!("Starting Crunch Execution");
 
         self.vm.execute(instructions)?;
@@ -74,7 +74,7 @@ impl Crunch {
                 Ok(functions) => {
                     info!("Executing Crunch Program");
 
-                    if let Err(err) = Self::new(options).execute(functions) {
+                    if let Err(err) = Self::new(options).execute(&functions) {
                         err.emit()
                     }
                 }
@@ -154,7 +154,7 @@ impl Crunch {
         let (main, mut functions) = Self::parse_bytecode(bytes)?;
         functions.insert(0, main);
 
-        Self::new(options).execute(functions)?;
+        Self::new(options).execute(&functions)?;
 
         Ok(())
     }
@@ -232,7 +232,7 @@ impl Crunch {
 
                             println!("[Output]:");
 
-                            if let Err(err) = Self::new(options.clone()).execute(functions) {
+                            if let Err(err) = Self::new(options.clone()).execute(&functions) {
                                 err.emit()
                             }
                         }

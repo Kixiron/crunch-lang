@@ -34,7 +34,7 @@ fn function_test() {
         ],
     ];
 
-    crunch.execute(functions).unwrap();
+    crunch.execute(&functions).unwrap();
 }
 
 #[test]

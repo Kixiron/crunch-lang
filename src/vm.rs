@@ -25,9 +25,11 @@ impl From<&crate::Options> for VmOptions {
 /// last left off
 #[derive(Debug, Clone)]
 pub(crate) struct ReturnFrame {
-    /// The frame's registers, sans Caller/Callee registers
+    /// The frame's registers
     pub registers: [RuntimeValue; NUMBER_REGISTERS],
-    /// The current [`Instruction`](crate::Instruction) index of the frame
+    /// The current [`Instruction`] index of the frame
+    ///
+    /// [`Instruction`]: crate::Instruction
     pub index: Index,
     /// The index of the function to return to
     pub function_index: u32,
@@ -57,7 +59,9 @@ pub struct Vm {
     pub(crate) gc: Gc,
     /// The options initialized with the VM
     pub(crate) options: VmOptions,
-    /// The stdout that the program will print to, recommended to be [`stdout`](std::io::stdout)
+    /// The stdout that the program will print to, recommended to be [`stdout`]
+    ///
+    /// [`stdout`]: std::io::stdout
     pub(crate) stdout: Box<dyn std::io::Write>,
     pub(crate) start_time: Option<Instant>,
     pub(crate) finish_time: Option<Instant>,
@@ -71,8 +75,12 @@ impl Default for Vm {
 }
 
 impl Vm {
-    /// Creates a new [`Vm`](crate::Vm) from [`options`](crate::Options) and the selected `stdout`
-    /// target (Required to be [`Write`](std::io::Write))
+    /// Creates a new [`Vm`] from [`options`] and the selected `stdout`
+    /// target (Required to be [`Write`])
+    ///
+    /// [`Vm`]: crate::Vm
+    /// [`options`]: crate::Options
+    /// [`Write`]: std::io::Write
     #[inline]
     #[must_use]
     pub fn new(options: &crate::Options, stdout: Box<dyn std::io::Write>) -> Self {
@@ -94,13 +102,17 @@ impl Vm {
         }
     }
 
-    /// Uses the current [`Vm`](crate::Vm) to execute the given `functions`  
-    /// Note: this means that any data left in the [`Gc`](crate::Gc) will transfer to the new program's runtime
+    /// Uses the current [`Vm`] to execute the given `functions`  
+    /// Note: this means that any data left in the [`Gc`] will transfer to the new program's runtime
     ///
     /// # Errors
     ///
-    /// Will return any [`RuntimeError`](crate::RuntimeError) thrown and not caught by the running program and program runtime
-    pub fn execute(&mut self, functions: Vec<Vec<Instruction>>) -> Result<()> {
+    /// Will return any [`RuntimeError`] thrown and not caught by the running program and program runtime
+    ///
+    /// [`Vm`]: crate::Vm
+    /// [`Gc`]: crate::Gc
+    /// [`RuntimeError`]: crate::RuntimeError
+    pub fn execute(&mut self, functions: &[Vec<Instruction>]) -> Result<()> {
         self.finish_time = None;
         self.start_time = Some(Instant::now());
 
@@ -117,8 +129,12 @@ impl Vm {
     ///
     /// # Returns
     ///
-    /// Returns [`Some`](std::option::Option)([`Duration`](std.time.Duration)) if a program was fully executed and timed,
-    /// and [`None`](std::option::Option) if a program has either not been executed or is in the midst of executing
+    /// Returns [`Some`]([`Duration`]) if a program was fully executed and timed,
+    /// and [`None`] if a program has either not been executed or is in the midst of executing
+    ///
+    /// [`Some`]: std::option::Option
+    /// [`Duration`]: std::time::Duration
+    /// [`None`]: std::option::Option
     pub fn execution_time(&self) -> Option<std::time::Duration> {
         if let (Some(start), Some(finish)) = (self.start_time, self.finish_time) {
             Some(finish.duration_since(start))
