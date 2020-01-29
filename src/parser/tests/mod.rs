@@ -30,7 +30,6 @@ fn parse_test() {
 }
 
 #[test]
-#[ignore]
 fn fibonacci_test() {
     const CODE: &str = include_str!("../../../tests/fibonacci.crunch");
     const FILENAME: &str = "fibonacci.crunch";
@@ -45,6 +44,30 @@ fn fibonacci_test() {
 
     let bytecode = crate::interpreter::Interpreter::from_interner(
         &crate::OptionBuilder::new("./examples/fibonacci.crunch").build(),
+        parser.interner,
+    )
+    .interpret(ast.0.clone())
+    .unwrap();
+    println!("Bytecode: {:?}", &bytecode);
+
+    crate::Vm::default().execute(&bytecode).unwrap();
+}
+
+#[test]
+fn factorial_test() {
+    const CODE: &str = include_str!("../../../tests/factorial.crunch");
+    const FILENAME: &str = "factorial.crunch";
+
+    color_backtrace::install();
+    // simple_logger::init().unwrap();
+
+    let mut parser = Parser::new(Some(FILENAME), CODE);
+
+    let ast = parser.parse().unwrap();
+    println!("Ast: {:#?}", &ast);
+
+    let bytecode = crate::interpreter::Interpreter::from_interner(
+        &crate::OptionBuilder::new("./examples/factorial.crunch").build(),
         parser.interner,
     )
     .interpret(ast.0.clone())

@@ -3,6 +3,8 @@ use num_bigint::{BigInt, BigUint};
 use std::fmt;
 
 // TODO: Test all implemented operations
+// TODO: Implement all inter-int operations
+// Eg. IByte and I32 can be added together
 
 #[derive(Debug, Clone)]
 pub enum RuntimeValue {
@@ -469,6 +471,13 @@ impl RuntimeValue {
                     Self::I64(*left as i64).div_upflowing(Self::I64(*right as i64), gc)?
                 }
             }
+            (Self::I32(left), Self::I64(right)) => {
+                if let Some(result) = (*left as i64).checked_div(*right) {
+                    Self::I64(result)
+                } else {
+                    Self::I64(*left as i64).div_upflowing(Self::I64(*right as i64), gc)?
+                }
+            }
             (Self::I64(left), Self::I64(right)) => {
                 if let Some(result) = left.checked_div(*right) {
                     Self::I64(result)
@@ -603,6 +612,13 @@ macro_rules! upflowing {
                                 Self::I64(*left as i64).$name(Self::I64(*right as i64), gc)?
                             }
                         }
+                        (Self::I32(left), Self::I64(right)) => {
+                            if let Some(result) = (*left as i64).$func(*right) {
+                                Self::I64(result)
+                            } else {
+                                Self::I64(*left as i64).$name(Self::I64(*right as i64), gc)?
+                            }
+                        }
                         (Self::I64(left), Self::I64(right)) => {
                             if let Some(result) = left.$func(*right) {
                                 Self::I64(result)
@@ -676,6 +692,7 @@ macro_rules! binary_op {
                         (Self::I16(left), Self::I16(right)) => Self::I16(left $op right),
                         (Self::I32(left), Self::I32(right)) => Self::I32(left $op right),
                         (Self::I64(left), Self::I64(right)) => Self::I64(left $op right),
+                        (Self::I32(left), Self::I64(right)) => Self::I64((left as i64) $op right),
                         (Self::I128(left), Self::I128(right)) => Self::I128(left $op right),
                         // (Self::GcInt(left), Self::GcInt(right)) => Self::GcInt(left.$func(right, gc)?),
 

@@ -11,9 +11,3 @@ fn fibonacci(n: int) -> int
         return fibonacci(n - 1) + fibonacci(n - 2)
     end
 end
-
-:: fn assert_eq(left: int, right: int) -> unit
-::     if left != right
-::         halt()
-::     end
-:: end
