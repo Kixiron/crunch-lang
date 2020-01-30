@@ -1,121 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-
-fn garbage_collection(c: &mut Criterion) {
-    use crunch::*;
-
-    c.bench_function("GC Startup", |b| {
-        let options = OptionBuilder::new("./gc_startup")
-            .heap_size(1024 * 1024 * 50)
-            .build();
-
-        b.iter(|| {
-            black_box(Gc::new(&options));
-        });
-    })
-    .bench_function("GC Collect 10000 usizes", |b| {
-        let mut gc = Gc::new(
-            &OptionBuilder::new("./alloc_10000_usizes")
-                .heap_size(std::mem::size_of::<usize>() * 10_000)
-                .build(),
-        );
-
-        for i in 0..10_000usize {
-            i.alloc(&mut gc).unwrap();
-        }
-
-        b.iter(|| {
-            gc.collect();
-        });
-    })
-    .bench_function("GC Allocate and Collect 10000 usizes exact heap", |b| {
-        let mut gc = Gc::new(
-            &OptionBuilder::new("./alloc_10000_usizes")
-                .heap_size(std::mem::size_of::<usize>() * 10_000)
-                .build(),
-        );
-
-        b.iter(|| {
-            for i in 0..10_000usize {
-                i.alloc(&mut gc).unwrap();
-            }
-
-            gc.collect();
-        });
-    })
-    .bench_function("GC Allocate 10000 usizes exact heap", |b| {
-        let mut gc = Gc::new(
-            &OptionBuilder::new("./alloc_10000_usizes")
-                .heap_size(std::mem::size_of::<usize>() * 10_000)
-                .build(),
-        );
-
-        b.iter(|| {
-            for i in 0..10_000usize {
-                i.alloc(&mut gc).unwrap();
-            }
-        });
-
-        gc.collect();
-    })
-    .bench_function(
-        "GC Allocate and Collect 10000 usizes constrained heap",
-        |b| {
-            let mut gc = Gc::new(
-                &OptionBuilder::new("./alloc_10000_usizes")
-                    .heap_size(1024 * 1024 * 2)
-                    .build(),
-            );
-
-            b.iter(|| {
-                for i in 0..10_000usize {
-                    i.alloc(&mut gc).unwrap();
-                }
-
-                gc.collect();
-            });
-        },
-    )
-    .bench_function("GC Allocate 10000 usizes constrained heap", |b| {
-        let mut gc = Gc::new(
-            &OptionBuilder::new("./alloc_10000_usizes")
-                .heap_size(1024 * 1024 * 2)
-                .build(),
-        );
-
-        b.iter(|| {
-            for i in 0..10_000usize {
-                i.alloc(&mut gc).unwrap();
-            }
-        });
-
-        gc.collect();
-    })
-    .bench_function("GC fetch usize", |b| {
-        let mut gc = Gc::new(
-            &OptionBuilder::new("./alloc_10000_usizes")
-                .heap_size(1024 * 1024 * 2)
-                .build(),
-        );
-
-        let id = 100usize.alloc(&mut gc).unwrap();
-
-        b.iter(|| {
-            let _: usize = id.fetch(&gc).unwrap();
-        });
-
-        gc.collect();
-    });
-}
-
-fn vm(c: &mut Criterion) {
-    c.bench_function("VM startup", |b| {
-        b.iter(|| black_box(crunch::Vm::default()));
-    });
-}
+use crunch::*;
 
 fn examples(c: &mut Criterion) {
-    use crunch::*;
-
     let mut group = c.benchmark_group("Fibonacci");
     group
         .bench_function("Crunch", |b| {
@@ -230,6 +116,6 @@ fn examples(c: &mut Criterion) {
 criterion_group! {
     name = benches;
     config = Criterion::default();
-    targets = garbage_collection, examples, vm
+    targets = examples
 }
 criterion_main!(benches);

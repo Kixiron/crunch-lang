@@ -85,7 +85,7 @@ impl<'a> Parser<'a> {
                         Err(err) => {
                             self.error = true;
                             self.diagnostics.push(err);
-                            continue;
+                            break;
                         }
                     };
                 }
@@ -99,7 +99,7 @@ impl<'a> Parser<'a> {
                             Err(err) => {
                                 self.error = true;
                                 self.diagnostics.push(err);
-                                continue;
+                                break;
                             }
                         },
                     ));
@@ -112,7 +112,7 @@ impl<'a> Parser<'a> {
                         Err(err) => {
                             self.error = true;
                             self.diagnostics.push(err);
-                            continue;
+                            break;
                         }
                     }))
                 }
@@ -125,7 +125,7 @@ impl<'a> Parser<'a> {
                             Err(err) => {
                                 self.error = true;
                                 self.diagnostics.push(err);
-                                continue;
+                                break;
                             }
                         },
                     ))
@@ -559,7 +559,12 @@ impl<'a> Parser<'a> {
         self.eat(TokenType::For)?;
         let element = self.eat(TokenType::Ident)?;
         let element = self.intern(element.source);
+
+        self.eat(TokenType::In)?;
+
         let range = self.expr()?;
+        self.eat(TokenType::Newline)?;
+
         let body = self.body()?;
         let then = self.then()?;
 
@@ -696,30 +701,7 @@ impl<'a> Parser<'a> {
                 match self.peek()?.ty {
                     TokenType::LeftParen => {
                         let func = Expr::FunctionCall(self.function_call(ident)?);
-
-                        if [
-                            TokenType::Plus,
-                            TokenType::Minus,
-                            TokenType::Divide,
-                            TokenType::Star,
-                            TokenType::Pipe,
-                            TokenType::Ampersand,
-                            TokenType::Caret,
-                        ]
-                        .contains(&self.peek()?.ty)
-                        {
-                            let next = self.next()?;
-                            let op = self.binary_operand(next)?;
-                            let right = Box::new(self.expr()?);
-
-                            Expr::BinaryOperation(BinaryOperation {
-                                left: Box::new(func),
-                                op,
-                                right,
-                            })
-                        } else {
-                            func
-                        }
+                        self.extended_expr(func)?
                     }
 
                     TokenType::Plus
@@ -733,11 +715,12 @@ impl<'a> Parser<'a> {
                         let op = self.binary_operand(next)?;
                         let right = Box::new(self.expr()?);
 
-                        Expr::BinaryOperation(BinaryOperation {
+                        let op = Expr::BinaryOperation(BinaryOperation {
                             left: Box::new(Expr::Ident(ident)),
                             op,
                             right,
-                        })
+                        });
+                        self.extended_expr(op)?
                     }
 
                     _ => Expr::Ident(ident),
@@ -745,13 +728,53 @@ impl<'a> Parser<'a> {
             }
 
             TokenType::String | TokenType::Int | TokenType::Bool => {
-                Expr::Literal(self.parse_literal()?)
+                let lit = Expr::Literal(self.parse_literal()?);
+                self.extended_expr(lit)?
             }
 
             _ => todo!("Implement the rest of the expressions"),
         };
 
         Ok(expr)
+    }
+
+    fn extended_expr(&mut self, expr: Expr) -> Result<Expr> {
+        if [
+            TokenType::Plus,
+            TokenType::Minus,
+            TokenType::Divide,
+            TokenType::Star,
+            TokenType::Pipe,
+            TokenType::Ampersand,
+            TokenType::Caret,
+        ]
+        .contains(&self.peek()?.ty)
+        {
+            let next = self.next()?;
+            let op = self.binary_operand(next)?;
+            let right = Box::new(self.expr()?);
+
+            Ok(Expr::BinaryOperation(BinaryOperation {
+                left: Box::new(expr),
+                op,
+                right,
+            }))
+        } else if self.peek()?.ty == TokenType::Dot {
+            self.eat(TokenType::Dot)?;
+
+            if self.peek()?.ty == TokenType::Dot {
+                self.eat(TokenType::Dot)?;
+
+                Ok(Expr::Range(Range {
+                    start: Box::new(expr),
+                    end: Box::new(self.expr()?),
+                }))
+            } else {
+                todo!("Function call")
+            }
+        } else {
+            Ok(expr)
+        }
     }
 
     fn binary_operand(

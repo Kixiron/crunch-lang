@@ -2,10 +2,14 @@
 fn main()
     let integer: int = 0
 
-    if is_zero(integer)
+    if is_zero(integer) == true
         println("Zero")
     else
         println("Not Zero")
+    end
+
+    for i in 0..5
+        println(i)
     end
 end
 
@@ -18,57 +22,53 @@ exposed fn is_zero(integer: int) -> bool
     end
 end
 
-fn print_int(integer: int)
-    print(integer)
-end
-
-fn generic_function<T, E>(i: T) -> E
-    :: return 1
-    empty
-end
-
-exposed fn exposed_generic_function<T, E>(i: T) -> E
-    empty
-end
-
-type Test<T, E>
-    member1: int
-    member2: str
-    member3: T
-    member4: E
-
-    fn test() -> T
-        println("Hello from Test!")
-    end
-
-    fn else_to_hell()
-        let i = 10
-
-        i = 5
-
-        if 1 == 10
-            empty
-        else if 3 != 4
-            empty
-        else if 3 >= 5
-            empty
-        else if 6 <= 1
-            empty
-        else if 6 < 5
-            empty
-        else if 5 > 5
-            empty
-        else
-            empty
-        end
-    end
-end
-
-exposed type ExposedType<T, E>
-    exposed member1: int
-    member2: str
-
-    exposed fn test() -> T
-        println("Hello from Test!")
-    end
-end
+:: fn generic_function<T, E>(i: T) -> E
+::     :: return 1
+::     empty
+:: end
+:: 
+:: exposed fn exposed_generic_function<T, E>(i: T) -> E
+::     empty
+:: end
+:: 
+:: type Test<T, E>
+::     member1: int
+::     member2: str
+::     member3: T
+::     member4: E
+:: 
+::     fn test() -> T
+::         println("Hello from Test!")
+::     end
+:: 
+::     fn else_to_hell()
+::         let i = 10
+:: 
+::         i = 5
+:: 
+::         if 1 == 10
+::             empty
+::         else if 3 != 4
+::             empty
+::         else if 3 >= 5
+::             empty
+::         else if 6 <= 1
+::             empty
+::         else if 6 < 5
+::             empty
+::         else if 5 > 5
+::             empty
+::         else
+::             empty
+::         end
+::     end
+:: end
+:: 
+:: exposed type ExposedType<T, E>
+::     exposed member1: int
+::     member2: str
+:: 
+::     exposed fn test() -> T
+::         println("Hello from Test!")
+::     end
+:: end

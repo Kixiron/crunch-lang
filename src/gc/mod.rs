@@ -7,34 +7,39 @@ pub use collectable::*;
 
 /// Gets the memory page size  
 #[inline(always)]
-#[cfg(any(target_family = "unix"))]
-pub(crate) fn page_size() -> usize {
-    let size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as usize;
+pub fn page_size() -> usize {
+    #[cfg(target_family = "windows")]
+    {
+        use std::mem::MaybeUninit;
+        use winapi::um::sysinfoapi::{GetSystemInfo, SYSTEM_INFO};
 
-    trace!("Memory Page Size: {}", size);
-    assert!(size != 0);
+        let size = unsafe {
+            let mut system_info: MaybeUninit<SYSTEM_INFO> = MaybeUninit::zeroed();
+            GetSystemInfo(system_info.as_mut_ptr());
 
-    size
-}
+            system_info.assume_init().dwPageSize as usize
+        };
 
-/// Gets the memory page size  
-#[inline(always)]
-#[cfg(target_family = "windows")]
-pub(crate) fn page_size() -> usize {
-    use std::mem::MaybeUninit;
-    use winapi::um::sysinfoapi::{GetSystemInfo, SYSTEM_INFO};
+        trace!("Memory Page Size: {}", size);
+        assert!(size != 0);
 
-    let size = unsafe {
-        let mut system_info: MaybeUninit<SYSTEM_INFO> = MaybeUninit::zeroed();
-        GetSystemInfo(system_info.as_mut_ptr());
+        size
+    }
 
-        system_info.assume_init().dwPageSize as usize
-    };
+    #[cfg(any(target_family = "unix"))]
+    {
+        let size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as usize;
 
-    trace!("Memory Page Size: {}", size);
-    assert!(size != 0);
+        trace!("Memory Page Size: {}", size);
+        assert!(size != 0);
 
-    size
+        size
+    }
+
+    #[cfg(target = "wasm32-unknown-unknown")]
+    {
+        1024 * 64 // 64KiB
+    }
 }
 
 /// The options for an initialized [`Gc`]
@@ -116,15 +121,15 @@ impl Gc {
             let page_size = page_size();
 
             // Create the layout for a heap half
-            let layout = alloc::Layout::from_size_align(options.heap_size, page_size)
+            let layout = alloc::Layout::from_size_align(options.heap_size * 2, page_size)
                 .expect("Failed to create GC memory block layout");
 
-            // Left heap
-            let left = HeapPointer::new(unsafe { alloc::alloc_zeroed(layout) });
+            let allocation = unsafe { alloc::alloc_zeroed(layout) };
+
+            let left = HeapPointer::new(allocation);
             trace!("Left Heap: {:p}", left);
 
-            // Right heap
-            let right = HeapPointer::new(unsafe { alloc::alloc_zeroed(layout) });
+            let right = HeapPointer::new(unsafe { allocation.offset(options.heap_size as isize) });
             trace!("Right Heap: {:p}", right);
 
             (left, right)
@@ -610,21 +615,19 @@ impl Drop for Gc {
         // Get the memory page size
         let page_size = page_size();
 
-        // Create the layout for a heap half
-        let layout = alloc::Layout::from_size_align(self.options.heap_size, page_size)
+        // Create the layout for the heap
+        let layout = alloc::Layout::from_size_align(self.options.heap_size * 2, page_size)
             .expect("Failed to create GC memory block layout");
 
         if self.options.overwrite_heap {
             unsafe {
-                ptr::write_bytes(*self.left, 0x00, self.options.heap_size);
-                ptr::write_bytes(*self.right, 0x00, self.options.heap_size);
+                ptr::write_bytes(*self.left, 0x00, self.options.heap_size * 2);
             }
         }
 
-        // Deallocate the left and right heaps
+        // Deallocate the heap
         unsafe {
             alloc::dealloc(*self.left, layout);
-            alloc::dealloc(*self.right, layout);
         }
     }
 }
@@ -719,5 +722,60 @@ impl GcValue {
     pub fn unmark(&mut self, queue: &mut Vec<AllocId>) {
         self.marked = false;
         queue.extend_from_slice(&self.children);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::OptionBuilder;
+
+    #[test]
+    fn collect_10000_usizes_exact() {
+        let mut gc = Gc::new(
+            &OptionBuilder::new("./alloc_10000_usizes")
+                .heap_size(std::mem::size_of::<usize>() * 10_000)
+                .build(),
+        );
+
+        for i in 0..10_000usize {
+            i.alloc(&mut gc).unwrap();
+        }
+
+        gc.collect();
+    }
+
+    #[test]
+    fn alloc_10000_usizes_constrained() {
+        let mut gc = Gc::new(
+            &OptionBuilder::new("./alloc_10000_usizes")
+                .heap_size(1024 * 1024 * 2)
+                .build(),
+        );
+
+        for x in 1..1000 {
+            println!("{}", x);
+            for y in 0..10_000usize {
+                y.alloc(&mut gc).unwrap();
+            }
+        }
+
+        gc.collect();
+    }
+
+    #[test]
+    fn fetch_usize() {
+        let mut gc = Gc::new(
+            &OptionBuilder::new("./alloc_10000_usizes")
+                .heap_size(1024 * 1024 * 2)
+                .build(),
+        );
+
+        let id = 100usize.alloc(&mut gc).unwrap();
+
+        let fetched: usize = id.fetch(&gc).unwrap();
+        assert_eq!(fetched, 100);
+
+        gc.collect();
     }
 }

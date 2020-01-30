@@ -20,6 +20,8 @@ pub enum TokenType {
     Error,
     #[token = ","]
     Comma,
+    #[token = "in"]
+    In,
     #[token = "let"]
     Let,
     #[token = "+"]
@@ -105,6 +107,8 @@ pub enum TokenType {
     Binary,
     #[token = "^"]
     Caret,
+    #[token = "."]
+    Dot,
     #[token = "exposed"]
     Exposed,
     #[token = "empty"]
@@ -132,6 +136,8 @@ impl std::fmt::Display for TokenType {
             Self::Comma => ",",
             Self::Let => "let",
             Self::Plus => "+",
+            Self::In => "in",
+            Self::Dot => ".",
             Self::Colon => ":",
             Self::Minus => "-",
             Self::Equal => "=",

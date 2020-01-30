@@ -201,8 +201,8 @@ pub enum Literal {
 
 #[derive(Debug, Clone)]
 pub struct Range {
-    start: Box<Expr>,
-    end: Box<Expr>,
+    pub start: Box<Expr>,
+    pub end: Box<Expr>,
 }
 
 #[derive(Debug, Clone)]
