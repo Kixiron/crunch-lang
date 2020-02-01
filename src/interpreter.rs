@@ -47,7 +47,7 @@ lazy_static::lazy_static! {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-enum DataLocation {
+pub enum DataLocation {
     Register(Register),
     Comparison,
     Operation,

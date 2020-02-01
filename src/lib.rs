@@ -162,7 +162,6 @@ mod instruction;
 mod interpreter;
 #[cfg(feature = "jit")]
 mod jit;
-mod native_lib;
 /// Helper types
 mod newtypes;
 /// Front-end language parsing

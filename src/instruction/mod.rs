@@ -71,53 +71,208 @@ pub enum RuntimeErrorTy {
 /// Instructions for the [`Vm`]
 ///
 /// [`Vm`]: crate::Vm
-// TODO: Document all Instructions
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Instruction {
-    /// Load a Value directly into a register
+    /// Load a [`RuntimeValue`] into the selected [`Register`]
+    ///
+    /// [`RuntimeValue`]: crate::RuntimeValue
+    /// [`Register`]: crate::Register
     Load(RuntimeValue, Register),
+
+    /// Move the value from [`vm.prev_comp`] into the selected [`Register`]
+    ///
+    /// [`vm.prev_comp`]: crate::Vm#prev_comp
+    /// [`Register`]: crate::Register
     CompToReg(Register),
+
+    /// Move the value from [`vm.prev_op`] into the selected [`Register`]
+    ///
+    /// [`vm.prev_op`]: crate::Vm#prev_op
+    /// [`Register`]: crate::Register
     OpToReg(Register),
+
+    /// Drop the value at the selected [`Register`].  
+    /// Note: Unroots [`Gc`] allocated objects
+    ///
+    /// [`Gc`]: crate::Gc
+    /// [`Register`]: crate::Register
     Drop(Register),
+
+    /// Moves the value at the first [`Register`] into the second [`Register`]
+    ///
+    /// [`Register`]: crate::Register
     Move(Register, Register),
+
+    /// Pushes the value at [`Register`] to the [`Vm`] [`stack`]
+    ///
+    /// [`Vm`]: crate::Vm
+    /// [`stack`]: crate::Vm#stack
+    /// [`Register`]: crate::Register
     Push(Register),
+
+    /// Pops off of the [`Vm`] [`stack`] into the selected [`Register`]
+    ///
+    /// [`Vm`]: crate::Vm
+    /// [`stack`]: crate::Vm#stack
+    /// [`Register`]: crate::Register
     Pop(Register),
 
+    /// Adds the first and second [`Registers`], storing the value in [`vm.prev_op`]
+    ///
+    /// [`vm.prev_op`]: crate::Vm#prev_op
+    /// [`Registers`]: crate::Register
     Add(Register, Register),
+
+    /// Subtracts the first and second [`Registers`], storing the value in [`vm.prev_op`]
+    ///
+    /// [`vm.prev_op`]: crate::Vm#prev_op
+    /// [`Registers`]: crate::Register
     Sub(Register, Register),
+
+    /// Multiplies the first and second [`Registers`], storing the value in [`vm.prev_op`]
+    ///
+    /// [`vm.prev_op`]: crate::Vm#prev_op
+    /// [`Registers`]: crate::Register
     Mult(Register, Register),
+
+    /// Divides the first and second [`Registers`], storing the value in [`vm.prev_op`]
+    ///
+    /// [`vm.prev_op`]: crate::Vm#prev_op
+    /// [`Registers`]: crate::Register
     Div(Register, Register),
 
+    /// Prints the value at the [`Register`] to [`vm.stdout`]
+    ///
+    /// [`vm.stdout`]: crate::Vm#stdout
+    /// [`Register`]: crate::Register
     Print(Register),
 
+    /// Increments [`vm.index`] by the included value
+    ///
+    /// [`vm.index`]: crate::Vm#index
     Jump(i32),
+
+    /// Increments [`vm.index`] by the included value if [`vm.prev_op`] is `true`
+    ///
+    /// [`vm.index`]: crate::Vm#index
+    /// [`vm.prev_op`]: crate::Vm#prev_op
     JumpComp(i32),
+
+    /// A no-op, used in parts of compilation
     JumpPoint(u32),
 
+    /// Preforms a bitwise and (`&`) on the first and second [`Registers`], storing the value in [`vm.prev_op`]
+    ///
+    /// [`vm.prev_op`]: crate::Vm#prev_op
+    /// [`Registers`]: crate::Register
     And(Register, Register),
+
+    /// Preforms a bitwise or (`|`) on the first and second [`Registers`], storing the value in [`vm.prev_op`]
+    ///
+    /// [`vm.prev_op`]: crate::Vm#prev_op
+    /// [`Registers`]: crate::Register
     Or(Register, Register),
+
+    /// Preforms a bitwise xor (`^`) on the first and second [`Registers`], storing the value in [`vm.prev_op`]
+    ///
+    /// [`vm.prev_op`]: crate::Vm#prev_op
+    /// [`Registers`]: crate::Register
     Xor(Register, Register),
+
+    /// Preforms a bitwise not (`!`) on the [`Register`], storing the value in [`vm.prev_op`]
+    ///
+    /// [`vm.prev_op`]: crate::Vm#prev_op
+    /// [`Register`]: crate::Register
     Not(Register),
 
+    /// Preforms a comparison on the first and second [`Registers`], storing `true`
+    /// if the values are equal into [`vm.prev_comp`]
+    ///
+    /// [`vm.prev_comp`]: crate::Vm#prev_op
+    /// [`Registers`]: crate::Register
     Eq(Register, Register),
+
+    /// Preforms a comparison on the first and second [`Registers`], storing `true`
+    /// if the values are not equal into [`vm.prev_comp`]
+    ///
+    /// [`vm.prev_comp`]: crate::Vm#prev_op
+    /// [`Registers`]: crate::Register
     NotEq(Register, Register),
+
+    /// Preforms a comparison on the first and second [`Registers`], storing `true`
+    /// if the the first value is greater than the other into [`vm.prev_comp`]
+    ///
+    /// [`vm.prev_comp`]: crate::Vm#prev_op
+    /// [`Registers`]: crate::Register
     GreaterThan(Register, Register),
+
+    /// Preforms a comparison on the first and second [`Registers`], storing `true`
+    /// if the the first value is less than the other into [`vm.prev_comp`]
+    ///
+    /// [`vm.prev_comp`]: crate::Vm#prev_op
+    /// [`Registers`]: crate::Register
     LessThan(Register, Register),
+
+    /// Preforms a comparison on the first and second [`Registers`], storing `true`
+    /// if the the first value is greater than or equal to the other into [`vm.prev_comp`]
+    ///
+    /// [`vm.prev_comp`]: crate::Vm#prev_op
+    /// [`Registers`]: crate::Register
     GreaterThanEq(Register, Register),
+
+    /// Preforms a comparison on the first and second [`Registers`], storing `true`
+    /// if the the first value is less than or equal to the other into [`vm.prev_comp`]
+    ///
+    /// [`vm.prev_comp`]: crate::Vm#prev_op
+    /// [`Registers`]: crate::Register
     LessThanEq(Register, Register),
 
+    /// Changes [`vm.current_func`] to the contained value, thereby jumping to
+    /// that function
+    ///
+    /// [`vm.current_func`]: crate::Vm#current_function
+    /// [`Register`]: crate::Register
     Func(u32),
+
+    // TODO: Make coroutines
     Yield,
+
+    /// Returns to the last function on the [`return stack`] or exits execution if there are no
+    /// frames to pop
+    ///
+    /// [`return stack`]: crate::Vm#return_stack
     Return,
 
+    /// Manually calls for a [`Gc::collect`]
+    ///
+    /// [`Gc::collect`]: crate::Gc.collect
     Collect,
+
+    /// Halts execution entirely
     Halt,
 
+    /// Loads a library by the name supplied by the first [`Register`], storing a
+    /// [`RuntimeValue::Library`] in the second [`Register`]
+    ///
+    /// [`RuntimeValue::Library`]: crate::RuntimeValue::Library
+    /// [`Register`]: crate::Register
     LoadLib(Register, Register),
+
+    /// Loads a function by the name supplied by the first [`Register`] from the library stored in
+    /// the second [`Register`], feeding it `n` values popped from the [`Vm`] [`stack`] as indicated by
+    /// the `u16`
+    ///
+    /// [`Vm`]: crate::Vm
+    /// [`stack`]: crate::Vm#stack
+    /// [`Register`]: crate::Register
+    // TODO: Make this lazy & store an arc of the original library to prevent
+    // dangling symbols (Possibly gc stored stuff?)
     ExecLibFunc(Register, Register, u16),
 
-    // An illegal instruction
+    /// An illegal instruction
     Illegal,
+
+    /// A no-op
     NoOp,
 }
 
