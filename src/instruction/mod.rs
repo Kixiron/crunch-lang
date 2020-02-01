@@ -266,7 +266,7 @@ pub enum Instruction {
     /// [`stack`]: crate::Vm#stack
     /// [`Register`]: crate::Register
     // TODO: Make this lazy & store an arc of the original library to prevent
-    // dangling symbols (Possibly gc stored stuff?)
+    // dangling symbols (Possibly gc stored struct or a boxed struct?)
     ExecLibFunc(Register, Register, u16),
 
     /// An illegal instruction

@@ -5,18 +5,38 @@ pub struct FunctionContext {
     pub registers: [Option<Option<Sym>>; NUMBER_REGISTERS],
     pub variables: HashSet<Sym>,
     pub blocks: Vec<Block>,
-    block_id: u32,
+    pub current_block: usize,
 }
 
 impl FunctionContext {
     #[inline]
     pub fn new() -> Self {
-        Self {
+        let mut new = Self {
             registers: [None; NUMBER_REGISTERS],
             variables: HashSet::new(),
             blocks: Vec::with_capacity(20),
-            block_id: 0,
-        }
+            current_block: 0,
+        };
+        new.blocks.push(Block::new());
+
+        new
+    }
+
+    pub fn current_block(&mut self) -> &mut Block {
+        &mut self.blocks[self.current_block]
+    }
+
+    pub fn get_block(&mut self, block: usize) -> &mut Block {
+        &mut self.blocks[block]
+    }
+
+    pub fn add_block(&mut self) {
+        self.blocks.push(Block::new());
+        self.current_block = self.blocks.len() - 1;
+    }
+
+    pub fn move_to_block(&mut self, block: usize) {
+        self.current_block = block
     }
 
     #[inline]
@@ -32,6 +52,41 @@ impl FunctionContext {
         self.registers[*reg as usize] = None;
 
         self
+    }
+
+    pub fn inst_mov_block(
+        &mut self,
+        target: impl Into<Register>,
+        source: impl Into<Register>,
+        block: usize,
+    ) -> &mut Block {
+        let (target, source) = (target.into(), source.into());
+
+        let mut temp = None;
+        std::mem::swap(&mut self.registers[*source as usize], &mut temp);
+        self.registers[*target as usize] = temp;
+
+        self.blocks[block]
+            .block
+            .push(Instruction::Move(target, source).into());
+
+        &mut self.blocks[block]
+    }
+
+    pub fn inst_drop_block(&mut self, register: impl Into<Register>, block: usize) -> &mut Block {
+        let register = register.into();
+        trace!(
+            "Dropping reg {} from {:?}",
+            register,
+            std::panic::Location::caller()
+        );
+
+        self.blocks[block]
+            .block
+            .push(Instruction::Drop(register).into());
+        self.free_reg(register);
+
+        &mut self.blocks[block]
     }
 
     // TODO: Make this an option and push to the stack or something on an error
@@ -110,7 +165,7 @@ impl FunctionContext {
         let len = self.blocks.len();
         let mut removed_blocks: Vec<usize> = Vec::with_capacity(10);
         for _ in 0..2 {
-            for (idx, mut block) in self.blocks.iter_mut().enumerate() {
+            for (_idx, mut block) in self.blocks.iter_mut().enumerate() {
                 StackDeduplicator::new().run(&mut block);
                 NoopRemover::new().run(&mut block);
                 // if EmptyBlockCuller::new().run(&mut block) {
@@ -128,26 +183,26 @@ impl FunctionContext {
         for (current_index, block) in self.blocks.iter().enumerate() {
             for (inst_index, inst) in block.block.iter().enumerate() {
                 match inst.uninit_inst {
-                    Instruction::Jump(id) | Instruction::JumpComp(id) => {
-                        let idx = self.blocks.iter().position(|b| b.id == id as u32).unwrap();
-                        let mut offset = 0;
+                    Instruction::Jump(idx) | Instruction::JumpComp(idx) => {
+                        let idx = idx as usize;
 
-                        let range = if idx < current_index {
-                            idx..=current_index
-                        } else {
-                            current_index..=idx
+                        // m[x1].len() - y1 + y2 + m[x1 + 1 .. x2 - 1].iter().map(|v| v.len()).sum()
+                        let get_distance = move |ctx: &FunctionContext,
+                                                 (x1, y1): (usize, usize),
+                                                 (x2, y2): (usize, usize)|
+                              -> usize {
+                            ctx.blocks[x1].block.len() - y1
+                                + y2
+                                + ctx.blocks[x1 + 1..x2]
+                                    .iter()
+                                    .map(|b| b.block.len())
+                                    .sum::<usize>()
                         };
 
-                        for i in range {
-                            if let Some(block) = self.blocks.get(i) {
-                                offset += block.block.len();
-                            }
-                        }
-
-                        let offset = if idx < current_index {
-                            -(offset as i32)
+                        let offset = if idx > current_index {
+                            get_distance(&self, (current_index, inst_index), (idx, 0)) as i32 - 1
                         } else {
-                            offset as i32
+                            -(get_distance(&self, (idx, 0), (current_index, inst_index)) as i32) + 1
                         };
 
                         changes.push((current_index, inst_index, offset));
@@ -175,14 +230,10 @@ impl FunctionContext {
             capacity
         });
 
-        let mut dbg = Vec::new();
-        for (idx, block) in self.blocks.into_iter().enumerate() {
+        for block in self.blocks {
             for instruction in block.block {
-                dbg.push(instruction.solidify(builder)?);
+                instructions.push(instruction.solidify(builder)?);
             }
-
-            trace!("Block #{}: {:?}", idx, &dbg);
-            instructions.extend_from_slice(&dbg.drain(..).collect::<Vec<_>>());
         }
 
         trace!("Finished Building and Optimizing function");

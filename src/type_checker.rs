@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::parser::ast::*;
 use std::collections::HashMap;
 use string_interner::Sym;
