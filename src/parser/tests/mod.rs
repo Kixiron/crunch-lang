@@ -34,7 +34,7 @@ fn fibonacci_test() {
     const CODE: &str = include_str!("../../../tests/fibonacci.crunch");
     const FILENAME: &str = "fibonacci.crunch";
 
-    color_backtrace::install();
+    // color_backtrace::install();
     // simple_logger::init().unwrap();
 
     let mut parser = Parser::new(Some(FILENAME), CODE);

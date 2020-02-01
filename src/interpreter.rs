@@ -1,5 +1,5 @@
 use crate::{
-    code_builder::{CodeBuilder, FunctionContext},
+    code_builder::{Block, CodeBuilder, FunctionContext},
     instruction::Result,
     instruction::{RuntimeError, RuntimeErrorTy},
     parser::*,
@@ -8,39 +8,96 @@ use crate::{
 use std::{collections::HashMap, path::PathBuf};
 use string_interner::{StringInterner, Sym};
 
+type IntrinsicsMap =
+    HashMap<&'static str, fn(&mut CodeBuilder, &mut FunctionContext, &mut Block) -> Result<()>>;
+
 lazy_static::lazy_static! {
-    static ref INTRINSICS: HashMap<&'static str, fn(&mut CodeBuilder, &mut FunctionContext) -> Result<()>> = {
-        let mut intrinsics: HashMap<&'static str, fn(&mut CodeBuilder, &mut FunctionContext) -> Result<()>> = HashMap::with_capacity(10);
+    static ref INTRINSICS: IntrinsicsMap = {
+        let mut intrinsics: IntrinsicsMap = HashMap::with_capacity(10);
 
         // TODO: Think through this better
         // TODO: Replace the unwraps with actual errors
 
-        intrinsics.insert("print", |_builder, ctx| {
+        intrinsics.insert("print", |_builder, ctx, block| {
             let reg = ctx.reserve_reg(None)?;
-            ctx.inst_pop(reg).inst_print(reg);
+            block.inst_pop(reg).inst_print(reg);
 
             Ok(())
         });
-        intrinsics.insert("println", |_builder, ctx| {
+        intrinsics.insert("println", |_builder, ctx, block| {
             let reg = ctx.reserve_reg(None)?;
             let newline = ctx.reserve_reg(None)?;
 
-            ctx.inst_pop(reg)
+            block.inst_pop(reg)
                 .inst_print(reg)
                 .inst_load(newline, RuntimeValue::Str("\n"))
                 .inst_print(newline)
-                .inst_drop(newline);
+                .inst_drop(newline, ctx);
 
             Ok(())
         });
-        intrinsics.insert("halt", |_builder, ctx| {
-            ctx.inst_halt();
+        intrinsics.insert("halt", |_builder, _ctx, block| {
+            block.inst_halt();
 
             Ok(())
         });
 
         intrinsics
     };
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum DataLocation {
+    Register(Register),
+    Comparison,
+    Operation,
+}
+
+impl DataLocation {
+    pub fn to_register(
+        self,
+        ctx: &mut FunctionContext,
+        target: impl Into<Option<Sym>>,
+        block: &mut Block,
+    ) -> Result<Register> {
+        match self {
+            Self::Register(reg) => Ok(reg),
+            Self::Comparison => {
+                let reg = ctx.reserve_reg(target)?;
+                block.inst_comp_to_reg(reg);
+                Ok(reg)
+            }
+            Self::Operation => {
+                let reg = ctx.reserve_reg(target)?;
+                block.inst_op_to_reg(reg);
+                Ok(reg)
+            }
+        }
+    }
+
+    pub fn is_register(&self) -> bool {
+        if let Self::Register(_) = self {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn is_comparison(&self) -> bool {
+        if let Self::Comparison = self {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn is_operation(&self) -> bool {
+        if let Self::Operation = self {
+            true
+        } else {
+            false
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -145,14 +202,17 @@ impl Interpreter {
 
             for method in ty.methods {
                 ctx.add_method(builder, method.name, Visibility::Exposed, |builder, ctx| {
+                    let mut argument_block = Block::new();
                     for (arg, _ty) in method.arguments {
                         let loc = ctx.reserve_reg(arg)?;
-                        ctx.inst_pop(loc);
+                        argument_block.inst_pop(loc);
                     }
+                    ctx.push_block(argument_block);
 
+                    let mut statements = Block::new();
                     // For each expression in the function, evaluate it into instructions
                     for statement in method.body {
-                        self.statement(statement, builder, ctx)?;
+                        self.statement(statement, builder, ctx, &mut statements)?;
                     }
 
                     Ok(())
@@ -245,15 +305,19 @@ impl Interpreter {
 
         let func_name = func.name;
         builder.build_function(func_name, |builder, ctx| {
+            let mut arg_block = Block::new();
             for (arg, _ty) in func.arguments {
                 let loc = ctx.reserve_reg(arg)?;
-                ctx.inst_pop(loc);
+                arg_block.inst_pop(loc);
             }
+            ctx.push_block(arg_block);
 
+            let mut statements = Block::new();
             // For each expression in the function, evaluate it into instructions
             for statement in func.body {
-                self.statement(statement, builder, ctx)?;
+                self.statement(statement, builder, ctx, &mut statements)?;
             }
+            ctx.push_block(statements);
 
             Ok(())
         })?;
@@ -279,10 +343,12 @@ impl Interpreter {
         builder: &mut CodeBuilder,
         ctx: &mut FunctionContext,
         expr: Expr,
-    ) -> Result<Register> {
+        target: impl Into<Option<Sym>>,
+        block: &mut Block,
+    ) -> Result<DataLocation> {
         match expr {
             Expr::Literal(literal) => {
-                let addr = ctx.reserve_reg(None)?;
+                let addr = ctx.reserve_reg(target)?;
 
                 let value = match literal {
                     Literal::String(sym) => RuntimeValue::Str(Box::leak(
@@ -297,77 +363,80 @@ impl Interpreter {
                     Literal::Boolean(boolean) => RuntimeValue::Bool(boolean),
                 };
 
-                ctx.inst_load(addr, value);
+                block.inst_load(addr, value);
 
-                Ok(addr)
+                Ok(DataLocation::Register(addr))
             }
             Expr::Range(_range) => todo!("What even do I do here?"),
             Expr::Comparison(comparison) => {
                 let (left, right) = (
-                    self.expr(builder, ctx, *comparison.left)?,
-                    self.expr(builder, ctx, *comparison.right)?,
+                    self.expr(builder, ctx, *comparison.left, None, block)?
+                        .to_register(ctx, None, block)?,
+                    self.expr(builder, ctx, *comparison.right, None, block)?
+                        .to_register(ctx, None, block)?,
                 );
 
                 match comparison.comparison {
-                    Comparator::Equal => ctx.inst_eq(left, right),
-                    Comparator::NotEqual => ctx.inst_not_eq(left, right),
-                    Comparator::LessEqual => ctx.inst_less_than_eq(left, right),
-                    Comparator::GreaterEqual => ctx.inst_greater_than_eq(left, right),
-                    Comparator::Less => ctx.inst_less_than(left, right),
-                    Comparator::Greater => ctx.inst_greater_than(left, right),
+                    Comparator::Equal => block.inst_eq(left, right),
+                    Comparator::NotEqual => block.inst_not_eq(left, right),
+                    Comparator::LessEqual => block.inst_less_than_eq(left, right),
+                    Comparator::GreaterEqual => block.inst_greater_than_eq(left, right),
+                    Comparator::Less => block.inst_less_than(left, right),
+                    Comparator::Greater => block.inst_greater_than(left, right),
                 };
 
-                warn!(
-                    "Expr::Comparison returns the left register as a return value, but the Comparison Operation \
-                    does not have a meaningful return value, as the comparison is stored in `vm.prev_op`"
-                );
-                Ok(left)
+                Ok(DataLocation::Comparison)
             }
             Expr::BinaryOperation(bin_op) => {
                 let (left, right) = (
-                    self.expr(builder, ctx, *bin_op.left)?,
-                    self.expr(builder, ctx, *bin_op.right)?,
+                    self.expr(builder, ctx, *bin_op.left, None, block)?
+                        .to_register(ctx, None, block)?,
+                    self.expr(builder, ctx, *bin_op.right, None, block)?
+                        .to_register(ctx, None, block)?,
                 );
-                let output = ctx.reserve_reg(None)?;
+                let output = ctx.reserve_reg(target)?;
 
                 // TODO: Handle different operation types
                 match bin_op.op {
-                    (BinaryOp::Plus, _ty) => ctx.inst_add(left, right),
-                    (BinaryOp::Minus, _ty) => ctx.inst_sub(left, right),
-                    (BinaryOp::Mult, _ty) => ctx.inst_mult(left, right),
-                    (BinaryOp::Div, _ty) => ctx.inst_div(left, right),
-                    (BinaryOp::And, _ty) => ctx.inst_and(left, right),
-                    (BinaryOp::Or, _ty) => ctx.inst_or(left, right),
-                    (BinaryOp::Xor, _ty) => ctx.inst_xor(left, right),
+                    (BinaryOp::Plus, _ty) => block.inst_add(left, right),
+                    (BinaryOp::Minus, _ty) => block.inst_sub(left, right),
+                    (BinaryOp::Mult, _ty) => block.inst_mult(left, right),
+                    (BinaryOp::Div, _ty) => block.inst_div(left, right),
+                    (BinaryOp::And, _ty) => block.inst_and(left, right),
+                    (BinaryOp::Or, _ty) => block.inst_or(left, right),
+                    (BinaryOp::Xor, _ty) => block.inst_xor(left, right),
                 };
-                ctx.inst_op_to_reg(output);
+                block.inst_op_to_reg(output);
 
-                Ok(output)
+                Ok(DataLocation::Register(output))
             }
-            Expr::Ident(sym) => ctx.get_cached_reg(sym),
-            Expr::Expr(expr) => self.expr(builder, ctx, *expr),
+            Expr::Ident(sym) => Ok(DataLocation::Register(ctx.get_cached_reg(sym)?)),
+            Expr::Expr(expr) => self.expr(builder, ctx, *expr, target, block),
 
             Expr::FunctionCall(func_call) => {
                 for arg in func_call.arguments {
-                    let reg = self.expr(builder, ctx, arg)?;
-                    ctx.inst_push(reg);
+                    let reg = self
+                        .expr(builder, ctx, arg, None, block)?
+                        .to_register(ctx, None, block)?;
+                    block.inst_push(reg);
+                    ctx.free_reg(reg);
                 }
 
                 let mut intrinsic_fn = false;
                 if let Some(abs_path) = builder.interner.resolve(func_call.name) {
                     if let Some(intrinsic) = INTRINSICS.get(abs_path) {
-                        (intrinsic)(builder, ctx)?;
+                        (intrinsic)(builder, ctx, block)?;
                         intrinsic_fn = true;
                     }
                 }
 
                 let ret_val = ctx.reserve_reg(None)?;
                 if !intrinsic_fn {
-                    ctx.inst_func_call(func_call.name);
-                    ctx.inst_pop(ret_val);
+                    block.inst_func_call(func_call.name);
+                    block.inst_pop(ret_val);
                 }
 
-                Ok(ret_val)
+                Ok(DataLocation::Register(ret_val))
             }
         }
     }
@@ -377,13 +446,16 @@ impl Interpreter {
         statement: Statement,
         builder: &mut CodeBuilder,
         ctx: &mut FunctionContext,
+        block: &mut Block,
     ) -> Result<()> {
         match statement {
             Statement::Assign(assign) => {
                 let reg = ctx.get_cached_reg(assign.var)?;
-                let loaded = self.expr(builder, ctx, assign.expr)?;
+                let loaded = self
+                    .expr(builder, ctx, assign.expr, None, block)?
+                    .to_register(ctx, None, block)?;
 
-                ctx.inst_mov(reg, loaded).inst_drop(loaded);
+                block.inst_mov(reg, loaded, ctx);
             }
 
             Statement::While(_while_loop) => todo!("Compile While loops"),
@@ -391,80 +463,60 @@ impl Interpreter {
             Statement::For(_for_loop) => todo!("Compile For loops"),
 
             Statement::VarDecl(var_decl) => {
-                let reg = ctx.reserve_reg(var_decl.name)?;
-                let loaded = self.expr(builder, ctx, var_decl.expr)?;
-
-                ctx.inst_mov(reg, loaded);
+                self.expr(builder, ctx, var_decl.expr, var_decl.name, block)?
+                    .to_register(ctx, var_decl.name, block)?;
             }
 
             Statement::Return(ret) => {
-                let loaded = self.expr(builder, ctx, ret.expr)?;
-                ctx.inst_push(loaded).inst_return();
+                let loaded = self
+                    .expr(builder, ctx, ret.expr, None, block)?
+                    .to_register(ctx, None, block)?;
+                block.inst_push(loaded).inst_return();
+
+                let mut new_block = Block::new();
+                std::mem::swap(block, &mut new_block);
+                ctx.push_block(new_block);
             }
             Statement::Continue => todo!("Compile Continue statements"),
             Statement::Break => todo!("Compile break statements"),
             Statement::Expr(expr) => {
-                self.expr(builder, ctx, expr)?;
+                self.expr(builder, ctx, expr, None, block)?;
             }
             Statement::Empty => { /* Do nothing for `empty` */ }
 
             Statement::Conditional(conditional) => {
-                let endif = builder.next_jump_id();
+                let mut after_block = Block::new();
 
-                let true_reg = ctx.reserve_reg(None)?;
-                ctx.inst_load(true_reg, RuntimeValue::Bool(true));
-
-                let mut bodies: Vec<
-                    Box<
-                        dyn FnOnce(
-                            &mut Interpreter,
-                            &mut CodeBuilder,
-                            &mut FunctionContext,
-                        ) -> Result<()>,
-                    >,
-                > = Vec::new();
-
+                let mut conditions = Vec::with_capacity(conditional._if.len() + 1);
                 for If { condition, body } in conditional._if {
-                    self.expr(builder, ctx, condition)?;
-                    let block_start = builder.next_jump_id();
+                    self.expr(builder, ctx, condition, None, block)?;
 
-                    ctx.inst_jump_comp(block_start);
+                    let mut if_block = Block::new();
+                    for statement in body {
+                        self.statement(statement, builder, ctx, &mut if_block)?;
+                    }
+                    if_block.inst_jump(after_block.id);
 
-                    bodies.push(Box::new(move |interp, builder, ctx| {
-                        ctx.inst_jump_point(block_start);
-
-                        for statement in body {
-                            interp.statement(statement, builder, ctx)?;
-                        }
-
-                        ctx.inst_jump(endif);
-
-                        Ok(())
-                    }));
+                    block.inst_jump_comp(if_block.id);
+                    conditions.push(if_block);
                 }
 
                 if let Some(_else) = conditional._else {
-                    let else_jump = builder.next_jump_id();
-                    ctx.inst_jump(else_jump);
+                    let mut else_block = Block::new();
+                    for statement in _else.body {
+                        self.statement(statement, builder, ctx, &mut else_block)?;
+                    }
 
-                    bodies.push(Box::new(move |interp, builder, ctx| {
-                        ctx.inst_jump_point(else_jump);
-
-                        for statement in _else.body {
-                            interp.statement(statement, builder, ctx)?;
-                        }
-
-                        ctx.inst_jump(endif);
-
-                        Ok(())
-                    }));
+                    block.inst_jump(after_block.id);
+                    conditions.push(else_block);
                 }
 
-                for func in bodies {
-                    (func)(self, builder, ctx)?;
-                }
+                std::mem::swap(block, &mut after_block);
+                ctx.push_block(after_block);
 
-                ctx.inst_jump_point(endif).inst_drop(true_reg);
+                for cond in conditions {
+                    ctx.push_block(cond);
+                }
             }
         }
 

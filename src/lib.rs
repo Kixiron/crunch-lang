@@ -1,4 +1,4 @@
-#![feature(track_caller, proc_macro_hygiene, vec_remove_item)]
+#![feature(track_caller, proc_macro_hygiene, vec_remove_item, map_first_last)]
 #![deny(missing_debug_implementations, deprecated, unused_must_use)]
 #![warn(
     clippy::cargo,

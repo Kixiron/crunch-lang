@@ -1,7 +1,7 @@
 fn main()
-    println(factorial(1))
     println(factorial(10))
-    println(factorial(20))
+    :: println(factorial(10))
+    :: println(factorial(20))
 end
 
 fn factorial(n: int) -> int 

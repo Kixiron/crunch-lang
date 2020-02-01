@@ -175,17 +175,13 @@ impl Gc {
         // TODO: Take advantage of short-circuiting here?
 
         // If the object is too large return an error
-        if block_start as usize <= *self.get_side() as usize
-            && block_end > *self.get_side() as usize + self.options.heap_size
-        {
+        if block_end > *self.get_side() as usize + self.options.heap_size {
             self.collect(); // Collect garbage
 
             block_start = (*self.latest as usize) as *mut u8;
             block_end = *self.latest as usize + size;
 
-            if block_start as usize <= *self.get_side() as usize
-                && block_end > *self.get_side() as usize + self.options.heap_size
-            {
+            if block_end > *self.get_side() as usize + self.options.heap_size {
                 return Err(RuntimeError {
                     ty: RuntimeErrorTy::GcError,
                     message: "The heap is full".to_string(),
@@ -217,8 +213,6 @@ impl Gc {
     /// [`AllocId`]: crate::AllocId
     #[must_use]
     pub fn allocate_heap<T: Collectable>(&mut self, item: T) -> Result<AllocId> {
-        trace!("Allocating an item to the heap");
-
         let (ptr, id) = self.allocate(mem::size_of::<T>())?;
         unsafe { (*ptr as *mut T).write(item) };
 
@@ -738,11 +732,13 @@ mod tests {
                 .build(),
         );
 
-        for i in 0..10_000usize {
-            i.alloc(&mut gc).unwrap();
-        }
+        for _ in 0..100 {
+            for y in 0..10_000usize {
+                y.alloc(&mut gc).unwrap();
+            }
 
-        gc.collect();
+            gc.collect();
+        }
     }
 
     #[test]
@@ -753,8 +749,7 @@ mod tests {
                 .build(),
         );
 
-        for x in 1..1000 {
-            println!("{}", x);
+        for _ in 0..100 {
             for y in 0..10_000usize {
                 y.alloc(&mut gc).unwrap();
             }
@@ -772,7 +767,6 @@ mod tests {
         );
 
         let id = 100usize.alloc(&mut gc).unwrap();
-
         let fetched: usize = id.fetch(&gc).unwrap();
         assert_eq!(fetched, 100);
 
