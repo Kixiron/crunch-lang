@@ -168,9 +168,6 @@ impl FunctionContext {
             for (_idx, mut block) in self.blocks.iter_mut().enumerate() {
                 StackDeduplicator::new().run(&mut block);
                 NoopRemover::new().run(&mut block);
-                // if EmptyBlockCuller::new().run(&mut block) {
-                //     removed_blocks.push(idx);
-                // }
             }
 
             for (offset, idx) in removed_blocks.drain(..).enumerate() {
@@ -186,18 +183,18 @@ impl FunctionContext {
                     Instruction::Jump(idx) | Instruction::JumpComp(idx) => {
                         let idx = idx as usize;
 
-                        // m[x1].len() - y1 + y2 + m[x1 + 1 .. x2 - 1].iter().map(|v| v.len()).sum()
-                        let get_distance = move |ctx: &FunctionContext,
-                                                 (x1, y1): (usize, usize),
-                                                 (x2, y2): (usize, usize)|
-                              -> usize {
+                        fn get_distance(
+                            ctx: &FunctionContext,
+                            (x1, y1): (usize, usize),
+                            (x2, y2): (usize, usize),
+                        ) -> usize {
                             ctx.blocks[x1].block.len() - y1
                                 + y2
                                 + ctx.blocks[x1 + 1..x2]
                                     .iter()
                                     .map(|b| b.block.len())
                                     .sum::<usize>()
-                        };
+                        }
 
                         let offset = if idx > current_index {
                             get_distance(&self, (current_index, inst_index), (idx, 0)) as i32 - 1
@@ -222,14 +219,7 @@ impl FunctionContext {
             }
         }
 
-        let mut instructions = Vec::with_capacity({
-            let mut capacity = 0;
-            for block in self.blocks.iter() {
-                capacity += block.block.len();
-            }
-            capacity
-        });
-
+        let mut instructions = Vec::with_capacity(self.blocks.len() * 2);
         for block in self.blocks {
             for instruction in block.block {
                 instructions.push(instruction.solidify(builder)?);

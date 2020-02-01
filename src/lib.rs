@@ -166,8 +166,6 @@ mod jit;
 mod newtypes;
 /// Front-end language parsing
 mod parser;
-/// Syscalls
-mod syscall;
 mod type_checker;
 /// Values contained within the VM
 mod value;

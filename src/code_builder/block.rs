@@ -1,22 +1,13 @@
 use super::*;
-use std::sync::atomic::{AtomicU32, Ordering};
-
-lazy_static::lazy_static! {
-    static ref BLOCK_ID: AtomicU32 = AtomicU32::new(0);
-}
 
 #[derive(Debug, Clone)]
 pub struct Block {
     pub block: Vec<PartialInstruction>,
-    pub id: u32,
 }
 
 impl Block {
     pub fn new() -> Self {
-        Self {
-            block: Vec::new(),
-            id: BLOCK_ID.fetch_add(1, Ordering::SeqCst),
-        }
+        Self { block: Vec::new() }
     }
 
     pub fn solidify(self, builder: &mut CodeBuilder) -> Result<Vec<Instruction>> {
@@ -71,27 +62,6 @@ impl BlockOptimizer for NoopRemover {
         }
 
         false
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct EmptyBlockCuller;
-
-impl EmptyBlockCuller {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Default for EmptyBlockCuller {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl BlockOptimizer for EmptyBlockCuller {
-    fn run(&mut self, block: &mut Block) -> bool {
-        block.block.is_empty()
     }
 }
 

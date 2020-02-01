@@ -16,7 +16,6 @@ lazy_static::lazy_static! {
         let mut intrinsics: IntrinsicsMap = HashMap::with_capacity(10);
 
         // TODO: Think through this better
-        // TODO: Replace the unwraps with actual errors
 
         intrinsics.insert("print", |_builder, ctx| {
             let reg = ctx.reserve_reg(None)?;
@@ -162,9 +161,6 @@ impl Interpreter {
                 Program::FunctionDecl(func) => {
                     // Interpret the function
                     let (name, index) = self.interp_func(func)?;
-                    if self.current_function.iter().last() != Some(&Instruction::Return) {
-                        self.current_function.push(Instruction::Return);
-                    }
 
                     // Will contain the newly created function
                     let mut func = Vec::new();
