@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::{
-    Instruction, Register, Result, RuntimeError, RuntimeErrorTy, RuntimeValue, Type, Visibility,
+    Instruction, Register, Result, RuntimeError, RuntimeErrorTy, Type, Value, Visibility,
     NUMBER_REGISTERS,
 };
 use rand::{
@@ -260,14 +260,11 @@ mod tests {
             .build_function(main, |builder, ctx| {
                 let mut block = Block::new();
                 block
-                    .inst_load(0, RuntimeValue::Str("Hello from the main function!\n"))
+                    .inst_load(0, Value::Str("Hello from the main function!\n"))
                     .inst_print(0)
                     .inst_drop(0, ctx)
                     .inst_func_call(builder.intern("test"))
-                    .inst_load(
-                        1,
-                        RuntimeValue::Str("Hello from the main function again!\n"),
-                    )
+                    .inst_load(1, Value::Str("Hello from the main function again!\n"))
                     .inst_print(1)
                     .inst_drop(1, ctx)
                     .inst_return();
@@ -283,7 +280,7 @@ mod tests {
             .build_function(test, |_builder, ctx| {
                 let mut block = Block::new();
                 block
-                    .inst_load(0, RuntimeValue::Str("Hello from the test function!\n"))
+                    .inst_load(0, Value::Str("Hello from the test function!\n"))
                     .inst_print(0)
                     .inst_drop(0, ctx)
                     .inst_return();

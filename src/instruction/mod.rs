@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests;
 
-use super::{Register, RuntimeValue, Vm};
+use super::{Register, Value, Vm};
 
 pub mod functions;
 
@@ -73,11 +73,11 @@ pub enum RuntimeErrorTy {
 /// [`Vm`]: crate::Vm
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Instruction {
-    /// Load a [`RuntimeValue`] into the selected [`Register`]
+    /// Load a [`Value`] into the selected [`Register`]
     ///
-    /// [`RuntimeValue`]: crate::RuntimeValue
+    /// [`Value`]: crate::Value
     /// [`Register`]: crate::Register
-    Load(RuntimeValue, Register),
+    Load(Value, Register),
 
     /// Move the value from [`vm.prev_comp`] into the selected [`Register`]
     ///
@@ -252,9 +252,9 @@ pub enum Instruction {
     Halt,
 
     /// Loads a library by the name supplied by the first [`Register`], storing a
-    /// [`RuntimeValue::Library`] in the second [`Register`]
+    /// [`Value::Library`] in the second [`Register`]
     ///
-    /// [`RuntimeValue::Library`]: crate::RuntimeValue::Library
+    /// [`Value::Library`]: crate::Value::Library
     /// [`Register`]: crate::Register
     LoadLib(Register, Register),
 

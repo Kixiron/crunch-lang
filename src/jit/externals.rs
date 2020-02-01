@@ -1,6 +1,6 @@
-use crate::{RuntimeError, RuntimeErrorTy, RuntimeValue, Vm};
+use crate::{RuntimeError, RuntimeErrorTy, Value, Vm};
 
-pub extern "win64" fn load(vm: *mut Vm, val: *const RuntimeValue, reg: u8) -> usize {
+pub extern "win64" fn load(vm: *mut Vm, val: *const Value, reg: u8) -> usize {
     unsafe {
         let vm = if let Some(vm) = vm.as_mut() {
             vm

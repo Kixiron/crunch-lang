@@ -1,4 +1,4 @@
-use super::{Gc, Index, Instruction, Result, RuntimeValue, NUMBER_REGISTERS};
+use super::{Gc, Index, Instruction, Result, Value, NUMBER_REGISTERS};
 use std::{fmt, time::Instant};
 
 /// The initialized options for the VM
@@ -26,7 +26,7 @@ impl From<&crate::Options> for VmOptions {
 #[derive(Debug, Clone)]
 pub(crate) struct ReturnFrame {
     /// The frame's registers
-    pub registers: [RuntimeValue; NUMBER_REGISTERS],
+    pub registers: [Value; NUMBER_REGISTERS],
     /// The current [`Instruction`] index of the frame
     ///
     /// [`Instruction`]: crate::Instruction
@@ -39,7 +39,7 @@ pub(crate) struct ReturnFrame {
 /// The Virtual Machine environment for Crunch
 pub struct Vm {
     /// The active VM Registers
-    pub(crate) registers: [RuntimeValue; NUMBER_REGISTERS],
+    pub(crate) registers: [Value; NUMBER_REGISTERS],
     /// The register snapshots for function calls
     pub(crate) return_stack: Vec<ReturnFrame>,
     /// The index of the current function
@@ -52,7 +52,7 @@ pub struct Vm {
     // TODO: Needed?
     pub(crate) returning: bool,
     /// The value of the previous operation
-    pub(crate) prev_op: RuntimeValue,
+    pub(crate) prev_op: Value,
     /// The status of the previous comparison
     pub(crate) prev_comp: bool,
     /// The Garbage Collector
@@ -65,7 +65,7 @@ pub struct Vm {
     pub(crate) stdout: Box<dyn std::io::Write>,
     pub(crate) start_time: Option<Instant>,
     pub(crate) finish_time: Option<Instant>,
-    pub(crate) stack: Vec<RuntimeValue>,
+    pub(crate) stack: Vec<Value>,
 }
 
 impl Default for Vm {
@@ -85,13 +85,13 @@ impl Vm {
     #[must_use]
     pub fn new(options: &crate::Options, stdout: Box<dyn std::io::Write>) -> Self {
         Self {
-            registers: array_init::array_init(|_| RuntimeValue::None),
+            registers: array_init::array_init(|_| Value::None),
             return_stack: Vec::with_capacity(5),
             current_func: 0,
             index: Index(0),
             finished_execution: false,
             returning: false,
-            prev_op: RuntimeValue::None,
+            prev_op: Value::None,
             prev_comp: false,
             gc: Gc::new(options),
             options: VmOptions::from(options),

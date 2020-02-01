@@ -1,11 +1,11 @@
 /// Creates integer proptests
 ///
 /// # Parameters
-/// * `value_variant`: The variant of the `RuntimeValue` enum
-/// * `primitive`: The primitive type contained by the `RuntimeValue` variant
-/// * `bitwise`: Optional, sets what bitwise operands can be used with that `RuntimeValue` variant
+/// * `value_variant`: The variant of the `Value` enum
+/// * `primitive`: The primitive type contained by the `Value` variant
+/// * `bitwise`: Optional, sets what bitwise operands can be used with that `Value` variant
 ///
-/// [`RuntimeValue`]: crate.RuntimeValue
+/// [`Value`]: crate.Value
 macro_rules! number_proptest {
     ( $( $mod_name:ident { internal: $value_variant:ident, primitive: $primitive:ty, unsigned: $unsigned:literal $( , bitwise: $bitwise:ident )? } ),* ) => {
         $(
@@ -32,8 +32,8 @@ macro_rules! number_proptest {
                                     Box::new(stdout()),
                                 );
 
-                                vm.registers[0] = RuntimeValue::$value_variant(left);
-                                vm.registers[1] = RuntimeValue::$value_variant(right);
+                                vm.registers[0] = Value::$value_variant(left);
+                                vm.registers[1] = Value::$value_variant(right);
 
                                 let and = Instruction::And(0.into(), 1.into());
                                 and.execute(&mut vm).unwrap();
@@ -42,7 +42,7 @@ macro_rules! number_proptest {
                                     vm
                                         .prev_op
                                         .is_equal(
-                                            &RuntimeValue::$value_variant(left & right),
+                                            &Value::$value_variant(left & right),
                                             &vm.gc
                                         )
                                         .unwrap()
@@ -60,8 +60,8 @@ macro_rules! number_proptest {
                                     Box::new(stdout()),
                                 );
 
-                                vm.registers[0] = RuntimeValue::$value_variant(left);
-                                vm.registers[1] = RuntimeValue::$value_variant(right);
+                                vm.registers[0] = Value::$value_variant(left);
+                                vm.registers[1] = Value::$value_variant(right);
 
                                 let or = Instruction::Or(0.into(), 1.into());
                                 or.execute(&mut vm).unwrap();
@@ -70,7 +70,7 @@ macro_rules! number_proptest {
                                     vm
                                         .prev_op
                                         .is_equal(
-                                            &RuntimeValue::$value_variant(left | right),
+                                            &Value::$value_variant(left | right),
                                             &vm.gc
                                         )
                                         .unwrap()
@@ -88,8 +88,8 @@ macro_rules! number_proptest {
                                     Box::new(stdout()),
                                 );
 
-                                vm.registers[0] = RuntimeValue::$value_variant(left);
-                                vm.registers[1] = RuntimeValue::$value_variant(right);
+                                vm.registers[0] = Value::$value_variant(left);
+                                vm.registers[1] = Value::$value_variant(right);
 
                                 let xor = Instruction::Xor(0.into(), 1.into());
                                 xor.execute(&mut vm).unwrap();
@@ -98,7 +98,7 @@ macro_rules! number_proptest {
                                     vm
                                         .prev_op
                                         .is_equal(
-                                            &RuntimeValue::$value_variant(left ^ right),
+                                            &Value::$value_variant(left ^ right),
                                             &vm.gc
                                         )
                                         .unwrap()
@@ -112,7 +112,7 @@ macro_rules! number_proptest {
                                     Box::new(stdout()),
                                 );
 
-                                vm.registers[0] = RuntimeValue::$value_variant(int);
+                                vm.registers[0] = Value::$value_variant(int);
 
                                 let not = Instruction::Not(0.into());
                                 not.execute(&mut vm).unwrap();
@@ -121,7 +121,7 @@ macro_rules! number_proptest {
                                     vm
                                         .prev_op
                                         .is_equal(
-                                            &RuntimeValue::$value_variant(!int),
+                                            &Value::$value_variant(!int),
                                             &vm.gc
                                         )
                                         .unwrap()
@@ -143,8 +143,8 @@ macro_rules! number_proptest {
                             Box::new(stdout()),
                         );
 
-                        vm.registers[0] = RuntimeValue::$value_variant(left);
-                        vm.registers[1] = RuntimeValue::$value_variant(right);
+                        vm.registers[0] = Value::$value_variant(left);
+                        vm.registers[1] = Value::$value_variant(right);
 
                         let add = Instruction::Add(0.into(), 1.into());
                         add.execute(&mut vm).unwrap();
@@ -153,9 +153,9 @@ macro_rules! number_proptest {
                             vm
                                 .prev_op
                                 .is_equal(
-                                    &RuntimeValue::$value_variant(left)
+                                    &Value::$value_variant(left)
                                         .add_upflowing(
-                                            RuntimeValue::$value_variant(right),
+                                            Value::$value_variant(right),
                                             &mut vm.gc
                                         )
                                         .unwrap(),
@@ -176,8 +176,8 @@ macro_rules! number_proptest {
                             Box::new(stdout()),
                         );
 
-                        vm.registers[0] = RuntimeValue::$value_variant(left);
-                        vm.registers[1] = RuntimeValue::$value_variant(right);
+                        vm.registers[0] = Value::$value_variant(left);
+                        vm.registers[1] = Value::$value_variant(right);
 
                         let sub = Instruction::Sub(0.into(), 1.into());
                         sub.execute(&mut vm).unwrap();
@@ -186,9 +186,9 @@ macro_rules! number_proptest {
                             vm
                                 .prev_op
                                 .is_equal(
-                                    &RuntimeValue::$value_variant(left)
+                                    &Value::$value_variant(left)
                                         .sub_upflowing(
-                                            RuntimeValue::$value_variant(right),
+                                            Value::$value_variant(right),
                                             &mut vm.gc
                                         )
                                         .unwrap(),
@@ -209,8 +209,8 @@ macro_rules! number_proptest {
                             Box::new(stdout()),
                         );
 
-                        vm.registers[0] = RuntimeValue::$value_variant(left);
-                        vm.registers[1] = RuntimeValue::$value_variant(right);
+                        vm.registers[0] = Value::$value_variant(left);
+                        vm.registers[1] = Value::$value_variant(right);
 
                         let mult = Instruction::Mult(0.into(), 1.into());
                         mult.execute(&mut vm).unwrap();
@@ -219,9 +219,9 @@ macro_rules! number_proptest {
                             vm
                                 .prev_op
                                 .is_equal(
-                                    &RuntimeValue::$value_variant(left)
+                                    &Value::$value_variant(left)
                                         .mult_upflowing(
-                                            RuntimeValue::$value_variant(right),
+                                            Value::$value_variant(right),
                                             &mut vm.gc
                                         )
                                         .unwrap(),
@@ -242,8 +242,8 @@ macro_rules! number_proptest {
                             Box::new(stdout()),
                         );
 
-                        vm.registers[0] = RuntimeValue::$value_variant(left);
-                        vm.registers[1] = RuntimeValue::$value_variant(right);
+                        vm.registers[0] = Value::$value_variant(left);
+                        vm.registers[1] = Value::$value_variant(right);
 
                         let div = Instruction::Div(0.into(), 1.into());
                         div.execute(&mut vm).unwrap();
@@ -252,9 +252,9 @@ macro_rules! number_proptest {
                             vm
                                 .prev_op
                                 .is_equal(
-                                    &RuntimeValue::$value_variant(left)
+                                    &Value::$value_variant(left)
                                         .div_upflowing(
-                                            RuntimeValue::$value_variant(right),
+                                            Value::$value_variant(right),
                                             &mut vm.gc
                                         )
                                         .unwrap(),
@@ -280,10 +280,10 @@ fn collect(int: i32, string in "\\PC*") {
 
     let collect = Instruction::Collect;
 
-    let discard = vm.gc.alloc(std::mem::size_of::<RuntimeValue>()).unwrap();
+    let discard = vm.gc.alloc(std::mem::size_of::<Value>()).unwrap();
     unsafe {
         vm.gc
-            .write(discard, &<RuntimeValue as Into<Vec<u8>>>::into(RuntimeValue::I32(int)))
+            .write(discard, &<Value as Into<Vec<u8>>>::into(Value::I32(int)))
             .expect("here");
     }
     vm.gc.add_root(discard);

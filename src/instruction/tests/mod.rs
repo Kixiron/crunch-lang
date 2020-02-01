@@ -10,13 +10,13 @@ fn function_test() {
     let mut crunch = Crunch::new(crate::OptionBuilder::new("./function_test").build());
     let functions = vec![
         vec![
-            Instruction::Load(RuntimeValue::Str("Calling the function!\n"), 31.into()),
+            Instruction::Load(Value::Str("Calling the function!\n"), 31.into()),
             Instruction::Print(31.into()),
             Instruction::Drop(31.into()),
-            Instruction::Load(RuntimeValue::Bool(false), 0.into()),
+            Instruction::Load(Value::Bool(false), 0.into()),
             Instruction::Func(1_u32.into()),
-            Instruction::Load(RuntimeValue::Str("Was the function called? "), 31.into()),
-            Instruction::Load(RuntimeValue::Str("\n"), 30.into()),
+            Instruction::Load(Value::Str("Was the function called? "), 31.into()),
+            Instruction::Load(Value::Str("\n"), 30.into()),
             Instruction::Print(31.into()),
             Instruction::Print(0.into()),
             Instruction::Print(30.into()),
@@ -26,10 +26,10 @@ fn function_test() {
             Instruction::Return,
         ],
         vec![
-            Instruction::Load(RuntimeValue::Str("The function was called!\n"), 0.into()),
+            Instruction::Load(Value::Str("The function was called!\n"), 0.into()),
             Instruction::Print(0.into()),
             Instruction::Drop(0.into()),
-            Instruction::Load(RuntimeValue::Bool(true), 0.into()),
+            Instruction::Load(Value::Bool(true), 0.into()),
             Instruction::Return,
         ],
     ];
@@ -59,7 +59,7 @@ fn variable_ops() {
             let mut vec = Vec::with_capacity(num_ints);
 
             for _ in 0..num_ints {
-                vec.push(RuntimeValue::I32(rng.gen_range(0, i32::max_value())));
+                vec.push(Value::I32(rng.gen_range(0, i32::max_value())));
             }
 
             vec
@@ -79,7 +79,7 @@ fn variable_ops() {
                     .collect();
 
                 if let Ok(string) = String::from_utf8(string) {
-                    vec.push(RuntimeValue::Str(Box::leak(string.into_boxed_str())));
+                    vec.push(Value::Str(Box::leak(string.into_boxed_str())));
                 }
             }
 
@@ -90,8 +90,8 @@ fn variable_ops() {
         let second_strings = thread::spawn(create_strings);
 
         // Add boolean values to test on
-        vec.push(RuntimeValue::Bool(true));
-        vec.push(RuntimeValue::Bool(false));
+        vec.push(Value::Bool(true));
+        vec.push(Value::Bool(false));
         // Add all the randomly generated values to the vector
         vec.extend_from_slice(&ints.join().unwrap());
         vec.extend_from_slice(&first_strings.join().unwrap());
@@ -123,14 +123,14 @@ fn variable_ops() {
         vm.prev_comp = true;
         comp_to_reg.execute(&mut vm).unwrap();
         assert!(vm.registers[0]
-            .is_equal(&RuntimeValue::Bool(true), &vm.gc)
+            .is_equal(&Value::Bool(true), &vm.gc)
             .unwrap());
 
         // Set the previous comparison to `false`
         vm.prev_comp = false;
         comp_to_reg.execute(&mut vm).unwrap();
         assert!(vm.registers[0]
-            .is_equal(&RuntimeValue::Bool(false), &vm.gc)
+            .is_equal(&Value::Bool(false), &vm.gc)
             .unwrap());
     }
 
@@ -149,7 +149,7 @@ fn variable_ops() {
 
     // Testing the DropReg instruction, which should drop a value from a register
     {
-        vm.registers[0] = RuntimeValue::Str("test string"); // Load the register before hand
+        vm.registers[0] = Value::Str("test string"); // Load the register before hand
         let drop_reg = Instruction::Drop(0.into());
         drop_reg.execute(&mut vm).unwrap();
         assert!(vm.registers[0].is_none());
@@ -177,39 +177,39 @@ fn print_op<'a>() {
 
     // Test printing register values
     {
-        vm.registers[0] = RuntimeValue::Str("Test");
+        vm.registers[0] = Value::Str("Test");
         print.execute(&mut vm).unwrap();
         swap_assert(&mut vm, "Test");
 
-        vm.registers[0] = RuntimeValue::I32(10);
+        vm.registers[0] = Value::I32(10);
         print.execute(&mut vm).unwrap();
         swap_assert(&mut vm, "10");
 
-        vm.registers[0] = RuntimeValue::F32(6.9);
+        vm.registers[0] = Value::F32(6.9);
         print.execute(&mut vm).unwrap();
         swap_assert(&mut vm, "6.9");
 
-        vm.registers[0] = RuntimeValue::Bool(true);
+        vm.registers[0] = Value::Bool(true);
         print.execute(&mut vm).unwrap();
         swap_assert(&mut vm, "true");
 
-        vm.registers[0] = RuntimeValue::Bool(false);
+        vm.registers[0] = Value::Bool(false);
         print.execute(&mut vm).unwrap();
         swap_assert(&mut vm, "false");
 
         // Test that writing to stdout works too, can only verify that it does, not that it is correct
         vm.stdout = Box::new(std::io::stdout());
 
-        vm.registers[0] = RuntimeValue::Str("Test");
+        vm.registers[0] = Value::Str("Test");
         print.execute(&mut vm).unwrap();
 
-        vm.registers[0] = RuntimeValue::I32(10);
+        vm.registers[0] = Value::I32(10);
         print.execute(&mut vm).unwrap();
 
-        vm.registers[0] = RuntimeValue::Bool(true);
+        vm.registers[0] = Value::Bool(true);
         print.execute(&mut vm).unwrap();
 
-        vm.registers[0] = RuntimeValue::Bool(false);
+        vm.registers[0] = Value::Bool(false);
         print.execute(&mut vm).unwrap();
     }
 
@@ -219,19 +219,19 @@ fn print_op<'a>() {
         TODO: Rework this
         vm.stdout = Box::new(Vec::<u8>::new());
 
-        vm.registers[0] = RuntimeValue::GcString("Test", &mut vm.gc).unwrap();
+        vm.registers[0] = Value::GcString("Test", &mut vm.gc).unwrap();
         print.execute(&mut vm).unwrap();
         swap_assert(&mut vm, "Test");
 
-        vm.registers[0] = RuntimeValue::I32(10);
+        vm.registers[0] = Value::I32(10);
         print.execute(&mut vm).unwrap();
         swap_assert(&mut vm, "10");
 
-        vm.registers[0] = RuntimeValue::Bool(true);
+        vm.registers[0] = Value::Bool(true);
         print.execute(&mut vm).unwrap();
         swap_assert(&mut vm, "true");
 
-        vm.registers[0] = RuntimeValue::Bool(false);
+        vm.registers[0] = Value::Bool(false);
         print.execute(&mut vm).unwrap();
         swap_assert(&mut vm, "false");
 
@@ -239,16 +239,16 @@ fn print_op<'a>() {
         vm.stdout = Box::new(std::io::stdout());
 
         vm.registers[0] =
-            RuntimeValue::GcString(crate::GcStr::new("Test", &mut vm.gc).unwrap());
+            Value::GcString(crate::GcStr::new("Test", &mut vm.gc).unwrap());
         print.execute(&mut vm).unwrap();
 
-        vm.registers[0] = RuntimeValue::I32(10);
+        vm.registers[0] = Value::I32(10);
         print.execute(&mut vm).unwrap();
 
-        vm.registers[0] = RuntimeValue::Bool(true);
+        vm.registers[0] = Value::Bool(true);
         print.execute(&mut vm).unwrap();
 
-        vm.registers[0] = RuntimeValue::Bool(false);
+        vm.registers[0] = Value::Bool(false);
         print.execute(&mut vm).unwrap();
         */
     }
@@ -292,8 +292,8 @@ fn incompatible_eq_ops() {
     );
 
     // test incompatible types
-    vm.registers[0] = RuntimeValue::Bool(true);
-    vm.registers[1] = RuntimeValue::I32(10);
+    vm.registers[0] = Value::Bool(true);
+    vm.registers[1] = Value::I32(10);
 
     let less_than = Instruction::LessThan(0.into(), 1.into());
     assert_eq!(
@@ -316,8 +316,8 @@ macro_rules! test_eq_ops {
             );
 
             // test incompatible types
-            vm.registers[0] = RuntimeValue::$internal($mid);
-            vm.registers[1] = RuntimeValue::$internal($lo);
+            vm.registers[0] = Value::$internal($mid);
+            vm.registers[1] = Value::$internal($lo);
 
             let greater_than = Instruction::GreaterThan(0.into(), 1.into());
             greater_than.execute(&mut vm).unwrap();
@@ -331,7 +331,7 @@ macro_rules! test_eq_ops {
             lete.execute(&mut vm).unwrap();
             assert_eq!(vm.prev_comp, false);
 
-            vm.registers[1] = RuntimeValue::$internal($mid);
+            vm.registers[1] = Value::$internal($mid);
 
             let grte = Instruction::GreaterThanEq(0.into(), 1.into());
             grte.execute(&mut vm).unwrap();
@@ -341,7 +341,7 @@ macro_rules! test_eq_ops {
             eq.execute(&mut vm).unwrap();
             assert_eq!(vm.prev_comp, true);
 
-            vm.registers[1] = RuntimeValue::$internal($hi);
+            vm.registers[1] = Value::$internal($hi);
 
             greater_than.execute(&mut vm).unwrap();
             assert_eq!(vm.prev_comp, false);

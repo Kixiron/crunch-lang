@@ -3,7 +3,7 @@ use crate::{
     instruction::Result,
     instruction::{RuntimeError, RuntimeErrorTy},
     parser::*,
-    Instruction, Options, Register, RuntimeValue,
+    Instruction, Options, Register, Value,
 };
 use std::{collections::HashMap, path::PathBuf};
 use string_interner::{StringInterner, Sym};
@@ -29,7 +29,7 @@ lazy_static::lazy_static! {
 
             ctx.current_block().inst_pop(reg)
                 .inst_print(reg)
-                .inst_load(newline, RuntimeValue::Str("\n"))
+                .inst_load(newline, Value::Str("\n"))
                 .inst_print(newline);
             ctx.inst_drop_block(newline, ctx.current_block);
 
@@ -340,7 +340,7 @@ impl Interpreter {
                 let addr = ctx.reserve_reg(target)?;
 
                 let value = match literal {
-                    Literal::String(sym) => RuntimeValue::Str(Box::leak(
+                    Literal::String(sym) => Value::Str(Box::leak(
                         builder
                             .interner
                             .resolve(sym)
@@ -348,8 +348,8 @@ impl Interpreter {
                             .to_string()
                             .into_boxed_str(),
                     )),
-                    Literal::Integer(int) => RuntimeValue::I32(int),
-                    Literal::Boolean(boolean) => RuntimeValue::Bool(boolean),
+                    Literal::Integer(int) => Value::I32(int),
+                    Literal::Boolean(boolean) => Value::Bool(boolean),
                 };
 
                 ctx.current_block().inst_load(addr, value);

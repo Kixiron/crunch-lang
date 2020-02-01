@@ -1,6 +1,6 @@
-use crate::{Index, Result, ReturnFrame, RuntimeError, RuntimeErrorTy, RuntimeValue, Vm};
+use crate::{Index, Result, ReturnFrame, RuntimeError, RuntimeErrorTy, Value, Vm};
 
-pub fn load(mut vm: &mut Vm, val: RuntimeValue, reg: u8) -> Result<()> {
+pub fn load(mut vm: &mut Vm, val: Value, reg: u8) -> Result<()> {
     trace!("Loading val into {}", reg);
 
     vm.registers[reg as usize] = val;
@@ -12,7 +12,7 @@ pub fn load(mut vm: &mut Vm, val: RuntimeValue, reg: u8) -> Result<()> {
 pub fn comp_to_reg(mut vm: &mut Vm, reg: u8) -> Result<()> {
     trace!("Loading previous comparison into {}", reg);
 
-    vm.registers[reg as usize] = RuntimeValue::Bool(vm.prev_comp);
+    vm.registers[reg as usize] = Value::Bool(vm.prev_comp);
     vm.index += Index(1);
 
     Ok(())
@@ -25,7 +25,7 @@ pub fn op_to_reg(mut vm: &mut Vm, reg: u8) -> Result<()> {
         reg
     );
 
-    vm.registers[reg as usize] = RuntimeValue::None;
+    vm.registers[reg as usize] = Value::None;
     std::mem::swap(&mut vm.registers[reg as usize], &mut vm.prev_op);
     vm.index += Index(1);
 
@@ -53,7 +53,7 @@ pub fn mov(vm: &mut Vm, target: u8, source: u8) -> Result<()> {
 pub fn push(vm: &mut Vm, reg: u8) -> Result<()> {
     trace!("Pushing register {} to the stack", reg);
 
-    let mut val = RuntimeValue::None;
+    let mut val = Value::None;
     std::mem::swap(&mut vm.registers[reg as usize], &mut val);
     vm.stack.push(val);
     vm.index += Index(1);
@@ -251,8 +251,7 @@ comparison_operator! {
 pub fn func(mut vm: &mut Vm, func: u32) -> Result<()> {
     trace!("Jumping to function {}", func);
 
-    let mut registers: [RuntimeValue; crate::NUMBER_REGISTERS] =
-        array_init::array_init(|_| RuntimeValue::None);
+    let mut registers: [Value; crate::NUMBER_REGISTERS] = array_init::array_init(|_| Value::None);
 
     std::mem::swap(&mut vm.registers, &mut registers);
 
@@ -314,9 +313,9 @@ pub fn load_lib(vm: &mut Vm, name: u8, target: u8) -> Result<()> {
     use dlopen::raw::Library;
     use std::sync::Arc;
 
-    let lib = if let RuntimeValue::Str(name) = vm.registers[name as usize] {
+    let lib = if let Value::Str(name) = vm.registers[name as usize] {
         Library::open(name)
-    } else if let RuntimeValue::GcString(heap) = vm.registers[name as usize] {
+    } else if let Value::GcString(heap) = vm.registers[name as usize] {
         Library::open(&heap.fetch(&vm.gc)?)
     } else {
         return Err(RuntimeError {
@@ -335,7 +334,7 @@ pub fn load_lib(vm: &mut Vm, name: u8, target: u8) -> Result<()> {
         }
     })?;
 
-    vm.registers[target as usize] = RuntimeValue::Library(Arc::new(lib));
+    vm.registers[target as usize] = Value::Library(Arc::new(lib));
 
     vm.index += Index(1);
 
@@ -345,7 +344,7 @@ pub fn load_lib(vm: &mut Vm, name: u8, target: u8) -> Result<()> {
 pub fn exec_lib_func(vm: &mut Vm, name: u8, lib: u8, args: u16) -> Result<()> {
     use std::sync::Arc;
 
-    let lib = if let RuntimeValue::Library(ref lib) = vm.registers[lib as usize] {
+    let lib = if let Value::Library(ref lib) = vm.registers[lib as usize] {
         Arc::clone(lib)
     } else {
         return Err(RuntimeError {
@@ -357,10 +356,10 @@ pub fn exec_lib_func(vm: &mut Vm, name: u8, lib: u8, args: u16) -> Result<()> {
         });
     };
 
-    let func: extern "C" fn(&mut crate::Gc, &[RuntimeValue]) -> Result<RuntimeValue> =
-        if let RuntimeValue::Str(name) = vm.registers[name as usize] {
+    let func: extern "C" fn(&mut crate::Gc, &[Value]) -> Result<Value> =
+        if let Value::Str(name) = vm.registers[name as usize] {
             unsafe { (*lib).symbol(name) }
-        } else if let RuntimeValue::GcString(heap) = vm.registers[name as usize] {
+        } else if let Value::GcString(heap) = vm.registers[name as usize] {
             unsafe { (*lib).symbol(&heap.fetch(&vm.gc)?) }
         } else {
             return Err(RuntimeError {

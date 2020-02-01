@@ -120,7 +120,7 @@ impl BlockOptimizer for StackDeduplicator {
 }
 
 impl Block {
-    pub fn inst_load(&mut self, register: impl Into<Register>, value: RuntimeValue) -> &mut Self {
+    pub fn inst_load(&mut self, register: impl Into<Register>, value: Value) -> &mut Self {
         self.block
             .push(Instruction::Load(value, register.into()).into());
 

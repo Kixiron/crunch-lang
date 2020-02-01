@@ -2,7 +2,7 @@
 
 mod externals;
 
-use crate::{Instruction, Result, RuntimeError, RuntimeErrorTy, RuntimeValue, Vm};
+use crate::{Instruction, Result, RuntimeError, RuntimeErrorTy, Value, Vm};
 use dynasm::dynasm;
 use dynasmrt::{DynasmApi, DynasmLabelApi};
 use once_cell::sync::OnceCell;
@@ -90,7 +90,7 @@ dynasm!(asm
 pub struct Jit<'a> {
     code: dynasmrt::ExecutableBuffer,
     start: dynasmrt::AssemblyOffset,
-    __value_lifetime: PhantomData<&'a RuntimeValue>,
+    __value_lifetime: PhantomData<&'a Value>,
     pub reference: Vec<Instruction>,
 }
 
@@ -126,7 +126,7 @@ impl<'a> Jit<'a> {
             match instruction {
                 Instruction::Load(val, reg) => {
                     dynasm!(asm
-                        ; mov rdx, QWORD val as *const RuntimeValue as _
+                        ; mov rdx, QWORD val as *const Value as _
                         ; mov r8, BYTE **reg as _
                         ;; call!(asm, externals::load)
                     );
@@ -393,16 +393,16 @@ impl<'a> Jit<'a> {
 #[test]
 fn jit_test() {
     let instructions = vec![
-        Instruction::Load(RuntimeValue::I32(10), 0.into()),
-        Instruction::Load(RuntimeValue::I32(10), 1.into()),
+        Instruction::Load(Value::I32(10), 0.into()),
+        Instruction::Load(Value::I32(10), 1.into()),
         Instruction::Add(0.into(), 1.into()),
         Instruction::Add(0.into(), 1.into()),
-        Instruction::Load(RuntimeValue::Str("Test\n"), 0.into()),
+        Instruction::Load(Value::Str("Test\n"), 0.into()),
         Instruction::Print(0.into()),
         Instruction::Print(0.into()),
         Instruction::Jump(4),
         Instruction::Drop(0.into()),
-        Instruction::Load(RuntimeValue::Str("Test Two\n"), 0.into()),
+        Instruction::Load(Value::Str("Test Two\n"), 0.into()),
         Instruction::Print(0.into()),
         Instruction::JumpPoint(0),
     ];

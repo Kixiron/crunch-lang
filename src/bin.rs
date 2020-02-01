@@ -6,7 +6,7 @@ fn main() {
     human_panic::setup_panic!(human_panic::Metadata {
         name: "Crunch".into(),
         version: env!("CARGO_PKG_VERSION").into(),
-        authors: "Chase Wilson <chase.h.wilson3@gmail.com>".into(),
+        authors: "Chase Wilson <contact@chasewilson.dev>".into(),
         homepage: "https://github.com/Kixiron/crunch-lang".into(),
     });
 

@@ -8,7 +8,7 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 #[repr(u8)]
-pub enum RuntimeValue {
+pub enum Value {
     // Unsigned integers
     Byte(u8),
     U16(u16),
@@ -82,7 +82,7 @@ impl Compare {
     }
 }
 
-impl RuntimeValue {
+impl Value {
     #[must_use]
     pub fn name(&self) -> &'static str {
         match self {
@@ -729,7 +729,7 @@ macro_rules! binary_op {
 }
 
 upflowing!(
-    RuntimeValue,
+    Value,
     [
         sub_upflowing,
         checked_sub,
@@ -751,7 +751,7 @@ upflowing!(
 );
 
 binary_op!(
-    RuntimeValue,
+    Value,
     [
         bit_or, |, bit_or,
         "Values of types '{}' and '{}' cannot be bit ord"
@@ -766,7 +766,7 @@ binary_op!(
     ]
 );
 
-impl PartialEq for RuntimeValue {
+impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         use std::mem::discriminant;
 
@@ -774,9 +774,9 @@ impl PartialEq for RuntimeValue {
     }
 }
 
-impl Eq for RuntimeValue {}
+impl Eq for Value {}
 
-impl fmt::Display for RuntimeValue {
+impl fmt::Display for Value {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.write_str(self.name())
     }
@@ -791,7 +791,7 @@ macro_rules! bytes {
     }};
 }
 
-impl Into<Vec<u8>> for RuntimeValue {
+impl Into<Vec<u8>> for Value {
     fn into(self) -> Vec<u8> {
         use std::mem::size_of;
 
@@ -833,7 +833,7 @@ impl Into<Vec<u8>> for RuntimeValue {
     }
 }
 
-impl From<&[u8]> for RuntimeValue {
+impl From<&[u8]> for Value {
     fn from(bytes: &[u8]) -> Self {
         use std::convert::TryInto;
 
