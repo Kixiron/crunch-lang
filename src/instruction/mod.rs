@@ -113,9 +113,8 @@ pub enum Instruction {
     Collect,
     Halt,
 
-    // TODO: Handle FFI with the following instructions
-    // LoadLib(&'static str), // Loads a dynamic library
-    // CallLib(&'static str, input: Value::ParamBuf, output: Value::ParamBuf),
+    LoadLib(Register, Register),
+    ExecLibFunc(Register, Register, u16),
 
     // An illegal instruction
     Illegal,
@@ -167,6 +166,12 @@ impl Instruction {
 
             Self::Collect => functions::collect(vm)?,
             Self::Halt => functions::halt(vm)?,
+
+            Self::LoadLib(name, target) => functions::load_lib(vm, **name, **target)?,
+            Self::ExecLibFunc(name, lib, args) => {
+                functions::exec_lib_func(vm, **name, **lib, *args)?
+            }
+
             Self::NoOp => functions::no_op(vm)?,
             Self::JumpPoint(_) => functions::jump_point(vm)?,
             Self::Illegal => functions::illegal(vm)?,
@@ -216,6 +221,9 @@ impl Instruction {
 
             Self::Collect => "coll",
             Self::Halt => "halt",
+
+            Self::LoadLib(_, _) => "ldlib",
+            Self::ExecLibFunc(_, _, _) => "exlib",
 
             Self::Illegal => "illegal",
             Self::NoOp => "nop",

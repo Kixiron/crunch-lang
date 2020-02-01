@@ -86,7 +86,7 @@ impl Vm {
     pub fn new(options: &crate::Options, stdout: Box<dyn std::io::Write>) -> Self {
         Self {
             registers: array_init::array_init(|_| RuntimeValue::None),
-            return_stack: Vec::new(),
+            return_stack: Vec::with_capacity(5),
             current_func: 0,
             index: Index(0),
             finished_execution: false,
@@ -98,7 +98,7 @@ impl Vm {
             stdout,
             start_time: None,
             finish_time: None,
-            stack: Vec::new(),
+            stack: Vec::with_capacity(20),
         }
     }
 

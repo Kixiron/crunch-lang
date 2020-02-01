@@ -310,6 +310,94 @@ pub fn halt(vm: &mut Vm) -> Result<()> {
     Ok(())
 }
 
+pub fn load_lib(vm: &mut Vm, name: u8, target: u8) -> Result<()> {
+    use dlopen::raw::Library;
+    use std::sync::Arc;
+
+    let lib = if let RuntimeValue::Str(name) = vm.registers[name as usize] {
+        Library::open(name)
+    } else if let RuntimeValue::GcString(heap) = vm.registers[name as usize] {
+        Library::open(&heap.fetch(&vm.gc)?)
+    } else {
+        return Err(RuntimeError {
+            ty: RuntimeErrorTy::IncompatibleTypes,
+            message: format!(
+                "Expected `str`, got `{}`",
+                vm.registers[name as usize].name()
+            ),
+        });
+    }
+    .map_err(|e| {
+        error!("Failed to load dll: {:?}", e);
+        RuntimeError {
+            ty: RuntimeErrorTy::MissingFile,
+            message: format!("{:?}", e),
+        }
+    })?;
+
+    vm.registers[target as usize] = RuntimeValue::Library(Arc::new(lib));
+
+    vm.index += Index(1);
+
+    Ok(())
+}
+
+pub fn exec_lib_func(vm: &mut Vm, name: u8, lib: u8, args: u16) -> Result<()> {
+    use std::sync::Arc;
+
+    let lib = if let RuntimeValue::Library(ref lib) = vm.registers[lib as usize] {
+        Arc::clone(lib)
+    } else {
+        return Err(RuntimeError {
+            ty: RuntimeErrorTy::IncompatibleTypes,
+            message: format!(
+                "Expected `lib`, got `{}`",
+                vm.registers[name as usize].name()
+            ),
+        });
+    };
+
+    let func: extern "C" fn(&mut crate::Gc, &[RuntimeValue]) -> Result<RuntimeValue> =
+        if let RuntimeValue::Str(name) = vm.registers[name as usize] {
+            unsafe { (*lib).symbol(name) }
+        } else if let RuntimeValue::GcString(heap) = vm.registers[name as usize] {
+            unsafe { (*lib).symbol(&heap.fetch(&vm.gc)?) }
+        } else {
+            return Err(RuntimeError {
+                ty: RuntimeErrorTy::IncompatibleTypes,
+                message: format!(
+                    "Expected `str`, got `{}`",
+                    vm.registers[name as usize].name()
+                ),
+            });
+        }
+        .map_err(|e| {
+            error!("Failed to load dll: {:?}", e);
+            RuntimeError {
+                ty: RuntimeErrorTy::MissingFile,
+                message: format!("{:?}", e),
+            }
+        })?;
+
+    let values = {
+        let mut vec = Vec::with_capacity(args as usize);
+        for _ in 0..args {
+            vec.push(vm.stack.pop().ok_or(RuntimeError {
+                ty: RuntimeErrorTy::EmptyStack,
+                message:
+                    "Attempted to pop from the stack, but no values were available".to_string(),
+            })?);
+        }
+        vec
+    };
+
+    vm.stack.push((func)(&mut vm.gc, &values)?);
+
+    vm.index += Index(1);
+
+    Ok(())
+}
+
 pub fn no_op(vm: &mut Vm) -> Result<()> {
     vm.index += Index(1);
 

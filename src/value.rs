@@ -7,6 +7,7 @@ use std::fmt;
 // Eg. IByte and I32 can be added together
 
 #[derive(Debug, Clone)]
+#[repr(u8)]
 pub enum RuntimeValue {
     // Unsigned integers
     Byte(u8),
@@ -35,8 +36,7 @@ pub enum RuntimeValue {
 
     Bool(bool),
     Pointer(AllocId),
-    // Vec
-    // GcVec(Vec<RuntimeValue>),
+    Library(std::sync::Arc<dlopen::raw::Library>),
     Null,
 
     None,
@@ -104,6 +104,7 @@ impl RuntimeValue {
             Self::GcString(_) | Self::Str(_) => "str",
             Self::GcInt(_) => "bigint",
             Self::GcUint(_) => "biguint",
+            Self::Library(_) => "lib",
             Self::Null => "null",
             Self::None => "NoneType",
         }
@@ -183,6 +184,7 @@ impl RuntimeValue {
             Self::F64(int) => int.to_string(),
             Self::Bool(int) => int.to_string(),
             Self::Pointer(int) => format!("{:p}", int as *const _),
+            Self::Library(lib) => format!("{:?}", lib),
             Self::Char(c) => c.to_string(),
             Self::GcString(string) => string.fetch(gc)?,
             Self::Str(string) => (*string).to_string(),

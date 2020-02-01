@@ -59,7 +59,7 @@ fn factorial_test() {
     const FILENAME: &str = "factorial.crunch";
 
     color_backtrace::install();
-    // simple_logger::init().unwrap();
+    simple_logger::init().unwrap();
 
     let mut parser = Parser::new(Some(FILENAME), CODE);
 
@@ -73,6 +73,31 @@ fn factorial_test() {
     .interpret(ast.0.clone())
     .unwrap();
     println!("Bytecode: {:?}", &bytecode);
+
+    crate::Vm::default().execute(&bytecode).unwrap();
+}
+
+#[test]
+#[ignore]
+fn ffi_test() {
+    use crate::{Instruction::*, RuntimeValue};
+
+    color_backtrace::install();
+    simple_logger::init().unwrap();
+
+    let bytecode = vec![vec![
+        Load(RuntimeValue::Str("ffi_test.dll"), 0.into()),
+        LoadLib(0.into(), 0.into()),
+        Load(RuntimeValue::Str("add"), 1.into()),
+        Load(RuntimeValue::I32(10), 2.into()),
+        Load(RuntimeValue::I32(20), 3.into()),
+        Push(2.into()),
+        Push(3.into()),
+        ExecLibFunc(1.into(), 0.into(), 2),
+        Pop(2.into()),
+        Print(2.into()),
+        Return,
+    ]];
 
     crate::Vm::default().execute(&bytecode).unwrap();
 }

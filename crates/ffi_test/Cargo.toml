@@ -1,0 +1,12 @@
+[package]
+name = "ffi_test"
+version = "0.1.0"
+authors = ["Chase Wilson <contact@chasewilson.dev>"]
+edition = "2018"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies.crunch]
+path = "../../"
+
