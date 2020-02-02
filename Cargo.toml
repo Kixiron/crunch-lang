@@ -11,6 +11,7 @@ keywords = ["crunch", "language"]
 categories = ["language"]
 license = "MIT OR Apache-2.0"
 edition = "2018"
+build = "build.rs"
 
 [features]
 default = []
@@ -31,6 +32,10 @@ harness = false
 
 [[bench]]
 name = "examples"
+harness = false
+
+[[bench]]
+name = "compilation"
 harness = false
 
 [dependencies]
@@ -78,6 +83,8 @@ libc = "0.2.66"
 [dev-dependencies]
 criterion = "0.3.1"
 proptest = "0.9.5"
+
+[build-dependencies]
 cc = "1.0.50"
 
 [profile.dev]

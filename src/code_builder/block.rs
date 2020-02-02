@@ -22,7 +22,7 @@ impl Block {
 }
 
 pub trait BlockOptimizer: Default {
-    fn run(&mut self, block: &mut Block) -> bool;
+    fn run(&mut self, block: &mut Block);
     fn reset(&mut self) {
         *self = Self::default();
     }
@@ -44,7 +44,7 @@ impl Default for NoopRemover {
 }
 
 impl BlockOptimizer for NoopRemover {
-    fn run(&mut self, block: &mut Block) -> bool {
+    fn run(&mut self, block: &mut Block) {
         let mut remove_indices = Vec::with_capacity(10);
 
         for (idx, inst) in block.block.iter().enumerate() {
@@ -60,8 +60,6 @@ impl BlockOptimizer for NoopRemover {
         for (offset, idx) in remove_indices.into_iter().enumerate() {
             block.block.remove(idx - offset);
         }
-
-        false
     }
 }
 
@@ -89,7 +87,7 @@ impl Default for StackDeduplicator {
 }
 
 impl BlockOptimizer for StackDeduplicator {
-    fn run(&mut self, block: &mut Block) -> bool {
+    fn run(&mut self, block: &mut Block) {
         let mut remove_indices = Vec::with_capacity(10);
 
         for (idx, inst) in block.block.iter().enumerate() {
@@ -114,8 +112,6 @@ impl BlockOptimizer for StackDeduplicator {
         for (offset, idx) in remove_indices.into_iter().enumerate() {
             block.block.remove(idx - offset);
         }
-
-        false
     }
 }
 

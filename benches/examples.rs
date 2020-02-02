@@ -44,17 +44,14 @@ fn examples(c: &mut Criterion) {
             }
 
             b.iter(|| black_box(fibonacci(black_box(20))));
+        })
+        .bench_function("C", |b| {
+            extern "C" {
+                fn fibonacci(n: i32) -> i32;
+            }
+
+            b.iter(|| unsafe { black_box(fibonacci(20)) });
         });
-    // .bench_function("C", |b| {
-    //     cc::Build::new().file("fibonacci.c").compile("fibonacci");
-    //
-    //     #[link(name = "fibonacci")]
-    //     extern "C" {
-    //         fn fibonacci(n: i32) -> i32;
-    //     }
-    //
-    //     b.iter(|| unsafe { black_box(fibonacci(20)) });
-    // });
     group.finish();
 
     let mut group = c.benchmark_group("Factorial");
@@ -99,17 +96,14 @@ fn examples(c: &mut Criterion) {
             }
 
             b.iter(|| black_box(factorial(black_box(20))));
+        })
+        .bench_function("C", |b| {
+            extern "C" {
+                fn factorial(n: i32) -> i32;
+            }
+
+            b.iter(|| unsafe { black_box(factorial(20)) });
         });
-    // .bench_function("C", |b| {
-    //     cc::Build::new().file("factorial.c").compile("factorial");
-    //
-    //     #[link(name = "factorial")]
-    //     extern "C" {
-    //         fn factorial(n: i32) -> i32;
-    //     }
-    //
-    //     b.iter(|| unsafe { black_box(factorial(20)) });
-    // })
     group.finish();
 }
 
