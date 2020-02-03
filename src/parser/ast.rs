@@ -100,7 +100,7 @@ pub struct Assign {
     pub ty: AssignType,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AssignType {
     Normal,
     BinaryOp(BinaryOp),
@@ -164,14 +164,14 @@ pub struct Comparison {
     pub right: Box<Expr>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OperandType {
     Normal,
     Fallible,
     Panicking,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinaryOp {
     Plus,
     Minus,

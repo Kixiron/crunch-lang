@@ -24,7 +24,7 @@ impl From<&crate::Options> for VmOptions {
 /// A function's stack frame, holds enough information to continue execution where it
 /// last left off
 #[derive(Debug, Clone)]
-pub(crate) struct ReturnFrame {
+pub struct ReturnFrame {
     /// The frame's registers
     pub registers: [Value; NUMBER_REGISTERS],
     /// The current [`Instruction`] index of the frame
@@ -118,6 +118,17 @@ impl Vm {
 
         while !self.finished_execution {
             functions[self.current_func as usize][*self.index as usize].execute(self)?;
+
+            #[cfg(feature = "stepping")]
+            {
+                let mut t = String::new();
+                std::io::stdin().read_line(&mut t).unwrap();
+                match &*t.to_lowercase().trim() {
+                    "exit" => break,
+                    "inspect" => println!("{:#?}", self),
+                    _ => {}
+                }
+            }
         }
 
         self.finish_time = Some(Instant::now());

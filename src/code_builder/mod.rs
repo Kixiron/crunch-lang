@@ -77,7 +77,7 @@ impl CodeBuilder {
     where
         F: FnOnce(&mut Self, &mut FunctionContext) -> Result<()>,
     {
-        let mut context = FunctionContext::new();
+        let mut context = FunctionContext::new(name);
 
         (function)(self, &mut context)?;
 
@@ -230,6 +230,60 @@ impl PartialInstruction {
                 }
             }
 
+            Instruction::CallGenerator(_, reg) => {
+                let (_instructions, func_index) = if let Some(entry) = builder.functions.get(
+                    &self
+                        .func_sym
+                        .expect("Should have a func_sym for a function instruction"),
+                ) {
+                    entry
+                } else {
+                    error!(
+                        "Failed to find the function {:?} ({:?})",
+                        self.func_sym.unwrap(),
+                        builder.interner.resolve(self.func_sym.unwrap()).unwrap()
+                    );
+                    return Err(RuntimeError {
+                        ty: RuntimeErrorTy::MissingSymbol,
+                        message:
+                            "A malformed function instruction was encountered during compilation"
+                                .to_string(),
+                    });
+                };
+
+                if let Some(func_index) = func_index {
+                    Ok(Instruction::CallGenerator(*func_index, reg))
+                } else {
+                    let func_index = if let Some(name) = builder.interner.resolve(
+                        self.func_sym
+                            .expect("Should have a func_sym for a function instruction"),
+                    ) {
+                        if name == "main" {
+                            0
+                        } else {
+                            builder.func_index += 1;
+                            builder.func_index - 1
+                        }
+                    } else {
+                        builder.func_index += 1;
+                        builder.func_index - 1
+                    };
+
+                    let entry = builder
+                        .functions
+                        .get_mut(
+                            &self
+                                .func_sym
+                                .expect("Should have a func_sym for a function instruction"),
+                        )
+                        .expect("The check has already been preformed");
+
+                    entry.1 = Some(func_index);
+
+                    Ok(Instruction::CallGenerator(func_index, reg))
+                }
+            }
+
             _ => Ok(self.uninit_inst),
         }
     }
@@ -261,13 +315,12 @@ mod tests {
                 let mut block = Block::new();
                 block
                     .inst_load(0, Value::Str("Hello from the main function!\n"))
-                    .inst_print(0)
-                    .inst_drop(0, ctx)
+                    .inst_print(0);
+                ctx.inst_drop_block(0, ctx.current_block)
                     .inst_func_call(builder.intern("test"))
                     .inst_load(1, Value::Str("Hello from the main function again!\n"))
-                    .inst_print(1)
-                    .inst_drop(1, ctx)
-                    .inst_return();
+                    .inst_print(1);
+                ctx.inst_drop_block(1, ctx.current_block).inst_return();
 
                 ctx.push_block(block);
 
@@ -278,14 +331,10 @@ mod tests {
         let test = builder.intern("test");
         builder
             .build_function(test, |_builder, ctx| {
-                let mut block = Block::new();
-                block
+                ctx.current_block()
                     .inst_load(0, Value::Str("Hello from the test function!\n"))
-                    .inst_print(0)
-                    .inst_drop(0, ctx)
-                    .inst_return();
-
-                ctx.push_block(block);
+                    .inst_print(0);
+                ctx.inst_drop_block(0, ctx.current_block).inst_return();
 
                 Ok(())
             })

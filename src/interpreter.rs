@@ -40,6 +40,50 @@ lazy_static::lazy_static! {
 
             Ok(())
         });
+        intrinsics.insert("range", |builder, _ctx| {
+            let range = builder.intern("range");
+            builder.build_function(range, |_builder, ctx| {
+                let val = ctx.reserve_reg(None)?;
+                let max = ctx.reserve_reg(None)?;
+                let null = ctx.reserve_reg(None)?;
+                let increment = ctx.reserve_reg(None)?;
+
+                ctx.add_block();
+                let generator_block = ctx.current_block;
+                ctx.current_block()
+                    .inst_load(increment, Value::I32(1))
+                    .inst_pop(val)
+                    .inst_pop(max)
+                    .inst_add(increment, val)
+                    .inst_op_to_reg(val)
+                    .inst_less_than(val, max);
+
+                ctx.add_block();
+                let success = ctx.current_block;
+                ctx.current_block()
+                    .inst_push(max)
+                    .inst_push(val)
+                    .inst_yield()
+                    .inst_jump(generator_block as u32);
+
+                ctx.add_block();
+                let fail = ctx.current_block;
+                ctx.current_block()
+                    .inst_load(null, Value::Null)
+                    .inst_push(max)
+                    .inst_push(null)
+                    .inst_yield()
+                    .inst_jump(fail as u32);
+
+                ctx.get_block(generator_block)
+                    .inst_jump_comp(success as u32)
+                    .inst_jump(fail as u32);
+
+                Ok(())
+            })?;
+
+            Ok(())
+        });
 
         intrinsics
     };
@@ -59,7 +103,16 @@ impl DataLocation {
         target: impl Into<Option<Sym>>,
     ) -> Result<Register> {
         match self {
-            Self::Register(reg) => Ok(reg),
+            Self::Register(reg) => {
+                let target = target.into();
+                if target.is_some() {
+                    let target = ctx.reserve_reg(target.unwrap())?;
+                    ctx.current_block().inst_copy(reg, target);
+                    Ok(target)
+                } else {
+                    Ok(reg)
+                }
+            }
             Self::Comparison => {
                 let reg = ctx.reserve_reg(target)?;
                 ctx.current_block().inst_comp_to_reg(reg);
@@ -402,7 +455,12 @@ impl Interpreter {
 
                 Ok(DataLocation::Register(output))
             }
-            Expr::Ident(sym) => Ok(DataLocation::Register(ctx.get_cached_reg(sym)?)),
+            Expr::Ident(sym) => Ok(DataLocation::Register(ctx.get_cached_reg(sym).map_err(
+                |err| {
+                    dbg!(builder.interner.resolve(sym));
+                    err
+                },
+            )?)),
             Expr::Expr(expr) => self.expr(builder, ctx, *expr, target),
 
             Expr::FunctionCall(func_call) => {
@@ -441,17 +499,68 @@ impl Interpreter {
     ) -> Result<()> {
         match statement {
             Statement::Assign(assign) => {
+                // TODO: If type is not copyable, move it or clone it
+
                 let reg = ctx.get_cached_reg(assign.var)?;
                 let loaded = self
-                    .expr(builder, ctx, assign.expr, None)?
-                    .to_register(ctx, None)?;
+                    .expr(builder, ctx, assign.expr, assign.var)?
+                    .to_register(ctx, assign.var)?;
 
-                ctx.inst_mov_block(reg, loaded, ctx.current_block);
+                if assign.ty == AssignType::Normal {
+                    ctx.current_block().inst_copy(loaded, reg);
+                } else {
+                    if let AssignType::BinaryOp(op) = dbg!(assign.ty) {
+                        match op {
+                            BinaryOp::Plus => ctx.current_block().inst_add(loaded, reg),
+                            BinaryOp::Minus => ctx.current_block().inst_sub(loaded, reg),
+                            BinaryOp::Mult => ctx.current_block().inst_mult(loaded, reg),
+                            BinaryOp::Div => ctx.current_block().inst_div(loaded, reg),
+                            BinaryOp::Xor => ctx.current_block().inst_xor(loaded, reg),
+                            BinaryOp::Or => ctx.current_block().inst_or(loaded, reg),
+                            BinaryOp::And => ctx.current_block().inst_and(loaded, reg),
+                        }
+                        .inst_op_to_reg(loaded);
+                    } else {
+                        unreachable!()
+                    }
+                }
             }
 
             Statement::While(_while_loop) => todo!("Compile While loops"),
             Statement::Loop(_loop_loop) => todo!("Compile Loops"),
-            Statement::For(_for_loop) => todo!("Compile For loops"),
+            Statement::For(for_loop) => {
+                // TODO: Make this general-purpose
+                if let Expr::Range(range) = for_loop.range {
+                    let start = self
+                        .expr(builder, ctx, *range.start, for_loop.element)?
+                        .to_register(ctx, for_loop.element)?;
+                    let end = self
+                        .expr(builder, ctx, *range.end, None)?
+                        .to_register(ctx, None)?;
+                    let increment = ctx.reserve_reg(None)?;
+                    ctx.current_block().inst_load(increment, Value::I32(1));
+
+                    ctx.add_block();
+                    let block = ctx.current_block;
+
+                    for statement in for_loop.body {
+                        self.statement(statement, builder, ctx)?;
+                    }
+
+                    ctx.current_block()
+                        .inst_add(start, increment)
+                        .inst_op_to_reg(start)
+                        .inst_less_than(start, end)
+                        .inst_jump_comp(block as u32);
+
+                    ctx.add_block();
+                    ctx.inst_drop_block(increment, ctx.current_block);
+                    ctx.inst_drop_block(start, ctx.current_block);
+                    ctx.inst_drop_block(end, ctx.current_block);
+                } else {
+                    todo!("Other range types")
+                }
+            }
 
             Statement::VarDecl(var_decl) => {
                 self.expr(builder, ctx, var_decl.expr, var_decl.name)?

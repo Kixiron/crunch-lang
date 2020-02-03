@@ -236,6 +236,8 @@ pub enum Instruction {
 
     // TODO: Make coroutines
     Yield,
+    CallGenerator(u32, Register),
+    Copy(Register, Register),
 
     /// Returns to the last function on the [`return stack`] or exits execution if there are no
     /// frames to pop
@@ -317,7 +319,9 @@ impl Instruction {
 
             Self::Func(func) => functions::func(vm, *func)?,
             Self::Yield => functions::yield_generator(vm)?,
+            Self::CallGenerator(func, reg) => functions::call_generator(vm, *func, **reg)?,
             Self::Return => functions::ret(vm)?,
+            Self::Copy(left, right) => functions::copy(vm, **left, **right)?,
 
             Self::Collect => functions::collect(vm)?,
             Self::Halt => functions::halt(vm)?,
@@ -372,7 +376,9 @@ impl Instruction {
 
             Self::Func(_) => "call",
             Self::Yield => "yield",
+            Self::CallGenerator(_, _) => "callgen",
             Self::Return => "ret",
+            Self::Copy(_, _) => "copy",
 
             Self::Collect => "coll",
             Self::Halt => "halt",

@@ -304,6 +304,7 @@ impl Block {
 
         self
     }
+
     pub fn inst_greater_than_eq(
         &mut self,
         left: impl Into<Register>,
@@ -315,16 +316,47 @@ impl Block {
         self
     }
 
+    pub fn inst_yield(&mut self) -> &mut Self {
+        self.block.push(Instruction::Yield.into());
+
+        self
+    }
+
+    pub fn inst_call_generator(&mut self, func_name: Sym, reg: impl Into<Register>) -> &mut Self {
+        let reg = reg.into();
+        self.block.push(PartialInstruction {
+            uninit_inst: Instruction::CallGenerator(0, reg),
+            func_sym: Some(func_name),
+            global_sym: None,
+            local_sym: None,
+        });
+
+        self
+    }
+
+    pub fn inst_copy(
+        &mut self,
+        left: impl Into<Register>,
+        right: impl Into<Register>,
+    ) -> &mut Self {
+        let (left, right) = (left.into(), right.into());
+        self.block.push(Instruction::Copy(left, right).into());
+
+        self
+    }
+
     pub fn inst_collect(&mut self) -> &mut Self {
         self.block.push(Instruction::Collect.into());
 
         self
     }
+
     pub fn inst_return(&mut self) -> &mut Self {
         self.block.push(Instruction::Return.into());
 
         self
     }
+
     pub fn inst_func_call(&mut self, func_name: Sym) -> &mut Self {
         self.block.push(PartialInstruction {
             uninit_inst: Instruction::Func(0),
@@ -335,16 +367,19 @@ impl Block {
 
         self
     }
+
     pub fn inst_halt(&mut self) -> &mut Self {
         self.block.push(Instruction::Halt.into());
 
         self
     }
+
     pub fn inst_noop(&mut self) -> &mut Self {
         self.block.push(Instruction::NoOp.into());
 
         self
     }
+
     pub fn inst_illegal(&mut self) -> &mut Self {
         self.block.push(Instruction::Illegal.into());
 

@@ -1,24 +1,7 @@
 :: The main function
 fn main()
-    let integer: int = 0
-
-    if is_zero(integer) == true
-        println("Zero")
-    else
-        println("Not Zero")
-    end
-
     for i in 0..5
         println(i)
-    end
-end
-
-:: See if an integer is zero
-exposed fn is_zero(integer: int) -> bool
-    if integer == 0
-        return true
-    else
-        return false
     end
 end
 

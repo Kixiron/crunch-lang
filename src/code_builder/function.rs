@@ -6,16 +6,18 @@ pub struct FunctionContext {
     pub variables: HashSet<Sym>,
     pub blocks: Vec<Block>,
     pub current_block: usize,
+    pub name: Sym,
 }
 
 impl FunctionContext {
     #[inline]
-    pub fn new() -> Self {
+    pub fn new(name: Sym) -> Self {
         let mut new = Self {
             registers: [None; NUMBER_REGISTERS],
             variables: HashSet::new(),
             blocks: Vec::with_capacity(20),
             current_block: 0,
+            name,
         };
         new.blocks.push(Block::new());
 
@@ -106,7 +108,12 @@ impl FunctionContext {
             })?;
 
         let sym = sym.into();
-        trace!("Reserving register {} for {:?}", idx, sym);
+        trace!(
+            "Reserving register {} for {:?} in function {:?}",
+            idx,
+            sym,
+            self.name
+        );
 
         self.registers[idx] = Some(sym);
         Ok((idx as u8).into())
@@ -114,12 +121,14 @@ impl FunctionContext {
 
     #[track_caller]
     pub fn get_cached_reg(&mut self, sym: Sym) -> Result<Register> {
+        trace!("Getting cached register {:?}", sym);
         match self.registers.iter().position(|r| *r == Some(Some(sym))) {
             Some(pos) => Ok((pos as u8).into()),
             None => {
                 error!(
-                    "Failed to get cached register, attempted to get {:?} Loc: {:?}",
+                    "Failed to get cached register, attempted to get {:?} in function {:?} Loc: {:?}",
                     sym,
+                    self.name,
                     std::panic::Location::caller(),
                 );
                 Err(RuntimeError {
@@ -127,20 +136,6 @@ impl FunctionContext {
                     message: "Failed to fetch cached register".to_string(),
                 })
             }
-        }
-    }
-
-    pub fn reserve_nth_reg(&mut self, reg: impl Into<u8>) -> Result<Register> {
-        let reg = reg.into();
-        if self.registers.get(reg as usize) == Some(&None) {
-            self.registers[reg as usize] = Some(None);
-            Ok(reg.into())
-        } else {
-            error!("Failed to reserve nth register, attempted to get {}", reg);
-            Err(RuntimeError {
-                ty: RuntimeErrorTy::CompilationError,
-                message: "Failed to reserve register".to_string(),
-            })
         }
     }
 
@@ -188,18 +183,22 @@ impl FunctionContext {
                             (x1, y1): (usize, usize),
                             (x2, y2): (usize, usize),
                         ) -> usize {
-                            ctx.blocks[x1].block.len() - y1
-                                + y2
-                                + ctx.blocks[x1 + 1..x2]
-                                    .iter()
-                                    .map(|b| b.block.len())
-                                    .sum::<usize>()
+                            if x1 == x2 {
+                                y2 - y1
+                            } else {
+                                ctx.blocks[x1].block.len() - y1
+                                    + y2
+                                    + ctx.blocks[x1 + 1..x2]
+                                        .iter()
+                                        .map(|b| b.block.len())
+                                        .sum::<usize>()
+                            }
                         }
 
                         let offset = if idx > current_index {
-                            get_distance(&self, (current_index, inst_index), (idx, 0)) as i32 - 1
+                            get_distance(&self, (current_index, inst_index), (idx, 0)) as i32
                         } else {
-                            -(get_distance(&self, (idx, 0), (current_index, inst_index)) as i32) + 1
+                            -(get_distance(&self, (idx, 0), (current_index, inst_index)) as i32)
                         };
 
                         changes.push((current_index, inst_index, offset));

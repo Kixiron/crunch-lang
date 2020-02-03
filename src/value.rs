@@ -1,4 +1,4 @@
-use super::{AllocId, Collectable, Gc, Heap, Result, RuntimeError, RuntimeErrorTy};
+use super::{AllocId, Collectable, Gc, Heap, Result, ReturnFrame, RuntimeError, RuntimeErrorTy};
 use num_bigint::{BigInt, BigUint};
 use std::fmt;
 
@@ -38,6 +38,8 @@ pub enum Value {
     Pointer(AllocId),
     Library(std::sync::Arc<dlopen::raw::Library>),
     Null,
+
+    Generator(Box<ReturnFrame>),
 
     None,
 }
@@ -105,6 +107,7 @@ impl Value {
             Self::GcInt(_) => "bigint",
             Self::GcUint(_) => "biguint",
             Self::Library(_) => "lib",
+            Self::Generator(_) => "gen",
             Self::Null => "null",
             Self::None => "NoneType",
         }
@@ -145,6 +148,8 @@ impl Value {
             (Self::Pointer(left), Self::Pointer(right)) => Compare::just_equality(left, right),
 
             (Self::Bool(left), Self::Bool(right)) => Compare::just_equality(left, right),
+
+            (Value::Null, _) | (_, Value::Null) => Compare::Unequal,
 
             (left, right) if left == &Self::None || right == &Self::None => {
                 return Err(RuntimeError {
@@ -190,6 +195,7 @@ impl Value {
             Self::Str(string) => (*string).to_string(),
             Self::GcInt(int) => int.fetch(gc)?.to_string(),
             Self::GcUint(int) => int.fetch(gc)?.to_string(),
+            Self::Generator(gen) => format!("{:p}", gen.function_index as *const u8),
             Self::Null => "null".to_string(),
             Self::None => "NoneType".to_string(),
         })

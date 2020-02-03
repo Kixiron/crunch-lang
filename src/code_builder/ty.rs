@@ -33,7 +33,7 @@ impl TypeContext {
     where
         M: FnOnce(&mut CodeBuilder, &mut FunctionContext) -> Result<()>,
     {
-        let mut context = FunctionContext::new();
+        let mut context = FunctionContext::new(name);
 
         (method)(builder, &mut context)?;
 

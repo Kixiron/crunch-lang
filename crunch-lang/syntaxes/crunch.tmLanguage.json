@@ -30,7 +30,7 @@
         },
         {
             "name": "keyword.other.crunch",
-            "match": "\\b(let|return|break|import|export|then|empty|continue)\\b"
+            "match": "\\b(let|return|break|import|export|then|empty|continue|in)\\b"
         },
         {
             "name": "keyword.other.fn.crunch",

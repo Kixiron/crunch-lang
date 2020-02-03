@@ -1,7 +1,12 @@
 use crate::{Index, Result, ReturnFrame, RuntimeError, RuntimeErrorTy, Value, Vm};
 
 pub fn load(mut vm: &mut Vm, val: Value, reg: u8) -> Result<()> {
-    trace!("Loading val into {}", reg);
+    trace!(
+        "Loading val {:?} into {}: {:?}",
+        &val,
+        reg,
+        &vm.registers[reg as usize]
+    );
 
     vm.registers[reg as usize] = val;
     vm.index += Index(1);
@@ -10,7 +15,7 @@ pub fn load(mut vm: &mut Vm, val: Value, reg: u8) -> Result<()> {
 }
 
 pub fn comp_to_reg(mut vm: &mut Vm, reg: u8) -> Result<()> {
-    trace!("Loading previous comparison into {}", reg);
+    trace!("Loading previous comparison {} into {}", vm.prev_comp, reg);
 
     vm.registers[reg as usize] = Value::Bool(vm.prev_comp);
     vm.index += Index(1);
@@ -19,11 +24,7 @@ pub fn comp_to_reg(mut vm: &mut Vm, reg: u8) -> Result<()> {
 }
 
 pub fn op_to_reg(mut vm: &mut Vm, reg: u8) -> Result<()> {
-    trace!(
-        "Loading previous operation ({:?}) into {}",
-        &vm.prev_op,
-        reg
-    );
+    trace!("Loading previous operation {:?} into {}", &vm.prev_op, reg);
 
     vm.registers[reg as usize] = Value::None;
     std::mem::swap(&mut vm.registers[reg as usize], &mut vm.prev_op);
@@ -33,7 +34,11 @@ pub fn op_to_reg(mut vm: &mut Vm, reg: u8) -> Result<()> {
 }
 
 pub fn drop(vm: &mut Vm, reg: u8) -> Result<()> {
-    trace!("Clearing register {}", reg);
+    trace!(
+        "Dropping register {}: {:?}",
+        reg,
+        &vm.registers[reg as usize]
+    );
 
     (&mut vm.registers[reg as usize]).drop(&mut vm.gc)?;
     vm.index += Index(1);
@@ -42,7 +47,13 @@ pub fn drop(vm: &mut Vm, reg: u8) -> Result<()> {
 }
 
 pub fn mov(vm: &mut Vm, target: u8, source: u8) -> Result<()> {
-    trace!("Moving {} to {}", source, target);
+    trace!(
+        "Moving {}: {:?} to {}: {:?}",
+        source,
+        &vm.registers[source as usize],
+        target,
+        &vm.registers[target as usize]
+    );
 
     vm.registers[target as usize] = vm.registers[source as usize].clone();
     vm.index += Index(1);
@@ -51,7 +62,11 @@ pub fn mov(vm: &mut Vm, target: u8, source: u8) -> Result<()> {
 }
 
 pub fn push(vm: &mut Vm, reg: u8) -> Result<()> {
-    trace!("Pushing register {} to the stack", reg);
+    trace!(
+        "Pushing register {}: {:?} to the stack",
+        reg,
+        &vm.registers[reg as usize]
+    );
 
     let mut val = Value::None;
     std::mem::swap(&mut vm.registers[reg as usize], &mut val);
@@ -62,7 +77,7 @@ pub fn push(vm: &mut Vm, reg: u8) -> Result<()> {
 }
 
 pub fn pop(vm: &mut Vm, reg: u8) -> Result<()> {
-    trace!("Popping to register {}", reg);
+    trace!("Popping to register {}: {:?}", reg, vm.stack.last());
 
     vm.registers[reg as usize] = vm.stack.pop().ok_or(RuntimeError {
         ty: RuntimeErrorTy::EmptyStack,
@@ -74,7 +89,16 @@ pub fn pop(vm: &mut Vm, reg: u8) -> Result<()> {
 }
 
 pub fn add(mut vm: &mut Vm, left: u8, right: u8) -> Result<()> {
-    trace!("Adding registers {} and {}", left, right);
+    trace!(
+        "Adding registers {}: {:?} and {}: {:?} = {:?}",
+        left,
+        &vm.registers[left as usize],
+        right,
+        &vm.registers[right as usize],
+        vm.registers[left as usize]
+            .clone()
+            .add_upflowing(vm.registers[right as usize].clone(), &mut vm.gc)
+    );
 
     vm.prev_op = vm.registers[left as usize]
         .clone()
@@ -85,6 +109,14 @@ pub fn add(mut vm: &mut Vm, left: u8, right: u8) -> Result<()> {
 }
 
 pub fn sub(mut vm: &mut Vm, left: u8, right: u8) -> Result<()> {
+    trace!(
+        "Subtracting registers {}: {:?} and {}: {:?}",
+        left,
+        &vm.registers[left as usize],
+        right,
+        &vm.registers[right as usize]
+    );
+
     vm.prev_op = vm.registers[left as usize]
         .clone()
         .sub_upflowing(vm.registers[right as usize].clone(), &mut vm.gc)?;
@@ -94,6 +126,14 @@ pub fn sub(mut vm: &mut Vm, left: u8, right: u8) -> Result<()> {
 }
 
 pub fn mult(mut vm: &mut Vm, left: u8, right: u8) -> Result<()> {
+    trace!(
+        "Multiplying registers {}: {:?} and {}: {:?}",
+        left,
+        &vm.registers[left as usize],
+        right,
+        &vm.registers[right as usize]
+    );
+
     vm.prev_op = vm.registers[left as usize]
         .clone()
         .mult_upflowing(vm.registers[right as usize].clone(), &mut vm.gc)?;
@@ -103,6 +143,14 @@ pub fn mult(mut vm: &mut Vm, left: u8, right: u8) -> Result<()> {
 }
 
 pub fn div(mut vm: &mut Vm, left: u8, right: u8) -> Result<()> {
+    trace!(
+        "Dividing registers {}: {:?} and {}: {:?}",
+        left,
+        &vm.registers[left as usize],
+        right,
+        &vm.registers[right as usize]
+    );
+
     vm.prev_op = vm.registers[left as usize]
         .clone()
         .div_upflowing(vm.registers[right as usize].clone(), &mut vm.gc)?;
@@ -112,7 +160,7 @@ pub fn div(mut vm: &mut Vm, left: u8, right: u8) -> Result<()> {
 }
 
 pub fn print(vm: &mut Vm, reg: u8) -> Result<()> {
-    trace!("Printing reg {:?}", reg);
+    trace!("Printing reg {:?}: {:?}", reg, &vm.registers[reg as usize]);
 
     if let Err(err) = write!(
         vm.stdout,
@@ -132,7 +180,13 @@ pub fn print(vm: &mut Vm, reg: u8) -> Result<()> {
 }
 
 pub fn jump(vm: &mut Vm, index: i32) -> Result<()> {
-    trace!("Jumping by offset {}", index);
+    trace!(
+        "Jumping by offset {} ({} + {} = {})",
+        index,
+        index,
+        *vm.index,
+        *vm.index as i32 + index
+    );
 
     let index = if index.is_negative() {
         let (index, overflowed) = vm.index.overflowing_sub(index.abs() as u32);
@@ -144,9 +198,9 @@ pub fn jump(vm: &mut Vm, index: i32) -> Result<()> {
             });
         }
 
-        index + 1
+        index
     } else {
-        *vm.index + index as u32 + 1
+        *vm.index + index as u32
     };
 
     vm.index = Index(index);
@@ -157,17 +211,22 @@ pub fn jump(vm: &mut Vm, index: i32) -> Result<()> {
 pub fn jump_comp(vm: &mut Vm, index: i32) -> Result<bool> {
     if vm.prev_comp {
         trace!(
-            "Comparison Jump: Prev Comp is {}, jumping by {}",
+            "Comparison Jump: Prev Comp is {}, jumping by {} ({} + {} = {})",
             vm.prev_comp,
-            index
+            index,
+            index,
+            *vm.index,
+            *vm.index as i32 + index
         );
-        vm.index = Index((*vm.index as i32 + index + 1) as u32);
+
+        vm.index = Index((*vm.index as i32 + index) as u32);
         Ok(true)
     } else {
         trace!(
             "Comparison Jump: Prev Comp is {}, not jumping",
             vm.prev_comp,
         );
+
         vm.index += Index(1);
         Ok(false)
     }
@@ -213,6 +272,30 @@ macro_rules! comparison_operator {
         pub fn $op_name(vm: &mut Vm, left: u8, right: u8) -> Result<()> {
             use crate::value::Compare;
 
+            trace!("Comparing {}: {:?} and {}: {:?} by {} = {:?}",
+                left,
+                &vm.registers[left as usize],
+                right,
+                &vm.registers[right as usize],
+                stringify!($op_name),
+                match &vm.registers[left as usize].compare(&vm.registers[right as usize], &vm.gc)? {
+                    $( Compare::$compare => Ok($found_bool), )*
+                    Compare::Incomparable if !vm.options.fault_tolerant => Err(RuntimeError {
+                        ty: RuntimeErrorTy::IncompatibleTypes,
+                        message: format!(
+                            concat!(
+                                "Values of types '{}' and '{}' cannot be '",
+                                stringify!($op_name),
+                                "'ed",
+                            ),
+                            vm.registers[left as usize].name(),
+                            vm.registers[right as usize].name()
+                        ),
+                    }),
+                    _ => Ok($else_bool),
+                }
+            );
+
             let left = &vm.registers[left as usize];
             let right = &vm.registers[right as usize];
 
@@ -249,10 +332,13 @@ comparison_operator! {
 }
 
 pub fn func(mut vm: &mut Vm, func: u32) -> Result<()> {
-    trace!("Jumping to function {}", func);
+    trace!(
+        "Jumping to function {} from function {}",
+        func,
+        vm.current_func
+    );
 
     let mut registers: [Value; crate::NUMBER_REGISTERS] = array_init::array_init(|_| Value::None);
-
     std::mem::swap(&mut vm.registers, &mut registers);
 
     vm.return_stack.push(ReturnFrame {
@@ -268,11 +354,76 @@ pub fn func(mut vm: &mut Vm, func: u32) -> Result<()> {
     Ok(())
 }
 
-pub fn yield_generator(_vm: &mut Vm) -> Result<()> {
-    todo!("Implement Generators/Coroutines")
+pub fn yield_generator(vm: &mut Vm) -> Result<()> {
+    trace!("Yielding from generator");
+
+    let frame = if let Some(mut orig_frame) = vm.return_stack.pop() {
+        trace!("Popping return frame");
+
+        std::mem::swap(&mut vm.registers, &mut orig_frame.registers);
+        let frame = ReturnFrame {
+            registers: orig_frame.registers,
+            index: vm.index + Index(1),
+            function_index: vm.current_func,
+            yield_point: Some(vm.index + Index(1)),
+        };
+        vm.index = orig_frame.index;
+        vm.current_func = orig_frame.function_index;
+
+        frame
+    } else {
+        error!("Returned with no frames from a generator");
+        todo!("Is this an error?")
+    };
+
+    vm.stack.push(Value::Generator(Box::new(frame)));
+
+    Ok(())
 }
 
-pub fn ret(mut vm: &mut Vm) -> Result<()> {
+pub fn call_generator(vm: &mut Vm, func: u32, reg: u8) -> Result<()> {
+    trace!("Calling generator {} with reg {}", func, reg);
+
+    vm.return_stack.push(ReturnFrame {
+        registers: vm.registers.clone(),
+        index: vm.index + Index(1),
+        function_index: vm.current_func,
+        yield_point: None,
+    });
+
+    if let Value::Generator(gen) = vm.registers[reg as usize].clone() {
+        trace!("Previously initialized generator");
+        vm.index = gen.index;
+        vm.registers = gen.registers;
+        vm.current_func = gen.function_index;
+    } else if vm.registers[reg as usize] == Value::Null || vm.registers[reg as usize] == Value::None
+    {
+        trace!("Fresh generator");
+        vm.index = Index(0);
+        vm.current_func = func;
+    } else {
+        todo!("Error")
+    }
+
+    Ok(())
+}
+
+pub fn copy(vm: &mut Vm, left: u8, right: u8) -> Result<()> {
+    trace!(
+        "Copying {}: {:?} to {}: {:?}",
+        left,
+        &vm.registers[left as usize],
+        right,
+        &vm.registers[right as usize]
+    );
+
+    vm.registers[right as usize] = vm.registers[left as usize].clone();
+    vm.index += Index(1);
+
+    Ok(())
+}
+
+pub fn ret(vm: &mut Vm) -> Result<()> {
     trace!("Executing a Return");
 
     // Get the most recent return frame

@@ -11,7 +11,7 @@ fn parse_test() {
     const FILENAME: &str = "parse_test.crunch";
 
     color_backtrace::install();
-    simple_logger::init().unwrap();
+    // simple_logger::init().unwrap();
 
     let mut parser = Parser::new(Some(FILENAME), CODE);
 
@@ -19,7 +19,7 @@ fn parse_test() {
     println!("Ast: {:#?}", &ast);
 
     let bytecode = crate::interpreter::Interpreter::from_interner(
-        &crate::OptionBuilder::new("./examples/parse_test.crunch").build(),
+        &crate::OptionBuilder::new("./tests/parse_test.crunch").build(),
         parser.interner,
     )
     .interpret(ast.0.clone())
@@ -30,9 +30,9 @@ fn parse_test() {
 }
 
 #[test]
-fn fibonacci_test() {
-    const CODE: &str = include_str!("../../../tests/fibonacci.crunch");
-    const FILENAME: &str = "fibonacci.crunch";
+fn fibonacci_iterative_test() {
+    const CODE: &str = include_str!("../../../tests/fibonacci_iterative.crunch");
+    const FILENAME: &str = "fibonacci_iterative.crunch";
 
     // color_backtrace::install();
     // simple_logger::init().unwrap();
@@ -42,7 +42,7 @@ fn fibonacci_test() {
     let ast = parser.parse().unwrap();
 
     let bytecode = crate::interpreter::Interpreter::from_interner(
-        &crate::OptionBuilder::new("./examples/fibonacci.crunch").build(),
+        &crate::OptionBuilder::new("./tests/fibonacci_iterative.crunch").build(),
         parser.interner,
     )
     .interpret(ast.0.clone())
@@ -52,9 +52,31 @@ fn fibonacci_test() {
 }
 
 #[test]
-fn factorial_test() {
-    const CODE: &str = include_str!("../../../tests/factorial.crunch");
-    const FILENAME: &str = "factorial.crunch";
+fn factorial_iterative_test() {
+    const CODE: &str = include_str!("../../../tests/factorial_iterative.crunch");
+    const FILENAME: &str = "factorial_iterative.crunch";
+
+    // color_backtrace::install();
+    simple_logger::init().unwrap();
+
+    let mut parser = Parser::new(Some(FILENAME), CODE);
+
+    let ast = parser.parse().unwrap();
+
+    let bytecode = crate::interpreter::Interpreter::from_interner(
+        &crate::OptionBuilder::new("./tests/factorial_iterative.crunch").build(),
+        parser.interner,
+    )
+    .interpret(ast.0.clone())
+    .unwrap();
+
+    crate::Vm::default().execute(&bytecode).unwrap();
+}
+
+#[test]
+fn fibonacci_recursive_test() {
+    const CODE: &str = include_str!("../../../tests/fibonacci_recursive.crunch");
+    const FILENAME: &str = "fibonacci_recursive.crunch";
 
     // color_backtrace::install();
     // simple_logger::init().unwrap();
@@ -64,7 +86,29 @@ fn factorial_test() {
     let ast = parser.parse().unwrap();
 
     let bytecode = crate::interpreter::Interpreter::from_interner(
-        &crate::OptionBuilder::new("./examples/factorial.crunch").build(),
+        &crate::OptionBuilder::new("./test/fibonacci_recursive.crunch").build(),
+        parser.interner,
+    )
+    .interpret(ast.0.clone())
+    .unwrap();
+
+    crate::Vm::default().execute(&bytecode).unwrap();
+}
+
+#[test]
+fn factorial_recursive_test() {
+    const CODE: &str = include_str!("../../../tests/factorial_recursive.crunch");
+    const FILENAME: &str = "factorial_recursive.crunch";
+
+    // color_backtrace::install();
+    // simple_logger::init().unwrap();
+
+    let mut parser = Parser::new(Some(FILENAME), CODE);
+
+    let ast = parser.parse().unwrap();
+
+    let bytecode = crate::interpreter::Interpreter::from_interner(
+        &crate::OptionBuilder::new("./tests/factorial_recursive.crunch").build(),
         parser.interner,
     )
     .interpret(ast.0.clone())

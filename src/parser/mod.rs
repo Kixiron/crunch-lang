@@ -199,6 +199,7 @@ impl<'a> Parser<'a> {
         if self.error {
             Err(diagnostics)
         } else {
+            info!("Finished parsing: {:#?}", &ast);
             Ok((ast, diagnostics))
         }
     }
@@ -568,6 +569,8 @@ impl<'a> Parser<'a> {
         let body = self.body()?;
         let then = self.then()?;
 
+        self.eat(TokenType::EndBlock)?;
+
         Ok(For {
             element,
             range,
@@ -663,10 +666,22 @@ impl<'a> Parser<'a> {
     }
 
     fn assign_type(&mut self) -> Result<AssignType> {
-        Ok(match self.next()?.ty {
+        trace!("Parsing assign type");
+        let next = self.next()?;
+        let ty = match next.ty {
             TokenType::Equal => AssignType::Normal,
+            TokenType::Caret
+            | TokenType::Pipe
+            | TokenType::Star
+            | TokenType::Plus
+            | TokenType::Minus
+            | TokenType::Divide
+            | TokenType::Ampersand => AssignType::BinaryOp(self.binary_operand(next)?.0),
             _ => todo!("Implement the rest of the assignment types"),
-        })
+        };
+        self.eat(TokenType::Equal)?;
+
+        Ok(ty)
     }
 
     fn assign(&mut self, var: impl Into<Option<Sym>>) -> Result<Assign> {
@@ -684,6 +699,8 @@ impl<'a> Parser<'a> {
     }
 
     fn expr(&mut self) -> Result<Expr> {
+        trace!("Parsing expr");
+
         let expr = match self.peek()?.ty {
             TokenType::LeftParen => {
                 self.eat(TokenType::LeftParen)?;
@@ -712,6 +729,7 @@ impl<'a> Parser<'a> {
                     | TokenType::Ampersand
                     | TokenType::Caret => {
                         let next = self.next()?;
+
                         let op = self.binary_operand(next)?;
                         let right = Box::new(self.expr()?);
 
@@ -732,7 +750,7 @@ impl<'a> Parser<'a> {
                 self.extended_expr(lit)?
             }
 
-            _ => todo!("Implement the rest of the expressions"),
+            e => todo!("Implement the rest of the expressions: {:?}", e),
         };
 
         Ok(expr)
@@ -925,7 +943,14 @@ impl<'a> Parser<'a> {
                         TokenType::LeftParen => {
                             Statement::Expr(Expr::FunctionCall(self.function_call(ident)?))
                         }
-                        TokenType::Equal => Statement::Assign(self.assign(ident)?),
+                        TokenType::Equal
+                        | TokenType::Caret
+                        | TokenType::Pipe
+                        | TokenType::Star
+                        | TokenType::Plus
+                        | TokenType::Minus
+                        | TokenType::Divide
+                        | TokenType::Ampersand => Statement::Assign(self.assign(ident)?),
                         _ => todo!("Write the error"),
                     }
                 }

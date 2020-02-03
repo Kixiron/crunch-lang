@@ -1,12 +1,82 @@
 mod property_tests;
 
 use super::*;
+use crate::{Crunch, Vm};
 use std::io::stdout;
 
 #[test]
-fn function_test() {
-    use crate::Crunch;
+fn generator_test() {
+    // simple_logger::init().unwrap();
 
+    let functions = vec![
+        vec![
+            Instruction::CallGenerator(1, 0.into()),
+            Instruction::Pop(0.into()),
+            Instruction::Pop(1.into()),
+            Instruction::Print(1.into()),
+            Instruction::CallGenerator(1, 0.into()),
+            Instruction::Pop(0.into()),
+            Instruction::Pop(1.into()),
+            Instruction::Print(1.into()),
+            Instruction::CallGenerator(1, 0.into()),
+            Instruction::Pop(0.into()),
+            Instruction::Pop(1.into()),
+            Instruction::Print(1.into()),
+            Instruction::CallGenerator(1, 0.into()),
+            Instruction::Pop(0.into()),
+            Instruction::Pop(1.into()),
+            Instruction::Print(1.into()),
+            Instruction::CallGenerator(1, 0.into()),
+            Instruction::Pop(0.into()),
+            Instruction::Pop(1.into()),
+            Instruction::Print(1.into()),
+            Instruction::CallGenerator(1, 0.into()),
+            Instruction::Pop(0.into()),
+            Instruction::Pop(1.into()),
+            Instruction::Print(1.into()),
+            Instruction::Return,
+        ],
+        vec![
+            Instruction::Load(Value::I32(0), 0.into()),
+            Instruction::Push(0.into()),
+            Instruction::Yield,
+            Instruction::Load(Value::I32(1), 0.into()),
+            Instruction::Push(0.into()),
+            Instruction::Yield,
+            Instruction::Load(Value::I32(2), 0.into()),
+            Instruction::Push(0.into()),
+            Instruction::Yield,
+            Instruction::Load(Value::I32(3), 0.into()),
+            Instruction::Push(0.into()),
+            Instruction::Yield,
+            Instruction::Load(Value::Null, 0.into()),
+            Instruction::Push(0.into()),
+            Instruction::Yield,
+            Instruction::Jump(-4),
+        ],
+    ];
+
+    Vm::default().execute(&functions).unwrap();
+}
+
+#[test]
+fn eq() {
+    simple_logger::init().unwrap();
+
+    let functions = vec![vec![
+        Instruction::Load(Value::Null, 0.into()),
+        Instruction::Load(Value::I32(1), 1.into()),
+        Instruction::LessThanEq(0.into(), 1.into()),
+        Instruction::CompToReg(2.into()),
+        Instruction::Print(2.into()),
+        Instruction::Return,
+    ]];
+
+    Vm::default().execute(&functions).unwrap();
+}
+
+#[test]
+fn function_test() {
     let mut crunch = Crunch::new(crate::OptionBuilder::new("./function_test").build());
     let functions = vec![
         vec![
@@ -14,7 +84,7 @@ fn function_test() {
             Instruction::Print(31.into()),
             Instruction::Drop(31.into()),
             Instruction::Load(Value::Bool(false), 0.into()),
-            Instruction::Func(1_u32.into()),
+            Instruction::Func(1),
             Instruction::Load(Value::Str("Was the function called? "), 31.into()),
             Instruction::Load(Value::Str("\n"), 30.into()),
             Instruction::Print(31.into()),

@@ -17,6 +17,7 @@ build = "build.rs"
 default = []
 # Note: JIT currently *highly* expiremental
 jit = ["dynasm", "dynasmrt", "once_cell"]
+stepping = []
 
 [[bin]]
 name = "crunch"

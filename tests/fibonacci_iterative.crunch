@@ -1,0 +1,24 @@
+fn main()
+    println(fibonacci(1))
+    println(fibonacci(10))
+    println(fibonacci(20))
+end
+
+fn fibonacci(n: int) -> int
+    if n == 0
+        return 0
+    else if n == 1
+        return 1
+    else
+        let a = 0
+        let b = 1
+
+        for i in 0..n
+            let c = b
+            a = c
+            b = a + c
+        end
+
+        return a
+    end
+end
