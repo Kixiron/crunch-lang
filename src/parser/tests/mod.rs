@@ -57,7 +57,7 @@ fn factorial_iterative_test() {
     const FILENAME: &str = "factorial_iterative.crunch";
 
     // color_backtrace::install();
-    simple_logger::init().unwrap();
+    // simple_logger::init().unwrap();
 
     let mut parser = Parser::new(Some(FILENAME), CODE);
 

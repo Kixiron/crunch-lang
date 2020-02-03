@@ -6,7 +6,7 @@ use std::io::stdout;
 
 #[test]
 fn generator_test() {
-    // simple_logger::init().unwrap();
+    simple_logger::init().unwrap();
 
     let functions = vec![
         vec![
@@ -52,7 +52,7 @@ fn generator_test() {
             Instruction::Load(Value::Null, 0.into()),
             Instruction::Push(0.into()),
             Instruction::Yield,
-            Instruction::Jump(-4),
+            Instruction::Jump(-3),
         ],
     ];
 
@@ -335,23 +335,23 @@ fn jump_ops() {
 
     let jump = Instruction::Jump(10);
     jump.execute(&mut vm).unwrap();
-    assert_eq!(vm.index, 11.into());
+    assert_eq!(vm.index, 10.into());
 
     let jump = Instruction::Jump(-10);
     jump.execute(&mut vm).unwrap();
-    assert_eq!(vm.index, 2.into());
+    assert_eq!(vm.index, 0.into());
 
     let jump_comp = Instruction::JumpComp(10);
     jump_comp.execute(&mut vm).unwrap();
-    assert_eq!(vm.index, 3.into());
+    assert_eq!(vm.index, 1.into());
 
     vm.prev_comp = true;
     jump_comp.execute(&mut vm).unwrap();
-    assert_eq!(vm.index, 14.into());
+    assert_eq!(vm.index, 11.into());
 
     let jump_comp = Instruction::JumpComp(-10);
     jump_comp.execute(&mut vm).unwrap();
-    assert_eq!(vm.index, 5.into());
+    assert_eq!(vm.index, 1.into());
 }
 
 #[test]
