@@ -19,65 +19,6 @@
 - [ ] [Reduce Dependencies](#dependencies-overview)
 - [ ] [String Formatting](https://docs.rs/runtime-fmt/0.4.1/runtime_fmt/)
 
-## Checklist
-
-
-- [ ] FFI with Rust toolkit for developing native plugins
-- [ ] JIT
-- [ ] Type System
-    - [ ] Custom Types
-    - [ ] Type Safe
-- [ ] Tooling
-    - [ ] Package Manager
-    - [ ] Formatter
-    - [ ] Documenter
-        - [ ] Doc Comments
-    - [ ] Linter
-    - [ ] Tester
-        - [ ] Unit Testing integration
-    - [ ] Benchmarking
-- [ ] Better Error Messages
-    - [ ] Friendly messages with compiler 'personality'
-    - [ ] Specific errors
-    - [ ] Possible solutions
-    - [ ] Error codes with lookups that explain the error code
-- [ ] Standard Library
-    - [ ] Importing Files
-        - [ ] Source Code Files
-        - [ ] Native Files
-        - [ ] Packages
-- [ ] Semantics/Syntax
-    - [ ] Explicit Mutability
-    - [ ] Types
-        - [ ] Type Variables
-        - [ ] Type Methods
-    - [ ] Logic
-    - [ ] Operands
-        - [ ] Overloadable?
-- [ ] Runtime Reflection
-- [ ] Variables
-    - [ ] Scoping
-    - [X] Strings
-    - [ ] Integers
-        - [ ] Signed
-        - [ ] Floats
-    - [ ] Vectors
-        - [ ] Indexing
-        - [ ] Iteration
-            - [ ] For loop integration
-    - [X] Booleans
-    - [ ] Uninitialized variables
-    - [ ] Global Variables
-        - `global` keyword
-        - Declared outside any scope
-    - [ ] Manipulation (Adding, indexing, removing, type info, etc.)
-    - [ ] Constants
-        - Strictly enforced to be unchanging
-    - [ ] Calling variables
-
-# Crunch
------
-
 ## Target Syntax
 
 The entry point of every Crunch program is a `main` function that returns `unit`
@@ -99,18 +40,18 @@ type Syven
     end
 
     fn greet(self) -> unit
-        @print "Hello {}! You are {} years old!\n", self.name, self.age
+        println("Hello {}! You are {} years old!\n", self.name, self.age)
     end
 end
 
 :: Functions can also be untyped
 fn hello(name, age)
-    @print "Hello {}! You are {} years old!\n", name, age
+    println("Hello {}! You are {} years old!\n", name, age)
 end
     
 :: This untyped function will be desugared into a generic function like this
 fn hello<T, E>(name: T, age E) -> unit
-    @print "Hello {}! You are {} years old!\n", name, age
+    println("Hello {}! You are {} years old!\n", name, age)
 end
 
 :: Functions that do not specify a return type default to `unit`
@@ -128,7 +69,7 @@ fn main()
     syv.greet()
 
     if syv.name != 'Syven'
-        @print "You aren't Syven!"
+        println("You aren't Syven!")
     else
         syv.greet()
     end
@@ -224,113 +165,6 @@ Bit Escape Codes: `\b{00000000}`
 `vector<ty>`: A vector of values. `ty` is the contained type  
 `NoneType`: An immediate error, it means that the compiler broke somewhere  
 
-## Language Builtins
-
-`@print` Prints to stdout  
-`@collect` Forces a GC collection cycle  
-`@halt` Halts program execution  
-
-## Syntax TODOs
-
-- `::: Doc Comments`  
-- Mandatory Bracing: `a + b * c` is a syntax error, `a + (b * c)` is not  
-- Zig-style multiline string literals with `#'` or `#"`:
-    ```
-    let string = 
-        #' Multi
-        #'     Line
-        #'         String
-        #'             Literals
-
-    :: Alternatively,
-    let string = 
-        #" Multi
-        #"     Line
-        #"         String
-        #"             Literals
-    ```
-    <details>
-    <summary>Possible alternative syntax</summary>
-    
-    ```
-    let string = 
-        ' Multi
-        '     Line
-        '         String
-        '             Literals
-    end
-
-    :: Alternatively,
-    let string = 
-        " Multi
-        "     Line
-        "         String
-        "             Literals
-    end
-    ```
-
-    </details>
-- [Poni-style](https://tutorial.ponylang.io/gotchas/divide-by-zero.html) operators  
-    `+` vs `+?` vs `+!`  
-    `int / int = int` Normal Divide (Division by zero results in zero)  
-    `int /? int = result<int>` Checked Division (Dividing by zero will result in an error)  
-    `int /! int = int` Crashing Division (Division by zero will result in a program halt)  
-- `<ret> if <cond> else <ret>`
-- `then` clauses on loops for if the loop executes un-broken
-    ```crunch
-    while true
-        :: ..snip
-    then
-        :: ..snip
-    end
-    ```
-- arrays
-- floats
-- tuples
-- pattern matching
-- enums
-- use a stack for excess arguments/returns
-  - Push/Pop instructions
-- traits
-- modules
-- match statements
-
-
-## CLI Options
-
-`--burn-gc` Preforms a GC collect at every opportunity  
-`--debug-log` Activates verbose logging  
-`--fault-tolerant` Allows minor errors to occur without triggering program shutdown  
-`--output [ast|bytecode]` Outputs the produced ast and bytecode  
-
-## TODOs Waiting on Rust
-
-- [ ] Refractor `next()` and `peek()` in parser to use `#[track_caller]` when [Rust Issue #47809](https://github.com/rust-lang/rust/issues/47809) is merged
-- [ ] Remove lazy_static dependency once [Rust Issue #51910](https://github.com/rust-lang/rust/issues/51910) is merged
-
-## Dependencies Overview
-- log: Logging
-- simple_logger: Logger usage
-- color-backtrace: Readable backtraces
-- logos: Lexer generator
-- structopt: CLI interaction
-- codespan: Parser error construction
-- codespan_reporting: Parser error reporting
-- string-interner: String Interning
-- rand: Random number generation
-- winapi: Windows system interaction
-- libc: Unix system interaction
-- array_init: Initializing arrays with non-copy types, one usage
-- lazy_static: Only used for the syscall table until [Rust Issue #51910](https://github.com/rust-lang/rust/issues/51910) is merged
-- human-panic: Need to write own panic handler, because panics are an ICE
-- libloading: Load dynamic libraries
-- num-bigint: Arbitrary-precision integers
-- crunch_proc_macro: Proc macros for internal use
-
-## Dev Dependencies Overview
-- criterion: Benchmarking
-- proptest: Property Testing
-
 ## Grammar Specification
 
 ```ebnf
@@ -386,3 +220,130 @@ Statement ::= If | While | Loop | For | FunctionCall | Assignment | VarDeclarati
 
 Body ::= Statement+ | 'empty'
 ```
+
+## Checklist
+
+- [ ] FFI with Rust toolkit for developing native plugins
+- [ ] JIT
+- [ ] Type System
+    - [ ] Custom Types
+    - [ ] Type Safe
+- [ ] Tooling
+    - [ ] Package Manager
+    - [ ] Formatter
+    - [ ] Documenter
+        - [ ] Doc Comments
+    - [ ] Linter
+    - [ ] Tester
+        - [ ] Unit Testing integration
+    - [ ] Benchmarking
+- [ ] Better Error Messages
+    - [ ] Friendly messages with compiler 'personality'
+    - [ ] Specific errors
+    - [ ] Possible solutions
+    - [ ] Error codes with lookups that explain the error code
+- [ ] Standard Library
+    - [ ] Importing Files
+        - [ ] Source Code Files
+        - [ ] Native Files
+        - [ ] Packages
+- [ ] Semantics/Syntax
+    - [ ] Explicit Mutability
+    - [ ] Types
+        - [ ] Type Variables
+        - [ ] Type Methods
+    - [ ] Logic
+    - [ ] Operands
+        - [ ] Overloadable?
+    - [ ] Traits
+            ```crunch
+            trait TraitName
+                fn trait_function()
+                    println("Hello from TraitName!")
+                end
+            end
+            ```
+    - [ ] [Poni-style](https://tutorial.ponylang.io/gotchas/divide-by-zero.html) operators  
+        `+` vs `+?` vs `+!`  
+        `int / int = int` Normal Divide (Division by zero results in zero)  
+        `int /? int = result<int>` Checked Division (Dividing by zero will result in an error)  
+        `int /! int = int` Crashing Division (Division by zero will result in a program halt)  
+    - [ ] `<ret> if <cond> else <ret>`
+    - [ ] `then` clauses on loops for if the loop executes un-broken
+        ```crunch
+        while true
+            :: ..snip
+        then
+            :: ..snip
+        end
+        ```
+- pattern matching
+- [ ] Runtime Reflection
+- [ ] Variables
+    - [ ] Tuples
+    - [ ] Enums
+            ```crunch
+            enum EnumName
+                Variant
+                TupleVariant
+                OrphanType =>
+                    orphan_type_field: int
+                end
+            end
+            ```
+    - [ ] Scoping
+    - [X] Strings
+    - [X] Integers
+        - [X] Signed
+        - [X] Floats
+    - [ ] Vectors
+        - [ ] Indexing
+        - [ ] Iteration
+            - [ ] For loop integration
+    - [X] Booleans
+    - [ ] Uninitialized variables
+    - [ ] Global Variables
+        - `global` keyword
+        - Declared outside any scope
+    - [ ] Manipulation (Adding, indexing, removing, type info, etc.)
+    - [ ] Constants
+        - Strictly enforced to be unchanging
+    - [ ] Calling variables
+- [ ] `::: Doc Comments`  
+- [ ] Mandatory Bracing: `a + b * c` is a syntax error, `a + (b * c)` is not  
+- [ ] Zig-style multiline string literals with `#'` or `#"`:
+    ```
+    let string = 
+        #' Multi
+        #'     Line
+        #'         String
+        #'             Literals
+
+    :: Alternatively,
+    let string = 
+        #" Multi
+        #"     Line
+        #"         String
+        #"             Literals
+    ```
+    <details>
+    <summary>Possible alternative syntax</summary>
+    
+    ```
+    let string = 
+        ' Multi
+        '     Line
+        '         String
+        '             Literals
+    end
+
+    :: Alternatively,
+    let string = 
+        " Multi
+        "     Line
+        "         String
+        "             Literals
+    end
+    ```
+
+    </details>
