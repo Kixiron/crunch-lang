@@ -1,5 +1,5 @@
 :: The main function
-fn main()
+fn main() -> unit
     for i in 0..5
         println(i)
     end

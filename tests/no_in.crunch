@@ -1,0 +1,5 @@
+fn main()
+    for i 0..1
+        empty
+    end
+end

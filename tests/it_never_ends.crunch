@@ -1,0 +1,10 @@
+fn main()
+    if i == true
+        println("hi")
+
+    if i == false
+        println('hi')
+
+    else
+        println("bye")
+        
