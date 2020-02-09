@@ -1055,12 +1055,33 @@ impl<'a> Parser<'a> {
         let token = self.next()?;
 
         let literal = match token.ty {
-            TokenType::Int => Literal::Integer(token.source.parse().unwrap()),
+            // TODO: Allow larger integer sizes
+            TokenType::Int => Literal::Integer(token.source.parse().map_err(|_err| {
+                Diagnostic::new(
+                    Severity::Error,
+                    "Invalid Integer",
+                    Label::new(
+                        self.files[0],
+                        token.range.0..token.range.1,
+                        "Invalid int".to_string(),
+                    ),
+                )
+            })?),
             TokenType::String => Literal::String({
                 let string = &self.escape_string(&(&*token.source)[1..token.source.len() - 1])?;
                 self.intern(string)
             }),
-            TokenType::Bool => Literal::Boolean(token.source.parse().unwrap()),
+            TokenType::Bool => Literal::Boolean(token.source.parse().map_err(|_err| {
+                Diagnostic::new(
+                    Severity::Error,
+                    "Invalid Boolean",
+                    Label::new(
+                        self.files[0],
+                        token.range.0..token.range.1,
+                        "Invalid bool".to_string(),
+                    ),
+                )
+            })?),
             _ => unimplemented!("{:?}", token.ty),
         };
 

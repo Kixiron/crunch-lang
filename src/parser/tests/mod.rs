@@ -162,3 +162,26 @@ fn ffi_test() {
 
     crate::Vm::default().execute(&bytecode).unwrap();
 }
+
+mod fuzz_found {
+    #![allow(non_snake_case)]
+
+    use super::*;
+
+    #[test]
+    fn _C6CBD54946E2A1D183EAA7D86241656F() {
+        let input = "fn main()
+            i +=
+        end";
+
+        let _ = Parser::new(None, input).parse();
+    }
+
+    #[test]
+    fn _6B58087CB2578DD9C74F702A574A4C91() {
+        let input = "fn main()
+        let i = (1 + (100 / (1 * 10293207277133";
+
+        let _ = Parser::new(None, input).parse();
+    }
+}
