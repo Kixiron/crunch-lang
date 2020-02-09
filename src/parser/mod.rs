@@ -701,7 +701,8 @@ impl<'a> Parser<'a> {
     fn expr(&mut self) -> Result<Expr> {
         trace!("Parsing expr");
 
-        let expr = match self.peek()?.ty {
+        let token = self.peek()?;
+        let expr = match token.ty {
             TokenType::LeftParen => {
                 self.eat(TokenType::LeftParen)?;
                 let expr = self.expr()?;
@@ -748,6 +749,18 @@ impl<'a> Parser<'a> {
             TokenType::String | TokenType::Int | TokenType::Bool => {
                 let lit = Expr::Literal(self.parse_literal()?);
                 self.extended_expr(lit)?
+            }
+
+            TokenType::Error => {
+                return Err(Diagnostic::new(
+                    Severity::Error,
+                    "Invalid token",
+                    Label::new(
+                        self.files[0],
+                        token.range.0..token.range.1,
+                        format!("{:?} is not a valid token", token.source),
+                    ),
+                ));
             }
 
             e => todo!("Implement the rest of the expressions: {:?}", e),

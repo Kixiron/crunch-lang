@@ -163,10 +163,11 @@ fn ffi_test() {
     crate::Vm::default().execute(&bytecode).unwrap();
 }
 
+#[allow(non_snake_case)]
 mod fuzz_found {
-    #![allow(non_snake_case)]
-
     use super::*;
+
+    // Note: All test names here are MD5 hashes of the panicking input preceded by an underscore
 
     #[test]
     fn _C6CBD54946E2A1D183EAA7D86241656F() {
@@ -180,7 +181,16 @@ mod fuzz_found {
     #[test]
     fn _6B58087CB2578DD9C74F702A574A4C91() {
         let input = "fn main()
-        let i = (1 + (100 / (1 * 10293207277133";
+            let i = (1 + (100 / (1 * 10293207277133";
+
+        let _ = Parser::new(None, input).parse();
+    }
+
+    #[test]
+    fn _307818184C53B8C3412B778AF5B836F8() {
+        let input = "fn main()
+            println('Test\")
+        end";
 
         let _ = Parser::new(None, input).parse();
     }
