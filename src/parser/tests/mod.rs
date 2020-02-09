@@ -194,4 +194,41 @@ mod fuzz_found {
 
         let _ = Parser::new(None, input).parse();
     }
+
+    #[test]
+    fn _9D1BE77EA5DDA279F6679AD75A7213AF() {
+        simple_logger::init().unwrap();
+
+        let input = "fn main()
+            println(factorial(1))
+            println(factorial(10))
+            println(factorial(20))
+        end
+        
+        fn factorial(n: int) -> int
+            let product = 1
+        
+            for i in 1..n
+                product *= i
+            end
+        
+            return product
+        end";
+
+        let _ = Parser::new(None, input).parse();
+    }
+
+    #[test]
+    fn _FE605BD31796CB1A1A4A882487967B90() {
+        let input = "fn main()614^8154291434688Ʀ \\ (1))
+            pri -30076509";
+
+        let _ = Parser::new(None, input).parse();
+    }
+    #[test]
+    fn _46439F3F511989ABB1A794D5CD34F5C4() {
+        let input = "\x66\x6E\x20\x6D\x61\x69\x6E\x28\x29\x0A\x20\x20\x13\x20\x65\x6D\x70\x74\x79\x0A\x65\x6E\x64";
+
+        let _ = Parser::new(None, input).parse();
+    }
 }

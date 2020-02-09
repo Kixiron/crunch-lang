@@ -679,6 +679,7 @@ impl<'a> Parser<'a> {
             | TokenType::Ampersand => AssignType::BinaryOp(self.binary_operand(next)?.0),
             _ => todo!("Implement the rest of the assignment types"),
         };
+        self.eat(TokenType::Equal)?;
 
         Ok(ty)
     }
@@ -751,19 +752,22 @@ impl<'a> Parser<'a> {
                 self.extended_expr(lit)?
             }
 
-            TokenType::Error => {
+            TokenType::Newline => {
+                self.eat(TokenType::Newline)?;
+                self.expr()?
+            }
+
+            _ => {
                 return Err(Diagnostic::new(
                     Severity::Error,
                     "Invalid token",
                     Label::new(
                         self.files[0],
                         token.range.0..token.range.1,
-                        format!("{:?} is not a valid token", token.source),
+                        format!("{:?} is not a valid expression", token.source),
                     ),
                 ));
             }
-
-            e => todo!("Implement the rest of the expressions: {:?}", e),
         };
 
         Ok(expr)
@@ -942,7 +946,8 @@ impl<'a> Parser<'a> {
         let mut statements = Vec::new();
 
         loop {
-            let statement = match self.peek()?.ty {
+            let start_token = self.peek()?;
+            let statement = match start_token.ty {
                 TokenType::If => Statement::Conditional(self.conditional()?),
                 TokenType::While => Statement::While(self.while_loop()?),
                 TokenType::Loop => Statement::Loop(self.loop_loop()?),
@@ -952,7 +957,8 @@ impl<'a> Parser<'a> {
                     let ident = self.eat(TokenType::Ident)?;
                     let ident = self.intern(ident.source);
 
-                    match self.peek()?.ty {
+                    let peek = self.peek()?;
+                    match peek.ty {
                         TokenType::LeftParen => {
                             Statement::Expr(Expr::FunctionCall(self.function_call(ident)?))
                         }
@@ -964,7 +970,17 @@ impl<'a> Parser<'a> {
                         | TokenType::Minus
                         | TokenType::Divide
                         | TokenType::Ampersand => Statement::Assign(self.assign(ident)?),
-                        _ => todo!("Write the error"),
+                        e => {
+                            return Err(Diagnostic::new(
+                                Severity::Error,
+                                "Unexpected token",
+                                Label::new(
+                                    self.files[0],
+                                    peek.range.0..peek.range.1,
+                                    format!("Did not expect a {}", e),
+                                ),
+                            ));
+                        }
                     }
                 }
                 TokenType::Return => {
