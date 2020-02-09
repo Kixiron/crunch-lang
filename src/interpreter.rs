@@ -503,13 +503,13 @@ impl Interpreter {
 
                 let reg = ctx.get_cached_reg(assign.var)?;
                 let loaded = self
-                    .expr(builder, ctx, assign.expr, assign.var)?
-                    .to_register(ctx, assign.var)?;
+                    .expr(builder, ctx, assign.expr, None)?
+                    .to_register(ctx, None)?;
 
                 if assign.ty == AssignType::Normal {
                     ctx.current_block().inst_copy(loaded, reg);
                 } else {
-                    if let AssignType::BinaryOp(op) = dbg!(assign.ty) {
+                    if let AssignType::BinaryOp(op) = assign.ty {
                         match op {
                             BinaryOp::Plus => ctx.current_block().inst_add(loaded, reg),
                             BinaryOp::Minus => ctx.current_block().inst_sub(loaded, reg),
@@ -519,7 +519,7 @@ impl Interpreter {
                             BinaryOp::Or => ctx.current_block().inst_or(loaded, reg),
                             BinaryOp::And => ctx.current_block().inst_and(loaded, reg),
                         }
-                        .inst_op_to_reg(loaded);
+                        .inst_op_to_reg(reg);
                     } else {
                         unreachable!()
                     }

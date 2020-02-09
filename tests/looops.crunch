@@ -1,0 +1,13 @@
+fn loopy()
+    for i in 0..5
+        println(i)
+    end
+
+    for i in 0..test()
+        println(i)
+    end
+end
+
+fn test() -> int
+    return 100000
+end

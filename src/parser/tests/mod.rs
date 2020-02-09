@@ -10,7 +10,7 @@ fn parse_test() {
     const CODE: &str = include_str!("../../../tests/parse_test.crunch");
     const FILENAME: &str = "parse_test.crunch";
 
-    color_backtrace::install();
+    // color_backtrace::install();
     // simple_logger::init().unwrap();
 
     let mut parser = Parser::new(Some(FILENAME), CODE);
@@ -35,11 +35,32 @@ fn fibonacci_iterative_test() {
     const FILENAME: &str = "fibonacci_iterative.crunch";
 
     // color_backtrace::install();
-    // simple_logger::init().unwrap();
+    simple_logger::init().unwrap();
 
     let mut parser = Parser::new(Some(FILENAME), CODE);
 
-    let ast = parser.parse().unwrap();
+    let ast = parser.parse();
+    if let Err(err) = ast {
+        let writer = codespan_reporting::term::termcolor::StandardStream::stderr(
+            codespan_reporting::term::termcolor::ColorChoice::Auto,
+        );
+
+        let config = codespan_reporting::term::Config::default();
+
+        let mut files = codespan::Files::new();
+        files.add(FILENAME, CODE);
+
+        for e in err {
+            if let Err(err) =
+                codespan_reporting::term::emit(&mut writer.lock(), &config, &files, &e)
+            {
+                println!("Error Emitting Error: {:?}", err);
+            }
+        }
+
+        panic!();
+    }
+    let ast = ast.unwrap();
 
     let bytecode = crate::interpreter::Interpreter::from_interner(
         &crate::OptionBuilder::new("./tests/fibonacci_iterative.crunch").build(),

@@ -1,0 +1,10 @@
+type Test<T, E>
+    member1: int
+    member2: str
+    member3: T
+    member4: E
+
+    fn test() -> T
+        println("Hello from Test!")
+    end
+end

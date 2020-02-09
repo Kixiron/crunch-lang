@@ -1,0 +1,21 @@
+fn use_a_match()
+    let i = 10
+
+    i = 5
+
+    if 1 == 10
+        empty
+    else if 3 != 4
+        empty
+    else if 3 >= 5
+        empty
+    else if 6 <= 1
+        empty
+    else if 6 < 5
+        empty
+    else if 5 > 5
+        empty
+    else
+        empty
+    end
+end

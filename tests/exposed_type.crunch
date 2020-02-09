@@ -1,0 +1,8 @@
+exposed type ExposedType<T, E>
+    exposed member1: int
+    member2: str
+
+    exposed fn test() -> T
+        println("Hello from Test!")
+    end
+end

@@ -195,11 +195,17 @@ impl FunctionContext {
                             }
                         }
 
-                        let offset = if idx > current_index {
+                        let mut offset = if idx > current_index {
                             get_distance(&self, (current_index, inst_index), (idx, 0)) as i32
                         } else {
                             -(get_distance(&self, (idx, 0), (current_index, inst_index)) as i32)
                         };
+
+                        if current_index as i32 + offset >= block.block.len() as i32 {
+                            offset -= 1;
+                        } else if current_index as i32 + offset < 0 {
+                            offset = 0;
+                        }
 
                         changes.push((current_index, inst_index, offset));
                     }

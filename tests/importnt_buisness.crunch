@@ -1,0 +1,5 @@
+import 'test' as flinger
+import 'test.yodeler' as yodel exposing *
+import 'test.yodeler.yodelayhehoo' as yodel exposing HighYodel
+import 'test.yodeler.yodelayhehoo.small' as yodelsmol exposing HighYodel as LowYodel, LowYodel
+import 'test.yodeler.yodelayhehoo.big' as yodelbig exposing HighYodel as LowYodel, LowYodel as HighYodel

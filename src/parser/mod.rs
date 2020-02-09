@@ -679,7 +679,6 @@ impl<'a> Parser<'a> {
             | TokenType::Ampersand => AssignType::BinaryOp(self.binary_operand(next)?.0),
             _ => todo!("Implement the rest of the assignment types"),
         };
-        self.eat(TokenType::Equal)?;
 
         Ok(ty)
     }
@@ -694,6 +693,7 @@ impl<'a> Parser<'a> {
 
         let ty = self.assign_type()?;
         let expr = self.expr()?;
+        self.eat(TokenType::Newline)?;
 
         Ok(Assign { var, expr, ty })
     }

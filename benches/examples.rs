@@ -54,7 +54,7 @@ fn examples(c: &mut Criterion) {
         });
     group.finish();
 
-    let mut group = c.benchmark_group("Factorial");
+    let mut group = c.benchmark_group("Factorial Recursive");
     group
         .bench_function("Crunch", |b| {
             let mut parser = Parser::new(
@@ -104,6 +104,61 @@ fn examples(c: &mut Criterion) {
 
             b.iter(|| unsafe { black_box(factorial(20)) });
         });
+    group.finish();
+
+    let mut group = c.benchmark_group("Factorial Iterative");
+    group
+        .bench_function("Crunch", |b| {
+            let mut parser = Parser::new(
+                Some("factorial.crunch"),
+                "
+            fn main()
+                factorial(20)
+            end
+            
+            fn factorial(n: int) -> int
+                let product = 1
+                
+                for i in 1..n
+                    product *= i
+                end
+            
+                return product
+            end 
+    ",
+            );
+            let ast = parser.parse().unwrap();
+            let bytecode = Interpreter::from_interner(
+                &OptionBuilder::new("./examples/factorial.crunch").build(),
+                parser.interner,
+            )
+            .interpret(ast.0)
+            .unwrap();
+            let mut vm = Vm::default();
+
+            b.iter(|| {
+                black_box(vm.execute(&bytecode)).unwrap();
+            });
+        })
+        .bench_function("Rust", |b| {
+            fn factorial(n: u32) -> u32 {
+                let mut product = 1;
+                for i in 1..n {
+                    product *= i;
+                }
+
+                product
+            }
+
+            b.iter(|| black_box(factorial(black_box(20))));
+        });
+    // .bench_function("C", |b| {
+    //     extern "C" {
+    //         fn factorial(n: i32) -> i32;
+    //     }
+    //
+    //     b.iter(|| unsafe { black_box(factorial(20)) });
+    // });
     group.finish();
 }
 
