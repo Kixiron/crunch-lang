@@ -4,4 +4,3 @@ fn main()
         println(i)
     end
 end
-
