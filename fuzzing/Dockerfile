@@ -3,5 +3,4 @@ ARG BRANCH=master
 
 RUN rustup update
 RUN git clone https://github.com/Kixiron/crunch-lang.git -b ${BRANCH}
-RUN git checkout dev
 RUN sudo fuzz.sh
