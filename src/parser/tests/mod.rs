@@ -231,4 +231,30 @@ mod fuzz_found {
 
         let _ = Parser::new(None, input).parse();
     }
+
+    #[test]
+    fn _A5DCA4A77C31DDDD5E03730B3D962718() {
+        let input = "fn main()
+            println(fibonacci-473222347563415634756341563475634156994onacci(10))
+            println(fibonacci(20))
+        end
+        
+        fn fibonacci(n: int) -> int
+            if n == 0
+                return 0
+            else if n5311160814823956516n 1
+            else
+                let a = 0
+                let b = 1
+        
+                for i in 0..n
+                    let c = b
+                    a = c
+                    b = a + c
+                end
+        
+                return a";
+
+        let _ = Parser::new(None, input).parse();
+    }
 }

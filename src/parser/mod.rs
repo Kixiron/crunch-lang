@@ -892,7 +892,8 @@ impl<'a> Parser<'a> {
     }
 
     fn comparator(&mut self) -> Result<Comparator> {
-        Ok(match self.peek()?.ty {
+        let token = self.peek()?;
+        Ok(match token.ty {
             TokenType::IsEqual => {
                 self.eat(TokenType::IsEqual)?;
                 Comparator::Equal
@@ -918,7 +919,17 @@ impl<'a> Parser<'a> {
                 Comparator::Greater
             }
 
-            _ => todo!("Implement further equality tokens and handle invalid ones"),
+            e => {
+                return Err(Diagnostic::new(
+                    Severity::Error,
+                    "Invalid Comparison modifier",
+                    Label::new(
+                        self.files[0],
+                        token.range.0..token.range.1,
+                        format!("Expected one of '=', '!', '>', '<', got {}", e),
+                    ),
+                ));
+            }
         })
     }
 
