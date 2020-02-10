@@ -17,6 +17,7 @@ build = "build.rs"
 default = []
 # Note: JIT currently *highly* expiremental
 jit = ["dynasm", "dynasmrt", "once_cell"]
+fuzz = ["honggfuzz"]
 stepping = []
 
 [[bin]]
@@ -39,6 +40,10 @@ harness = false
 name = "compilation"
 harness = false
 
+[[bin]]
+name = "fuzz_parser"
+path = "fuzzing/parse.rs"
+
 [dependencies]
 log = "0.4.8"
 simple_logger = "1.5.0"
@@ -58,6 +63,10 @@ version = "0.1.8"
 
 [dependencies.logos]
 version = "0.10.0-rc2"
+
+[dependencies.honggfuzz]
+version = "0.5.45"
+optional = true
 
 [dependencies.once_cell]
 version = "1.3.1"
