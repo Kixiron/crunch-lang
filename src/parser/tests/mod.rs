@@ -258,6 +258,7 @@ mod fuzz_found {
         let _ = Parser::new(None, input).parse();
     }
 
+    #[test]
     fn _56C81E044729298317C09A2D7112A555() {
         let input = "fn majn()
             printnn(fibonacci(1))

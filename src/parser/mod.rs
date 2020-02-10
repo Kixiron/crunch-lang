@@ -711,8 +711,7 @@ impl<'a> Parser<'a> {
                 Expr::Expr(Box::new(expr))
             }
 
-            TokenType::LeftCaret => todo!("Things that take generics"),
-
+            // TokenType::LeftCaret => todo!("Things that take generics"),
             TokenType::Ident => {
                 let ident = self.eat(TokenType::Ident)?;
                 let ident = self.intern(ident.source);
