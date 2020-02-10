@@ -1,8 +1,7 @@
 FROM rust:latest
-ARG REPO
+ARG BRANCH=master
 
 RUN rustup update
-RUN git clone ${REPO}
+RUN git clone https://github.com/Kixiron/crunch-lang.git -b ${BRANCH}
 RUN git checkout dev
-RUN cd crunch-lang/fuzz
 RUN sudo fuzz.sh
