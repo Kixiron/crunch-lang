@@ -23,7 +23,6 @@ pub struct Parser<'a> {
     current_file: FileId,
     diagnostics: Vec<Diagnostic>,
     error: bool,
-    indent_level: usize,
     pub interner: StringInterner<Sym>,
     current_path: Sym,
 }
@@ -63,7 +62,6 @@ impl<'a> Parser<'a> {
             current_file,
             diagnostics: Vec::new(),
             error: false,
-            indent_level: 0,
             interner,
             current_path,
         }
