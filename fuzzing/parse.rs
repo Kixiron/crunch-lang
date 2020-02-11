@@ -1,7 +1,5 @@
-#[cfg(feature = "fuzz")]
 use honggfuzz::fuzz;
 
-#[cfg(feature = "fuzz")]
 fn main() {
     loop {
         fuzz!(|bytes: &[u8]| {
@@ -11,6 +9,3 @@ fn main() {
         });
     }
 }
-
-#[cfg(not(feature = "fuzz"))]
-fn main() {}

@@ -10,8 +10,8 @@ fn parse_test() {
     const CODE: &str = include_str!("../../../tests/parse_test.crunch");
     const FILENAME: &str = "parse_test.crunch";
 
-    // color_backtrace::install();
-    // simple_logger::init().unwrap();
+    color_backtrace::install();
+    simple_logger::init().unwrap();
 
     let mut parser = Parser::new(Some(FILENAME), CODE);
 
@@ -270,6 +270,18 @@ mod fuzz_found {
             if n <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<4<<<<<<<<<<<<<<<<<onaccj)n - 2)
             end
         end";
+
+        let _ = Parser::new(None, input).parse();
+    }
+
+    #[test]
+    fn _AFC02FAD36D7E05E4CB9B9EB2A300FCE() {
+        let input = "fn loopy()
+            for i in 0. for i in 0..test()
+            i in 0..test()
+            i in 0..tes0()
+                println(i)
+            in 0..test-81524255529t082509i)";
 
         let _ = Parser::new(None, input).parse();
     }

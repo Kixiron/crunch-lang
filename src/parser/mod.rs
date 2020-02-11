@@ -677,7 +677,20 @@ impl<'a> Parser<'a> {
             | TokenType::Minus
             | TokenType::Divide
             | TokenType::Ampersand => AssignType::BinaryOp(self.binary_operand(next)?.0),
-            _ => todo!("Implement the rest of the assignment types"),
+            e => {
+                return Err(Diagnostic::new(
+                    Severity::Error,
+                    "Invalid assignment type",
+                    Label::new(
+                        self.files[0],
+                        next.range.0..next.range.1,
+                        format!(
+                            "Expected one of '=', '^', '|', '+', '-', '&', '*' or '/', got '{}'",
+                            e
+                        ),
+                    ),
+                ));
+            }
         };
         self.eat(TokenType::Equal)?;
 
@@ -708,6 +721,7 @@ impl<'a> Parser<'a> {
                 self.eat(TokenType::LeftParen)?;
                 let expr = self.expr()?;
                 self.eat(TokenType::RightParen)?;
+
                 Expr::Expr(Box::new(expr))
             }
 
@@ -773,6 +787,7 @@ impl<'a> Parser<'a> {
     }
 
     fn extended_expr(&mut self, expr: Expr) -> Result<Expr> {
+        let next = self.peek()?;
         if [
             TokenType::Plus,
             TokenType::Minus,
@@ -782,7 +797,7 @@ impl<'a> Parser<'a> {
             TokenType::Ampersand,
             TokenType::Caret,
         ]
-        .contains(&self.peek()?.ty)
+        .contains(&next.ty)
         {
             let next = self.next()?;
             let op = self.binary_operand(next)?;
@@ -804,7 +819,15 @@ impl<'a> Parser<'a> {
                     end: Box::new(self.expr()?),
                 }))
             } else {
-                todo!("Function call")
+                Err(Diagnostic::new(
+                    Severity::Error,
+                    "Function calls by dotted access are not yet implemented",
+                    Label::new(
+                        self.files[0],
+                        next.range.0..next.range.1,
+                        "Function calls by dotted access are not yet implemented".to_string(),
+                    ),
+                ))
             }
         } else {
             Ok(expr)
@@ -826,7 +849,20 @@ impl<'a> Parser<'a> {
                 TokenType::Pipe => BinaryOp::Or,
                 TokenType::Ampersand => BinaryOp::And,
                 TokenType::Caret => BinaryOp::Xor,
-                _ => todo!("Add more bin ops and/or an error"),
+                e => {
+                    return Err(Diagnostic::new(
+                        Severity::Error,
+                        "Invalid operand type",
+                        Label::new(
+                            self.files[0],
+                            begin.range.0..begin.range.1,
+                            format!(
+                                "Expected one of '^', '|', '+', '-', '&', '*' or '/', got '{}'",
+                                e
+                            ),
+                        ),
+                    ));
+                }
             };
 
             // TODO: Add more operand types
@@ -836,7 +872,18 @@ impl<'a> Parser<'a> {
 
             Ok((op, ty))
         } else {
-            todo!("Implement a stand-alone binary-operand or remove the `Option` from `left`")
+            let next = self.peek()?;
+
+            warn!("Stand-alone binary operands are unimplemented");
+            Err(Diagnostic::new(
+                Severity::Error,
+                "Stand-alone binary operands are unimplemented",
+                Label::new(
+                    self.files[0],
+                    next.range.0..next.range.1,
+                    "Stand-alone binary operands are unimplemented".to_string(),
+                ),
+            ))
         }
     }
 
@@ -866,8 +913,15 @@ impl<'a> Parser<'a> {
             None
         } else {
             let left = Box::new(self.expr()?);
-            let comparison = self.comparator()?;
-            let right = Box::new(self.expr()?);
+            let (comparison, right) = if self.peek()?.ty == TokenType::Newline {
+                let comparison = Comparator::Equal;
+                let right = Box::new(Expr::Literal(Literal::Boolean(true)));
+                (comparison, right)
+            } else {
+                let comparison = self.comparator()?;
+                let right = Box::new(self.expr()?);
+                (comparison, right)
+            };
 
             Some(Expr::Comparison(Comparison {
                 left,
@@ -1121,7 +1175,20 @@ impl<'a> Parser<'a> {
                     ),
                 )
             })?),
-            _ => unimplemented!("{:?}", token.ty),
+            e => {
+                return Err(Diagnostic::new(
+                    Severity::Error,
+                    "Invalid Literal",
+                    Label::new(
+                        self.files[0],
+                        token.range.0..token.range.1,
+                        format!(
+                            "Invalid literal, expected 'Integer', 'String' or 'Boolean', got '{}'",
+                            e
+                        ),
+                    ),
+                ));
+            }
         };
 
         info!("Finished parsing Variable");
