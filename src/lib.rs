@@ -1,27 +1,5 @@
 #![feature(track_caller, proc_macro_hygiene, vec_remove_item, map_first_last)]
 #![deny(missing_debug_implementations, deprecated, unused_must_use)]
-#![warn(
-    clippy::cargo,
-    clippy::pedantic,
-    clippy::perf,
-    clippy::complexity,
-    clippy::style,
-    clippy::correctness,
-    rust_2018_idioms
-)]
-#![allow(
-    clippy::too_many_lines,
-    clippy::cast_lossless,
-    clippy::shadow_unrelated,
-    clippy::cast_possible_truncation,
-    clippy::cast_possible_wrap,
-    clippy::cast_sign_loss,
-    clippy::needless_pass_by_value,
-    clippy::unused_self,
-    clippy::debug_assert_with_mut_call,
-    clippy::cast_precision_loss,
-    clippy::module_name_repetitions
-)]
 
 //! # Crunch
 //!

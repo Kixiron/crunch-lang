@@ -1,13 +1,13 @@
-pub mod ast;
+pub(crate) mod ast;
 #[cfg(test)]
 mod tests;
 mod token;
 
-pub use ast::*;
+pub(crate) use ast::*;
 
 use codespan::{FileId, Files};
 use codespan_reporting::diagnostic::{Diagnostic, Label, Severity};
-use std::{char, collections::VecDeque, panic::Location};
+use std::{char, collections::VecDeque, panic::Location as PanicLoc};
 use string_interner::{StringInterner, Sym};
 use token::*;
 
@@ -20,10 +20,10 @@ pub struct Parser<'a> {
     peek: Option<Token<'a>>,
     codespan: Files,
     files: Vec<FileId>,
-    current_file: FileId,
+    pub(crate) current_file: FileId,
     diagnostics: Vec<Diagnostic>,
     error: bool,
-    pub interner: StringInterner<Sym>,
+    pub(crate) interner: StringInterner<Sym>,
     current_path: Sym,
 }
 
@@ -149,7 +149,7 @@ impl<'a> Parser<'a> {
                         Severity::Error,
                         "Invalid token",
                         Label::new(
-                            self.files[0],
+                            self.current_file,
                             token.range.0 as u32..token.range.1 as u32,
                             format!("{:?} is not a valid token", token.source),
                         ),
@@ -171,7 +171,7 @@ impl<'a> Parser<'a> {
                         Severity::Error,
                         "Invalid top-level token",
                         Label::new(
-                            self.files[0],
+                            self.current_file,
                             token.range.0 as u32..token.range.1 as u32,
                             format!(
                                 "Found {:?}, expected one of {}",
@@ -209,7 +209,7 @@ impl<'a> Parser<'a> {
 
     #[track_caller]
     fn visibility(&mut self) -> Result<Visibility> {
-        trace!("Parsing Visibility: {:?}", Location::caller());
+        trace!("Parsing Visibility: {:?}", PanicLoc::caller());
 
         Ok(match self.peek()?.ty {
             TokenType::Exposed => {
@@ -241,7 +241,7 @@ impl<'a> Parser<'a> {
     /// TypeDeclaration ::= Visibility? 'type' Ident ( '<' Ident ',' '>' )? '\n' TypeArguments* Function* End
     /// ```
     fn parse_type_decl(&mut self, type_visibility: Option<Visibility>) -> Result<TypeDecl> {
-        self.eat(TokenType::Type)?;
+        let start = self.eat(TokenType::Type)?.range.0;
 
         let name = self.eat(TokenType::Ident)?;
         let name = self.intern(name.source);
@@ -290,7 +290,7 @@ impl<'a> Parser<'a> {
             peek = self.peek()?;
         }
 
-        self.eat(TokenType::EndBlock)?;
+        let end = self.eat(TokenType::EndBlock)?.range.1;
 
         Ok(TypeDecl {
             visibility: type_visibility.unwrap_or_default(),
@@ -298,6 +298,7 @@ impl<'a> Parser<'a> {
             generics,
             members,
             methods,
+            loc: Location::new(self.current_file, (start, end)),
         })
     }
 
@@ -305,11 +306,11 @@ impl<'a> Parser<'a> {
     fn parse_import(&mut self) -> Result<Import> {
         info!("Parsing Import");
 
-        self.eat(TokenType::Import)?;
+        let start = self.eat(TokenType::Import)?.range.0;
 
         let source = self.import_source()?;
 
-        let (exposes, alias) = match self.peek()?.ty {
+        let (exposes, alias, end) = match self.peek()?.ty {
             TokenType::Exposing => {
                 self.eat(TokenType::Exposing)?;
 
@@ -317,9 +318,9 @@ impl<'a> Parser<'a> {
                 if peek.ty == TokenType::Star {
                     self.eat(TokenType::Star)?;
 
-                    self.eat(TokenType::Newline)?;
+                    let end = self.eat(TokenType::Newline)?.range.1;
 
-                    (Exposes::All, None)
+                    (Exposes::All, None, end)
                 } else if peek.ty == TokenType::Ident {
                     let (mut imports, mut peek) = (Vec::new(), self.peek()?);
 
@@ -348,9 +349,9 @@ impl<'a> Parser<'a> {
                         }
                     }
 
-                    self.eat(TokenType::Newline)?;
+                    let end = self.eat(TokenType::Newline)?.range.1;
 
-                    (Exposes::Some(imports), None)
+                    (Exposes::Some(imports), None, end)
                 } else {
                     self.error = true;
                     error!(
@@ -362,8 +363,8 @@ impl<'a> Parser<'a> {
                         Severity::Error,
                         "Expected exposed members",
                         Label::new(
-                            self.files[0],
-                            self.codespan.source_span(self.files[0]),
+                            self.current_file,
+                            self.codespan.source_span(self.current_file),
                             "You must expose something when using the `exposing` keyword"
                                 .to_string(),
                         ),
@@ -384,8 +385,9 @@ impl<'a> Parser<'a> {
 
                     if peek.ty == TokenType::Star {
                         self.eat(TokenType::Star)?;
+                        let end = self.eat(TokenType::Newline)?.range.1;
 
-                        (Exposes::All, Some(alias))
+                        (Exposes::All, Some(alias), end)
                     } else if peek.ty == TokenType::Ident {
                         let (mut imports, mut peek) = (Vec::new(), self.peek()?);
 
@@ -415,9 +417,9 @@ impl<'a> Parser<'a> {
                             }
                         }
 
-                        self.eat(TokenType::Newline)?;
+                        let end = self.eat(TokenType::Newline)?.range.1;
 
-                        (Exposes::Some(imports), Some(alias))
+                        (Exposes::Some(imports), Some(alias), end)
                     } else {
                         self.error = true;
                         error!(
@@ -429,21 +431,21 @@ impl<'a> Parser<'a> {
                             Severity::Error,
                             "Expected exposed members",
                             Label::new(
-                                self.files[0],
-                                self.codespan.source_span(self.files[0]),
+                                self.current_file,
+                                self.codespan.source_span(self.current_file),
                                 "You must expose something when using the `exposing` keyword",
                             ),
                         ));
                     }
                 } else {
-                    self.eat(TokenType::Newline)?;
-                    (Exposes::All, Some(alias))
+                    let end = self.eat(TokenType::Newline)?.range.1;
+                    (Exposes::All, Some(alias), end)
                 }
             }
 
             _ => {
-                self.eat(TokenType::Newline)?;
-                (Exposes::File, None)
+                let end = self.eat(TokenType::Newline)?.range.1;
+                (Exposes::File, None, end)
             }
         };
 
@@ -453,6 +455,7 @@ impl<'a> Parser<'a> {
             source,
             alias,
             exposes,
+            loc: Location::new(self.current_file, (start, end)),
         })
     }
 
@@ -505,8 +508,8 @@ impl<'a> Parser<'a> {
                     Severity::Error,
                     "Missing comma",
                     Label::new(
-                        self.files[0],
-                        self.codespan.source_span(self.files[0]),
+                        self.current_file,
+                        self.codespan.source_span(self.current_file),
                         "Missing a comma between generic parameters",
                     ),
                 ));
@@ -519,61 +522,73 @@ impl<'a> Parser<'a> {
     }
 
     fn loop_loop(&mut self) -> Result<Loop> {
-        self.eat(TokenType::Loop)?;
+        let start = self.eat(TokenType::Loop)?.range.0;
         let body = self.body()?;
-        self.eat(TokenType::EndBlock)?;
+        let end = self.eat(TokenType::EndBlock)?.range.1;
 
-        Ok(Loop { body })
+        Ok(Loop {
+            body,
+            loc: Location::new(self.current_file, (start, end)),
+        })
     }
 
-    fn then(&mut self) -> Result<Option<Else>> {
+    // Note: Eats the EndBlock and returns the end of its span
+    fn then(&mut self) -> Result<(Option<Else>, u32)> {
         let then = if self.peek()?.ty == TokenType::Then {
-            self.eat(TokenType::Then)?;
+            let start = self.eat(TokenType::Then)?.range.0;
             self.eat(TokenType::Newline)?;
 
             let body = self.body()?;
-            Some(Else { body })
+            let end = self.eat(TokenType::EndBlock)?.range.1;
+            (
+                Some(Else {
+                    body,
+                    loc: Location::new(self.current_file, (start, end)),
+                }),
+                end,
+            )
         } else {
-            None
+            let end = self.eat(TokenType::EndBlock)?.range.1;
+            (None, end)
         };
 
         Ok(then)
     }
 
     fn while_loop(&mut self) -> Result<While> {
-        self.eat(TokenType::While)?;
-        let condition = self.expr()?;
+        let start = self.eat(TokenType::While)?.range.0;
+        let (condition, _) = self.expr()?;
         self.eat(TokenType::Newline)?;
         let body = self.body()?;
-        let then = self.then()?;
+        let (then, end) = self.then()?;
 
         Ok(While {
             condition,
             body,
             then,
+            loc: Location::new(self.current_file, (start, end)),
         })
     }
 
     fn for_loop(&mut self) -> Result<For> {
-        self.eat(TokenType::For)?;
+        let start = self.eat(TokenType::For)?.range.0;
         let element = self.eat(TokenType::Ident)?;
         let element = self.intern(element.source);
 
         self.eat(TokenType::In)?;
 
-        let range = self.expr()?;
+        let (range, _) = self.expr()?;
         self.eat(TokenType::Newline)?;
 
         let body = self.body()?;
-        let then = self.then()?;
-
-        self.eat(TokenType::EndBlock)?;
+        let (then, end) = self.then()?;
 
         Ok(For {
             element,
             range,
             body,
             then,
+            loc: Location::new(self.current_file, (start, end)),
         })
     }
 
@@ -588,7 +603,7 @@ impl<'a> Parser<'a> {
     /// VarDeclaration ::= 'let' Ident ( ':' Ident )? '=' Expr '\n'
     /// ```
     fn variable_decl(&mut self) -> Result<VarDecl> {
-        self.eat(TokenType::Let)?;
+        let start = self.eat(TokenType::Let)?.range.0;
         let name = self.eat(TokenType::Ident)?;
         let name = self.intern(name.source);
 
@@ -600,11 +615,16 @@ impl<'a> Parser<'a> {
         };
 
         self.eat(TokenType::Equal)?;
-        let expr = self.expr()?;
+        let (expr, _) = self.expr()?;
 
-        self.eat(TokenType::Newline)?;
+        let end = self.eat(TokenType::Newline)?.range.1;
 
-        Ok(VarDecl { name, ty, expr })
+        Ok(VarDecl {
+            name,
+            ty,
+            expr,
+            loc: Location::new(self.current_file, (start, end)),
+        })
     }
 
     #[allow(dead_code)]
@@ -627,12 +647,13 @@ impl<'a> Parser<'a> {
         Ok(params)
     }
 
-    fn function_call_arguments(&mut self) -> Result<Vec<Expr>> {
+    fn function_call_arguments(&mut self) -> Result<(Vec<Expr>, u32)> {
         self.eat(TokenType::LeftParen)?;
 
         let mut params = Vec::new();
         while self.peek()?.ty != TokenType::RightParen {
-            params.push(self.expr()?);
+            let (expr, _) = self.expr()?;
+            params.push(expr);
 
             if self.peek()?.ty == TokenType::Comma {
                 self.eat(TokenType::Comma)?;
@@ -641,25 +662,26 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.eat(TokenType::RightParen)?;
+        let end = self.eat(TokenType::RightParen)?.range.1;
 
-        Ok(params)
+        Ok((params, end))
     }
 
-    fn function_call(&mut self, name: impl Into<Option<Sym>>) -> Result<FunctionCall> {
-        let name = if let Some(name) = name.into() {
-            name
+    fn function_call(&mut self, input: impl Into<Option<(Sym, u32)>>) -> Result<FunctionCall> {
+        let (name, start) = if let Some((name, start)) = input.into() {
+            (name, start)
         } else {
             let ident = self.eat(TokenType::Ident)?;
-            self.intern(ident.source)
+            (self.intern(ident.source), ident.range.0)
         };
         let generics = self.generics()?;
-        let arguments = self.function_call_arguments()?;
+        let (arguments, end) = self.function_call_arguments()?;
 
         Ok(FunctionCall {
             name,
             generics,
             arguments,
+            loc: Location::new(self.current_file, (start, end)),
         })
     }
 
@@ -680,7 +702,7 @@ impl<'a> Parser<'a> {
                     Severity::Error,
                     "Invalid assignment type",
                     Label::new(
-                        self.files[0],
+                        self.current_file,
                         next.range.0..next.range.1,
                         format!(
                             "Expected one of '=', '^', '|', '+', '-', '&', '*' or '/', got '{}'",
@@ -695,43 +717,49 @@ impl<'a> Parser<'a> {
         Ok(ty)
     }
 
-    fn assign(&mut self, var: impl Into<Option<Sym>>) -> Result<Assign> {
-        let var = if let Some(var) = var.into() {
-            var
+    fn assign(&mut self, input: impl Into<Option<(Sym, u32)>>) -> Result<Assign> {
+        let (var, start) = if let Some((var, start)) = input.into() {
+            (var, start)
         } else {
             let ident = self.eat(TokenType::Ident)?;
-            self.intern(ident.source)
+            (self.intern(ident.source), ident.range.0)
         };
 
         let ty = self.assign_type()?;
-        let expr = self.expr()?;
-        self.eat(TokenType::Newline)?;
+        let (expr, _) = self.expr()?;
+        let end = self.eat(TokenType::Newline)?.range.1;
 
-        Ok(Assign { var, expr, ty })
+        Ok(Assign {
+            var,
+            expr,
+            ty,
+            loc: Location::new(self.current_file, (start, end)),
+        })
     }
 
-    fn expr(&mut self) -> Result<Expr> {
+    fn expr(&mut self) -> Result<(Expr, u32)> {
         trace!("Parsing expr");
 
         let token = self.peek()?;
         let expr = match token.ty {
             TokenType::LeftParen => {
                 self.eat(TokenType::LeftParen)?;
-                let expr = self.expr()?;
-                self.eat(TokenType::RightParen)?;
+                let (expr, _) = self.expr()?;
+                let end = self.eat(TokenType::RightParen)?.range.1;
 
-                Expr::Expr(Box::new(expr))
+                (Expr::Expr(Box::new(expr)), end)
             }
 
             // TokenType::LeftCaret => todo!("Things that take generics"),
             TokenType::Ident => {
                 let ident = self.eat(TokenType::Ident)?;
-                let ident = self.intern(ident.source);
 
                 match self.peek()?.ty {
                     TokenType::LeftParen => {
-                        let func = Expr::FunctionCall(self.function_call(ident)?);
-                        self.extended_expr(func)?
+                        let interned = self.intern(ident.source);
+                        let func =
+                            Expr::FunctionCall(self.function_call((interned, ident.range.0))?);
+                        self.extended_expr(func, ident.range.0)?
                     }
 
                     TokenType::Plus
@@ -744,23 +772,25 @@ impl<'a> Parser<'a> {
                         let next = self.next()?;
 
                         let op = self.binary_operand(next)?;
-                        let right = Box::new(self.expr()?);
+                        let (right, end) = self.expr()?;
+                        let right = Box::new(right);
 
                         let op = Expr::BinaryOperation(BinaryOperation {
-                            left: Box::new(Expr::Ident(ident)),
+                            left: Box::new(Expr::Ident(self.intern(ident.source))),
                             op,
                             right,
+                            loc: Location::new(self.current_file, (ident.range.0, end)),
                         });
-                        self.extended_expr(op)?
+                        self.extended_expr(op, ident.range.0)?
                     }
 
-                    _ => Expr::Ident(ident),
+                    _ => (Expr::Ident(self.intern(ident.source)), ident.range.1),
                 }
             }
 
             TokenType::String | TokenType::Int | TokenType::Bool => {
                 let lit = Expr::Literal(self.parse_literal()?);
-                self.extended_expr(lit)?
+                self.extended_expr(lit, token.range.0)?
             }
 
             TokenType::Newline => {
@@ -773,7 +803,7 @@ impl<'a> Parser<'a> {
                     Severity::Error,
                     "Invalid token",
                     Label::new(
-                        self.files[0],
+                        self.current_file,
                         token.range.0..token.range.1,
                         format!("{:?} is not a valid expression", token.source),
                     ),
@@ -784,7 +814,7 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    fn extended_expr(&mut self, expr: Expr) -> Result<Expr> {
+    fn extended_expr(&mut self, expr: Expr, start: u32) -> Result<(Expr, u32)> {
         let next = self.peek()?;
         if [
             TokenType::Plus,
@@ -799,36 +829,46 @@ impl<'a> Parser<'a> {
         {
             let next = self.next()?;
             let op = self.binary_operand(next)?;
-            let right = Box::new(self.expr()?);
+            let (right, end) = self.expr()?;
+            let right = Box::new(right);
 
-            Ok(Expr::BinaryOperation(BinaryOperation {
-                left: Box::new(expr),
-                op,
-                right,
-            }))
+            Ok((
+                Expr::BinaryOperation(BinaryOperation {
+                    left: Box::new(expr),
+                    op,
+                    right,
+                    loc: Location::new(self.current_file, (start, end)),
+                }),
+                end,
+            ))
         } else if self.peek()?.ty == TokenType::Dot {
             self.eat(TokenType::Dot)?;
 
             if self.peek()?.ty == TokenType::Dot {
                 self.eat(TokenType::Dot)?;
+                let (end, range_end) = self.expr()?;
 
-                Ok(Expr::Range(Range {
-                    start: Box::new(expr),
-                    end: Box::new(self.expr()?),
-                }))
+                Ok((
+                    Expr::Range(Range {
+                        start: Box::new(expr),
+                        end: Box::new(end),
+                        loc: Location::new(self.current_file, (start, range_end)),
+                    }),
+                    range_end,
+                ))
             } else {
                 Err(Diagnostic::new(
                     Severity::Error,
                     "Function calls by dotted access are not yet implemented",
                     Label::new(
-                        self.files[0],
+                        self.current_file,
                         next.range.0..next.range.1,
                         "Function calls by dotted access are not yet implemented".to_string(),
                     ),
                 ))
             }
         } else {
-            Ok(expr)
+            Ok((expr, start))
         }
     }
 
@@ -852,7 +892,7 @@ impl<'a> Parser<'a> {
                         Severity::Error,
                         "Invalid operand type",
                         Label::new(
-                            self.files[0],
+                            self.current_file,
                             begin.range.0..begin.range.1,
                             format!(
                                 "Expected one of '^', '|', '+', '-', '&', '*' or '/', got '{}'",
@@ -877,7 +917,7 @@ impl<'a> Parser<'a> {
                 Severity::Error,
                 "Stand-alone binary operands are unimplemented",
                 Label::new(
-                    self.files[0],
+                    self.current_file,
                     next.range.0..next.range.1,
                     "Stand-alone binary operands are unimplemented".to_string(),
                 ),
@@ -885,7 +925,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn conditional_clause(&mut self) -> Result<Either<If, Vec<Statement>>> {
+    fn conditional_clause(&mut self) -> Result<(Either<If, Vec<Statement>>, u32)> {
         #[derive(Debug, Copy, Clone, PartialEq, Eq)]
         enum CondType {
             If,
@@ -895,13 +935,13 @@ impl<'a> Parser<'a> {
 
         trace!("Started parsing conditional");
 
-        let cond = self.eat_of(&[TokenType::If, TokenType::Else])?;
-        let cond = if cond.ty == TokenType::If {
+        let cond_token = self.eat_of(&[TokenType::If, TokenType::Else])?;
+        let cond = if cond_token.ty == TokenType::If {
             CondType::If
-        } else if cond.ty == TokenType::Else && self.peek()?.ty == TokenType::If {
+        } else if cond_token.ty == TokenType::Else && self.peek()?.ty == TokenType::If {
             self.eat(TokenType::If)?;
             CondType::ElseIf
-        } else if cond.ty == TokenType::Else {
+        } else if cond_token.ty == TokenType::Else {
             CondType::Else
         } else {
             unreachable!("The only valid conditionals should be `if`, `else if` and `else`")
@@ -910,36 +950,43 @@ impl<'a> Parser<'a> {
         let condition = if cond == CondType::Else {
             None
         } else {
-            let left = Box::new(self.expr()?);
-            let (comparison, right) = if self.peek()?.ty == TokenType::Newline {
+            let (left, left_end) = self.expr()?;
+            let (comparison, right, end) = if self.peek()?.ty == TokenType::Newline {
                 let comparison = Comparator::Equal;
                 let right = Box::new(Expr::Literal(Literal::Boolean(true)));
-                (comparison, right)
+                (comparison, right, left_end)
             } else {
                 let comparison = self.comparator()?;
-                let right = Box::new(self.expr()?);
-                (comparison, right)
+                let (right, end) = self.expr()?;
+                (comparison, Box::new(right), end)
             };
 
             Some(Expr::Comparison(Comparison {
-                left,
+                left: Box::new(left),
                 comparison,
                 right,
+                loc: Location::new(self.current_file, (cond_token.range.0, end)),
             }))
         };
         self.eat(TokenType::Newline)?;
 
         let body = self.body()?;
+        // HACK: Think through this better
+        let end = self.peek()?.range.1;
 
         trace!("Finished parsing conditional");
 
-        Ok(match cond {
-            CondType::If | CondType::ElseIf => Either::Left(If {
-                condition: condition.expect("`if` and `else if` clauses have conditions"),
-                body,
-            }),
-            CondType::Else => Either::Right(body),
-        })
+        Ok((
+            match cond {
+                CondType::If | CondType::ElseIf => Either::Left(If {
+                    condition: condition.expect("`if` and `else if` clauses have conditions"),
+                    body,
+                    loc: Location::new(self.current_file, (cond_token.range.0, end)),
+                }),
+                CondType::Else => Either::Right(body),
+            },
+            end,
+        ))
     }
 
     fn comparator(&mut self) -> Result<Comparator> {
@@ -975,7 +1022,7 @@ impl<'a> Parser<'a> {
                     Severity::Error,
                     "Invalid Comparison modifier",
                     Label::new(
-                        self.files[0],
+                        self.current_file,
                         token.range.0..token.range.1,
                         format!("Expected one of '=', '!', '>', '<', got {}", e),
                     ),
@@ -985,20 +1032,27 @@ impl<'a> Parser<'a> {
     }
 
     fn conditional(&mut self) -> Result<Conditional> {
-        let (mut peek, mut if_clauses, mut else_body) = (self.peek()?.ty, Vec::new(), None);
-        while peek == TokenType::If || peek == TokenType::Else {
+        let start = self.peek()?.range.0;
+        let (mut peek, mut if_clauses, mut else_body) = (self.peek()?, Vec::new(), None);
+        while peek.ty == TokenType::If || peek.ty == TokenType::Else {
             match self.conditional_clause()? {
-                Either::Left(condition) => if_clauses.push(condition),
-                Either::Right(body) => else_body = Some(Else { body }),
+                (Either::Left(condition), _end) => if_clauses.push(condition),
+                (Either::Right(body), end) => {
+                    else_body = Some(Else {
+                        body,
+                        loc: Location::new(self.current_file, (peek.range.0, end)),
+                    })
+                }
             }
 
-            peek = self.peek()?.ty;
+            peek = self.peek()?;
         }
-        self.eat(TokenType::EndBlock)?;
+        let end = self.eat(TokenType::EndBlock)?.range.1;
 
         Ok(Conditional {
             _if: if_clauses,
             _else: else_body,
+            loc: Location::new(self.current_file, (start, end)),
         })
     }
 
@@ -1017,12 +1071,14 @@ impl<'a> Parser<'a> {
                 TokenType::Let => Statement::VarDecl(self.variable_decl()?),
                 TokenType::Ident => {
                     let ident = self.eat(TokenType::Ident)?;
-                    let ident = self.intern(ident.source);
 
                     let peek = self.peek()?;
                     match peek.ty {
                         TokenType::LeftParen => {
-                            Statement::Expr(Expr::FunctionCall(self.function_call(ident)?))
+                            let interned = self.intern(ident.source);
+                            Statement::Expr(Expr::FunctionCall(
+                                self.function_call((interned, ident.range.0))?,
+                            ))
                         }
                         TokenType::Equal
                         | TokenType::Caret
@@ -1031,13 +1087,16 @@ impl<'a> Parser<'a> {
                         | TokenType::Plus
                         | TokenType::Minus
                         | TokenType::Divide
-                        | TokenType::Ampersand => Statement::Assign(self.assign(ident)?),
+                        | TokenType::Ampersand => {
+                            let interned = self.intern(ident.source);
+                            Statement::Assign(self.assign((interned, ident.range.0))?)
+                        }
                         e => {
                             return Err(Diagnostic::new(
                                 Severity::Error,
                                 "Unexpected token",
                                 Label::new(
-                                    self.files[0],
+                                    self.current_file,
                                     peek.range.0..peek.range.1,
                                     format!("Did not expect a {}", e),
                                 ),
@@ -1046,8 +1105,12 @@ impl<'a> Parser<'a> {
                     }
                 }
                 TokenType::Return => {
-                    self.eat(TokenType::Return)?;
-                    Statement::Return(Return { expr: self.expr()? })
+                    let start = self.eat(TokenType::Return)?.range.0;
+                    let (expr, end) = self.expr()?;
+                    Statement::Return(Return {
+                        expr,
+                        loc: Location::new(self.current_file, (start, end)),
+                    })
                 }
                 TokenType::Continue => {
                     self.eat(TokenType::Continue)?;
@@ -1077,9 +1140,9 @@ impl<'a> Parser<'a> {
 
     #[track_caller]
     fn function_declaration(&mut self, visibility: Option<Visibility>) -> Result<FunctionDecl> {
-        info!("Parsing Function: {:?}", Location::caller());
+        info!("Parsing Function: {:?}", PanicLoc::caller());
 
-        self.eat(TokenType::Function)?;
+        let start = self.eat(TokenType::Function)?.range.1;
 
         let name = self.eat(TokenType::Ident)?;
         let name = self.intern(name.source);
@@ -1091,7 +1154,7 @@ impl<'a> Parser<'a> {
 
         let body = self.body()?;
 
-        self.eat(TokenType::EndBlock)?;
+        let end = self.eat(TokenType::EndBlock)?.range.1;
 
         info!(
             "Finished parsing Function {:?}: {}",
@@ -1107,6 +1170,7 @@ impl<'a> Parser<'a> {
             returns,
             body,
             abs_path: self.current_path,
+            loc: Location::new(self.current_file, (start, end)),
         })
     }
 
@@ -1152,7 +1216,7 @@ impl<'a> Parser<'a> {
                     Severity::Error,
                     "Invalid Integer",
                     Label::new(
-                        self.files[0],
+                        self.current_file,
                         token.range.0..token.range.1,
                         "Invalid int".to_string(),
                     ),
@@ -1167,7 +1231,7 @@ impl<'a> Parser<'a> {
                     Severity::Error,
                     "Invalid Boolean",
                     Label::new(
-                        self.files[0],
+                        self.current_file,
                         token.range.0..token.range.1,
                         "Invalid bool".to_string(),
                     ),
@@ -1178,7 +1242,7 @@ impl<'a> Parser<'a> {
                     Severity::Error,
                     "Invalid Literal",
                     Label::new(
-                        self.files[0],
+                        self.current_file,
                         token.range.0..token.range.1,
                         format!(
                             "Invalid literal, expected 'Integer', 'String' or 'Boolean', got '{}'",
@@ -1233,7 +1297,7 @@ impl<'a> Parser<'a> {
     #[inline]
     #[track_caller]
     fn next(&mut self) -> Result<Token<'a>> {
-        let loc = Location::caller();
+        let loc = PanicLoc::caller();
 
         let mut next = self.token_stream.next_token();
         std::mem::swap(&mut next, &mut self.peek);
@@ -1259,9 +1323,9 @@ impl<'a> Parser<'a> {
                 Severity::Error,
                 "Unexpected End Of File",
                 Label::new(
-                    self.files[0],
+                    self.current_file,
                     {
-                        let end = self.codespan.source_span(self.files[0]).end();
+                        let end = self.codespan.source_span(self.current_file).end();
                         end..end
                     },
                     "Unexpected End Of File".to_string(),
@@ -1273,7 +1337,7 @@ impl<'a> Parser<'a> {
     #[inline]
     #[track_caller]
     fn peek(&mut self) -> Result<Token<'a>> {
-        let loc = Location::caller();
+        let loc = PanicLoc::caller();
 
         if let Some(next) = self.peek {
             trace!(
@@ -1295,9 +1359,9 @@ impl<'a> Parser<'a> {
                 Severity::Error,
                 "Unexpected End Of File",
                 Label::new(
-                    self.files[0],
+                    self.current_file,
                     {
-                        let end = self.codespan.source_span(self.files[0]).end();
+                        let end = self.codespan.source_span(self.current_file).end();
                         end..end
                     },
                     "Unexpected End Of File".to_string(),
@@ -1309,7 +1373,7 @@ impl<'a> Parser<'a> {
     #[inline]
     #[track_caller]
     fn eat(&mut self, expected: TokenType) -> Result<Token<'a>> {
-        let loc = Location::caller();
+        let loc = PanicLoc::caller();
         let token = self.next()?;
 
         if token.ty == expected {
@@ -1339,7 +1403,7 @@ impl<'a> Parser<'a> {
                     expected, token.ty
                 ),
                 Label::new(
-                    self.files[0],
+                    self.current_file,
                     token.range.0 as u32..token.range.1 as u32,
                     format!("Expected {}", expected),
                 ),
@@ -1375,8 +1439,8 @@ impl<'a> Parser<'a> {
                     token.ty
                 ),
                 Label::new(
-                    self.files[0],
-                    self.codespan.source_span(self.files[0]),
+                    self.current_file,
+                    self.codespan.source_span(self.current_file),
                     format!("Unexpected Token: {:?}", token.ty),
                 ),
             ))
@@ -1393,8 +1457,8 @@ impl<'a> Parser<'a> {
             Severity::Error,
             "Invalid Escape String",
             Label::new(
-                self.files[0],
-                self.codespan.source_span(self.files[0]),
+                self.current_file,
+                self.codespan.source_span(self.current_file),
                 "Invalid Escape String".to_string(),
             ),
         );

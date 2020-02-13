@@ -586,7 +586,10 @@ impl Interpreter {
                 let conditional_block = ctx.current_block;
 
                 let mut conditions = Vec::with_capacity(conditional._if.len() + 1);
-                for If { condition, body } in conditional._if {
+                for If {
+                    condition, body, ..
+                } in conditional._if
+                {
                     ctx.move_to_block(conditional_block);
                     self.expr(builder, ctx, condition, None)?;
 
