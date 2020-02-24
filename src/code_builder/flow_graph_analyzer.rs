@@ -9,7 +9,7 @@ impl FlowGraphAnalyzer {
 
     pub fn analyze(self, blocks: &[Block]) -> Vec<usize> {
         let mut nodes = blocks
-            .into_iter()
+            .iter()
             .map(|block| (FlowNode::new(), block))
             .collect::<Vec<_>>();
 
@@ -88,7 +88,7 @@ impl FlowNode {
         self.reached = true;
     }
 
-    pub fn is_touched(&self) -> bool {
+    pub fn is_touched(self) -> bool {
         self.reached
     }
 }

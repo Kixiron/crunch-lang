@@ -149,7 +149,7 @@ impl FunctionContext {
 
         let total = self.blocks.len();
         for (offset, idx) in FlowGraphAnalyzer::new()
-            .analyze(&self.blocks.iter().cloned().collect::<Vec<_>>())
+            .analyze(&self.blocks.to_vec())
             .into_iter()
             .enumerate()
         {
@@ -203,8 +203,6 @@ impl FunctionContext {
 
                         if current_index as i32 + offset >= block.block.len() as i32 {
                             offset -= 1;
-                        } else if current_index as i32 + offset < 0 {
-                            offset = 0;
                         }
 
                         changes.push((current_index, inst_index, offset));

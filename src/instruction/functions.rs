@@ -40,7 +40,7 @@ pub fn drop(vm: &mut Vm, reg: u8) -> Result<()> {
         &vm.registers[reg as usize]
     );
 
-    (&mut vm.registers[reg as usize]).drop(&mut vm.gc)?;
+    (&mut vm.registers[reg as usize]).drop(&vm.gc)?;
     vm.index += Index(1);
 
     Ok(())
@@ -68,9 +68,7 @@ pub fn push(vm: &mut Vm, reg: u8) -> Result<()> {
         &vm.registers[reg as usize]
     );
 
-    let mut val = Value::None;
-    std::mem::swap(&mut vm.registers[reg as usize], &mut val);
-    vm.stack.push(val);
+    vm.stack.push(vm.registers[reg as usize].take());
     vm.index += Index(1);
 
     Ok(())
@@ -546,6 +544,110 @@ pub fn exec_lib_func(vm: &mut Vm, name: u8, lib: u8, args: u16) -> Result<()> {
     vm.index += Index(1);
 
     Ok(())
+}
+
+pub fn push_array(vm: &mut Vm, value: u8, array: u8) -> Result<()> {
+    let value = vm.registers[value as usize].take();
+
+    vm.index += Index(1);
+
+    if let Value::Array(array) = &mut vm.registers[array as usize] {
+        if value == Value::Null {
+            Err(RuntimeError {
+                ty: RuntimeErrorTy::IncompatibleTypes,
+                message: format!(
+                    "Cannot array push a value of type {} to an array",
+                    value.name(),
+                ),
+            })
+        } else {
+            array.push(value);
+
+            Ok(())
+        }
+    } else {
+        Err(RuntimeError {
+            ty: RuntimeErrorTy::IncompatibleTypes,
+            message: format!(
+                "Cannot array push to a value of type {}",
+                vm.registers[array as usize].name()
+            ),
+        })
+    }
+}
+
+pub fn pop_array(vm: &mut Vm, value: u8, array: u8) -> Result<()> {
+    vm.index += Index(1);
+
+    if let Value::Array(array) = &mut vm.registers[array as usize] {
+        vm.registers[value as usize] = array.pop().unwrap_or(Value::Null);
+
+        Ok(())
+    } else {
+        Err(RuntimeError {
+            ty: RuntimeErrorTy::IncompatibleTypes,
+            message: format!(
+                "Cannot array pop from a value of type {}",
+                vm.registers[array as usize].name()
+            ),
+        })
+    }
+}
+
+pub fn index_array(vm: &mut Vm, index: u8, array: u8, target: u8) -> Result<()> {
+    vm.index += Index(1);
+
+    let index = vm.registers[index as usize]
+        .to_usize(&vm.gc)
+        .ok_or(RuntimeError {
+            ty: RuntimeErrorTy::IncompatibleTypes,
+            message: format!(
+                "Cannot index an array with a value of type {}",
+                vm.registers[index as usize].name()
+            ),
+        })?;
+
+    if let Value::Array(array) = &mut vm.registers[array as usize] {
+        vm.registers[target as usize] = array[index].clone();
+
+        Ok(())
+    } else {
+        Err(RuntimeError {
+            ty: RuntimeErrorTy::IncompatibleTypes,
+            message: format!(
+                "Cannot index into a value of type {}",
+                vm.registers[array as usize].name()
+            ),
+        })
+    }
+}
+
+pub fn remove_array(vm: &mut Vm, index: u8, array: u8, target: u8) -> Result<()> {
+    vm.index += Index(1);
+
+    let index = vm.registers[index as usize]
+        .to_usize(&vm.gc)
+        .ok_or(RuntimeError {
+            ty: RuntimeErrorTy::IncompatibleTypes,
+            message: format!(
+                "Cannot index an array with a value of type {}",
+                vm.registers[index as usize].name()
+            ),
+        })?;
+
+    if let Value::Array(array) = &mut vm.registers[array as usize] {
+        vm.registers[target as usize] = array.remove(index);
+
+        Ok(())
+    } else {
+        Err(RuntimeError {
+            ty: RuntimeErrorTy::IncompatibleTypes,
+            message: format!(
+                "Cannot index into a value of type {}",
+                vm.registers[array as usize].name()
+            ),
+        })
+    }
 }
 
 pub fn no_op(vm: &mut Vm) -> Result<()> {

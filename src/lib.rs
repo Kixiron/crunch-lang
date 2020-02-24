@@ -135,6 +135,7 @@ mod crunch;
 /// The Garbage Collector
 mod gc;
 /// Instruction definitions and executions
+#[macro_use]
 mod instruction;
 /// The Interpreter
 mod interpreter;

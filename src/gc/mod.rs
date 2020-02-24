@@ -129,7 +129,7 @@ impl Gc {
             let left = HeapPointer::new(allocation);
             trace!("Left Heap: {:p}", left);
 
-            let right = HeapPointer::new(unsafe { allocation.offset(options.heap_size as isize) });
+            let right = HeapPointer::new(unsafe { allocation.add(options.heap_size) });
             trace!("Right Heap: {:p}", right);
 
             (left, right)
@@ -159,7 +159,6 @@ impl Gc {
     /// [`AllocId`]: crate::AllocId
     /// [`Gc`]: crate::Gc
     /// [`collect`]: crate::Gc::collect
-    #[must_use]
     pub fn allocate(&mut self, size: usize) -> Result<(HeapPointer, AllocId)> {
         trace!("Allocating size {}", size);
 
@@ -211,7 +210,6 @@ impl Gc {
     /// Allocates and writes `T` directly to the heap, returning its [`AllocId`]  
     ///
     /// [`AllocId`]: crate::AllocId
-    #[must_use]
     pub fn allocate_heap<T: Collectable>(&mut self, item: T) -> Result<AllocId> {
         let (ptr, id) = self.allocate(mem::size_of::<T>())?;
         unsafe { (*ptr as *mut T).write(item) };
@@ -231,7 +229,6 @@ impl Gc {
     /// [`AllocId`]: crate::AllocId
     /// [`Gc`]: crate::Gc
     /// [`collect`]: crate::Gc::collect
-    #[must_use]
     pub fn allocate_zeroed(&mut self, size: usize) -> Result<(HeapPointer, AllocId)> {
         trace!("Allocating the zeroed for size {}", size);
 
@@ -345,7 +342,6 @@ impl Gc {
     /// [`Gc`]: crate::Gc
     /// [`RuntimeError`]: crate::RuntimeError
     /// [`GcError`]: crate::RuntimeErrorTy
-    #[must_use]
     pub fn get_ptr(&self, id: AllocId) -> Result<HeapPointer> {
         let (ptr, _val) = self.allocations.get(&id).ok_or(RuntimeError {
             ty: RuntimeErrorTy::GcError,
@@ -378,11 +374,10 @@ impl Gc {
     }
 
     /// Fetch an object's raw bytes
-    #[must_use]
-    pub fn fetch_bytes<'gc>(&'gc self, id: AllocId) -> Result<&[u8]> {
+    pub fn fetch_bytes<'gc>(&'gc self, id: AllocId) -> Result<&'gc [u8]> {
         trace!("Fetching {}", id);
 
-        if let Some((_, (ptr, val))) = self.allocations.iter().find(|(i, _)| **i == id.into()) {
+        if let Some((_, (ptr, val))) = self.allocations.iter().find(|(i, _)| **i == id) {
             if self.options.debug {
                 self.dump_heap(Side::Right).unwrap();
                 self.dump_heap(Side::Left).unwrap();
@@ -508,8 +503,6 @@ impl Gc {
     /// [`RuntimeError`]: crate::RuntimeError
     /// [`AllocId`]: crate::AllocId
     pub fn remove_root(&mut self, id: AllocId) -> Result<()> {
-        let id = id.into();
-
         trace!("Removing GC Root: {:?}", id);
 
         if let Some(index) = self.roots.iter().position(|root_id| *root_id == id) {

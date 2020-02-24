@@ -10,13 +10,8 @@ fn parse_test() {
     const CODE: &str = include_str!("../../../tests/parse_test.crunch");
     const FILENAME: &str = "parse_test.crunch";
 
-    color_backtrace::install();
-    simple_logger::init().unwrap();
-
     let mut parser = Parser::new(Some(FILENAME), CODE);
-
     let ast = parser.parse().unwrap();
-    println!("Ast: {:#?}", &ast);
 
     let bytecode = crate::interpreter::Interpreter::from_interner(
         &crate::OptionBuilder::new("./tests/parse_test.crunch").build(),
@@ -34,33 +29,10 @@ fn fibonacci_iterative_test() {
     const CODE: &str = include_str!("../../../tests/fibonacci_iterative.crunch");
     const FILENAME: &str = "fibonacci_iterative.crunch";
 
-    // color_backtrace::install();
     simple_logger::init().unwrap();
 
     let mut parser = Parser::new(Some(FILENAME), CODE);
-
-    let ast = parser.parse();
-    if let Err(err) = ast {
-        let writer = codespan_reporting::term::termcolor::StandardStream::stderr(
-            codespan_reporting::term::termcolor::ColorChoice::Auto,
-        );
-
-        let config = codespan_reporting::term::Config::default();
-
-        let mut files = codespan::Files::new();
-        files.add(FILENAME, CODE);
-
-        for e in err {
-            if let Err(err) =
-                codespan_reporting::term::emit(&mut writer.lock(), &config, &files, &e)
-            {
-                println!("Error Emitting Error: {:?}", err);
-            }
-        }
-
-        panic!();
-    }
-    let ast = ast.unwrap();
+    let ast = parser.parse().unwrap();
 
     let bytecode = crate::interpreter::Interpreter::from_interner(
         &crate::OptionBuilder::new("./tests/fibonacci_iterative.crunch").build(),
@@ -77,11 +49,7 @@ fn factorial_iterative_test() {
     const CODE: &str = include_str!("../../../tests/factorial_iterative.crunch");
     const FILENAME: &str = "factorial_iterative.crunch";
 
-    // color_backtrace::install();
-    // simple_logger::init().unwrap();
-
     let mut parser = Parser::new(Some(FILENAME), CODE);
-
     let ast = parser.parse().unwrap();
 
     let bytecode = crate::interpreter::Interpreter::from_interner(
@@ -99,11 +67,7 @@ fn fibonacci_recursive_test() {
     const CODE: &str = include_str!("../../../tests/fibonacci_recursive.crunch");
     const FILENAME: &str = "fibonacci_recursive.crunch";
 
-    // color_backtrace::install();
-    // simple_logger::init().unwrap();
-
     let mut parser = Parser::new(Some(FILENAME), CODE);
-
     let ast = parser.parse().unwrap();
 
     let bytecode = crate::interpreter::Interpreter::from_interner(
@@ -121,11 +85,7 @@ fn factorial_recursive_test() {
     const CODE: &str = include_str!("../../../tests/factorial_recursive.crunch");
     const FILENAME: &str = "factorial_recursive.crunch";
 
-    // color_backtrace::install();
-    // simple_logger::init().unwrap();
-
     let mut parser = Parser::new(Some(FILENAME), CODE);
-
     let ast = parser.parse().unwrap();
 
     let bytecode = crate::interpreter::Interpreter::from_interner(
@@ -142,9 +102,6 @@ fn factorial_recursive_test() {
 #[ignore]
 fn ffi_test() {
     use crate::{Instruction::*, Value};
-
-    color_backtrace::install();
-    simple_logger::init().unwrap();
 
     let bytecode = vec![vec![
         Load(Value::Str("ffi_test.dll"), 0.into()),
@@ -197,8 +154,6 @@ mod fuzz_found {
 
     #[test]
     fn _9D1BE77EA5DDA279F6679AD75A7213AF() {
-        simple_logger::init().unwrap();
-
         let input = "fn main()
             println(factorial(1))
             println(factorial(10))
@@ -225,6 +180,7 @@ mod fuzz_found {
 
         let _ = Parser::new(None, input).parse();
     }
+
     #[test]
     fn _46439F3F511989ABB1A794D5CD34F5C4() {
         let input = "\x66\x6E\x20\x6D\x61\x69\x6E\x28\x29\x0A\x20\x20\x13\x20\x65\x6D\x70\x74\x79\x0A\x65\x6E\x64";

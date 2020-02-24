@@ -39,6 +39,8 @@ pub enum Value {
     Library(std::sync::Arc<dlopen::raw::Library>),
     Null,
 
+    Array(Vec<Value>),
+
     Generator(Box<ReturnFrame>),
 
     None,
@@ -77,14 +79,44 @@ impl Compare {
     /// A Bool, for example, can't be "less than" another Bool, but it can be different.
     /// Types that impl PartialOrd probably shouldn't be compared this way, prefer `Compare::full`.
     fn just_equality<E: Eq>(a: &E, b: &E) -> Self {
-        match a == b {
-            true => Compare::Equal,
-            false => Compare::Unequal,
+        if a == b {
+            Compare::Equal
+        } else {
+            Compare::Unequal
         }
     }
 }
 
 impl Value {
+    #[inline]
+    #[must_use]
+    pub fn take(&mut self) -> Self {
+        let mut temp = Value::None;
+        std::mem::swap(self, &mut temp);
+
+        temp
+    }
+
+    pub fn to_usize(&self, _gc: &Gc) -> Option<usize> {
+        Some(match self {
+            Self::Byte(int) => *int as usize,
+            Self::U16(int) => *int as usize,
+            Self::U32(int) => *int as usize,
+            Self::U64(int) => *int as usize,
+            Self::U128(int) => *int as usize,
+            Self::IByte(int) => *int as usize,
+            Self::I16(int) => *int as usize,
+            Self::I32(int) => *int as usize,
+            Self::I64(int) => *int as usize,
+            Self::I128(int) => *int as usize,
+            Self::F32(int) => *int as usize,
+            Self::F64(int) => *int as usize,
+
+            // TODO: Handle Bigints
+            _ => return None,
+        })
+    }
+
     #[must_use]
     pub fn name(&self) -> &'static str {
         match self {
@@ -107,7 +139,8 @@ impl Value {
             Self::GcInt(_) => "bigint",
             Self::GcUint(_) => "biguint",
             Self::Library(_) => "lib",
-            Self::Generator(_) => "gen",
+            Self::Generator(_) => "generator",
+            Self::Array(_) => "array",
             Self::Null => "null",
             Self::None => "NoneType",
         }
@@ -149,6 +182,7 @@ impl Value {
 
             (Self::Bool(left), Self::Bool(right)) => Compare::just_equality(left, right),
 
+            (Value::Null, Value::Null) => Compare::Equal,
             (Value::Null, _) | (_, Value::Null) => Compare::Unequal,
 
             (left, right) if left == &Self::None || right == &Self::None => {
@@ -196,6 +230,7 @@ impl Value {
             Self::GcInt(int) => int.fetch(gc)?.to_string(),
             Self::GcUint(int) => int.fetch(gc)?.to_string(),
             Self::Generator(gen) => format!("{:p}", gen.function_index as *const u8),
+            Self::Array(arr) => format!("{:?}", arr),
             Self::Null => "null".to_string(),
             Self::None => "NoneType".to_string(),
         })
@@ -786,6 +821,37 @@ impl fmt::Display for Value {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.write_str(self.name())
     }
+}
+
+macro_rules! impl_from {
+    ($( $from:ty => $variant:ident ),*) => {
+        $(
+            impl From<$from> for Value {
+                fn from(val: $from) -> Self {
+                    Self::$variant(val)
+                }
+            }
+        )*
+    };
+}
+
+impl_from! {
+    u8 => Byte,
+    u16 => U16,
+    u32 => U32,
+    u64 => U64,
+    u128 => U128,
+    i8 => IByte,
+    i16 => I16,
+    i32 => I32,
+    i64 => I64,
+    i128 => I128,
+    f32 => F32,
+    f64 => F64,
+    bool => Bool,
+    char => Char,
+    &'static str => Str,
+    Vec<Self> => Array
 }
 
 macro_rules! bytes {

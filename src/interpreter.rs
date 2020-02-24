@@ -105,8 +105,9 @@ impl DataLocation {
         match self {
             Self::Register(reg) => {
                 let target = target.into();
-                if target.is_some() {
-                    let target = ctx.reserve_reg(target.unwrap())?;
+
+                if let Some(target) = target {
+                    let target = ctx.reserve_reg(target)?;
                     ctx.current_block().inst_copy(reg, target);
                     Ok(target)
                 } else {
@@ -126,7 +127,7 @@ impl DataLocation {
         }
     }
 
-    pub fn is_register(&self) -> bool {
+    pub fn is_register(self) -> bool {
         if let Self::Register(_) = self {
             true
         } else {
@@ -134,7 +135,7 @@ impl DataLocation {
         }
     }
 
-    pub fn is_comparison(&self) -> bool {
+    pub fn is_comparison(self) -> bool {
         if let Self::Comparison = self {
             true
         } else {
@@ -142,7 +143,7 @@ impl DataLocation {
         }
     }
 
-    pub fn is_operation(&self) -> bool {
+    pub fn is_operation(self) -> bool {
         if let Self::Operation = self {
             true
         } else {
@@ -199,7 +200,7 @@ impl Interpreter {
     }
 
     /// Interpret the contained ast and return the instructions
-    pub fn interpret<'a>(mut self, ast: Vec<Program>) -> Result<Vec<Vec<Instruction>>> {
+    pub fn interpret(mut self, ast: Vec<Program>) -> Result<Vec<Vec<Instruction>>> {
         self.interpret_module(ast)?;
         let functions = self.builder.build()?;
 
@@ -208,7 +209,7 @@ impl Interpreter {
         Ok(functions)
     }
 
-    fn interpret_module<'a>(&mut self, mut ast: Vec<Program>) -> Result<()> {
+    fn interpret_module(&mut self, mut ast: Vec<Program>) -> Result<()> {
         while let Some(node) = ast.pop() {
             match node {
                 Program::FunctionDecl(func) => {
@@ -275,7 +276,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn interpret_import<'a>(&mut self, import: Import) -> Result<()> {
+    fn interpret_import(&mut self, import: Import) -> Result<()> {
         match import.source {
             ImportSource::File(relative_path) => {
                 // TODO: allow importing folders
@@ -381,7 +382,7 @@ impl Interpreter {
         self.func_index
     }
 
-    fn expr<'a>(
+    fn expr(
         &mut self,
         builder: &mut CodeBuilder,
         ctx: &mut FunctionContext,
@@ -508,21 +509,19 @@ impl Interpreter {
 
                 if assign.ty == AssignType::Normal {
                     ctx.current_block().inst_copy(loaded, reg);
-                } else {
-                    if let AssignType::BinaryOp(op) = assign.ty {
-                        match op {
-                            BinaryOp::Plus => ctx.current_block().inst_add(loaded, reg),
-                            BinaryOp::Minus => ctx.current_block().inst_sub(loaded, reg),
-                            BinaryOp::Mult => ctx.current_block().inst_mult(loaded, reg),
-                            BinaryOp::Div => ctx.current_block().inst_div(loaded, reg),
-                            BinaryOp::Xor => ctx.current_block().inst_xor(loaded, reg),
-                            BinaryOp::Or => ctx.current_block().inst_or(loaded, reg),
-                            BinaryOp::And => ctx.current_block().inst_and(loaded, reg),
-                        }
-                        .inst_op_to_reg(reg);
-                    } else {
-                        unreachable!()
+                } else if let AssignType::BinaryOp(op) = assign.ty {
+                    match op {
+                        BinaryOp::Plus => ctx.current_block().inst_add(loaded, reg),
+                        BinaryOp::Minus => ctx.current_block().inst_sub(loaded, reg),
+                        BinaryOp::Mult => ctx.current_block().inst_mult(loaded, reg),
+                        BinaryOp::Div => ctx.current_block().inst_div(loaded, reg),
+                        BinaryOp::Xor => ctx.current_block().inst_xor(loaded, reg),
+                        BinaryOp::Or => ctx.current_block().inst_or(loaded, reg),
+                        BinaryOp::And => ctx.current_block().inst_and(loaded, reg),
                     }
+                    .inst_op_to_reg(reg);
+                } else {
+                    unreachable!()
                 }
             }
 
@@ -547,6 +546,7 @@ impl Interpreter {
                         self.statement(statement, builder, ctx)?;
                     }
 
+                    ctx.add_block();
                     ctx.current_block()
                         .inst_add(start, increment)
                         .inst_op_to_reg(start)
@@ -557,6 +557,7 @@ impl Interpreter {
                     ctx.inst_drop_block(increment, ctx.current_block);
                     ctx.inst_drop_block(start, ctx.current_block);
                     ctx.inst_drop_block(end, ctx.current_block);
+                    ctx.add_block();
                 } else {
                     todo!("Other range types")
                 }
@@ -625,6 +626,7 @@ impl Interpreter {
                 for block in conditions {
                     ctx.get_block(block).inst_jump(after_block as u32);
                 }
+                ctx.add_block();
             }
         }
 

@@ -21,6 +21,12 @@ impl Block {
     }
 }
 
+impl Default for Block {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub trait BlockOptimizer: Default {
     fn run(&mut self, block: &mut Block);
     fn reset(&mut self) {
@@ -91,18 +97,15 @@ impl BlockOptimizer for StackDeduplicator {
         let mut remove_indices = Vec::with_capacity(10);
 
         for (idx, inst) in block.block.iter().enumerate() {
-            match inst.uninit_inst {
-                Instruction::Pop(reg) => {
-                    if let (Some(Instruction::Pop(pop_one)), Some(Instruction::Push(push))) =
-                        (self.second_to_last.clone(), self.last.clone())
-                    {
-                        if pop_one == push && push == reg {
-                            trace!("Found a sequence of redundant Pop(r), Push(r), Pop(r)");
-                            remove_indices.extend_from_slice(&[idx - 1, idx]);
-                        }
+            if let Instruction::Pop(reg) = inst.uninit_inst {
+                if let (Some(Instruction::Pop(pop_one)), Some(Instruction::Push(push))) =
+                    (self.second_to_last.clone(), self.last.clone())
+                {
+                    if pop_one == push && push == reg {
+                        trace!("Found a sequence of redundant Pop(r), Push(r), Pop(r)");
+                        remove_indices.extend_from_slice(&[idx - 1, idx]);
                     }
                 }
-                _ => {}
             }
 
             self.second_to_last = self.last.clone();

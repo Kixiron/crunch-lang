@@ -165,6 +165,12 @@ impl CodeBuilder {
     }
 }
 
+impl Default for CodeBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct PartialInstruction {
     uninit_inst: Instruction,

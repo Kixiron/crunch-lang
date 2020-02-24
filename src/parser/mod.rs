@@ -23,19 +23,14 @@ pub struct Parser<'a> {
     pub(crate) current_file: FileId,
     diagnostics: Vec<Diagnostic>,
     error: bool,
-    pub(crate) interner: StringInterner<Sym>,
+    pub interner: StringInterner<Sym>,
     current_path: Sym,
 }
 
 impl<'a> Parser<'a> {
     #[must_use]
     pub fn new(filename: Option<&'a str>, input: &'a str) -> Self {
-        // The trim_start is a sketchy solution to the weird problem
-        //  of a `\r\n` precluding a function decl causing everything
-        // to break. Smallest reproducible set:
-        // "\r\nfn main()\r\n\t@print \"Welp.\\n\"\r\n"
-        // TODO: Fix it, I don't like it lying around
-        let mut token_stream = TokenStream::new(input.trim_start(), true);
+        let mut token_stream = TokenStream::new(input, true);
 
         let next = None;
         let peek = token_stream.next_token();
@@ -712,7 +707,6 @@ impl<'a> Parser<'a> {
                 ));
             }
         };
-        self.eat(TokenType::Equal)?;
 
         Ok(ty)
     }

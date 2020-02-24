@@ -1,13 +1,46 @@
 mod property_tests;
 
 use super::*;
-use crate::{Crunch, Vm};
+use crate::{inline_instructions, Crunch, Vm};
 use std::io::stdout;
 
 #[test]
-fn generator_test() {
-    simple_logger::init().unwrap();
+fn array_test() {
+    let functions = inline_instructions! {
+        0 => {
+            load vec![], 0;
 
+            load 1i32, 1;
+            load 2i32, 2;
+            load 3i32, 3;
+            pusharr 1, 0;
+            pusharr 2, 0;
+            pusharr 3, 0;
+
+            load "\n", 3;
+            load Value::Null, 1;
+
+            print 0;
+            print 3;
+
+            poparr 2, 0;
+            neq 1, 2;
+            print 2;
+            print 3;
+            jumpcmp -4;
+
+            load "Done!", 4;
+            print 4;
+            print 3;
+            ret;
+        }
+    };
+
+    Vm::default().execute(&functions).unwrap();
+}
+
+#[test]
+fn generator_test() {
     let functions = vec![
         vec![
             Instruction::CallGenerator(1, 0.into()),
@@ -61,8 +94,6 @@ fn generator_test() {
 
 #[test]
 fn eq() {
-    simple_logger::init().unwrap();
-
     let functions = vec![vec![
         Instruction::Load(Value::Null, 0.into()),
         Instruction::Load(Value::I32(1), 1.into()),
