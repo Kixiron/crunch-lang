@@ -636,7 +636,11 @@ pub fn remove_array(vm: &mut Vm, index: u8, array: u8, target: u8) -> Result<()>
         })?;
 
     if let Value::Array(array) = &mut vm.registers[array as usize] {
-        vm.registers[target as usize] = array.remove(index);
+        vm.registers[target as usize] = if index > array.len() - 1 {
+            Value::Null
+        } else {
+            array.remove(index)
+        };
 
         Ok(())
     } else {

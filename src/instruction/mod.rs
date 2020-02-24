@@ -477,6 +477,11 @@ macro_rules! bytecode {
         functions.into_iter().filter_map(|elem| elem).collect::<Vec<Vec<Instruction>>>()
     }};
 
+    (@inst $bytes:expr => load null, $reg:expr; $($rest:tt)*) => {
+        $bytes.push(Instruction::Load(Value::Null, $reg.into()));
+        bytecode!(@inst $bytes => $($rest)*);
+    };
+
     (@inst $bytes:expr => load $value:expr, $reg:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::Load($value.into(), $reg.into()));
         bytecode!(@inst $bytes => $($rest)*);
@@ -502,7 +507,7 @@ macro_rules! bytecode {
         bytecode!(@inst $bytes => $($rest)*);
     };
 
-    (@inst $bytes:expr => move $source:expr, $target:expr; $($rest:tt)*) => {
+    (@inst $bytes:expr => mov $source:expr, $target:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::Move($source.into(), $target.into()));
         bytecode!(@inst $bytes => $($rest)*);
     };
@@ -676,6 +681,7 @@ fn macro_test() {
         0 => {
             load 10i32, 0;
             print 0;
+            load null, 0;
             ret;
         }
     };

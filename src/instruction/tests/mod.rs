@@ -18,7 +18,7 @@ fn array_test() {
             pusharr 3, 0;
 
             load "\n", 3;
-            load Value::Null, 1;
+            load null, 1;
 
             print 0;
             print 3;
@@ -79,7 +79,7 @@ fn generator_test() {
             yield;
 
             // Yield null forever
-            load Value::Null, 0;
+            load null, 0;
             push 0;
             yield;
             jump -3;
@@ -93,7 +93,7 @@ fn generator_test() {
 fn eq() {
     let functions = bytecode! {
         0 => {
-            load Value::Null, 0;
+            load null, 0;
             load 1i32, 1;
             lesseq 0, 1;
             cmpr 2;
