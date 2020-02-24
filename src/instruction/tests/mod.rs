@@ -1,12 +1,12 @@
 mod property_tests;
 
 use super::*;
-use crate::{inline_instructions, Crunch, Vm};
+use crate::{bytecode, Crunch, Vm};
 use std::io::stdout;
 
 #[test]
 fn array_test() {
-    let functions = inline_instructions! {
+    let functions = bytecode! {
         0 => {
             load vec![], 0;
 
@@ -41,67 +41,66 @@ fn array_test() {
 
 #[test]
 fn generator_test() {
-    let functions = vec![
-        vec![
-            Instruction::CallGenerator(1, 0.into()),
-            Instruction::Pop(0.into()),
-            Instruction::Pop(1.into()),
-            Instruction::Print(1.into()),
-            Instruction::CallGenerator(1, 0.into()),
-            Instruction::Pop(0.into()),
-            Instruction::Pop(1.into()),
-            Instruction::Print(1.into()),
-            Instruction::CallGenerator(1, 0.into()),
-            Instruction::Pop(0.into()),
-            Instruction::Pop(1.into()),
-            Instruction::Print(1.into()),
-            Instruction::CallGenerator(1, 0.into()),
-            Instruction::Pop(0.into()),
-            Instruction::Pop(1.into()),
-            Instruction::Print(1.into()),
-            Instruction::CallGenerator(1, 0.into()),
-            Instruction::Pop(0.into()),
-            Instruction::Pop(1.into()),
-            Instruction::Print(1.into()),
-            Instruction::CallGenerator(1, 0.into()),
-            Instruction::Pop(0.into()),
-            Instruction::Pop(1.into()),
-            Instruction::Print(1.into()),
-            Instruction::Return,
-        ],
-        vec![
-            Instruction::Load(Value::I32(0), 0.into()),
-            Instruction::Push(0.into()),
-            Instruction::Yield,
-            Instruction::Load(Value::I32(1), 0.into()),
-            Instruction::Push(0.into()),
-            Instruction::Yield,
-            Instruction::Load(Value::I32(2), 0.into()),
-            Instruction::Push(0.into()),
-            Instruction::Yield,
-            Instruction::Load(Value::I32(3), 0.into()),
-            Instruction::Push(0.into()),
-            Instruction::Yield,
-            Instruction::Load(Value::Null, 0.into()),
-            Instruction::Push(0.into()),
-            Instruction::Yield,
-            Instruction::Jump(-3),
-        ],
-    ];
+    let functions = bytecode! {
+        0 => {
+            load 5u8, 31;
+            load 1u8, 30;
+            load 0u8, 29;
+
+            // Do this 6 times
+            gen 1u32, 0;
+            pop 0;
+            pop 1;
+            print 1;
+
+            sub 31, 30;
+            opr 31;
+            neq 31, 30;
+            jumpcmp -7;
+
+            ret;
+        }
+
+        1 => {
+            load 0i32, 0;
+            push 0;
+            yield;
+
+            load 1i32, 0;
+            push 0;
+            yield;
+
+            load 2i32, 0;
+            push 0;
+            yield;
+
+            load 3i32, 0;
+            push 0;
+            yield;
+
+            // Yield null forever
+            load Value::Null, 0;
+            push 0;
+            yield;
+            jump -3;
+        }
+    };
 
     Vm::default().execute(&functions).unwrap();
 }
 
 #[test]
 fn eq() {
-    let functions = vec![vec![
-        Instruction::Load(Value::Null, 0.into()),
-        Instruction::Load(Value::I32(1), 1.into()),
-        Instruction::LessThanEq(0.into(), 1.into()),
-        Instruction::CompToReg(2.into()),
-        Instruction::Print(2.into()),
-        Instruction::Return,
-    ]];
+    let functions = bytecode! {
+        0 => {
+            load Value::Null, 0;
+            load 1i32, 1;
+            lesseq 0, 1;
+            cmpr 2;
+            print 2;
+            ret;
+        }
+    };
 
     Vm::default().execute(&functions).unwrap();
 }
@@ -109,31 +108,21 @@ fn eq() {
 #[test]
 fn function_test() {
     let mut crunch = Crunch::new(crate::OptionBuilder::new("./function_test").build());
-    let functions = vec![
-        vec![
-            Instruction::Load(Value::Str("Calling the function!\n"), 31.into()),
-            Instruction::Print(31.into()),
-            Instruction::Drop(31.into()),
-            Instruction::Load(Value::Bool(false), 0.into()),
-            Instruction::Func(1),
-            Instruction::Load(Value::Str("Was the function called? "), 31.into()),
-            Instruction::Load(Value::Str("\n"), 30.into()),
-            Instruction::Print(31.into()),
-            Instruction::Print(0.into()),
-            Instruction::Print(30.into()),
-            Instruction::Drop(31.into()),
-            Instruction::Drop(30.into()),
-            Instruction::Drop(0.into()),
-            Instruction::Return,
-        ],
-        vec![
-            Instruction::Load(Value::Str("The function was called!\n"), 0.into()),
-            Instruction::Print(0.into()),
-            Instruction::Drop(0.into()),
-            Instruction::Load(Value::Bool(true), 0.into()),
-            Instruction::Return,
-        ],
-    ];
+
+    let functions = bytecode! {
+        0 => {
+            load "Calling the function!\n", 31;
+            print 31;
+            load true, 0;
+            func 1u32;
+            load "Was the function called?", 31;
+            load "\n", 30;
+            print 31;
+            print 0;
+            print 30;
+            ret;
+        }
+    };
 
     crunch.execute(&functions).unwrap();
 }
@@ -314,45 +303,7 @@ fn print_op<'a>() {
         print.execute(&mut vm).unwrap();
     }
 
-    // Test printing gc values
-    {
-        /*
-        TODO: Rework this
-        vm.stdout = Box::new(Vec::<u8>::new());
-
-        vm.registers[0] = Value::GcString("Test", &mut vm.gc).unwrap();
-        print.execute(&mut vm).unwrap();
-        swap_assert(&mut vm, "Test");
-
-        vm.registers[0] = Value::I32(10);
-        print.execute(&mut vm).unwrap();
-        swap_assert(&mut vm, "10");
-
-        vm.registers[0] = Value::Bool(true);
-        print.execute(&mut vm).unwrap();
-        swap_assert(&mut vm, "true");
-
-        vm.registers[0] = Value::Bool(false);
-        print.execute(&mut vm).unwrap();
-        swap_assert(&mut vm, "false");
-
-        // Test that writing to stdout works too, can only verify that it does, not that it is correct
-        vm.stdout = Box::new(std::io::stdout());
-
-        vm.registers[0] =
-            Value::GcString(crate::GcStr::new("Test", &mut vm.gc).unwrap());
-        print.execute(&mut vm).unwrap();
-
-        vm.registers[0] = Value::I32(10);
-        print.execute(&mut vm).unwrap();
-
-        vm.registers[0] = Value::Bool(true);
-        print.execute(&mut vm).unwrap();
-
-        vm.registers[0] = Value::Bool(false);
-        print.execute(&mut vm).unwrap();
-        */
-    }
+    // TODO: Test printing
 }
 
 #[test]

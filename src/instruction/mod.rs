@@ -456,7 +456,7 @@ impl Instruction {
 }
 
 #[macro_export]
-macro_rules! inline_instructions {
+macro_rules! bytecode {
     ($(
         $label_index:expr => {
             $( $code:tt )*
@@ -464,206 +464,207 @@ macro_rules! inline_instructions {
     )*) => {{
         use $crate::instruction::Instruction;
 
-        vec![
-            $(
-                {
-                    let _ = $label_index;
-                    let mut bytes = Vec::new();
-                    inline_instructions!(@inst bytes => $($code)*);
-                    bytes
-                }
-            ),*
-        ]
+        let len = [$( $label_index ),*].len();
+        let mut functions: Vec<Option<Vec<Instruction>>> = vec![None; len];
+
+        $(
+            let mut bytes: Vec<Instruction> = Vec::new();
+            bytecode!(@inst bytes => $($code)*);
+
+            functions[$label_index] = Some(bytes);
+        )*
+
+        functions.into_iter().filter_map(|elem| elem).collect::<Vec<Vec<Instruction>>>()
     }};
 
     (@inst $bytes:expr => load $value:expr, $reg:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::Load($value.into(), $reg.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => print $reg:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::Print($reg.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => cmpr $reg:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::CompToReg($reg.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => opr $reg:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::OpToReg($reg.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => drop $reg:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::Drop($reg.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => move $source:expr, $target:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::Move($source.into(), $target.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => copy $source:expr, $target:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::Copy($source.into(), $target.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => push $reg:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::Push($reg.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => pop $reg:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::Pop($reg.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => add $left:expr, $right:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::Add($left.into(), $right.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => sub $left:expr, $right:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::Sub($left.into(), $right.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => mult $left:expr, $right:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::Mult($left.into(), $right.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => div $left:expr, $right:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::Div($left.into(), $right.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => jump $offset:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::Jump($offset.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => jumpcmp $offset:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::JumpComp($offset.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => and $left:expr, $right:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::And($left.into(), $right.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => or $left:expr, $right:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::Or($left.into(), $right.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => xor $left:expr, $right:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::Xor($left.into(), $right.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => not $reg:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::Not($reg.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => eq $left:expr, $right:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::Eq($left.into(), $right.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => neq $left:expr, $right:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::NotEq($left.into(), $right.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => grt $left:expr, $right:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::GreaterThan($left.into(), $right.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => less $left:expr, $right:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::LessThan($left.into(), $right.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => grteq $left:expr, $right:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::GreaterThanEq($left.into(), $right.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => lesseq $left:expr, $right:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::LessThanEq($left.into(), $right.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => func $func:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::Func($func.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => yield; $($rest:tt)*) => {
         $bytes.push(Instruction::Yield);
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => gen $func:expr, $reg:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::CallGenerator($func.into(), $reg.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => pusharr $value:expr, $arr:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::PushArray { value: $value.into(), array: $arr.into() });
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => poparr $arr:expr, $target:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::PopArray { array: $arr.into(), target: $target.into() });
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => pusharr $value:expr, $arr:expr, $target:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::IndexArray { value: $value.into(), array: $arr.into(), target: $target.into() });
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => rmarr $value:expr, $arr:expr, $target:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::RemoveArray { value: $value.into(), array: $arr.into(), target: $target.into() });
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => ret; $($rest:tt)*) => {
         $bytes.push(Instruction::Return);
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => collect; $($rest:tt)*) => {
         $bytes.push(Instruction::Collect);
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => halt; $($rest:tt)*) => {
         $bytes.push(Instruction::Halt);
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => ldlib $name:expr, $target:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::LoadLib($name.into(), $target.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => execlib $name:expr, $target:expr, $number:expr; $($rest:tt)*) => {
         $bytes.push(Instruction::ExecLibFunc($name.into(), $target.into(), $number.into()));
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => noop; $($rest:tt)*) => {
         $bytes.push(Instruction::NoOp);
-        inline_instructions!(@inst $bytes => $($rest)*);
+        bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr =>) => {};
@@ -671,7 +672,7 @@ macro_rules! inline_instructions {
 
 #[test]
 fn macro_test() {
-    let functions = inline_instructions! {
+    let functions = bytecode! {
         0 => {
             load 10i32, 0;
             print 0;
