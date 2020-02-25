@@ -77,7 +77,7 @@ pub enum Instruction {
     ///
     /// [`Value`]: crate::Value
     /// [`Register`]: crate::Register
-    Load(Value, Register),
+    Load(Box<Value>, Register),
 
     /// Move the value from [`vm.prev_comp`] into the selected [`Register`]
     ///
@@ -319,7 +319,7 @@ impl Instruction {
         trace!("Executing instruction {:?}", self);
 
         match self {
-            Self::Load(val, reg) => functions::load(vm, val.clone(), **reg)?,
+            Self::Load(val, reg) => functions::load(vm, (**val).clone(), **reg)?,
             Self::CompToReg(reg) => functions::comp_to_reg(vm, **reg)?,
             Self::OpToReg(reg) => functions::op_to_reg(vm, **reg)?,
             Self::Drop(reg) => functions::drop(vm, **reg)?,
@@ -462,7 +462,8 @@ macro_rules! bytecode {
             $( $code:tt )*
         }
     )*) => {{
-        use $crate::instruction::Instruction;
+        #[allow(unused_imports)]
+        use $crate::{Value, instruction::Instruction};
 
         let len = [$( $label_index ),*].len();
         let mut functions: Vec<Option<Vec<Instruction>>> = vec![None; len];
@@ -477,13 +478,19 @@ macro_rules! bytecode {
         functions.into_iter().filter_map(|elem| elem).collect::<Vec<Vec<Instruction>>>()
     }};
 
+    (@sourced $bytes:expr => {
+        $( $code:tt )*
+    }) => {
+        bytecode!(@inst $bytes => $($code)*);
+    };
+
     (@inst $bytes:expr => load null, $reg:expr; $($rest:tt)*) => {
-        $bytes.push(Instruction::Load(Value::Null, $reg.into()));
+        $bytes.push(Instruction::Load(Box::new(Value::Null), $reg.into()));
         bytecode!(@inst $bytes => $($rest)*);
     };
 
     (@inst $bytes:expr => load $value:expr, $reg:expr; $($rest:tt)*) => {
-        $bytes.push(Instruction::Load($value.into(), $reg.into()));
+        $bytes.push(Instruction::Load(Box::new($value.into()), $reg.into()));
         bytecode!(@inst $bytes => $($rest)*);
     };
 

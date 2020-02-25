@@ -29,8 +29,6 @@ fn fibonacci_iterative_test() {
     const CODE: &str = include_str!("../../../tests/fibonacci_iterative.crunch");
     const FILENAME: &str = "fibonacci_iterative.crunch";
 
-    simple_logger::init().unwrap();
-
     let mut parser = Parser::new(Some(FILENAME), CODE);
     let ast = parser.parse().unwrap();
 
@@ -101,23 +99,23 @@ fn factorial_recursive_test() {
 #[test]
 #[ignore]
 fn ffi_test() {
-    use crate::{Instruction::*, Value};
+    let functions = bytecode! {
+        0 => {
+            load "ffi_test.dll", 0;
+            ldlib 0, 0;
+            load "add", 1;
+            load 10i32, 2;
+            load 20i32, 3;
+            push 2;
+            push 3;
+            execlib 1, 0, 2u16;
+            pop 2;
+            print 2;
+            ret;
+        }
+    };
 
-    let bytecode = vec![vec![
-        Load(Value::Str("ffi_test.dll"), 0.into()),
-        LoadLib(0.into(), 0.into()),
-        Load(Value::Str("add"), 1.into()),
-        Load(Value::I32(10), 2.into()),
-        Load(Value::I32(20), 3.into()),
-        Push(2.into()),
-        Push(3.into()),
-        ExecLibFunc(1.into(), 0.into(), 2),
-        Pop(2.into()),
-        Print(2.into()),
-        Return,
-    ]];
-
-    crate::Vm::default().execute(&bytecode).unwrap();
+    crate::Vm::default().execute(&functions).unwrap();
 }
 
 #[allow(non_snake_case)]

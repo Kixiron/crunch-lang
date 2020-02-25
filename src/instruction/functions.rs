@@ -329,6 +329,7 @@ comparison_operator! {
     less_than_equal:    Less, Equal     => true  || false
 }
 
+// TODO: Error on index out of bounds (Calling func that doesn't exist)
 pub fn func(mut vm: &mut Vm, func: u32) -> Result<()> {
     trace!(
         "Jumping to function {} from function {}",
@@ -636,11 +637,7 @@ pub fn remove_array(vm: &mut Vm, index: u8, array: u8, target: u8) -> Result<()>
         })?;
 
     if let Value::Array(array) = &mut vm.registers[array as usize] {
-        vm.registers[target as usize] = if index > array.len() - 1 {
-            Value::Null
-        } else {
-            array.remove(index)
-        };
+        vm.registers[target as usize] = array.remove(index);
 
         Ok(())
     } else {

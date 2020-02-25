@@ -122,6 +122,11 @@ fn function_test() {
             print 30;
             ret;
         }
+        1 => {
+            load "\nThe function was called!", 0;
+            print 0;
+            ret;
+        }
     };
 
     crunch.execute(&functions).unwrap();
@@ -194,7 +199,7 @@ fn variable_ops() {
     // register 0
     for val in values.clone().into_iter() {
         // Construct and execute the Load instruction
-        let load = Instruction::Load(val.clone(), 0.into());
+        let load = Instruction::Load(Box::new(val.clone()), 0.into());
         load.execute(&mut vm).unwrap();
 
         // Assert that the registers contain the correct value

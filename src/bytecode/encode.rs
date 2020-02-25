@@ -228,6 +228,6 @@ impl Encoder {
             _ => todo!("Implement procedural encoding/decoding"),
         }
 
-        (bytes, value)
+        (bytes, value.map(|val| *val))
     }
 }

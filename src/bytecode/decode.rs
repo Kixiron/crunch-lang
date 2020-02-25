@@ -96,7 +96,7 @@ impl<'a> Decoder<'a> {
             0x00 => Instruction::NoOp,
             0x01 => Instruction::Load(
                 if let Some(value) = meta.values.pop_front() {
-                    value
+                    Box::new(value)
                 } else {
                     return Err(RuntimeError {
                         ty: RuntimeErrorTy::MissingValue,
