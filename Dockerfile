@@ -1,4 +1,4 @@
-FROM rust:latest
+FROM ubuntu:latest
 
 ENV DEV 1
 
@@ -9,6 +9,11 @@ RUN cd /crunch-docker
 RUN apt update
 RUN yes | apt --fix-broken install
 RUN yes | apt upgrade
+
+# Install & Update Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+RUN PATH="$PATH:/usr/local/cargo/bin"
+RUN rustup toolchain install nightly
 RUN rustup update
 
 # honggfuzz
@@ -21,4 +26,4 @@ RUN cargo install flamegraph
 
 # Pull from github
 RUN git pull https://github.com/Kixiron/crunch-lang
-RUN if [$DEV == 1] then git checkout dev fi
+RUN if [$DEV == 1] ; then git checkout dev fi

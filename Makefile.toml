@@ -1,21 +1,7 @@
-[tasks.cli-flow]
-dependencies = [
-    "test-all",
-    "clippy-check",
-    "fmt-check",
-    "build-release",
-]
-
-[tasks.test-all]
-command = "cargo"
-args = ["test", "--all-targets", "--all-features"]
-
-[tasks.clippy-check]
-install_crate = { rustup_component_name = "clippy", binary = "clippy", test-arg = "--help" }
-command = "cargo"
-args = ["clippy", "--all-targets", "--all-features", "--", "-D", "warinings"]
-
-[tasks.fmt-check]
-install_crate = { rustup_component_name = "rustfmt", binary = "rustfmt", test-arg = "--help" }
-command = "cargo"
-args = ["fmt", "--all", "--", "--check"]
+# Memory leak
+# Race conditions
+# Address Sanatizer
+# Memory sanitizer
+# Flamegraph
+# Fuzz
+# Build with std
