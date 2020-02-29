@@ -1,8 +1,4 @@
-# Memory leak
-# Race conditions
-# Address Sanatizer
-# Memory sanitizer
-
+# Build in release mode and rebuild std
 [tasks.build-release]
 condition = { channels = ["nightly"] }
 command = "cargo"
@@ -16,10 +12,37 @@ command = "cargo"
 args = ["hfuzz", "run", "hfuzz", "--color=always"]
 
 [tasks.flamegraph]
+env = { "RUSTFLAGS" = "-C debuginfo=2" }
 install_crate = { crate_name = "flamegraph", binary = "cargo", test_arg = ["flamegraph", "--help"] }
-install_script = ['''
-sudo apt install -y linux-tools-common linux-tools-generic
-echo "For better flamegraph output, put `debug = true` into your Cargo.toml's `profile.release`"
-''']
+install_script = ["sudo apt install -y linux-tools-common linux-tools-generic"]
 command = "cargo"
 args = ["flamegraph"]
+
+[tasks.set-sanitizer-args]
+private = true
+condition = { env_set = ["SANITIZER_TYPE"] }
+env = { "RUSTFLAGS" = "-Z sanitizer=${SANITIZER_TYPE}" }
+
+[tasks.sanitize-address]
+env = { "SANITIZER_TYPE" = "address" }
+dependencies = ["set-sanitizer-args"]
+command = "cargo"
+args = ["test", "--", "--nocapture"]
+
+[tasks.sanitize-leak]
+env = { "SANITIZER_TYPE" = "leak" }
+dependencies = ["set-sanitizer-args"]
+command = "cargo"
+args = ["test", "--", "--nocapture"]
+
+[tasks.sanitize-memory]
+env = { "SANITIZER_TYPE" = "memory" }
+dependencies = ["set-sanitizer-args"]
+command = "cargo"
+args = ["test", "--", "--nocapture"]
+
+[tasks.sanitize-thread]
+env = { "SANITIZER_TYPE" = "thread" }
+dependencies = ["set-sanitizer-args"]
+command = "cargo"
+args = ["test", "--", "--nocapture"]
