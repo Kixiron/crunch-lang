@@ -20,6 +20,8 @@ pub enum TokenType {
     Error,
     #[token = ","]
     Comma,
+    #[token = ";"]
+    Semicolon,
     #[token = "in"]
     In,
     #[token = "let"]
@@ -139,6 +141,7 @@ impl std::fmt::Display for TokenType {
             Self::In => "in",
             Self::Dot => ".",
             Self::Colon => ":",
+            Self::Semicolon => ";",
             Self::Minus => "-",
             Self::Equal => "=",
             Self::IsEqual => "==",

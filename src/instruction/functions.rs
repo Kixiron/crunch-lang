@@ -8,10 +8,17 @@ pub fn load(mut vm: &mut Vm, val: Value, reg: u8) -> Result<()> {
         &vm.registers[reg as usize]
     );
 
-    vm.registers[reg as usize] = val;
-    vm.index += Index(1);
+    if vm.register_read_only(reg) {
+        Err(RuntimeError {
+            ty: RuntimeErrorTy::ReadOnlyRegister,
+            message: format!("Attempted to write to read-only register {}", reg),
+        })
+    } else {
+        vm.registers[reg as usize] = val;
+        vm.index += Index(1);
 
-    Ok(())
+        Ok(())
+    }
 }
 
 pub fn comp_to_reg(mut vm: &mut Vm, reg: u8) -> Result<()> {
@@ -337,7 +344,8 @@ pub fn func(mut vm: &mut Vm, func: u32) -> Result<()> {
         vm.current_func
     );
 
-    let mut registers: [Value; crate::NUMBER_REGISTERS] = array_init::array_init(|_| Value::None);
+    let mut registers: [Value; crate::NUMBER_REGISTERS + 2] =
+        array_init::array_init(|_| Value::None);
     std::mem::swap(&mut vm.registers, &mut registers);
 
     vm.return_stack.push(ReturnFrame {

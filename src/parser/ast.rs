@@ -277,6 +277,7 @@ pub enum Expr {
     FunctionCall(FunctionCall),
     Ident(Sym),
     Expr(Box<Expr>),
+    Array(Vec<Expr>),
 }
 
 #[derive(Debug, Clone)]

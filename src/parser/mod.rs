@@ -691,7 +691,10 @@ impl<'a> Parser<'a> {
             | TokenType::Plus
             | TokenType::Minus
             | TokenType::Divide
-            | TokenType::Ampersand => AssignType::BinaryOp(self.binary_operand(next)?.0),
+            | TokenType::Ampersand => {
+                self.eat(TokenType::Equal)?;
+                AssignType::BinaryOp(self.binary_operand(next)?.0)
+            }
             e => {
                 return Err(Diagnostic::new(
                     Severity::Error,
@@ -731,6 +734,46 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn array(&mut self) -> Result<(Expr, u32)> {
+        trace!("Parsing array");
+
+        self.eat(TokenType::LeftBrace)?;
+
+        let mut array = Vec::with_capacity(5);
+
+        if self.peek()?.ty != TokenType::RightBrace {
+            array.push(self.expr()?.0);
+
+            if self.peek()?.ty == TokenType::Semicolon {
+                self.eat(TokenType::Semicolon)?;
+
+                let range = self.peek()?.range;
+                if let Literal::Integer(integer) = self.parse_literal()? {
+                    array.reserve(integer as usize - 1);
+
+                    let proto = array[0].clone();
+                    for _ in 0..integer - 1 {
+                        array.push(proto.clone());
+                    }
+                } else {
+                    return Err(Diagnostic::new(
+                        Severity::Error,
+                        "Cannot fill arrays by size of non-integer",
+                        Label::new(
+                            self.current_file,
+                            range.0..range.1,
+                            "Expected an integer".to_string(),
+                        ),
+                    ));
+                }
+            }
+        }
+
+        let end = self.eat(TokenType::RightBrace)?.range.1;
+
+        Ok((Expr::Array(array), end))
+    }
+
     fn expr(&mut self) -> Result<(Expr, u32)> {
         trace!("Parsing expr");
 
@@ -742,6 +785,19 @@ impl<'a> Parser<'a> {
                 let end = self.eat(TokenType::RightParen)?.range.1;
 
                 (Expr::Expr(Box::new(expr)), end)
+            }
+
+            TokenType::LeftBrace => {
+                todo!("Array indexing");
+                // if let Some(prev) = prev.into() {
+                //     self.array()?
+                // } else {
+                //     self.eat(TokenType::LeftBrace)?;
+                //     let (expr, _) = self.expr()?;
+                //     self.eat(TokenType::RightBrace)?;
+                //     // self.expr()
+                //     // Done fucked up with parsing `array[idx] += 10`
+                // }
             }
 
             // TokenType::LeftCaret => todo!("Things that take generics"),
@@ -902,6 +958,7 @@ impl<'a> Parser<'a> {
                 _ => OperandType::Normal,
             };
 
+            trace!("Finished parsing parsing binary operand");
             Ok((op, ty))
         } else {
             let next = self.peek()?;
@@ -1056,6 +1113,8 @@ impl<'a> Parser<'a> {
         let mut statements = Vec::new();
 
         loop {
+            trace!("Parsing statement");
+
             let start_token = self.peek()?;
             let statement = match start_token.ty {
                 TokenType::If => Statement::Conditional(self.conditional()?),
@@ -1074,6 +1133,7 @@ impl<'a> Parser<'a> {
                                 self.function_call((interned, ident.range.0))?,
                             ))
                         }
+
                         TokenType::Equal
                         | TokenType::Caret
                         | TokenType::Pipe
@@ -1085,16 +1145,21 @@ impl<'a> Parser<'a> {
                             let interned = self.intern(ident.source);
                             Statement::Assign(self.assign((interned, ident.range.0))?)
                         }
+
                         e => {
-                            return Err(Diagnostic::new(
-                                Severity::Error,
-                                "Unexpected token",
-                                Label::new(
-                                    self.current_file,
-                                    peek.range.0..peek.range.1,
-                                    format!("Did not expect a {}", e),
-                                ),
-                            ));
+                            if let Ok((expr, _)) = self.expr() {
+                                Statement::Expr(expr)
+                            } else {
+                                return Err(Diagnostic::new(
+                                    Severity::Error,
+                                    "Unexpected token",
+                                    Label::new(
+                                        self.current_file,
+                                        peek.range.0..peek.range.1,
+                                        format!("Did not expect a {}", e),
+                                    ),
+                                ));
+                            }
                         }
                     }
                 }

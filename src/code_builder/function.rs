@@ -91,6 +91,22 @@ impl FunctionContext {
         &mut self.blocks[block]
     }
 
+    pub fn inst_push_arr(
+        &mut self,
+        array: impl Into<Register>,
+        value: impl Into<Register>,
+        block: usize,
+    ) -> &mut Block {
+        let (array, value) = (array.into(), value.into());
+
+        self.blocks[block]
+            .block
+            .push(Instruction::PushArray { array, value }.into());
+        self.free_reg(value);
+
+        &mut self.blocks[block]
+    }
+
     // TODO: Make this an option and push to the stack or something on an error
     #[inline]
     pub fn reserve_reg(&mut self, sym: impl Into<Option<Sym>>) -> Result<Register> {
@@ -98,8 +114,7 @@ impl FunctionContext {
             .registers
             .iter()
             .enumerate()
-            .rev()
-            .find(|(_idx, r)| r.is_none())
+            .find(|(_, idx)| idx.is_none())
             .ok_or({
                 RuntimeError {
                     ty: RuntimeErrorTy::CompilationError,
@@ -195,15 +210,15 @@ impl FunctionContext {
                             }
                         }
 
-                        let mut offset = if idx > current_index {
+                        let offset = if idx > current_index {
                             get_distance(&self, (current_index, inst_index), (idx, 0)) as i32
                         } else {
                             -(get_distance(&self, (idx, 0), (current_index, inst_index)) as i32)
                         };
 
-                        if current_index as i32 + offset >= block.block.len() as i32 {
-                            offset -= 1;
-                        }
+                        // if current_index as i32 + offset >= block.block.len() as i32 {
+                        //     offset -= 1;
+                        // }
 
                         changes.push((current_index, inst_index, offset));
                     }

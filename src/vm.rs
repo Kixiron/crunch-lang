@@ -23,10 +23,10 @@ impl From<&crate::Options> for VmOptions {
 
 /// A function's stack frame, holds enough information to continue execution where it
 /// last left off
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ReturnFrame {
     /// The frame's registers
-    pub registers: [Value; NUMBER_REGISTERS],
+    pub registers: [Value; NUMBER_REGISTERS + 2],
     /// The current [`Instruction`] index of the frame
     ///
     /// [`Instruction`]: crate::Instruction
@@ -36,10 +36,34 @@ pub struct ReturnFrame {
     pub yield_point: Option<Index>,
 }
 
+impl fmt::Debug for ReturnFrame {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("ReturnFrame")
+            .field(
+                "registers",
+                &format!(
+                    "[{}]",
+                    self.registers
+                        .iter()
+                        .map(|r| format!("{:?}", r))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            )
+            .field("Index", &self.index)
+            .field("function_index", &self.function_index)
+            .field("yield_point", &self.yield_point)
+            .finish()
+    }
+}
+
 /// The Virtual Machine environment for Crunch
 pub struct Vm {
-    /// The active VM Registers
-    pub(crate) registers: [Value; NUMBER_REGISTERS],
+    /// The active VM Registers  
+    /// `registers[len - 2]` is a read-only register containing 0  
+    /// `registers[len - 1]` is a read-only register containing 1  
+    pub(crate) registers: [Value; NUMBER_REGISTERS + 2],
+    pub(crate) read_only_registers: u64,
     /// The register snapshots for function calls
     pub(crate) return_stack: Vec<ReturnFrame>,
     /// The index of the current function
@@ -84,8 +108,27 @@ impl Vm {
     #[inline]
     #[must_use]
     pub fn new(options: &crate::Options, stdout: Box<dyn std::io::Write>) -> Self {
+        let (registers, read_only_registers) = {
+            let add_to_mask = |mask: &mut u64, reg: u64| {
+                *mask |= 1 << reg;
+            };
+
+            let mut registers: [Value; NUMBER_REGISTERS + 2] =
+                array_init::array_init(|_| Value::None);
+            let mut mask = 0;
+
+            // +2 for the adding of the extra registers
+            registers[NUMBER_REGISTERS + 1] = Value::U32(0);
+            add_to_mask(&mut mask, NUMBER_REGISTERS as u64 + 1);
+            registers[NUMBER_REGISTERS] = Value::U32(1);
+            add_to_mask(&mut mask, NUMBER_REGISTERS as u64);
+
+            (registers, mask)
+        };
+
         Self {
-            registers: array_init::array_init(|_| Value::None),
+            registers,
+            read_only_registers,
             return_stack: Vec::with_capacity(5),
             current_func: 0,
             index: Index(0),
@@ -101,6 +144,18 @@ impl Vm {
             stack: Vec::with_capacity(20),
         }
     }
+
+    pub(crate) fn register_read_only(&self, register: u8) -> bool {
+        self.read_only_registers & (1 << register as u64) != 0
+    }
+
+    // pub(crate) fn register_set_read_only(&mut self, register: u8) {
+    //     self.read_only_registers |= 1 << register as u64;
+    // }
+
+    // pub(crate) fn register_unset_read_only(&mut self, register: u8) {
+    //     self.read_only_registers &= !(1 << register as u64);
+    // }
 
     /// Uses the current [`Vm`] to execute the given `functions`  
     /// Note: this means that any data left in the [`Gc`] will transfer to the new program's runtime
@@ -158,7 +213,17 @@ impl Vm {
 impl fmt::Debug for Vm {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_struct("Vm")
-            .field("registers", &self.registers)
+            .field(
+                "registers",
+                &format!(
+                    "[{}]",
+                    self.registers
+                        .iter()
+                        .map(|r| format!("{:?}", r))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            )
             .field("return_stack", &self.return_stack)
             .field("current_func", &self.current_func)
             .field("index", &self.index)

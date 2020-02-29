@@ -463,7 +463,20 @@ impl Interpreter {
                 },
             )?)),
             Expr::Expr(expr) => self.expr(builder, ctx, *expr, target),
+            Expr::Array(arr) => {
+                ctx.add_block();
+                let array = ctx.reserve_reg(target)?;
 
+                for expr in arr {
+                    let expr = self
+                        .expr(builder, ctx, expr, None)?
+                        .to_register(ctx, None)?;
+                    ctx.inst_push_arr(array, expr, ctx.current_block);
+                }
+                ctx.add_block();
+
+                Ok(DataLocation::Register(array))
+            }
             Expr::FunctionCall(func_call) => {
                 for arg in func_call.arguments {
                     let reg = self.expr(builder, ctx, arg, None)?.to_register(ctx, None)?;
@@ -584,6 +597,7 @@ impl Interpreter {
             Statement::Empty => { /* Do nothing for `empty` */ }
 
             Statement::Conditional(conditional) => {
+                ctx.add_block();
                 let conditional_block = ctx.current_block;
 
                 let mut conditions = Vec::with_capacity(conditional._if.len() + 1);
@@ -607,7 +621,7 @@ impl Interpreter {
                     }
                 }
 
-                if let Some(_else) = conditional._else {
+                if let Some(Else { body, .. }) = conditional._else {
                     ctx.add_block();
                     let else_block = ctx.current_block;
                     conditions.push(else_block);
@@ -616,7 +630,7 @@ impl Interpreter {
                     ctx.current_block().inst_jump(else_block as u32);
 
                     ctx.move_to_block(else_block);
-                    for statement in _else.body {
+                    for statement in body {
                         self.statement(statement, builder, ctx)?;
                     }
                 }
@@ -626,7 +640,6 @@ impl Interpreter {
                 for block in conditions {
                     ctx.get_block(block).inst_jump(after_block as u32);
                 }
-                ctx.add_block();
             }
         }
 

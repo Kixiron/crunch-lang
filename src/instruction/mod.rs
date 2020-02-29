@@ -66,6 +66,7 @@ pub enum RuntimeErrorTy {
     MissingSymbol,
     JitError,
     EmptyStack,
+    ReadOnlyRegister,
 }
 
 /// Instructions for the [`Vm`]

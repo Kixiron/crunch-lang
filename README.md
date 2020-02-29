@@ -48,7 +48,7 @@ end
 fn hello(name, age)
     println("Hello {}! You are {} years old!\n", name, age)
 end
-    
+
 :: This untyped function will be desugared into a generic function like this
 fn hello<T, E>(name: T, age E) -> unit
     println("Hello {}! You are {} years old!\n", name, age)
@@ -148,7 +148,7 @@ let dependencies: [Dependency] = [
 build(package, dependencies) :: `build` takes in a `Package` and a `[Dependency]`
 ```
 
-## String Escapes:  
+## String Escapes  
 
 Unicode Escape Codes: `\u{0000}`  
 Hex Escape Codes: `\x{00}`  
@@ -170,7 +170,7 @@ Bit Escape Codes: `\b{00000000}`
 ```ebnf
 Program ::= ( FunctionDeclaration | TypeDeclaration | Import )*
 
-FunctionDeclaration ::= Visibility? 'fn' Ident ( '<' Ident ','? '>' )? '(' FunctionArguments* ')' ( '->' Ident )? '\n' Body End
+FunctionDeclaration ::= Decorator* Visibility? 'fn' Ident ( '<' Ident ','? '>' )? '(' FunctionArguments* ')' ( '->' Ident )? '\n' Body End
 FunctionArguments ::= ( Ident ( ':' Ident )? ) | ( FunctionArguments ',' )
 
 TypeDeclaration ::= Visibility? 'type' Ident ( '<' Ident ',' '>' )? '\n' TypeArguments* Function* End
@@ -211,10 +211,14 @@ Return ::= 'return' Expr '\n'
 Continue ::= 'continue' '\n'
 Break ::= 'break' '\n'
 
+Decorator ::= '@' Ident ( '(' DecoratorArgs* ')' )? '\n'
+DecoratorArgs ::= ( Ident | Literal ) | ( DecoratorArgs ',' ( Ident | Literal ) )
 Visibility ::= 'exposed' | 'lib'
 End ::= 'end'
 
 Expr ::= Literal | Range | Comparison | BinaryOperation | Ident | ( '(' Expr ')' )
+Array ::= '[' (( Expr ';' Integer ) | ArrayInner ) ']'
+ArrayInner ::= Expr | ( ArrayInner ',' Expr )
 
 Statement ::= If | While | Loop | For | FunctionCall | Assignment | VarDeclaration | Return | Continue | Break | ( Expr '\n' )
 
@@ -226,124 +230,124 @@ Body ::= Statement+ | 'empty'
 - [ ] FFI with Rust toolkit for developing native plugins
 - [ ] JIT
 - [ ] Type System
-    - [ ] Custom Types
-    - [ ] Type Safe
+  - [ ] Custom Types
+  - [ ] Type Safe
 - [ ] Tooling
-    - [ ] Package Manager
-    - [ ] Formatter
-    - [ ] Documenter
-        - [ ] Doc Comments
-    - [ ] Linter
-    - [ ] Tester
-        - [ ] Unit Testing integration
-    - [ ] Benchmarking
+  - [ ] Package Manager
+  - [ ] Formatter
+  - [ ] Documenter
+    - [ ] Doc Comments
+  - [ ] Linter
+  - [ ] Tester
+    - [ ] Unit Testing integration
+  - [ ] Benchmarking
 - [ ] Better Error Messages
-    - [ ] Friendly messages with compiler 'personality'
-    - [ ] Specific errors
-    - [ ] Possible solutions
-    - [ ] Error codes with lookups that explain the error code
+  - [ ] Friendly messages with compiler 'personality'
+  - [ ] Specific errors
+  - [ ] Possible solutions
+  - [ ] Error codes with lookups that explain the error code
 - [ ] Standard Library
-    - [ ] Importing Files
-        - [ ] Source Code Files
-        - [ ] Native Files
-        - [ ] Packages
+  - [ ] Importing Files
+    - [ ] Source Code Files
+    - [ ] Native Files
+    - [ ] Packages
 - [ ] Semantics/Syntax
-    - [ ] Explicit Mutability
-    - [ ] Types
-        - [ ] Type Variables
-        - [ ] Type Methods
-    - [ ] Logic
-    - [ ] Operands
-        - [ ] Overloadable?
-    - [ ] Traits
-            ```crunch
-            trait TraitName
-                fn trait_function()
-                    println("Hello from TraitName!")
-                end
-            end
-            ```
-    - [ ] [Poni-style](https://tutorial.ponylang.io/gotchas/divide-by-zero.html) operators  
+  - [ ] Explicit Mutability
+  - [ ] Types
+    - [ ] Type Variables
+    - [ ] Type Methods
+  - [ ] Logic
+  - [ ] Operands
+    - [ ] Overloadable?
+  - [ ] Traits
+```crunch
+trait TraitName
+    fn trait_function()
+        println("Hello from TraitName!")
+    end
+end
+```
+  - [ ] [Poni-style](https://tutorial.ponylang.io/gotchas/divide-by-zero.html) operators  
         `+` vs `+?` vs `+!`  
         `int / int = int` Normal Divide (Division by zero results in zero)  
         `int /? int = result<int>` Checked Division (Dividing by zero will result in an error)  
         `int /! int = int` Crashing Division (Division by zero will result in a program halt)  
-    - [ ] `<ret> if <cond> else <ret>`
-    - [ ] `then` clauses on loops for if the loop executes un-broken
-        ```crunch
-        while true
-            :: ..snip
-        then
-            :: ..snip
-        end
-        ```
+  - [ ] `<ret> if <cond> else <ret>`
+  - [ ] `then` clauses on loops for if the loop executes un-broken
+```crunch
+while true
+    :: ..snip
+then
+    :: ..snip
+end
+```
 - pattern matching
 - [ ] Runtime Reflection
 - [ ] Variables
-    - [ ] Tuples
-    - [ ] Enums
-            ```crunch
-            enum EnumName
-                Variant
-                TupleVariant
-                OrphanType =>
-                    orphan_type_field: int
-                end
-            end
-            ```
-    - [ ] Scoping
-    - [X] Strings
-    - [X] Integers
-        - [X] Signed
-        - [X] Floats
-    - [ ] Vectors
-        - [ ] Indexing
-        - [ ] Iteration
-            - [ ] For loop integration
-    - [X] Booleans
-    - [ ] Uninitialized variables
-    - [ ] Global Variables
-        - `global` keyword
-        - Declared outside any scope
-    - [ ] Manipulation (Adding, indexing, removing, type info, etc.)
-    - [ ] Constants
-        - Strictly enforced to be unchanging
-    - [ ] Calling variables
+  - [ ] Tuples
+  - [ ] Enums
+```crunch
+enum EnumName
+    Variant
+    TupleVariant
+    OrphanType =>
+        orphan_type_field: int
+    end
+end
+```
+  - [ ] Scoping
+  - [X] Strings
+  - [X] Integers
+    - [X] Signed
+    - [X] Floats
+  - [ ] Vectors
+    - [ ] Indexing
+    - [ ] Iteration
+      - [ ] For loop integration
+  - [X] Booleans
+  - [ ] Uninitialized variables
+  - [ ] Global Variables
+    - `global` keyword
+    - Declared outside any scope
+  - [ ] Manipulation (Adding, indexing, removing, type info, etc.)
+  - [ ] Constants
+    - Strictly enforced to be unchanging
+  - [ ] Calling variables
 - [ ] `::: Doc Comments`  
 - [ ] Mandatory Bracing: `a + b * c` is a syntax error, `a + (b * c)` is not  
 - [ ] Zig-style multiline string literals with `#'` or `#"`:
-    ```
-    let string = 
-        #' Multi
-        #'     Line
-        #'         String
-        #'             Literals
+```
+let string = 
+    #' Multi
+    #'     Line
+    #'         String
+    #'             Literals
 
-    :: Alternatively,
-    let string = 
-        #" Multi
-        #"     Line
-        #"         String
-        #"             Literals
-    ```
-    <details>
-    <summary>Possible alternative syntax</summary>
-    
-    ```
-    let string = 
-        ' Multi
-        '     Line
-        '         String
-        '             Literals
-    end
+:: Alternatively,
+let string = 
+    #" Multi
+    #"     Line
+    #"         String
+    #"             Literals
+```
+<details>
+<summary>Possible alternative syntax</summary>
 
-    :: Alternatively,
-    let string = 
-        " Multi
-        "     Line
-        "         String
-        "             Literals
-    end
-    ```
+```
+let string = 
+    ' Multi
+    '     Line
+    '         String
+    '             Literals
+end
 
-    </details>
+:: Alternatively,
+let string = 
+    " Multi
+    "     Line
+    "         String
+    "             Literals
+end
+```
+</details>
+- [ ] Decorators (`@decorator`)
