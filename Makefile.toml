@@ -2,6 +2,24 @@
 # Race conditions
 # Address Sanatizer
 # Memory sanitizer
-# Flamegraph
-# Fuzz
-# Build with std
+
+[tasks.build-release]
+condition = { channels = ["nightly"] }
+command = "cargo"
+args = ["+nightly", "build", "--release", "-Z", "build-std", "--target", "${CARGO_MAKE_RUST_TARGET_TRIPLE}"]
+
+[tasks.fuzz-parser]
+env = { "HFUZZ_RUN_ARGS" = "--threads=16 --verifier --linux_perf_instr --linux_perf_branch --timeout=1 --tmout_sigvtalrm" }
+install_crate = { crate_name = "honggfuzz", binary = "cargo", test_arg = ["hfuzz", "--help"] }
+install_script = ["sudo apt install -y build-essential binutils-dev libunwind-dev libblocksruntime-dev"]
+command = "cargo" 
+args = ["hfuzz", "run", "hfuzz", "--color=always"]
+
+[tasks.flamegraph]
+install_crate = { crate_name = "flamegraph", binary = "cargo", test_arg = ["flamegraph", "--help"] }
+install_script = ['''
+sudo apt install -y linux-tools-common linux-tools-generic
+echo "For better flamegraph output, put `debug = true` into your Cargo.toml's `profile.release`"
+''']
+command = "cargo"
+args = ["flamegraph"]
