@@ -29,4 +29,4 @@ RUN cargo install flamegraph
 # Pull from github
 RUN git clone https://github.com/Kixiron/crunch-lang.git
 RUN cd crunch-lang
-RUN if [$DEV == 1] then git checkout dev fi
+RUN if [$DEV == 1]; then git checkout dev; fi
