@@ -11,7 +11,7 @@ VOLUME /volume
 RUN apt update
 RUN yes | apt --fix-broken install
 RUN yes | apt upgrade
-RUN apt install -y curl git
+RUN apt install -y curl git libssl-dev pkg-config
 # hongfuzz
 RUN apt install -y linux-tools-common linux-tools-generic
 # flamegraph
@@ -24,5 +24,6 @@ RUN rustup update
 
 RUN cargo install honggfuzz
 RUN cargo install flamegraph
+RUN cargo install cargo-make
 
 RUN git clone -b dev https://github.com/Kixiron/crunch-lang
