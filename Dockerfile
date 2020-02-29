@@ -27,5 +27,5 @@ RUN cargo install honggfuzz
 RUN cargo install flamegraph
 
 # Pull from github
-RUN git pull https://github.com/Kixiron/crunch-lang
+RUN git pull https://github.com/Kixiron/crunch-lang.git
 RUN if [$DEV == 1] ; then git checkout dev fi
