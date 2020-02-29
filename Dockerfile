@@ -5,8 +5,7 @@ ENV PATH=/usr/local/cargo/bin:$PATH \
     RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo
 
-VOLUME /crunch-docker
-RUN cd /crunch-docker
+VOLUME /volume
 
 # Update stuff
 RUN apt update
@@ -27,6 +26,6 @@ RUN cargo install honggfuzz
 RUN cargo install flamegraph
 
 # Pull from github
-RUN git clone https://github.com/Kixiron/crunch-lang.git /crunch-docker/crunch-lang
-RUN cd crunch-lang
+RUN git clone https://github.com/Kixiron/crunch-lang.git /volume/crunch-lang
+RUN cd /volume/crunch-lang
 RUN if [$DEV == 1]; then git checkout dev; fi
