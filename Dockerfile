@@ -25,6 +25,4 @@ RUN rustup update
 RUN cargo install honggfuzz
 RUN cargo install flamegraph
 
-# Pull from github
-RUN git clone https://github.com/Kixiron/crunch-lang.git
-RUN if [ $DEV -eq 1 ]; then cd crunch-lang && git switch dev; fi
+ENTRYPOINT git clone -b dev https://github.com/Kixiron/crunch-lang.git
