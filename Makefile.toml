@@ -7,7 +7,7 @@ args = ["+nightly", "build", "--release", "-Z", "build-std", "--target", "${CARG
 [tasks.install-native-deps]
 private = true
 condition = { env_set = ["PACKAGES"] }
-install_script = ['''
+script = ['''
 for pkg in ${PACKAGES}; do
     if ! dpkg-query -W -f='${Status}' nano | grep "ok installed"; then
         sudo apt install -y $pkg
@@ -19,8 +19,9 @@ done
 env = { "HFUZZ_RUN_ARGS" = "--threads=16 --verifier --linux_perf_instr --linux_perf_branch --timeout=1 --tmout_sigvtalrm", "PACKAGES" = "build-essential binutils-dev libunwind-dev libblocksruntime-dev" }
 dependencies = ["install-native-deps"]
 install_crate = { crate_name = "honggfuzz", binary = "cargo", test_arg = ["hfuzz", "--help"] }
-command = "cargo" 
-args = ["hfuzz", "run", "hfuzz", "--color=always"]
+install_script = ["cd crunch-fuzzing"]
+command = "cargo"
+args = ["hfuzz", "run", "parser", "--color=always"]
 
 [tasks.flamegraph]
 env = { "RUSTFLAGS" = "-C debuginfo=2", "PACKAGES" = "linux-tools-common linux-tools-generic" }

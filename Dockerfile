@@ -5,8 +5,6 @@ ENV PATH=/usr/local/cargo/bin:$PATH \
     RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo
 
-VOLUME /volume
-
 # Update stuff
 RUN apt update
 RUN yes | apt --fix-broken install

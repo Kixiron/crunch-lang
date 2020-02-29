@@ -1,0 +1,14 @@
+[package]
+name = "crunch-fuzzing"
+version = "0.0.0"
+authors = ["Chase Wilson <contact@chasewilson.dev>"]
+
+[[bin]]
+name = "parser"
+path = "src/parse.rs"
+
+[dependencies.crunch]
+path = "../"
+
+[dependencies.honggfuzz]
+version = "0.5.45"
