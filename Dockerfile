@@ -12,7 +12,7 @@ RUN cd /crunch-docker
 RUN apt update
 RUN yes | apt --fix-broken install
 RUN yes | apt upgrade
-RUN apt install -y curl
+RUN apt install -y curl git
 # hongfuzz
 RUN apt install -y linux-tools-common linux-tools-generic
 # flamegraph
