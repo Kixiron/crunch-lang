@@ -15,19 +15,29 @@ for pkg in ${PACKAGES}; do
 done
 ''']
 
-[tasks.fuzz-parser]
+[tasks.fuzz]
+private = true
+condition = { env_set = "FUZZ_TARGET" }
 env = { "HFUZZ_RUN_ARGS" = "--threads=16 --verifier --linux_perf_instr --linux_perf_branch --timeout=1 --tmout_sigvtalrm", "PACKAGES" = "build-essential binutils-dev libunwind-dev libblocksruntime-dev" }
 dependencies = ["install-native-deps"]
 install_crate = { crate_name = "honggfuzz", binary = "cargo", test_arg = ["hfuzz", "version"] }
 script = ['''
 cd crunch-fuzzing
-cargo hfuzz run parser --color=always
+cargo hfuzz run ${FUZZ_TARGET} --color=always
 ''']
 
+[tasks.fuzz-parser]
+env = { "FUZZ_TARGET" = "parser" }
+dependencies = ["fuzz"]
+
 [tasks.flamegraph]
-env = { "RUSTFLAGS" = "-C debuginfo=2", "PACKAGES" = "linux-tools-common linux-tools-generic" }
+env = { "RUSTFLAGS" = "-C debuginfo=2", "PACKAGES" = "linux-tools-common linux-tools-generic linux-tools-linuxkit linux-cloud-tools-linuxkit" }
 install_crate = { crate_name = "flamegraph", binary = "cargo", test_arg = ["flamegraph", "--help"] }
 dependencies = ["install-native-deps"]
+install_script = ['''
+# https://github.com/flamegraph-rs/flamegraph#enabling-perf-for-use-by-unprivileged-users
+echo -1 | sudo tee /proc/sys/kernel/perf_event_paranoid
+''']
 command = "cargo"
 args = ["flamegraph"]
 
