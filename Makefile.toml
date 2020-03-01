@@ -31,7 +31,7 @@ env = { "FUZZ_TARGET" = "parser" }
 dependencies = ["fuzz"]
 
 [tasks.flamegraph]
-env = { "RUSTFLAGS" = "-C debuginfo=2", "PACKAGES" = "linux-tools-common linux-tools-generic linux-tools-linuxkit linux-cloud-tools-linuxkit" }
+env = { "RUSTFLAGS" = "-C debuginfo=2", "PACKAGES" = "linux-tools-common linux-tools-generic" }
 install_crate = { crate_name = "flamegraph", binary = "cargo", test_arg = ["flamegraph", "--help"] }
 dependencies = ["install-native-deps"]
 install_script = ['''
