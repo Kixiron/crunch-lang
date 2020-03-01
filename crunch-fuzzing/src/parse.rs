@@ -1,4 +1,5 @@
-use honggfuzz::fuzz;
+#[macro_use]
+extern crate honggfuzz;
 
 fn main() {
     loop {
