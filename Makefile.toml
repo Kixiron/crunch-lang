@@ -18,7 +18,7 @@ done
 [tasks.fuzz-parser]
 env = { "HFUZZ_RUN_ARGS" = "--threads=16 --verifier --linux_perf_instr --linux_perf_branch --timeout=1 --tmout_sigvtalrm", "PACKAGES" = "build-essential binutils-dev libunwind-dev libblocksruntime-dev" }
 dependencies = ["install-native-deps"]
-install_crate = { crate_name = "honggfuzz", binary = "cargo", test_arg = ["hfuzz", "--help"] }
+install_crate = { crate_name = "honggfuzz", binary = "cargo", test_arg = ["hfuzz"] }
 script = ['''
 cd crunch-fuzzing
 cargo hfuzz run parser --color=always
