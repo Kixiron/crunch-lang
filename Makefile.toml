@@ -2,7 +2,7 @@
 [tasks.build-release]
 condition = { channels = ["nightly"] }
 command = "cargo"
-args = ["+nightly", "build", "--release", "-Z", "build-std", "--target", "${CARGO_MAKE_RUST_TARGET_TRIPLE}"]
+args = ["+nightly", "build", "--release", "-Z", "build-std", "--target", "${CARGO_MAKE_RUST_TARGET_TRIPLE}", "--", "-C", "target-cpu=native", "-C", "lto=fat", "-C", "codegen-units=1"]
 
 [tasks.install-native-deps]
 private = true
@@ -31,7 +31,7 @@ env = { FUZZ_TARGET = "parser" }
 dependencies = ["fuzz"]
 
 [tasks.flamegraph]
-env = { "RUSTFLAGS" = "-C debuginfo=2", "PACKAGES" = "linux-tools-common linux-tools-generic" }
+env = { RUSTFLAGS = "-C debuginfo=2", PACKAGES = "linux-tools-common linux-tools-generic" }
 install_crate = { crate_name = "flamegraph", binary = "cargo", test_arg = ["flamegraph", "--help"] }
 dependencies = ["install-native-deps"]
 install_script = ['''
@@ -44,28 +44,28 @@ args = ["flamegraph"]
 [tasks.set-sanitizer-args]
 private = true
 condition = { env_set = ["SANITIZER_TYPE"] }
-env = { "RUSTFLAGS" = "-Z sanitizer=${SANITIZER_TYPE}" }
+env = { RUSTFLAGS = "-Z sanitizer=${SANITIZER_TYPE}" }
 
 [tasks.sanitize-address]
-env = { "SANITIZER_TYPE" = "address" }
+env = { SANITIZER_TYPE = "address" }
 dependencies = ["set-sanitizer-args"]
 command = "cargo"
 args = ["test", "--", "--nocapture"]
 
 [tasks.sanitize-leak]
-env = { "SANITIZER_TYPE" = "leak" }
+env = { SANITIZER_TYPE = "leak" }
 dependencies = ["set-sanitizer-args"]
 command = "cargo"
 args = ["test", "--", "--nocapture"]
 
 [tasks.sanitize-memory]
-env = { "SANITIZER_TYPE" = "memory" }
+env = { SANITIZER_TYPE = "memory" }
 dependencies = ["set-sanitizer-args"]
 command = "cargo"
 args = ["test", "--", "--nocapture"]
 
 [tasks.sanitize-thread]
-env = { "SANITIZER_TYPE" = "thread" }
+env = { SANITIZER_TYPE = "thread" }
 dependencies = ["set-sanitizer-args"]
 command = "cargo"
 args = ["test", "--", "--nocapture"]

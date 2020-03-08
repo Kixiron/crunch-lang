@@ -262,3 +262,5 @@ impl std::ops::IndexMut<usize> for FunctionContext {
         &mut self.blocks[idx]
     }
 }
+
+// TODO: Trait for optimization passes

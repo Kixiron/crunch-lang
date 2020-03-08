@@ -10,6 +10,7 @@ impl Block {
         Self { block: Vec::new() }
     }
 
+    // TODO: Get rid of PartialInstruction
     pub fn solidify(self, builder: &mut CodeBuilder) -> Result<Vec<Instruction>> {
         let mut instructions = Vec::with_capacity(self.block.len());
 
@@ -18,6 +19,10 @@ impl Block {
         }
 
         Ok(instructions)
+    }
+
+    pub fn push(&mut self, inst: impl Into<PartialInstruction>) {
+        self.block.push(inst.into());
     }
 }
 

@@ -479,7 +479,7 @@ macro_rules! bytecode {
         functions.into_iter().filter_map(|elem| elem).collect::<Vec<Vec<Instruction>>>()
     }};
 
-    (@sourced $bytes:expr => {
+    (@append $bytes:expr => {
         $( $code:tt )*
     }) => {
         bytecode!(@inst $bytes => $($code)*);

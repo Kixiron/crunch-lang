@@ -19,7 +19,11 @@ lazy_static::lazy_static! {
 
         intrinsics.insert("print", |_builder, ctx| {
             let reg = ctx.reserve_reg(None)?;
-            ctx.current_block().inst_pop(reg).inst_print(reg);
+
+            bytecode!(@append ctx.current_block() => {
+                pop reg;
+                print reg;
+            });
 
             Ok(())
         });
@@ -27,16 +31,20 @@ lazy_static::lazy_static! {
             let reg = ctx.reserve_reg(None)?;
             let newline = ctx.reserve_reg(None)?;
 
-            ctx.current_block().inst_pop(reg)
-                .inst_print(reg)
-                .inst_load(newline, Value::Str("\n"))
-                .inst_print(newline);
-            ctx.inst_drop_block(newline, ctx.current_block);
+            bytecode!(@append ctx.current_block() => {
+                pop reg;
+                print reg;
+                load "\n", newline;
+                print newline;
+                drop newline;
+            });
 
             Ok(())
         });
         intrinsics.insert("halt", |_builder, ctx| {
-            ctx.current_block().inst_halt();
+            bytecode!(@append ctx.current_block() => {
+                halt;
+            });
 
             Ok(())
         });
@@ -50,34 +58,38 @@ lazy_static::lazy_static! {
 
                 ctx.add_block();
                 let generator_block = ctx.current_block;
-                ctx.current_block()
-                    .inst_load(increment, Value::I32(1))
-                    .inst_pop(val)
-                    .inst_pop(max)
-                    .inst_add(increment, val)
-                    .inst_op_to_reg(val)
-                    .inst_less_than(val, max);
+                bytecode!(@append ctx.current_block() => {
+                    load 1i32, increment;
+                    pop val;
+                    pop max;
+                    add increment, val;
+                    opr val;
+                    less val, max;
+                });
 
                 ctx.add_block();
                 let success = ctx.current_block;
-                ctx.current_block()
-                    .inst_push(max)
-                    .inst_push(val)
-                    .inst_yield()
-                    .inst_jump(generator_block as u32);
+                bytecode!(@append ctx.current_block() => {
+                    push max;
+                    push val;
+                    yield;
+                    jump generator_block as i32;
+                });
 
                 ctx.add_block();
                 let fail = ctx.current_block;
-                ctx.current_block()
-                    .inst_load(null, Value::Null)
-                    .inst_push(max)
-                    .inst_push(null)
-                    .inst_yield()
-                    .inst_jump(fail as u32);
+                bytecode!(@append ctx.current_block() => {
+                    load null, null;
+                    push max;
+                    push null;
+                    yield;
+                    jump fail as i32;
+                });
 
-                ctx.get_block(generator_block)
-                    .inst_jump_comp(success as u32)
-                    .inst_jump(fail as u32);
+                bytecode!(@append ctx.get_block(generator_block) => {
+                    jumpcmp success as i32;
+                    jump fail as i32;
+                });
 
                 Ok(())
             })?;
@@ -108,20 +120,31 @@ impl DataLocation {
 
                 if let Some(target) = target {
                     let target = ctx.reserve_reg(target)?;
-                    ctx.current_block().inst_copy(reg, target);
+                    bytecode!(@append ctx.current_block() => {
+                        copy reg, target;
+                    });
+
                     Ok(target)
                 } else {
                     Ok(reg)
                 }
             }
+
             Self::Comparison => {
                 let reg = ctx.reserve_reg(target)?;
-                ctx.current_block().inst_comp_to_reg(reg);
+                bytecode!(@append ctx.current_block() => {
+                    cmpr reg;
+                });
+
                 Ok(reg)
             }
+
             Self::Operation => {
                 let reg = ctx.reserve_reg(target)?;
-                ctx.current_block().inst_op_to_reg(reg);
+                bytecode!(@append ctx.current_block() => {
+                    opr reg;
+                });
+
                 Ok(reg)
             }
         }
@@ -254,7 +277,9 @@ impl Interpreter {
                     let mut argument_block = Block::new();
                     for (arg, _ty) in method.arguments {
                         let loc = ctx.reserve_reg(arg)?;
-                        argument_block.inst_pop(loc);
+                        bytecode!(@append argument_block => {
+                            pop loc;
+                        });
                     }
                     ctx.push_block(argument_block);
 
@@ -355,7 +380,9 @@ impl Interpreter {
         builder.build_function(func_name, |builder, ctx| {
             for (arg, _ty) in func.arguments {
                 let loc = ctx.reserve_reg(arg)?;
-                ctx.current_block().inst_pop(loc);
+                bytecode!(@append ctx.current_block() => {
+                    pop loc;
+                });
             }
 
             // For each expression in the function, evaluate it into instructions
@@ -406,7 +433,9 @@ impl Interpreter {
                     Literal::Boolean(boolean) => Value::Bool(boolean),
                 };
 
-                ctx.current_block().inst_load(addr, value);
+                bytecode!(@append ctx.current_block() => {
+                    load value, addr;
+                });
 
                 Ok(DataLocation::Register(addr))
             }
@@ -452,7 +481,9 @@ impl Interpreter {
                     (BinaryOp::Xor, _ty) => ctx.current_block().inst_xor(left, right),
                 };
 
-                ctx.current_block().inst_op_to_reg(output);
+                bytecode!(@append ctx.current_block() => {
+                    opr output;
+                });
 
                 Ok(DataLocation::Register(output))
             }
