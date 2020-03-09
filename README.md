@@ -6,6 +6,19 @@
 ![Lines of Code](https://tokei.rs/b1/github/Kixiron/crunch-lang)
 ![GitHub Issues](https://img.shields.io/github/issues/Kixiron/crunch-lang)
 
+## Building
+
+First, have [`rustup`] and `cargo` installed, then run the following commands
+
+```text
+git clone https://github.com/Kixiron/crunch-lang
+cd crunch-lang
+git submodule update --init --recursive
+cargo build
+```
+
+[`rustup`]: https://rustup.rs/
+
 ## Overarching TODOs
 
 - [ ] Finish Parser
@@ -316,7 +329,7 @@ end
 - [ ] `::: Doc Comments`  
 - [ ] Mandatory Bracing: `a + b * c` is a syntax error, `a + (b * c)` is not  
 - [ ] Zig-style multiline string literals with `#'` or `#"`:
-```
+```crunch
 let string = 
     #' Multi
     #'     Line
@@ -333,7 +346,7 @@ let string =
 <details>
 <summary>Possible alternative syntax</summary>
 
-```
+```crunch
 let string = 
     ' Multi
     '     Line

@@ -15,10 +15,8 @@ build = "build.rs"
 default-run = "crunch"
 
 [features]
-default = []
-# Note: JIT currently *highly* expiremental
-jit = ["dynasm", "dynasmrt", "once_cell"]
-stepping = []
+default = ["std"]
+std = ["compactor/std"]
 
 [[bin]]
 name = "crunch"
@@ -41,46 +39,25 @@ name = "compilation"
 harness = false
 
 [dependencies]
-log = "0.4.8"
-simple_logger = "1.5.0"
+simple_logger = "1.6.0"
 color-backtrace = "0.3.0"
-array-init = "0.1.1"
-structopt = "0.3.8"
-codespan = "0.6.0"
-codespan-reporting = "0.6.0"
+structopt = "0.3.11"
 human-panic = "1.0.1"
-string-interner = "0.7.1"
-lazy_static = "1.4.0"
-num-bigint = "0.2.6"
-fxhash = "0.2.1"
 
-[dependencies.dlopen]
-version = "0.1.8"
+[dependencies.crunch-error]
+path = "crates/crunch-error"
 
-[dependencies.logos]
-version = "0.10.0-rc2"
+[dependencies.crunch-parser]
+path = "crates/crunch-parser"
 
-[dependencies.once_cell]
-version = "1.3.1"
-optional = true
+[dependencies.vice]
+path = "crates/vice"
 
-[dependencies.dynasm]
-version = "0.5.2"
-optional = true
+[dependencies.compactor]
+path = "crates/compactor"
 
-[dependencies.dynasmrt]
-version = "0.5.2"
-optional = true
-
-[dependencies.rand]
-version = "0.7.3"
-features = ["small_rng"]
-
-[target.'cfg(target_family = "windows")'.dependencies]
-winapi = "0.3.8"
-
-[target.'cfg(target_family = "unix")'.dependencies]
-libc = "0.2.66"
+[dependencies.crunch-bytecode]
+path = "crates/crunch-bytecode"
 
 [dev-dependencies]
 criterion = "0.3.1"
@@ -88,6 +65,13 @@ proptest = "0.9.5"
 
 [build-dependencies]
 cc = "1.0.50"
+
+
+
+[workspace]
+members = [
+    "crates/*"
+]
 
 [profile.dev]
 opt-level = 0

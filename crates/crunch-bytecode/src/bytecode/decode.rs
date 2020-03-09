@@ -1,0 +1,213 @@
+use crate::bytecode::INSTRUCTION_LENGTH;
+
+use compactor::{Instruction, Value};
+use crunch_error::runtime_prelude::*;
+
+use alloc::{
+    boxed::Box,
+    collections::VecDeque,
+    string::{String, ToString},
+    vec::Vec,
+};
+use core::{convert::TryInto, mem::size_of};
+
+// TODO: Document & Test all functions
+
+macro_rules! take {
+    ($self:tt, $ty:tt) => {{
+        let int = $ty::from_be_bytes(
+            $self.bytes[$self.index..$self.index + size_of::<$ty>()]
+                .try_into()
+                .unwrap_or_else(|_| unreachable!()),
+        );
+
+        $self.index += size_of::<$ty>();
+
+        int
+    }};
+}
+
+#[derive(Debug, Clone)]
+struct FunctionMeta {
+    values: VecDeque<Value>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Decoder<'a> {
+    bytes: &'a [u8],
+    index: usize,
+    functions: Vec<Vec<Instruction>>,
+    function_meta: VecDeque<FunctionMeta>,
+    number_functions: usize,
+}
+
+impl<'a> Decoder<'a> {
+    #[must_use]
+    pub fn new(bytes: &'a [u8]) -> Self {
+        Self {
+            bytes,
+            index: 0,
+            functions: Vec::new(),
+            function_meta: VecDeque::new(),
+            number_functions: 0,
+        }
+    }
+
+    pub fn decode(mut self) -> RuntimeResult<(Vec<Instruction>, Vec<Vec<Instruction>>)> {
+        self.get_number_functions();
+        self.fill_meta()?;
+        self.fill_functions()?;
+
+        Ok((self.functions.remove(0), self.functions))
+    }
+
+    fn fill_functions(&mut self) -> RuntimeResult<()> {
+        let mut functions = Vec::with_capacity(self.number_functions);
+        for _ in 0..self.number_functions {
+            functions.push(self.decode_function()?);
+        }
+        self.functions = functions;
+
+        Ok(())
+    }
+
+    fn get_number_functions(&mut self) {
+        self.number_functions = take!(self, u32) as usize;
+    }
+
+    fn decode_function(&mut self) -> RuntimeResult<Vec<Instruction>> {
+        let function_len = take!(self, u32) as usize;
+
+        let mut instructions = Vec::with_capacity(function_len);
+        let mut meta = &mut self
+            .function_meta
+            .pop_front()
+            .expect("Expected a FunctionMeta to decode a function");
+
+        for _ in 0..function_len {
+            instructions.push(self.decode_instruction(&mut meta)?);
+        }
+
+        Ok(instructions)
+    }
+
+    fn decode_instruction(&mut self, meta: &mut FunctionMeta) -> RuntimeResult<Instruction> {
+        macro_rules! take_from {
+            ($self:tt, $offset:tt, $ty:tt) => {
+                $ty::from_be_bytes(
+                    $self.bytes[$self.index + $offset..$self.index + $offset + size_of::<$ty>()]
+                        .try_into()
+                        .unwrap_or_else(|_| unreachable!()),
+                )
+            };
+        }
+
+        let instruction = match self.bytes[self.index] {
+            0x00 => Instruction::NoOp,
+            0x01 => Instruction::Load(
+                if let Some(value) = meta.values.pop_front() {
+                    Box::new(value)
+                } else {
+                    return Err(RuntimeError::new(
+                        RuntimeErrorTy::MissingValue,
+                        "Not enough values were encoded",
+                    ));
+                },
+                self.bytes[1].into(),
+            ),
+            0x03 => Instruction::CompToReg(self.bytes[1].into()),
+            0x04 => Instruction::OpToReg(self.bytes[1].into()),
+            0x05 => Instruction::Drop(self.bytes[1].into()),
+
+            0x07 => Instruction::Add(self.bytes[1].into(), self.bytes[2].into()),
+            0x08 => Instruction::Sub(self.bytes[1].into(), self.bytes[2].into()),
+            0x09 => Instruction::Mult(self.bytes[1].into(), self.bytes[2].into()),
+            0x0A => Instruction::Div(self.bytes[1].into(), self.bytes[2].into()),
+
+            0x0B => Instruction::Print(self.bytes[1].into()),
+
+            0x0C => Instruction::Jump(take_from!(self, 1, i32)),
+            0x0D => Instruction::JumpComp(take_from!(self, 1, i32)),
+
+            0x0E => Instruction::And(self.bytes[1].into(), self.bytes[2].into()),
+            0x0F => Instruction::Or(self.bytes[1].into(), self.bytes[2].into()),
+            0x10 => Instruction::Xor(self.bytes[1].into(), self.bytes[2].into()),
+            0x11 => Instruction::Not(self.bytes[1].into()),
+
+            0x12 => Instruction::Eq(self.bytes[1].into(), self.bytes[2].into()),
+            0x13 => Instruction::NotEq(self.bytes[1].into(), self.bytes[2].into()),
+            0x14 => Instruction::GreaterThan(self.bytes[1].into(), self.bytes[2].into()),
+            0x15 => Instruction::LessThan(self.bytes[1].into(), self.bytes[2].into()),
+
+            0x16 => Instruction::Return,
+            0x17 => Instruction::Halt,
+
+            0x19 => Instruction::Collect,
+
+            _ => Instruction::Illegal,
+        };
+
+        self.index += INSTRUCTION_LENGTH;
+
+        Ok(instruction)
+    }
+
+    fn fill_meta(&mut self) -> RuntimeResult<()> {
+        let mut meta = VecDeque::with_capacity(self.number_functions);
+        for _ in 0..self.number_functions {
+            let strings = self.take_strings()?;
+            let values = self.take_values(strings)?;
+
+            meta.push_back(FunctionMeta { values });
+        }
+
+        self.function_meta = meta;
+
+        Ok(())
+    }
+
+    fn take_values(&mut self, mut strings: VecDeque<String>) -> RuntimeResult<VecDeque<Value>> {
+        let number_values = take!(self, u32) as usize;
+
+        let mut values = VecDeque::with_capacity(number_values);
+        for _ in 0..number_values {
+            let len = take!(self, u32) as usize;
+            let bytes = self.bytes[self.index..self.index + len]
+                .try_into()
+                .unwrap_or_else(|_| unreachable!());
+
+            // TODO: Handle this error and make it a RuntimeError
+            let value = Value::from_bytes(bytes, &mut strings).unwrap_or_else(|_| unreachable!());
+
+            values.push_back(value);
+
+            self.index += len;
+        }
+
+        Ok(values)
+    }
+
+    fn take_strings(&mut self) -> RuntimeResult<VecDeque<String>> {
+        let number_strings = take!(self, u32) as usize;
+
+        let mut strings = VecDeque::with_capacity(number_strings);
+        for _ in 0..number_strings {
+            let len = take!(self, u32) as usize;
+
+            let string = if let Ok(string) =
+                String::from_utf8(self.bytes[self.index..self.index + len].to_vec())
+            {
+                string
+            } else {
+                return Err(RuntimeError::new(
+                    RuntimeErrorTy::InvalidString,
+                    "Incorrectly encoded string",
+                ));
+            };
+
+            strings.push_back(string);
+        }
+
+        Ok(strings)
+    }
+}

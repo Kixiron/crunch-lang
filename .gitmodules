@@ -4,3 +4,9 @@
 [submodule "crates/tagged-box"]
 	path = crates/tagged-box
 	url = https://github.com/Kixiron/tagged-box
+[submodule "ballast"]
+	path = ballast
+	url = https://github.com/Kixiron/ballast
+[submodule "crates/ballast"]
+	path = crates/ballast
+	url = https://github.com/Kixiron/ballast

@@ -9,3 +9,5 @@ right.dump
 *.swo
 
 /docs/public
+
+seccomp-perf.json

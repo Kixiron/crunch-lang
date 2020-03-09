@@ -1,0 +1,26 @@
+[package]
+name = "compactor"
+version = "0.1.0"
+authors = ["Chase Wilson <contact@chasewilson.dev>"]
+edition = "2018"
+
+[features]
+dll-ffi = ["dlopen"]
+std = []
+
+[dependencies.crunch-error]
+path = "../crunch-error"
+
+[dependencies.ballast]
+path = "../ballast"
+
+[dependencies.dlopen]
+version = "0.1.8"
+optional = true
+
+[dependencies.array-init]
+version = "0.1.1"
+
+[dependencies.num-bigint]
+version = "0.2.6"
+default-features = false

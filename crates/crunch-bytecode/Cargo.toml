@@ -1,0 +1,24 @@
+[package]
+name = "crunch-bytecode"
+version = "0.1.0"
+authors = ["Chase Wilson <contact@chasewilson.dev>"]
+edition = "2018"
+
+[features]
+default = []
+dll-ffi = ["compactor/dll-ffi"]
+
+[dependencies.compactor]
+path = "../compactor"
+
+[dependencies.crunch-error]
+path = "../crunch-error"
+
+[dependencies.tagged-box]
+path = "../tagged-box"
+
+[dependencies.num-bigint]
+version = "0.2.6"
+
+[dependencies.array-init]
+version = "0.1.1"
