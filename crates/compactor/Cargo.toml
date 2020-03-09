@@ -5,6 +5,8 @@ authors = ["Chase Wilson <contact@chasewilson.dev>"]
 edition = "2018"
 
 [features]
+default = ["runtime"]
+runtime = ["lazy_static", "std"]
 dll-ffi = ["dlopen"]
 std = []
 
@@ -16,6 +18,10 @@ path = "../ballast"
 
 [dependencies.dlopen]
 version = "0.1.8"
+optional = true
+
+[dependencies.lazy_static]
+version = "1.4.0"
 optional = true
 
 [dependencies.array-init]

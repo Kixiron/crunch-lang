@@ -1,5 +1,7 @@
+use compactor::Compactor;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use crunch::*;
+use crunch_parser::Parser;
+use vice::{Vice, ViceOptions};
 
 fn examples(c: &mut Criterion) {
     let mut group = c.benchmark_group("Fibonacci");
@@ -22,13 +24,10 @@ fn examples(c: &mut Criterion) {
     ",
             );
             let ast = parser.parse().unwrap();
-            let bytecode = Interpreter::from_interner(
-                &OptionBuilder::new("./examples/fibonacci.crunch").build(),
-                parser.interner,
-            )
-            .interpret(ast.0)
-            .unwrap();
-            let mut vm = Vm::default();
+            let bytecode = Vice::from_interner(ViceOptions::default(), parser.interner)
+                .compile(ast.0)
+                .unwrap();
+            let mut vm = Compactor::default();
 
             b.iter(|| {
                 black_box(vm.execute(&bytecode)).unwrap();
@@ -44,14 +43,14 @@ fn examples(c: &mut Criterion) {
             }
 
             b.iter(|| black_box(fibonacci(black_box(20))));
-        })
-        .bench_function("C", |b| {
-            extern "C" {
-                fn fibonacci(n: i32) -> i32;
-            }
-
-            b.iter(|| unsafe { black_box(fibonacci(20)) });
         });
+    // .bench_function("C", |b| {
+    //     extern "C" {
+    //         fn fibonacci(n: i32) -> i32;
+    //     }
+    //
+    //     b.iter(|| unsafe { black_box(fibonacci(20)) });
+    // });
     group.finish();
 
     let mut group = c.benchmark_group("Factorial Recursive");
@@ -74,13 +73,10 @@ fn examples(c: &mut Criterion) {
     ",
             );
             let ast = parser.parse().unwrap();
-            let bytecode = Interpreter::from_interner(
-                &OptionBuilder::new("./examples/factorial.crunch").build(),
-                parser.interner,
-            )
-            .interpret(ast.0)
-            .unwrap();
-            let mut vm = Vm::default();
+            let bytecode = Vice::from_interner(ViceOptions::default(), parser.interner)
+                .compile(ast.0)
+                .unwrap();
+            let mut vm = Compactor::default();
 
             b.iter(|| {
                 black_box(vm.execute(&bytecode)).unwrap();
@@ -96,14 +92,14 @@ fn examples(c: &mut Criterion) {
             }
 
             b.iter(|| black_box(factorial(black_box(20))));
-        })
-        .bench_function("C", |b| {
-            extern "C" {
-                fn factorial(n: i32) -> i32;
-            }
-
-            b.iter(|| unsafe { black_box(factorial(20)) });
         });
+    // .bench_function("C", |b| {
+    //     extern "C" {
+    //         fn factorial(n: i32) -> i32;
+    //     }
+    //
+    //     b.iter(|| unsafe { black_box(factorial(20)) });
+    // });
     group.finish();
 
     let mut group = c.benchmark_group("Factorial Iterative");
@@ -128,13 +124,10 @@ fn examples(c: &mut Criterion) {
     ",
             );
             let ast = parser.parse().unwrap();
-            let bytecode = Interpreter::from_interner(
-                &OptionBuilder::new("./examples/factorial.crunch").build(),
-                parser.interner,
-            )
-            .interpret(ast.0)
-            .unwrap();
-            let mut vm = Vm::default();
+            let bytecode = Vice::from_interner(ViceOptions::default(), parser.interner)
+                .compile(ast.0)
+                .unwrap();
+            let mut vm = Compactor::default();
 
             b.iter(|| {
                 black_box(vm.execute(&bytecode)).unwrap();

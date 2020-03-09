@@ -16,18 +16,14 @@ default-run = "crunch"
 
 [features]
 default = ["std"]
-std = ["compactor/std"]
+std = ["compactor/runtime"]
 
 [[bin]]
 name = "crunch"
 path = "src/bin.rs"
 
 [[bench]]
-name = "vm"
-harness = false
-
-[[bench]]
-name = "garbage_collection"
+name = "compactor"
 harness = false
 
 [[bench]]
@@ -43,6 +39,9 @@ simple_logger = "1.6.0"
 color-backtrace = "0.3.0"
 structopt = "0.3.11"
 human-panic = "1.0.1"
+
+[dependencies.ballast]
+path = "crates/ballast"
 
 [dependencies.crunch-error]
 path = "crates/crunch-error"

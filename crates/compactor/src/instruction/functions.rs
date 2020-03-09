@@ -470,7 +470,7 @@ pub fn collect(vm: &mut Compactor) -> RuntimeResult<()> {
     trace!("Forcing a GC scavenge");
 
     unsafe {
-        crate::CRUNCH_ALLOCATOR.scavenge();
+        crate::CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().scavenge());
     }
 
     vm.index += 1;

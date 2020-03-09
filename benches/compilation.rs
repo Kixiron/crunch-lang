@@ -1,5 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use crunch::*;
+use crunch_parser::Parser;
+use vice::{Vice, ViceOptions};
 
 fn compilation(c: &mut Criterion) {
     c.bench_function("Parse Fibonacci", |b| {
@@ -25,29 +26,27 @@ fn compilation(c: &mut Criterion) {
         });
     })
     .bench_function("Compile Fibonacci", |b| {
+        let mut parser = black_box(Parser::new(
+            Some("fibonacci.crunch"),
+            "
+fn main()
+    fibonacci(20)
+end
+
+fn fibonacci(n: int) -> int
+    if n < 2
+        return 1
+    else
+        return fibonacci(n - 1) + fibonacci(n - 2)
+    end
+end
+",
+        ));
+        let ast = parser.parse().unwrap();
+
         b.iter(|| {
-            let mut parser = black_box(Parser::new(
-                Some("fibonacci.crunch"),
-                "
-    fn main()
-        fibonacci(20)
-    end
-    
-    fn fibonacci(n: int) -> int
-        if n < 2
-            return 1
-        else
-            return fibonacci(n - 1) + fibonacci(n - 2)
-        end
-    end
-    ",
-            ));
-            let ast = parser.parse().unwrap();
-            Interpreter::from_interner(
-                &OptionBuilder::new("./examples/fibonacci.crunch").build(),
-                parser.interner,
-            )
-            .interpret(ast.0)
+            Vice::from_interner(ViceOptions::default(), parser.interner.clone())
+                .compile(ast.0.clone())
         });
     })
     .bench_function("Parse Factorial", |b| {
@@ -73,29 +72,27 @@ fn compilation(c: &mut Criterion) {
         });
     })
     .bench_function("Compile Factorial", |b| {
+        let mut parser = black_box(Parser::new(
+            Some("factorial.crunch"),
+            "
+fn main()
+    factorial(20)
+end
+
+fn factorial(n: int) -> int
+    if n < 2
+        return 1
+    else
+        return n * factorial(n - 1)
+    end
+end
+",
+        ));
+        let ast = parser.parse().unwrap();
+
         b.iter(|| {
-            let mut parser = black_box(Parser::new(
-                Some("factorial.crunch"),
-                "
-    fn main()
-        factorial(20)
-    end
-    
-    fn factorial(n: int) -> int
-        if n < 2
-            return 1
-        else
-            return n * factorial(n - 1)
-        end
-    end
-    ",
-            ));
-            let ast = parser.parse().unwrap();
-            Interpreter::from_interner(
-                &OptionBuilder::new("./examples/factorial.crunch").build(),
-                parser.interner,
-            )
-            .interpret(ast.0)
+            Vice::from_interner(ViceOptions::default(), parser.interner.clone())
+                .compile(ast.0.clone())
         });
     });
 }

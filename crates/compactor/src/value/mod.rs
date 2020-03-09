@@ -69,7 +69,15 @@ impl Clone for Value {
             Self::I128(i) => Self::I128(*i),
             Self::GcInt(i) => {
                 let (sign, digits) = (&**i).to_u32_digits();
-                Self::GcInt(unsafe { CRUNCH_ALLOCATOR.alloc(BigInt::new(sign, digits)) })
+                Self::GcInt(unsafe {
+                    CRUNCH_ALLOCATOR.with(|alloc| {
+                        alloc
+                            .get()
+                            .as_mut()
+                            .unwrap()
+                            .alloc(BigInt::new(sign, digits))
+                    })
+                })
             }
 
             Self::F32(f) => Self::F32(*f),
@@ -77,7 +85,9 @@ impl Clone for Value {
 
             Self::Char(c) => Self::Char(*c),
             Self::Str(s) => Self::Str(s),
-            Self::GcString(s) => Self::GcString(unsafe { CRUNCH_ALLOCATOR.alloc((&**s).clone()) }),
+            Self::GcString(s) => Self::GcString(unsafe {
+                CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc((&**s).clone()))
+            }),
 
             Self::Bool(b) => Self::Bool(*b),
 
@@ -278,7 +288,9 @@ impl Value {
                     let mut int = BigInt::from(*left);
                     int += *right;
 
-                    Self::GcInt(unsafe { CRUNCH_ALLOCATOR.alloc(int) })
+                    Self::GcInt(unsafe {
+                        CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
+                    })
                 }
             }
             (Self::GcInt(left), Self::GcInt(right)) => {
@@ -286,7 +298,9 @@ impl Value {
                 let mut int = BigInt::new(sign, digits);
                 int += &**right;
 
-                Self::GcInt(unsafe { CRUNCH_ALLOCATOR.alloc(int) })
+                Self::GcInt(unsafe {
+                    CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
+                })
             }
 
             (Self::F32(left), Self::F32(right)) => Self::F32(left + right),
@@ -297,7 +311,9 @@ impl Value {
                 string.push_str(left);
                 string.push_str(right);
 
-                Self::GcString(unsafe { CRUNCH_ALLOCATOR.alloc(string) })
+                Self::GcString(unsafe {
+                    CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(string))
+                })
             }
 
             (Self::GcString(left), Self::GcString(right)) => {
@@ -305,7 +321,9 @@ impl Value {
                 string.push_str(&**left);
                 string.push_str(&**right);
 
-                Self::GcString(unsafe { CRUNCH_ALLOCATOR.alloc(string) })
+                Self::GcString(unsafe {
+                    CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(string))
+                })
             }
 
             (left, right) if *left == &Self::None || *right == &Self::None => {
@@ -385,7 +403,9 @@ impl Value {
                     let mut int = BigInt::from(*left);
                     int -= *right;
 
-                    Self::GcInt(unsafe { CRUNCH_ALLOCATOR.alloc(int) })
+                    Self::GcInt(unsafe {
+                        CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
+                    })
                 }
             }
             (Self::GcInt(left), Self::GcInt(right)) => {
@@ -393,7 +413,9 @@ impl Value {
                 let mut int = BigInt::new(sign, digits);
                 int -= &**right;
 
-                Self::GcInt(unsafe { CRUNCH_ALLOCATOR.alloc(int) })
+                Self::GcInt(unsafe {
+                    CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
+                })
             }
 
             (Self::F32(left), Self::F32(right)) => Self::F32(left - right),
@@ -481,7 +503,9 @@ impl Value {
                     let mut int = BigInt::from(*left);
                     int /= *right;
 
-                    Self::GcInt(unsafe { CRUNCH_ALLOCATOR.alloc(int) })
+                    Self::GcInt(unsafe {
+                        CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
+                    })
                 }
             }
             (Self::GcInt(left), Self::GcInt(right)) => {
@@ -489,7 +513,9 @@ impl Value {
                 let mut int = BigInt::new(sign, digits);
                 int /= &**right;
 
-                Self::GcInt(unsafe { CRUNCH_ALLOCATOR.alloc(int) })
+                Self::GcInt(unsafe {
+                    CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
+                })
             }
 
             (Self::F32(left), Self::F32(right)) if *left != 0.0 && *right != 0.0 => {
@@ -573,7 +599,9 @@ impl Value {
                     let mut int = BigInt::from(*left);
                     int *= *right;
 
-                    Self::GcInt(unsafe { CRUNCH_ALLOCATOR.alloc(int) })
+                    Self::GcInt(unsafe {
+                        CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
+                    })
                 }
             }
             (Self::GcInt(left), Self::GcInt(right)) => {
@@ -581,7 +609,9 @@ impl Value {
                 let mut int = BigInt::new(sign, digits);
                 int *= &**right;
 
-                Self::GcInt(unsafe { CRUNCH_ALLOCATOR.alloc(int) })
+                Self::GcInt(unsafe {
+                    CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
+                })
             }
 
             (Self::F32(left), Self::F32(right)) if *left != 0.0 && *right != 0.0 => {
@@ -634,7 +664,9 @@ impl Value {
                 let mut int = BigInt::new(sign, digits);
                 int |= &**right;
 
-                Self::GcInt(unsafe { CRUNCH_ALLOCATOR.alloc(int) })
+                Self::GcInt(unsafe {
+                    CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
+                })
             }
 
             (left, right) if *left == Self::None || *right == Self::None => {
@@ -674,7 +706,9 @@ impl Value {
                 let mut int = BigInt::new(sign, digits);
                 int ^= &**right;
 
-                Self::GcInt(unsafe { CRUNCH_ALLOCATOR.alloc(int) })
+                Self::GcInt(unsafe {
+                    CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
+                })
             }
 
             (left, right) if *left == Self::None || *right == Self::None => {
@@ -714,7 +748,9 @@ impl Value {
                 let mut int = BigInt::new(sign, digits);
                 int &= &**right;
 
-                Self::GcInt(unsafe { CRUNCH_ALLOCATOR.alloc(int) })
+                Self::GcInt(unsafe {
+                    CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
+                })
             }
 
             (left, right) if *left == Self::None || *right == Self::None => {
@@ -748,7 +784,9 @@ impl Value {
             Self::I32(int) => Self::I32(!int),
             Self::I64(int) => Self::I64(!int),
             Self::I128(int) => Self::I128(!int),
-            Self::GcInt(int) => Self::GcInt(unsafe { CRUNCH_ALLOCATOR.alloc(!(&**int)) }),
+            Self::GcInt(int) => Self::GcInt(unsafe {
+                CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(!(&**int)))
+            }),
 
             Self::F32(_int) => unimplemented!("No idea how floats work"),
             Self::F64(_int) => unimplemented!("No idea how floats work"),

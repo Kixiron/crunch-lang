@@ -3,12 +3,7 @@ use crate::bytecode::INSTRUCTION_LENGTH;
 use compactor::{Instruction, Value};
 use crunch_error::runtime_prelude::*;
 
-use alloc::{
-    boxed::Box,
-    collections::VecDeque,
-    string::{String, ToString},
-    vec::Vec,
-};
+use alloc::{boxed::Box, collections::VecDeque, string::String, vec::Vec};
 use core::{convert::TryInto, mem::size_of};
 
 // TODO: Document & Test all functions

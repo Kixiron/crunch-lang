@@ -2,8 +2,10 @@
 
 extern crate alloc;
 
-extern "Rust" {
-    static mut CRUNCH_ALLOCATOR: ballast::BumpHeap;
+#[cfg(feature = "runtime")]
+thread_local! {
+    static CRUNCH_ALLOCATOR: core::cell::UnsafeCell<ballast::BumpHeap> =
+        core::cell::UnsafeCell::new(ballast::BumpHeap::new(ballast::BumpOptions::default()));
 }
 
 mod compactor;
