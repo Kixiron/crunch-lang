@@ -16,9 +16,3 @@ path = "../crunch-error"
 
 [dependencies.tagged-box]
 path = "../tagged-box"
-
-[dependencies.num-bigint]
-version = "0.2.6"
-
-[dependencies.array-init]
-version = "0.1.1"

@@ -66,7 +66,7 @@ impl FunctionContext {
         std::mem::swap(&mut self.registers[source as usize], &mut temp);
         self.registers[target as usize] = temp;
 
-        self.blocks[block].push(Instruction::Move(target, source), None);
+        self.blocks[block].push_info(Instruction::Move(target, source), None);
 
         &mut self.blocks[block]
     }
@@ -78,14 +78,14 @@ impl FunctionContext {
             std::panic::Location::caller()
         );
 
-        self.blocks[block].push(Instruction::Drop(register), None);
+        self.blocks[block].push_info(Instruction::Drop(register), None);
         self.free_reg(register);
 
         &mut self.blocks[block]
     }
 
     pub fn inst_push_arr(&mut self, array: u8, value: u8, block: usize) -> &mut Block {
-        self.blocks[block].push(Instruction::PushArray { array, value }, None);
+        self.blocks[block].push_info(Instruction::PushArray { array, value }, None);
         self.free_reg(value);
 
         &mut self.blocks[block]

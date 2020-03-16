@@ -1,8 +1,13 @@
-use codespan::{FileId, Files};
-use codespan_reporting::diagnostic::{Diagnostic, Label, Severity};
-use crunch_parser::ast::*;
+use crunch_error::{
+    codespan::{FileId, Files},
+    codespan_reporting::diagnostic::{Diagnostic, Label, Severity},
+};
+use crunch_parser::{
+    ast::*,
+    string_interner::{StringInterner, Sym},
+};
+
 use std::collections::HashMap;
-use string_interner::{StringInterner, Sym};
 
 pub(crate) struct TypeChecker {
     types: HashMap<Sym, TypeDecl>,

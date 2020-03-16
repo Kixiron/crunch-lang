@@ -3,7 +3,7 @@
 
 mod cli;
 
-pub use cli::{CrunchCli, CrunchOptionBuilder};
+pub use cli::{Command, CrunchCli, Verbosity};
 
 use compactor::{Compactor, Instruction};
 use crunch_bytecode::Bytecode;
@@ -13,6 +13,7 @@ use crunch_error::{
     log::{error, info, trace},
     runtime_prelude::RuntimeResult,
 };
+use std::path::Path;
 use vice::Vice;
 
 /// The main interface to the crunch language
@@ -48,15 +49,15 @@ impl Crunch {
 
     /// Run a source file in the `.crunch` format
     #[inline]
-    pub fn run_source_file(options: CrunchCli) {
-        trace!("Running Source File: {}", options.file.display());
+    pub fn run_source_file(options: CrunchCli, path: &Path) {
+        trace!("Running Source File: {}", path.display());
 
         let source = {
             use std::{fs::File, io::Read};
 
             let mut buf = String::new();
 
-            let mut file = match File::open(&options.file) {
+            let mut file = match File::open(path) {
                 Ok(file) => file,
                 Err(err) => {
                     println!("Error Opening File: {:?}", err);
@@ -73,7 +74,7 @@ impl Crunch {
         };
 
         let mut parser = crunch_parser::Parser::new(
-            match options.file.file_name() {
+            match path.file_name() {
                 Some(name) => name.to_str(),
                 None => None,
             },
@@ -106,7 +107,7 @@ impl Crunch {
 
                 let mut files = codespan::Files::new();
                 files.add(
-                    match options.file.file_name() {
+                    match path.file_name() {
                         Some(name) => name.to_str().unwrap_or("Crunch Source File"),
                         None => "Crunch Source File",
                     },
@@ -126,22 +127,22 @@ impl Crunch {
 
     /// Run a byte file in the `.crunched` format
     #[inline]
-    pub fn run_byte_file(options: CrunchCli) {
-        trace!("Running Compiled File: {}", options.file.display());
+    pub fn run_byte_file(options: CrunchCli, path: &Path) {
+        trace!("Running Compiled File: {}", path.display());
 
         let source = {
             use std::{fs::File, io::Read};
 
             let mut buf = Vec::new();
 
-            let mut file = match File::open(&options.file) {
+            let mut file = match File::open(&path) {
                 Ok(file) => file,
                 Err(_err) => {
                     println!(
                         "{}",
                         CompileError::new(
                             CompileErrorTy::FileError,
-                            format!("Error Opening {}", options.file.display()),
+                            format!("Error Opening {}", path.display()),
                         )
                     );
                     return;
@@ -153,7 +154,7 @@ impl Crunch {
                     "{}",
                     CompileError::new(
                         CompileErrorTy::FileError,
-                        format!("Error Reading {}", options.file.display()),
+                        format!("Error Reading {}", path.display()),
                     )
                 );
                 return;
@@ -187,6 +188,7 @@ impl Crunch {
         }
     }
 
+    /*
     pub fn repl(options: CrunchCli, repl_outputs: Vec<ReplOutput>) {
         use std::io::{self, Write};
 
@@ -294,6 +296,7 @@ impl Crunch {
             println!();
         }
     }
+    */
 
     /// Parse validated bytecode into the Main Function and Function Table
     #[inline]
@@ -307,29 +310,5 @@ impl Crunch {
     #[inline]
     pub fn validate<'b>(bytes: &'b [u8]) -> RuntimeResult<Bytecode<'b>> {
         Bytecode::validate(bytes)
-    }
-}
-
-// TODO: Add disassembly and maybe a GC view? Debugging capabilities?
-#[derive(structopt::StructOpt, Debug, Copy, Clone, PartialEq, Eq)]
-pub enum ReplOutput {
-    Ast,
-    Bytecode,
-    None,
-}
-
-impl Default for ReplOutput {
-    fn default() -> Self {
-        Self::None
-    }
-}
-
-impl From<&str> for ReplOutput {
-    fn from(string: &str) -> Self {
-        match &*string.to_lowercase() {
-            "ast" => Self::Ast,
-            "bytecode" => Self::Bytecode,
-            "none" | _ => Self::None,
-        }
     }
 }

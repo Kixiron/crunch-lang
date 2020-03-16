@@ -12,13 +12,11 @@ macro_rules! number_proptest {
             mod $mod_name {
                 use super::super::super::*;
                 use proptest::prelude::*;
-                use std::io::stdout;
 
                 $(
                     mod $bitwise {
                         use super::super::super::*;
                         use proptest::prelude::*;
-                        use std::io::stdout;
 
                         proptest! {
                             #[test]
@@ -27,10 +25,7 @@ macro_rules! number_proptest {
                                     prop_assume!(left >= right)
                                 }
 
-                                let mut vm = Vm::new(
-                                    &crate::OptionBuilder::new("./bitwise_ops").build(),
-                                    Box::new(stdout()),
-                                );
+                                let mut vm = Compactor::default();
 
                                 vm.registers[0] = Value::$value_variant(left);
                                 vm.registers[1] = Value::$value_variant(right);
@@ -41,10 +36,7 @@ macro_rules! number_proptest {
                                 assert!(
                                     vm
                                         .prev_op
-                                        .is_equal(
-                                            &Value::$value_variant(left & right),
-                                            &vm.gc
-                                        )
+                                        .is_equal(&Value::$value_variant(left & right))
                                         .unwrap()
                                 );
                             }
@@ -55,10 +47,7 @@ macro_rules! number_proptest {
                                     prop_assume!(left >= right)
                                 }
 
-                                let mut vm = Vm::new(
-                                    &crate::OptionBuilder::new("./bitwise_ops").build(),
-                                    Box::new(stdout()),
-                                );
+                                let mut vm = Compactor::default();
 
                                 vm.registers[0] = Value::$value_variant(left);
                                 vm.registers[1] = Value::$value_variant(right);
@@ -69,10 +58,7 @@ macro_rules! number_proptest {
                                 assert!(
                                     vm
                                         .prev_op
-                                        .is_equal(
-                                            &Value::$value_variant(left | right),
-                                            &vm.gc
-                                        )
+                                        .is_equal(&Value::$value_variant(left | right))
                                         .unwrap()
                                 );
                             }
@@ -83,10 +69,7 @@ macro_rules! number_proptest {
                                     prop_assume!(left >= right)
                                 }
 
-                                let mut vm = Vm::new(
-                                    &crate::OptionBuilder::new("./bitwise_ops").build(),
-                                    Box::new(stdout()),
-                                );
+                                let mut vm = Compactor::default();
 
                                 vm.registers[0] = Value::$value_variant(left);
                                 vm.registers[1] = Value::$value_variant(right);
@@ -97,20 +80,14 @@ macro_rules! number_proptest {
                                 assert!(
                                     vm
                                         .prev_op
-                                        .is_equal(
-                                            &Value::$value_variant(left ^ right),
-                                            &vm.gc
-                                        )
+                                        .is_equal(&Value::$value_variant(left ^ right))
                                         .unwrap()
                                 );
                             }
 
                             #[test]
                             fn bitwise_not(int: $primitive) {
-                                let mut vm = Vm::new(
-                                    &crate::OptionBuilder::new("./bitwise_ops").build(),
-                                    Box::new(stdout()),
-                                );
+                                let mut vm = Compactor::default();
 
                                 vm.registers[0] = Value::$value_variant(int);
 
@@ -120,10 +97,7 @@ macro_rules! number_proptest {
                                 assert!(
                                     vm
                                         .prev_op
-                                        .is_equal(
-                                            &Value::$value_variant(!int),
-                                            &vm.gc
-                                        )
+                                        .is_equal(&Value::$value_variant(!int))
                                         .unwrap()
                                 );
                             }
@@ -138,10 +112,7 @@ macro_rules! number_proptest {
                             prop_assume!(left >= right)
                         }
 
-                        let mut vm = Vm::new(
-                            &crate::OptionBuilder::new("./math_ops").build(),
-                            Box::new(stdout()),
-                        );
+                        let mut vm = Compactor::default();
 
                         vm.registers[0] = Value::$value_variant(left);
                         vm.registers[1] = Value::$value_variant(right);
@@ -154,12 +125,8 @@ macro_rules! number_proptest {
                                 .prev_op
                                 .is_equal(
                                     &Value::$value_variant(left)
-                                        .add_upflowing(
-                                            Value::$value_variant(right),
-                                            &mut vm.gc
-                                        )
-                                        .unwrap(),
-                                    &vm.gc
+                                        .add_upflowing(&Value::$value_variant(right))
+                                        .unwrap()
                                 )
                                 .unwrap()
                         );
@@ -171,10 +138,7 @@ macro_rules! number_proptest {
                             prop_assume!(left >= right)
                         }
 
-                        let mut vm = Vm::new(
-                            &crate::OptionBuilder::new("./math_ops").build(),
-                            Box::new(stdout()),
-                        );
+                        let mut vm = Compactor::default();
 
                         vm.registers[0] = Value::$value_variant(left);
                         vm.registers[1] = Value::$value_variant(right);
@@ -187,12 +151,8 @@ macro_rules! number_proptest {
                                 .prev_op
                                 .is_equal(
                                     &Value::$value_variant(left)
-                                        .sub_upflowing(
-                                            Value::$value_variant(right),
-                                            &mut vm.gc
-                                        )
+                                        .sub_upflowing(&Value::$value_variant(right))
                                         .unwrap(),
-                                    &vm.gc
                                 )
                                 .unwrap()
                         );
@@ -204,10 +164,7 @@ macro_rules! number_proptest {
                             prop_assume!(left >= right)
                         }
 
-                        let mut vm = Vm::new(
-                            &crate::OptionBuilder::new("./math_ops").build(),
-                            Box::new(stdout()),
-                        );
+                        let mut vm = Compactor::default();
 
                         vm.registers[0] = Value::$value_variant(left);
                         vm.registers[1] = Value::$value_variant(right);
@@ -220,12 +177,8 @@ macro_rules! number_proptest {
                                 .prev_op
                                 .is_equal(
                                     &Value::$value_variant(left)
-                                        .mult_upflowing(
-                                            Value::$value_variant(right),
-                                            &mut vm.gc
-                                        )
+                                        .mult_upflowing(&Value::$value_variant(right))
                                         .unwrap(),
-                                    &vm.gc
                                 )
                                 .unwrap()
                         );
@@ -237,10 +190,7 @@ macro_rules! number_proptest {
                             prop_assume!(left >= right)
                         }
 
-                        let mut vm = Vm::new(
-                            &crate::OptionBuilder::new("./math_ops").build(),
-                            Box::new(stdout()),
-                        );
+                        let mut vm = Compactor::default();
 
                         vm.registers[0] = Value::$value_variant(left);
                         vm.registers[1] = Value::$value_variant(right);
@@ -249,16 +199,11 @@ macro_rules! number_proptest {
                         div.execute(&mut vm).unwrap();
 
                         assert!(
-                            vm
-                                .prev_op
+                            vm.prev_op
                                 .is_equal(
                                     &Value::$value_variant(left)
-                                        .div_upflowing(
-                                            Value::$value_variant(right),
-                                            &mut vm.gc
-                                        )
+                                        .div_upflowing(&Value::$value_variant(right))
                                         .unwrap(),
-                                    &vm.gc
                                 )
                                 .unwrap()
                         );
@@ -305,31 +250,18 @@ fn collect(int: i32, string in "\\PC*") {
 }*/
 
 number_proptest! {
-    u16_ops {
-        internal: U16,
-        primitive: u16,
+    u8_ops {
+        internal: Byte,
+        primitive: u8,
         unsigned: true,
         bitwise: bitwise
     },
-    u32_ops {
-        internal: U32,
-        primitive: u32,
-        unsigned: true,
+    i8_ops {
+        internal: IByte,
+        primitive: i8,
+        unsigned: false,
         bitwise: bitwise
     },
-    u64_ops {
-        internal: U64,
-        primitive: u64,
-        unsigned: true,
-        bitwise: bitwise
-    },
-    u128_ops {
-        internal: U128,
-        primitive: u128,
-        unsigned: true,
-        bitwise: bitwise
-    },
-
     i16_ops {
         internal: I16,
         primitive: i16,

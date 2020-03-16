@@ -34,11 +34,26 @@ harness = false
 name = "compilation"
 harness = false
 
-[dependencies]
-simple_logger = "1.6.0"
-color-backtrace = "0.3.0"
-structopt = "0.3.11"
-human-panic = "1.0.1"
+[dependencies.uuid]
+default-features = false
+features = ["v3"]
+version = "0.8.1"
+
+[dependencies.backtrace]
+default-features = false
+version = "0.3.45"
+
+[dependencies.color-backtrace]
+default-features = false
+version = "0.3.0"
+
+[dependencies.clap]
+default-features = false
+version = "2.33.0"
+
+[dependencies.simple_logger]
+default-features = false
+version = "1.6.0"
 
 [dependencies.ballast]
 path = "crates/ballast"
@@ -64,8 +79,6 @@ proptest = "0.9.5"
 
 [build-dependencies]
 cc = "1.0.50"
-
-
 
 [workspace]
 members = [

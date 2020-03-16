@@ -152,7 +152,7 @@ impl Default for CodeBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Crunch, OptionBuilder};
+    use compactor::{Compactor, Value};
 
     #[test]
     fn codebuilder_test() {
@@ -191,12 +191,6 @@ mod tests {
 
         let functions = builder.build().unwrap();
 
-        Crunch::new(
-            OptionBuilder::new("./codebuilder_test")
-                .debug_log(true)
-                .build(),
-        )
-        .execute(&functions)
-        .unwrap();
+        Compactor::default().execute(&functions).unwrap();
     }
 }

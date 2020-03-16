@@ -325,7 +325,7 @@ mod tests {
 
     #[test]
     fn token_test() {
-        const CODE: &str = include_str!("../../tests/parse_test.crunch");
+        const CODE: &str = include_str!("../../../tests/parse_test.crunch");
 
         let tokens = TokenStream::new(CODE, true)
             .into_iter()

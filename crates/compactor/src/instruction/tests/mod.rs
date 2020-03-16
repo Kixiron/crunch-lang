@@ -1,7 +1,7 @@
 mod property_tests;
 
 use super::*;
-use crate::{bytecode, Crunch, Vm};
+use crate::{bytecode, Compactor, CrunchWrite};
 use std::io::stdout;
 
 #[test]
@@ -36,7 +36,7 @@ fn array_test() {
         }
     };
 
-    Vm::default().execute(&functions).unwrap();
+    Compactor::default().execute(&functions).unwrap();
 }
 
 #[test]
@@ -86,7 +86,7 @@ fn generator_test() {
         }
     };
 
-    Vm::default().execute(&functions).unwrap();
+    Compactor::default().execute(&functions).unwrap();
 }
 
 #[test]
@@ -102,12 +102,12 @@ fn eq() {
         }
     };
 
-    Vm::default().execute(&functions).unwrap();
+    Compactor::default().execute(&functions).unwrap();
 }
 
 #[test]
 fn function_test() {
-    let mut crunch = Crunch::new(crate::OptionBuilder::new("./function_test").build());
+    let mut crunch = Compactor::default();
 
     let functions = bytecode! {
         0 => {
@@ -133,137 +133,15 @@ fn function_test() {
 }
 
 #[test]
-fn variable_ops() {
-    let mut vm = Vm::new(
-        &crate::OptionBuilder::new("./variable_ops").build(),
-        Box::new(stdout()),
-    );
-
-    // Construct random values to test with
-    let values = {
-        use rand::Rng;
-        use std::thread;
-
-        let mut rng = rand::thread_rng(); // Init rng
-        let (num_ints, num_strs) = (rng.gen_range(200, 1000), rng.gen_range(300, 1500)); // Get the number of integers and strings to generate
-        let mut vec = Vec::with_capacity(num_ints + num_strs); // Create a vec to hold all the values
-
-        // Create the integers randomly
-        let ints = thread::spawn(move || {
-            let mut rng = rand::thread_rng();
-            let mut vec = Vec::with_capacity(num_ints);
-
-            for _ in 0..num_ints {
-                vec.push(Value::I32(rng.gen_range(0, i32::max_value())));
-            }
-
-            vec
-        });
-
-        // Create half of the strings randomly
-        let create_strings = move || {
-            let mut rng = rand::thread_rng();
-            let mut vec = Vec::with_capacity(num_strs / 2);
-
-            for _ in 0..num_strs / 2 {
-                let len = rng.gen_range(10, 200);
-
-                let string: Vec<u8> = rng
-                    .sample_iter(rand::distributions::Standard)
-                    .take(len)
-                    .collect();
-
-                if let Ok(string) = String::from_utf8(string) {
-                    vec.push(Value::Str(Box::leak(string.into_boxed_str())));
-                }
-            }
-
-            vec
-        };
-
-        let first_strings = thread::spawn(create_strings);
-        let second_strings = thread::spawn(create_strings);
-
-        // Add boolean values to test on
-        vec.push(Value::Bool(true));
-        vec.push(Value::Bool(false));
-        // Add all the randomly generated values to the vector
-        vec.extend_from_slice(&ints.join().unwrap());
-        vec.extend_from_slice(&first_strings.join().unwrap());
-        vec.extend_from_slice(&second_strings.join().unwrap());
-
-        vec
-    };
-
-    // Testing the Load instruction, it should take a value and store it in a register, which in this case is
-    // register 0
-    for val in values.clone().into_iter() {
-        // Construct and execute the Load instruction
-        let load = Instruction::Load(Box::new(val.clone()), 0.into());
-        load.execute(&mut vm).unwrap();
-
-        // Assert that the registers contain the correct value
-        assert!(vm.registers[0].is_equal(&val, &vm.gc).unwrap());
-    }
-
-    // Do a GC Reset
-    vm.gc = crate::Gc::new(&crate::OptionBuilder::new("./variable_ops").build());
-
-    {
-        // Testing the CompToReg instruction, it should take the value of the comparison register and store its value
-        // in the given register, register 0
-        let comp_to_reg = Instruction::CompToReg(0.into());
-
-        // Set the previous comparison to `true`
-        vm.prev_comp = true;
-        comp_to_reg.execute(&mut vm).unwrap();
-        assert!(vm.registers[0]
-            .is_equal(&Value::Bool(true), &vm.gc)
-            .unwrap());
-
-        // Set the previous comparison to `false`
-        vm.prev_comp = false;
-        comp_to_reg.execute(&mut vm).unwrap();
-        assert!(vm.registers[0]
-            .is_equal(&Value::Bool(false), &vm.gc)
-            .unwrap());
-    }
-
-    // Testing the OpToReg instruction, it takes the value of the operation register and store its value
-    // in the given register, register 0
-    let op_to_reg = Instruction::OpToReg(0.into());
-    for val in values.clone() {
-        vm.prev_op = val.clone();
-        op_to_reg.execute(&mut vm).unwrap();
-
-        assert!(vm.registers[0].is_equal(&val, &vm.gc).unwrap());
-    }
-
-    // Do a GC Reset
-    vm.gc = crate::Gc::new(&crate::OptionBuilder::new("./variable_ops").build());
-
-    // Testing the DropReg instruction, which should drop a value from a register
-    {
-        vm.registers[0] = Value::Str("test string"); // Load the register before hand
-        let drop_reg = Instruction::Drop(0.into());
-        drop_reg.execute(&mut vm).unwrap();
-        assert!(vm.registers[0].is_none());
-    }
-}
-
-#[test]
 fn print_op<'a>() {
     use std::mem;
 
     let print = Instruction::Print(0.into());
-    let mut vm = Vm::new(
-        &crate::OptionBuilder::new("./print_op").build(),
-        Box::new(Vec::<u8>::new()),
-    );
+    let mut vm = Compactor::default();
 
-    let swap_assert = |vm: &mut Vm, expected: &str| {
-        // Have to do some monkeying with stdout because of Vm's drop implementation
-        let mut stdout: Box<dyn std::io::Write + 'static> = Box::new(Vec::<u8>::new());
+    let swap_assert = |vm: &mut Compactor, expected: &str| {
+        // Have to do some monkeying with stdout because of Compactor's drop implementation
+        let mut stdout: Box<dyn CrunchWrite + 'static> = Box::new(Vec::<u8>::new());
         mem::swap(&mut vm.stdout, &mut stdout);
 
         // Assert that the printed value and the expected are the same
@@ -313,40 +191,34 @@ fn print_op<'a>() {
 
 #[test]
 fn jump_ops() {
-    let mut vm = Vm::new(
-        &crate::OptionBuilder::new("./jump_ops").build(),
-        Box::new(stdout()),
-    );
+    let mut vm = Compactor::default();
 
     // Each executed instruction increments the index by one, so take that into account
 
     let jump = Instruction::Jump(10);
     jump.execute(&mut vm).unwrap();
-    assert_eq!(vm.index, 10.into());
+    assert_eq!(vm.index, 10);
 
     let jump = Instruction::Jump(-10);
     jump.execute(&mut vm).unwrap();
-    assert_eq!(vm.index, 0.into());
+    assert_eq!(vm.index, 0);
 
     let jump_comp = Instruction::JumpComp(10);
     jump_comp.execute(&mut vm).unwrap();
-    assert_eq!(vm.index, 1.into());
+    assert_eq!(vm.index, 1);
 
     vm.prev_comp = true;
     jump_comp.execute(&mut vm).unwrap();
-    assert_eq!(vm.index, 11.into());
+    assert_eq!(vm.index, 11);
 
     let jump_comp = Instruction::JumpComp(-10);
     jump_comp.execute(&mut vm).unwrap();
-    assert_eq!(vm.index, 1.into());
+    assert_eq!(vm.index, 1);
 }
 
 #[test]
 fn incompatible_eq_ops() {
-    let mut vm = Vm::new(
-        &crate::OptionBuilder::new("./eq_ops").build(),
-        Box::new(stdout()),
-    );
+    let mut vm = Compactor::default();
 
     // test incompatible types
     vm.registers[0] = Value::Bool(true);
@@ -354,11 +226,10 @@ fn incompatible_eq_ops() {
 
     let less_than = Instruction::LessThan(0.into(), 1.into());
     assert_eq!(
-        less_than.execute(&mut vm).unwrap_err().message,
+        less_than.execute(&mut vm).unwrap_err().message(),
         "Values of types 'bool' and 'int' cannot be 'less_than'ed".to_string(),
     );
 
-    vm.options.fault_tolerant = true;
     less_than.execute(&mut vm).unwrap();
     assert_eq!(vm.prev_comp, false);
 }
@@ -367,10 +238,7 @@ macro_rules! test_eq_ops {
     ( $( $fn_name:ident { internal: $internal:tt , hi: $hi:literal, mid: $mid:literal, lo: $lo:literal } $(,)? )* ) => { $(
         #[test]
         fn $fn_name() {
-            let mut vm = Vm::new(
-                &crate::OptionBuilder::new("./eq_ops").build(),
-                Box::new(stdout()),
-            );
+            let mut vm = Compactor::default();
 
             // test incompatible types
             vm.registers[0] = Value::$internal($mid);
@@ -415,32 +283,8 @@ macro_rules! test_eq_ops {
     )*}
 }
 
+// TODO: Add Byte and IByte
 test_eq_ops! {
-    u16_ops {
-        internal: U16,
-        hi: 128,
-        mid: 20,
-        lo: 0
-    }
-    u32_ops {
-        internal: U32,
-        hi: 20,
-        mid: 10,
-        lo: 0
-    }
-    u64_ops {
-        internal: U64,
-        hi: 128,
-        mid: 20,
-        lo: 0
-    }
-    u128_ops {
-        internal: U128,
-        hi: 20,
-        mid: 10,
-        lo: 0
-    }
-
     i16_ops {
         internal: I16,
         hi: 128,
@@ -482,14 +326,11 @@ test_eq_ops! {
 
 #[test]
 fn illegal_op() {
-    let mut vm = Vm::new(
-        &crate::OptionBuilder::new("./illegal_op").build(),
-        Box::new(stdout()),
-    );
+    let mut vm = Compactor::default();
 
     let illegal = Instruction::Illegal;
     assert_eq!(
-        illegal.execute(&mut vm).err().unwrap().ty,
+        illegal.execute(&mut vm).err().unwrap().ty(),
         RuntimeErrorTy::IllegalInstruction
     );
 }

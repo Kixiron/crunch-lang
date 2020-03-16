@@ -9,4 +9,4 @@ mod data_location;
 mod intrinsics;
 mod vice;
 
-pub use vice::{Vice, ViceOptions};
+pub use self::vice::{Vice, ViceOptions};

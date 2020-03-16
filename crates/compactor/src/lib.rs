@@ -15,7 +15,7 @@ mod return_frame;
 mod value;
 mod write;
 
-pub use compactor::Compactor;
+pub use self::compactor::Compactor;
 pub use compactor_options::CompactorOptions;
 pub use instruction::Instruction;
 pub use value::Value;
