@@ -7,17 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-### Changed
-
-### Deprecated
-
 ### Removed
+
+- Removed the `I128` integer size
 
 ### Fixed
 
-### Security
+- Fixed failing tests
+
+### Changed
+
+- Split all components into crates
+- Moved a lot of documentation and details to `/docs`
 
 ## [0.0.0] - 2020-03-09
 

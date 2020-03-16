@@ -1,3 +1,3 @@
 +++
-redirect_to = "user_guide"
+redirect_to = "crunch"
 +++
