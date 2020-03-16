@@ -34,7 +34,6 @@ pub enum Value {
     I16(i16),
     I32(i32),
     I64(i64),
-    I128(i128),
     GcInt(Rooted<BigInt>),
 
     // Floats
@@ -66,7 +65,6 @@ impl Clone for Value {
             Self::I16(i) => Self::I16(*i),
             Self::I32(i) => Self::I32(*i),
             Self::I64(i) => Self::I64(*i),
-            Self::I128(i) => Self::I128(*i),
             Self::GcInt(i) => {
                 let (sign, digits) = (&**i).to_u32_digits();
                 Self::GcInt(unsafe {
@@ -121,7 +119,6 @@ impl Value {
             Self::I16(int) => *int as usize,
             Self::I32(int) => *int as usize,
             Self::I64(int) => *int as usize,
-            Self::I128(int) => *int as usize,
             Self::F32(int) => *int as usize,
             Self::F64(int) => *int as usize,
 
@@ -138,7 +135,6 @@ impl Value {
             Self::I16(_) => "int16",
             Self::I32(_) => "int",
             Self::I64(_) => "int64",
-            Self::I128(_) => "int128",
             Self::F32(_) => "float",
             Self::F64(_) => "float64",
             Self::Bool(_) => "bool",
@@ -170,7 +166,6 @@ impl Value {
             (Self::I16(left), Self::I16(right)) => Compare::ordering(left, right),
             (Self::I32(left), Self::I32(right)) => Compare::ordering(left, right),
             (Self::I64(left), Self::I64(right)) => Compare::ordering(left, right),
-            (Self::I128(left), Self::I128(right)) => Compare::ordering(left, right),
             (Self::GcInt(left), Self::GcInt(right)) => Compare::ordering(&**left, &**right),
 
             (Self::F32(left), Self::F32(right)) => Compare::ordering(left, right),
@@ -210,7 +205,6 @@ impl Value {
             Self::I16(int) => int.to_string(),
             Self::I32(int) => int.to_string(),
             Self::I64(int) => int.to_string(),
-            Self::I128(int) => int.to_string(),
             Self::F32(int) => int.to_string(),
             Self::F64(int) => int.to_string(),
             Self::Bool(int) => int.to_string(),
@@ -243,6 +237,8 @@ impl Value {
 
 /// Numerical operations
 // TODO: Remainder, modulo
+// TODO: Implement all int combinations
+// TODO: Optimize BigInt operations
 impl Value {
     pub fn add_upflowing(&self, other: &Self) -> RuntimeResult<Self> {
         Ok(match (&self, &other) {
@@ -277,13 +273,6 @@ impl Value {
             (Self::I64(left), Self::I64(right)) => {
                 if let Some(result) = left.checked_add(*right) {
                     Self::I64(result)
-                } else {
-                    Self::I128(*left as i128).add_upflowing(&Self::I128(*right as i128))?
-                }
-            }
-            (Self::I128(left), Self::I128(right)) => {
-                if let Some(result) = left.checked_add(*right) {
-                    Self::I128(result)
                 } else {
                     let mut int = BigInt::from(*left);
                     int += *right;
@@ -393,13 +382,6 @@ impl Value {
                 if let Some(result) = left.checked_sub(*right) {
                     Self::I64(result)
                 } else {
-                    Self::I128(*left as i128).sub_upflowing(&Self::I128(*right as i128))?
-                }
-            }
-            (Self::I128(left), Self::I128(right)) => {
-                if let Some(result) = left.checked_sub(*right) {
-                    Self::I128(result)
-                } else {
                     let mut int = BigInt::from(*left);
                     int -= *right;
 
@@ -462,60 +444,31 @@ impl Value {
             }
 
             (Self::IByte(left), Self::IByte(right)) => {
-                if let Some(result) = left.checked_div(*right) {
-                    Self::IByte(result)
-                } else {
-                    Self::I16(*left as i16).div_upflowing(&Self::I16(*right as i16))?
-                }
+                Self::IByte(left.checked_div(*right).unwrap_or(0))
             }
-            (Self::I16(left), Self::I16(right)) => {
-                if let Some(result) = left.checked_div(*right) {
-                    Self::I16(result)
-                } else {
-                    Self::I32(*left as i32).div_upflowing(&Self::I32(*right as i32))?
-                }
-            }
-            (Self::I32(left), Self::I32(right)) => {
-                if let Some(result) = left.checked_div(*right) {
-                    Self::I32(result)
-                } else {
-                    Self::I64(*left as i64).div_upflowing(&Self::I64(*right as i64))?
-                }
-            }
+            (Self::I16(left), Self::I16(right)) => Self::I16(left.checked_div(*right).unwrap_or(0)),
+            (Self::I32(left), Self::I32(right)) => Self::I32(left.checked_div(*right).unwrap_or(0)),
             (Self::I32(left), Self::I64(right)) => {
-                if let Some(result) = (*left as i64).checked_div(*right) {
-                    Self::I64(result)
-                } else {
-                    Self::I64(*left as i64).div_upflowing(&Self::I64(*right as i64))?
-                }
+                Self::I64((*left as i64).checked_div(*right).unwrap_or(0))
             }
             (Self::I64(left), Self::I64(right)) => {
-                if let Some(result) = left.checked_div(*right) {
-                    Self::I64(result)
-                } else {
-                    Self::I128(*left as i128).div_upflowing(&Self::I128(*right as i128))?
-                }
+                Self::I64((*left as i64).checked_div(*right).unwrap_or(0))
             }
-            (Self::I128(left), Self::I128(right)) => {
-                if let Some(result) = left.checked_div(*right) {
-                    Self::I128(result)
+            (Self::GcInt(left), Self::GcInt(right)) => {
+                if **left == 0 || **right == 0 {
+                    Self::GcInt(unsafe {
+                        CRUNCH_ALLOCATOR
+                            .with(|alloc| alloc.get().as_mut().unwrap().alloc(BigInt::from(0)))
+                    })
                 } else {
-                    let mut int = BigInt::from(*left);
-                    int /= *right;
+                    let (sign, digits) = (&**left).to_u32_digits();
+                    let mut int = BigInt::new(sign, digits);
+                    int /= &**right;
 
                     Self::GcInt(unsafe {
                         CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
                     })
                 }
-            }
-            (Self::GcInt(left), Self::GcInt(right)) => {
-                let (sign, digits) = (&**left).to_u32_digits();
-                let mut int = BigInt::new(sign, digits);
-                int /= &**right;
-
-                Self::GcInt(unsafe {
-                    CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
-                })
             }
 
             (Self::F32(left), Self::F32(right)) if *left != 0.0 && *right != 0.0 => {
@@ -589,13 +542,6 @@ impl Value {
                 if let Some(result) = left.checked_mul(*right) {
                     Self::I64(result)
                 } else {
-                    Self::I128(*left as i128).mult_upflowing(&Self::I128(*right as i128))?
-                }
-            }
-            (Self::I128(left), Self::I128(right)) => {
-                if let Some(result) = left.checked_mul(*right) {
-                    Self::I128(result)
-                } else {
                     let mut int = BigInt::from(*left);
                     int *= *right;
 
@@ -658,7 +604,6 @@ impl Value {
             (Self::I32(left), Self::I32(right)) => Self::I32(left | right),
             (Self::I64(left), Self::I64(right)) => Self::I64(left | right),
             (Self::I32(left), Self::I64(right)) => Self::I64((*left as i64) | right),
-            (Self::I128(left), Self::I128(right)) => Self::I128(left | right),
             (Self::GcInt(left), Self::GcInt(right)) => {
                 let (sign, digits) = (*left).to_u32_digits();
                 let mut int = BigInt::new(sign, digits);
@@ -700,7 +645,6 @@ impl Value {
             (Self::I32(left), Self::I32(right)) => Self::I32(left ^ right),
             (Self::I64(left), Self::I64(right)) => Self::I64(left ^ right),
             (Self::I32(left), Self::I64(right)) => Self::I64((*left as i64) ^ right),
-            (Self::I128(left), Self::I128(right)) => Self::I128(left ^ right),
             (Self::GcInt(left), Self::GcInt(right)) => {
                 let (sign, digits) = (*left).to_u32_digits();
                 let mut int = BigInt::new(sign, digits);
@@ -742,7 +686,6 @@ impl Value {
             (Self::I32(left), Self::I32(right)) => Self::I32(left & right),
             (Self::I64(left), Self::I64(right)) => Self::I64(left & right),
             (Self::I32(left), Self::I64(right)) => Self::I64((*left as i64) & right),
-            (Self::I128(left), Self::I128(right)) => Self::I128(left & right),
             (Self::GcInt(left), Self::GcInt(right)) => {
                 let (sign, digits) = (*left).to_u32_digits();
                 let mut int = BigInt::new(sign, digits);
@@ -783,7 +726,6 @@ impl Value {
             Self::I16(int) => Self::I16(!int),
             Self::I32(int) => Self::I32(!int),
             Self::I64(int) => Self::I64(!int),
-            Self::I128(int) => Self::I128(!int),
             Self::GcInt(int) => Self::GcInt(unsafe {
                 CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(!(&**int)))
             }),
@@ -833,7 +775,6 @@ impl_from! {
     i16 => I16,
     i32 => I32,
     i64 => I64,
-    i128 => I128,
     f32 => F32,
     f64 => F64,
     bool => Bool,
@@ -862,19 +803,18 @@ impl Into<Vec<u8>> for Value {
             Self::I16(int) => bytes!(0x04, int, i16),
             Self::I32(int) => bytes!(0x05, int, i32),
             Self::I64(int) => bytes!(0x06, int, i64),
-            Self::I128(int) => bytes!(0x07, int, i128),
 
-            Self::F32(int) => bytes!(0x08, int, f32),
-            Self::F64(int) => bytes!(0x09, int, f64),
+            Self::F32(int) => bytes!(0x07, int, f32),
+            Self::F64(int) => bytes!(0x08, int, f64),
 
-            Self::Bool(boolean) => vec![0x0A, boolean as u8],
+            Self::Bool(boolean) => vec![0x09, boolean as u8],
 
-            Self::Char(character) => bytes!(0x0B, character as u32, u32),
+            Self::Char(character) => bytes!(0x0A, character as u32, u32),
             Self::Str(string) => {
                 let bytes = string.as_bytes();
 
                 let mut vec = Vec::with_capacity(bytes.len() + 1);
-                vec.push(0x0C);
+                vec.push(0x0A);
                 vec.extend_from_slice(&bytes);
                 vec
             }
@@ -882,7 +822,7 @@ impl Into<Vec<u8>> for Value {
                 let bytes = (*string).as_bytes();
 
                 let mut vec = Vec::with_capacity(bytes.len() + 1);
-                vec.push(0x0C);
+                vec.push(0x0B);
                 vec.extend_from_slice(&bytes);
                 vec
             }
@@ -905,17 +845,16 @@ impl From<&[u8]> for Value {
             0x04 => Self::I16(i16::from_le_bytes(bytes[1..].try_into().unwrap())),
             0x05 => Self::I32(i32::from_le_bytes(bytes[1..].try_into().unwrap())),
             0x06 => Self::I64(i64::from_le_bytes(bytes[1..].try_into().unwrap())),
-            0x07 => Self::I128(i128::from_le_bytes(bytes[1..].try_into().unwrap())),
 
-            0x08 => Self::F32(f32::from_le_bytes(bytes[1..].try_into().unwrap())),
-            0x09 => Self::F64(f64::from_le_bytes(bytes[1..].try_into().unwrap())),
+            0x07 => Self::F32(f32::from_le_bytes(bytes[1..].try_into().unwrap())),
+            0x08 => Self::F64(f64::from_le_bytes(bytes[1..].try_into().unwrap())),
 
-            0x0A => Self::Bool(bytes[1] > 0),
+            0x09 => Self::Bool(bytes[1] > 0),
 
-            0x0B => Self::Char(
+            0x0A => Self::Char(
                 core::char::from_u32(u32::from_le_bytes(bytes[1..].try_into().unwrap())).unwrap(),
             ),
-            0x0C => Self::Str(Box::leak(
+            0x0B => Self::Str(Box::leak(
                 alloc::string::String::from_utf8(bytes[1..].to_vec())
                     .unwrap()
                     .into_boxed_str(),
