@@ -2,7 +2,6 @@ mod property_tests;
 
 use super::*;
 use crate::{bytecode, Compactor, CrunchWrite};
-use std::io::stdout;
 
 #[test]
 fn array_test() {
@@ -229,9 +228,6 @@ fn incompatible_eq_ops() {
         less_than.execute(&mut vm).unwrap_err().message(),
         "Values of types 'bool' and 'int' cannot be 'less_than'ed".to_string(),
     );
-
-    less_than.execute(&mut vm).unwrap();
-    assert_eq!(vm.prev_comp, false);
 }
 
 macro_rules! test_eq_ops {
@@ -302,12 +298,6 @@ test_eq_ops! {
         hi: 128,
         mid: 20,
         lo: 0
-    }
-    i128_ops {
-        internal: I128,
-        hi: 20,
-        mid: 10,
-        lo: -0
     }
 
     f32_eq_ops {

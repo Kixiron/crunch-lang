@@ -280,12 +280,6 @@ number_proptest! {
         unsigned: false,
         bitwise: bitwise
     },
-    i128_ops {
-        internal: I128,
-        primitive: i128,
-        unsigned: false,
-        bitwise: bitwise
-    },
 
     f32_ops {
         internal: F32,
