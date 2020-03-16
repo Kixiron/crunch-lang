@@ -145,10 +145,5 @@ jobs:
 
       # Run tests in debug mode
       - name: Run Tests Debug
-<<<<<<< HEAD
-        run: cargo test --target ${{ matrix.target }}
-      # TODO: Test in release mode
-=======
         run: cargo test --target ${{ matrix.target }} --workspace
       # TODO: Test in release mode
->>>>>>> 75c31c3219201193263a8446e008a0b7ac19a5cc
