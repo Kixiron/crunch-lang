@@ -10,7 +10,7 @@ Crunch is a strongly & statically typed scripting language focused on ease of us
 
 ## Building Crunch
 
-First, have [`rustup`] and `cargo` installed, then run the following commands
+First, have the nightly toolchains of [`rustup`] and `cargo` installed, then run the following commands
 
 ```text
 git clone https://github.com/Kixiron/crunch-lang
