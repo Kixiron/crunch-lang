@@ -7,6 +7,7 @@ right.dump
 /.vscode
 *.swp
 *.swo
+/.vs
 
 /docs/public
 

@@ -20,3 +20,7 @@ path = "../compactor"
 version = "0.8"
 default-features = false # `no_std` support
 features = ["macros"]
+
+[dev-dependencies.simple_logger]
+version = "1.6.0"
+default-features = false

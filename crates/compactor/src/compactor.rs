@@ -8,7 +8,7 @@ use core::fmt;
 use crunch_error::runtime_prelude::*;
 
 /// The Virtual Machine environment for Crunch
-pub struct Compactor {
+pub struct Compactor<'a> {
     /// The active VM Registers  
     /// `registers[len - 2]` is a read-only register containing 0  
     /// `registers[len - 1]` is a read-only register containing 1  
@@ -36,26 +36,18 @@ pub struct Compactor {
     ///
     /// [`stdout`]: std::io::stdout
     // TODO: no_std Write target
-    pub(crate) stdout: Box<dyn CrunchWrite>,
+    pub(crate) stdout: Box<&'a mut dyn CrunchWrite>,
 }
 
-#[cfg(feature = "std")]
-impl Default for Compactor {
-    fn default() -> Self {
-        Self::new(CompactorOptions::default(), Box::new(std::io::stdout()))
-    }
-}
-
-impl Compactor {
+impl<'a> Compactor<'a> {
     /// Creates a new [`Compactor`] from [`options`] and the selected `stdout`
-    /// target (Required to be [`Write`])
+    /// target
     ///
     /// [`Compactor`]: crate::Compactor
     /// [`options`]: crate::Options
-    /// [`Write`]: std::io::Write
     #[inline]
     #[must_use]
-    pub fn new(options: CompactorOptions, stdout: Box<dyn CrunchWrite>) -> Self {
+    pub fn new(options: CompactorOptions, stdout: Box<&'a mut dyn CrunchWrite>) -> Self {
         let (registers, read_only_registers) = {
             let add_to_mask = |mask: &mut u64, reg: u64| {
                 *mask |= 1 << reg;
@@ -90,17 +82,32 @@ impl Compactor {
         }
     }
 
-    pub(crate) fn register_read_only(&self, register: u8) -> bool {
+    #[inline]
+    #[must_use]
+    pub fn with_stdout(stdout: Box<&'a mut dyn CrunchWrite>) -> Self {
+        Self::new(CompactorOptions::default(), stdout)
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn into_stdout(self) -> Box<&'a mut dyn CrunchWrite> {
+        self.stdout
+    }
+
+    #[inline]
+    pub(crate) fn register_marked_read_only(&self, register: u8) -> bool {
         self.read_only_registers & (1 << register as u64) != 0
     }
 
-    // pub(crate) fn register_set_read_only(&mut self, register: u8) {
-    //     self.read_only_registers |= 1 << register as u64;
-    // }
+    #[allow(dead_code)]
+    pub(crate) fn register_set_read_only(&mut self, register: u8) {
+        self.read_only_registers |= 1 << register as u64;
+    }
 
-    // pub(crate) fn register_unset_read_only(&mut self, register: u8) {
-    //     self.read_only_registers &= !(1 << register as u64);
-    // }
+    #[allow(dead_code)]
+    pub(crate) fn register_unset_read_only(&mut self, register: u8) {
+        self.read_only_registers &= !(1 << register as u64);
+    }
 
     /// Uses the current [`Compactor`] to execute the given `functions`  
     /// Note: this means that any data left in the [`Gc`] will transfer to the new program's runtime
@@ -112,6 +119,7 @@ impl Compactor {
     /// [`Compactor`]: crate::Compactor
     /// [`Gc`]: crate::Gc
     /// [`RuntimeError`]: crate::RuntimeError
+    #[inline]
     pub fn execute(&mut self, functions: &[Vec<Instruction>]) -> RuntimeResult<()> {
         while !self.finished_execution {
             functions[self.current_func as usize][self.index as usize].execute(self)?;
@@ -134,7 +142,7 @@ impl Compactor {
     }
 }
 
-impl fmt::Debug for Compactor {
+impl<'a> fmt::Debug for Compactor<'a> {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_struct("Compactor")
             .field(

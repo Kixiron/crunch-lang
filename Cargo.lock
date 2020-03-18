@@ -327,6 +327,7 @@ version = "0.1.0"
 dependencies = [
  "crunch-error",
  "logos",
+ "randomize",
  "string-interner",
 ]
 
@@ -908,6 +909,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "randomize"
+version = "3.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "88c38c99b51f33c9fcc655252bf02ac8048eb70f35244e4697b0de9c473e940a"
+
+[[package]]
 name = "rayon"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1218,6 +1225,7 @@ dependencies = [
  "crunch-error",
  "crunch-parser",
  "phf",
+ "simple_logger",
 ]
 
 [[package]]

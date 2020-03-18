@@ -170,8 +170,6 @@ impl CrunchCli {
                     .about("Runs a source file or compiled bytecode")
                     .arg(
                         Arg::with_name("FILE")
-                            .short("f")
-                            .long("file")
                             .required(true)
                             .takes_value(true)
                             .help("Run a source or bytecode file"),
@@ -180,13 +178,33 @@ impl CrunchCli {
     }
 }
 
+// TODO: Split into own crate
+
 #[derive(Debug, Clone)]
 pub struct CrashInfo {
-    name: String,
-    version: String,
-    authors: String,
-    homepage: String,
+    pub name: String,
+    pub version: String,
+    pub authors: String,
+    pub homepage: String,
+    #[doc(hidden)]
+    pub __non_exhaustive: (),
 }
+
+impl Default for CrashInfo {
+    fn default() -> Self {
+        Self {
+            name: env!("CARGO_PKG_NAME").into(),
+            version: env!("CARGO_PKG_VERSION").into(),
+            authors: env!("CARGO_PKG_AUTHORS").into(),
+            homepage: env!("CARGO_PKG_HOMEPAGE").into(),
+            __non_exhaustive: (),
+        }
+    }
+}
+
+// TODO: Sha1 hash of the build
+// TODO: Change message to reflect that this is an ICE
+// TODO: Recommend github to report ICEs
 
 #[derive(Debug, Clone)]
 pub struct CrashReport {
@@ -239,16 +257,21 @@ impl CrashReport {
     }
 
     pub fn serialize(&self) -> String {
-        dbg!(format!(
+        format!(
             "# This is an automatically generated crash file created by {}\n\n\
 
             name = \"{}\"\n\
             version = \"{}\"\n\
             method = \"{:?}\"\n\
-            explanation = \"{}\"\n\
-            backtrace = \"{}\"\n",
-            self.name, self.name, self.version, self.method, self.explanation, self.backtrace
-        ))
+            explanation = \"\"\"\n{}\"\"\"\n\
+            backtrace = \"\"\"{}\n\"\"\"\n",
+            self.name,
+            self.name,
+            self.version,
+            self.method,
+            self.explanation.replace("\\", "\\\\"),
+            self.backtrace.replace("\\", "\\\\")
+        )
     }
 
     pub fn backtrace() -> String {

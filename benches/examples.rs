@@ -27,7 +27,8 @@ fn examples(c: &mut Criterion) {
             let bytecode = Vice::from_interner(ViceOptions::default(), parser.interner)
                 .compile(ast.0)
                 .unwrap();
-            let mut vm = Compactor::default();
+            let mut stdout = std::io::stdout();
+            let mut vm = Compactor::with_stdout(Box::new(&mut stdout));
 
             b.iter(|| {
                 black_box(vm.execute(&bytecode)).unwrap();
@@ -76,7 +77,8 @@ fn examples(c: &mut Criterion) {
             let bytecode = Vice::from_interner(ViceOptions::default(), parser.interner)
                 .compile(ast.0)
                 .unwrap();
-            let mut vm = Compactor::default();
+            let mut stdout = std::io::stdout();
+            let mut vm = Compactor::with_stdout(Box::new(&mut stdout));
 
             b.iter(|| {
                 black_box(vm.execute(&bytecode)).unwrap();
@@ -127,7 +129,8 @@ fn examples(c: &mut Criterion) {
             let bytecode = Vice::from_interner(ViceOptions::default(), parser.interner)
                 .compile(ast.0)
                 .unwrap();
-            let mut vm = Compactor::default();
+            let mut stdout = std::io::stdout();
+            let mut vm = Compactor::with_stdout(Box::new(&mut stdout));
 
             b.iter(|| {
                 black_box(vm.execute(&bytecode)).unwrap();

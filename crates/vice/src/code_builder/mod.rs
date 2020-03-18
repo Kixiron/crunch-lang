@@ -64,6 +64,10 @@ impl CodeBuilder {
         }
     }
 
+    pub fn into_interner(self) -> StringInterner<Sym> {
+        self.interner
+    }
+
     pub fn build_function<F>(&mut self, name: Sym, function: F) -> CompileResult<()>
     where
         F: FnOnce(&mut Self, &mut FunctionContext) -> CompileResult<()>,
@@ -191,6 +195,9 @@ mod tests {
 
         let functions = builder.build().unwrap();
 
-        Compactor::default().execute(&functions).unwrap();
+        let mut stdout = std::io::stdout();
+        Compactor::with_stdout(Box::new(&mut stdout))
+            .execute(&functions)
+            .unwrap();
     }
 }

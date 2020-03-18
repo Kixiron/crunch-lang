@@ -1,6 +1,7 @@
 use crunch_error::parse_prelude::codespan::FileId;
-use std::path::PathBuf;
 use string_interner::Sym;
+
+use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub enum Either<L, R> {
@@ -35,7 +36,7 @@ pub struct FunctionDecl {
     pub arguments: Vec<(Sym, Type)>,
     pub returns: Type,
     pub body: Vec<Statement>,
-    pub abs_path: Sym,
+    pub abs_path: Vec<Sym>,
     pub loc: Location,
 }
 
@@ -96,8 +97,8 @@ pub struct Import {
 #[derive(Debug, Clone)]
 pub enum ImportSource {
     File(PathBuf),
-    Package(Sym),
-    Native(Sym),
+    Package(Vec<Sym>),
+    Native(Vec<Sym>),
 }
 
 #[derive(Debug, Clone)]
@@ -263,7 +264,7 @@ pub struct Range {
 
 #[derive(Debug, Clone)]
 pub struct Return {
-    pub expr: Expr,
+    pub expr: Option<Expr>,
     pub loc: Location,
 }
 

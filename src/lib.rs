@@ -3,9 +3,9 @@
 
 mod cli;
 
-pub use cli::{Command, CrunchCli, Verbosity};
+pub use cli::{Command, CrashInfo, CrunchCli, Verbosity};
 
-use compactor::{Compactor, Instruction};
+use compactor::{Compactor, CrunchWrite, Instruction};
 use crunch_bytecode::Bytecode;
 use crunch_error::{
     codespan, codespan_reporting,
@@ -18,20 +18,20 @@ use vice::Vice;
 
 /// The main interface to the crunch language
 #[allow(missing_debug_implementations)]
-pub struct Crunch {
+pub struct Crunch<'a> {
     /// The main contents of the VM
-    vm: Compactor,
+    vm: Compactor<'a>,
     /// Contained options
     _options: CrunchCli,
 }
 
 /// The main usage of Crunch
-impl Crunch {
+impl<'a> Crunch<'a> {
     #[inline]
     #[must_use]
-    pub fn new(options: CrunchCli) -> Self {
+    pub fn new(options: CrunchCli, stdout: Box<&'a mut dyn CrunchWrite>) -> Self {
         Self {
-            vm: Compactor::new(options.clone().into(), Box::new(std::io::stdout())),
+            vm: Compactor::new(options.clone().into(), stdout),
             _options: options,
         }
     }
@@ -49,7 +49,7 @@ impl Crunch {
 
     /// Run a source file in the `.crunch` format
     #[inline]
-    pub fn run_source_file(options: CrunchCli, path: &Path) {
+    pub fn run_source_file(options: CrunchCli, path: &Path, stdout: Box<&'a mut dyn CrunchWrite>) {
         trace!("Running Source File: {}", path.display());
 
         let source = {
@@ -87,7 +87,7 @@ impl Crunch {
                     Ok(functions) => {
                         info!("Executing Crunch Program");
 
-                        if let Err(err) = Self::new(options).execute(&functions) {
+                        if let Err(err) = Self::new(options, stdout).execute(&functions) {
                             println!("{}", err);
                         }
                     }
@@ -127,7 +127,7 @@ impl Crunch {
 
     /// Run a byte file in the `.crunched` format
     #[inline]
-    pub fn run_byte_file(options: CrunchCli, path: &Path) {
+    pub fn run_byte_file(options: CrunchCli, path: &Path, stdout: Box<&'a mut dyn CrunchWrite>) {
         trace!("Running Compiled File: {}", path.display());
 
         let source = {
@@ -183,7 +183,7 @@ impl Crunch {
         };
         functions.insert(0, main);
 
-        if let Err(err) = Self::new(options).execute(&functions) {
+        if let Err(err) = Self::new(options, stdout).execute(&functions) {
             println!("{}", err);
         }
     }

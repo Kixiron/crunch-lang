@@ -1,0 +1,42 @@
+# To Do
+
+- [ ] Compiler Pipeline
+  - [ ] Read file
+  - [ ] Tokenize
+  - [ ] Parse into AST
+  - [ ] Generate HIR
+  - [ ] Semantic Checking
+  - [ ] Type Checking
+  - [ ] Generate VIR
+  - [ ] Optimization
+  - [ ] Generate bytecode
+  - [ ] Final bytecode-level Optimization
+  - [ ] Emit or Execute
+- [ ] Make all parsers state machines
+  - [ ] Prevents stack overflows
+- [ ] Make all translators/parsers/generators state machines
+- [ ] Fully qualified HIR
+  - [ ] Desugared
+  - [ ] Type Methods are turned into stand-alone functions
+  - [ ] Names are mangled
+- [ ] Three-address representation for low-level
+  - [ ] Rework, needs to be better thought out
+- [ ] Fix issue #36, issue in vice with range-related codegen
+  - [ ] `vice::vice::tests::range_test`
+  - [ ] `vice::vice::tests::fibonacci_iterative`
+  - [ ] Implement more real-world tests
+- [ ] Fix benchmarks, broken by move to new stdout system in Compactor
+- [ ] Start writing programs in Crunch
+  - [ ] Implement popular, easy or common problems
+  - [ ] Create large 'examples' directory with lots of source code
+  - [ ] Start writing std, even if it's not currently 100% usable
+- [ ] Ditch proptest dependency
+- [ ] Fix printing tests
+- [ ] Break CrashReport into own crate & implement features requested in #35
+- [ ] Work on parallel compilation
+  - [ ] FIFO Queue for parsing files
+    - [ ] Stateless parser shared between threads
+  - [ ] Workers push new files to the queue
+    - [ ] Shared set of files already covered
+  - [ ] Workers Parse files and push the finished to somewhere
+  - [ ] Concurrent String interner

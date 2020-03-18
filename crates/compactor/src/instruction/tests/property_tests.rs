@@ -25,7 +25,8 @@ macro_rules! number_proptest {
                                     prop_assume!(left >= right)
                                 }
 
-                                let mut vm = Compactor::default();
+                                let mut stdout = std::io::stdout();
+                                let mut vm = Compactor::with_stdout(Box::new(&mut stdout));
 
                                 vm.registers[0] = Value::$value_variant(left);
                                 vm.registers[1] = Value::$value_variant(right);
@@ -47,7 +48,8 @@ macro_rules! number_proptest {
                                     prop_assume!(left >= right)
                                 }
 
-                                let mut vm = Compactor::default();
+                                let mut stdout = std::io::stdout();
+                                let mut vm = Compactor::with_stdout(Box::new(&mut stdout));
 
                                 vm.registers[0] = Value::$value_variant(left);
                                 vm.registers[1] = Value::$value_variant(right);
@@ -69,7 +71,8 @@ macro_rules! number_proptest {
                                     prop_assume!(left >= right)
                                 }
 
-                                let mut vm = Compactor::default();
+                                let mut stdout = std::io::stdout();
+                                let mut vm = Compactor::with_stdout(Box::new(&mut stdout));
 
                                 vm.registers[0] = Value::$value_variant(left);
                                 vm.registers[1] = Value::$value_variant(right);
@@ -87,7 +90,8 @@ macro_rules! number_proptest {
 
                             #[test]
                             fn bitwise_not(int: $primitive) {
-                                let mut vm = Compactor::default();
+                                let mut stdout = std::io::stdout();
+                                let mut vm = Compactor::with_stdout(Box::new(&mut stdout));
 
                                 vm.registers[0] = Value::$value_variant(int);
 
@@ -112,7 +116,8 @@ macro_rules! number_proptest {
                             prop_assume!(left >= right)
                         }
 
-                        let mut vm = Compactor::default();
+                        let mut stdout = std::io::stdout();
+                        let mut vm = Compactor::with_stdout(Box::new(&mut stdout));
 
                         vm.registers[0] = Value::$value_variant(left);
                         vm.registers[1] = Value::$value_variant(right);
@@ -138,7 +143,8 @@ macro_rules! number_proptest {
                             prop_assume!(left >= right)
                         }
 
-                        let mut vm = Compactor::default();
+                        let mut stdout = std::io::stdout();
+                        let mut vm = Compactor::with_stdout(Box::new(&mut stdout));
 
                         vm.registers[0] = Value::$value_variant(left);
                         vm.registers[1] = Value::$value_variant(right);
@@ -164,7 +170,8 @@ macro_rules! number_proptest {
                             prop_assume!(left >= right)
                         }
 
-                        let mut vm = Compactor::default();
+                        let mut stdout = std::io::stdout();
+                        let mut vm = Compactor::with_stdout(Box::new(&mut stdout));
 
                         vm.registers[0] = Value::$value_variant(left);
                         vm.registers[1] = Value::$value_variant(right);
@@ -190,7 +197,8 @@ macro_rules! number_proptest {
                             prop_assume!(left >= right)
                         }
 
-                        let mut vm = Compactor::default();
+                        let mut stdout = std::io::stdout();
+                        let mut vm = Compactor::with_stdout(Box::new(&mut stdout));
 
                         vm.registers[0] = Value::$value_variant(left);
                         vm.registers[1] = Value::$value_variant(right);

@@ -12,7 +12,7 @@ pub fn load(mut vm: &mut Compactor, val: Value, reg: u8) -> RuntimeResult<()> {
         &vm.registers[reg as usize]
     );
 
-    if vm.register_read_only(reg) {
+    if vm.register_marked_read_only(reg) {
         Err(RuntimeError::new(
             RuntimeErrorTy::ReadOnlyRegister,
             format!("Attempted to write to read-only register {}", reg),
@@ -326,7 +326,8 @@ comparison_operator! {
     less_than_equal:    Less, Equal     => true  || false
 }
 
-// TODO: Error on index out of bounds (Calling func that doesn't exist)
+// TODO: Error on index out of bounds (Calling func that doesn't exist
+// ^ Shouldn't the function already be verified to exist via compilation?
 pub fn func(mut vm: &mut Compactor, func: u32) -> RuntimeResult<()> {
     trace!(
         "Jumping to function {} from function {}",

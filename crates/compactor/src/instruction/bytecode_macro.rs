@@ -233,5 +233,8 @@ fn macro_test() {
         }
     };
 
-    crate::Compactor::default().execute(&functions).unwrap();
+    let mut stdout = std::io::stdout();
+    crate::Compactor::with_stdout(Box::new(&mut stdout))
+        .execute(&functions)
+        .unwrap();
 }

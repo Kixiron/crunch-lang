@@ -5,6 +5,7 @@
 pub extern crate string_interner;
 
 pub mod ast;
+pub mod hir;
 pub mod token;
 
 use ast::*;
@@ -29,7 +30,7 @@ pub struct Parser<'a> {
     error: bool,
     // TODO: `into_interner` method
     pub interner: StringInterner<Sym>,
-    current_path: Sym,
+    current_path: Vec<Sym>,
 }
 
 impl<'a> Parser<'a> {
@@ -51,7 +52,10 @@ impl<'a> Parser<'a> {
         let current_file = files[0];
 
         let mut interner = StringInterner::new();
-        let current_path = interner.get_or_intern(filename.unwrap_or_else(|| ""));
+        let mut current_path = Vec::with_capacity(1);
+        if let Some(filename) = filename {
+            current_path.push(interner.get_or_intern(filename));
+        }
 
         Self {
             token_stream,
@@ -65,6 +69,10 @@ impl<'a> Parser<'a> {
             interner,
             current_path,
         }
+    }
+
+    pub fn into_interner(self) -> StringInterner<Sym> {
+        self.interner
     }
 
     pub fn parse(
@@ -465,21 +473,21 @@ impl<'a> Parser<'a> {
                 self.eat(TokenType::Library)?;
                 ImportSource::Package({
                     let source = self.eat(TokenType::String)?.source;
-                    self.current_path = self.intern(&source[1..source.len() - 1]);
-                    self.current_path
+                    self.current_path = vec![self.intern(&source[1..source.len() - 1])];
+                    self.current_path.clone()
                 })
             }
             TokenType::Binary => {
                 self.eat(TokenType::Binary)?;
                 ImportSource::Native({
                     let source = self.eat(TokenType::String)?.source;
-                    self.current_path = self.intern(&source[1..source.len() - 1]);
-                    self.current_path
+                    self.current_path = vec![self.intern(&source[1..source.len() - 1])];
+                    self.current_path.clone()
                 })
             }
             _ => ImportSource::File({
                 let source = self.eat(TokenType::String)?.source;
-                self.current_path = self.intern(&source[1..source.len() - 1]);
+                self.current_path = vec![self.intern(&source[1..source.len() - 1])];
                 source[1..source.len() - 1].split('.').collect()
             }),
         };
@@ -1172,7 +1180,7 @@ impl<'a> Parser<'a> {
                     let start = self.eat(TokenType::Return)?.range.0;
                     let (expr, end) = self.expr()?;
                     Statement::Return(Return {
-                        expr,
+                        expr: Some(expr),
                         loc: Location::new(self.current_file, (start, end)),
                     })
                 }
@@ -1236,7 +1244,7 @@ impl<'a> Parser<'a> {
             arguments,
             returns,
             body,
-            abs_path: self.current_path,
+            abs_path: self.current_path.clone(),
             loc: Location::new(self.current_file, (start, end)),
         })
     }

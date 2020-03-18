@@ -85,49 +85,12 @@ members = [
     "crates/*"
 ]
 
-[profile.dev]
-opt-level = 0
-debug = true
-rpath = false
-lto = false
-debug-assertions = true
-codegen-units = 16
-panic = 'unwind'
-incremental = true
-overflow-checks = true
-
 [profile.release]
 opt-level = 3
-debug = false
-rpath = false
-lto = true
-debug-assertions = false
-codegen-units = 1
-panic = 'unwind'
-incremental = false
-overflow-checks = false
-
-[profile.test]
-opt-level = 0
-debug = true
-rpath = false
-lto = false
-debug-assertions = true
-codegen-units = 16
-incremental = true
-overflow-checks = true
-
-[profile.bench]
-opt-level = 3
-debug = false
-rpath = false
-lto = true
-debug-assertions = false
-codegen-units = 1
-incremental = false
-overflow-checks = false
+lto = "fat"
 
 [badges]
 is-it-maintained-issue-resolution = { repository = "https://github.com/Kixiron/crunch-lang" }
 is-it-maintained-open-issues = { repository = "https://github.com/Kixiron/crunch-lang" }
 maintenance = { status = "experimental" }
+coverage = { repository = "https://github.com/Kixiron/crunch-lang", branch = "master", service = "github" }

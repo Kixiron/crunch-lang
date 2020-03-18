@@ -1,4 +1,6 @@
 mod options;
+#[cfg(test)]
+mod tests;
 
 pub use options::ViceOptions;
 
@@ -15,9 +17,10 @@ use crunch_parser::{
     string_interner::{StringInterner, Sym},
 };
 
-// Note: For no_std, convert to BTreeMap and use a custom Path-like type
+// Note: For no_std, convert to BTreeMap and use a custom Path-like type (Maybe String)
 use std::{collections::HashMap, path::PathBuf};
 
+// TODO: Access control this somehow, all pub is bad
 /// The Crunch compiler
 #[derive(Debug, Clone)]
 pub struct Vice {
@@ -42,6 +45,7 @@ impl Vice {
         }
     }
 
+    // TODO: Default from interner of some sort
     pub fn from_interner(options: ViceOptions, interner: StringInterner<Sym>) -> Self {
         Self {
             gc: 0,
@@ -84,50 +88,9 @@ impl Vice {
                     self.interpret_import(import)?;
                 }
 
-                Program::TypeDecl(ty) => {
-                    self.interpret_type(ty)?;
-                } // node => todo!("Implement all Program-level nodes: {:?}", node),
+                Program::TypeDecl(_ty) => todo!(),
             }
         }
-
-        Ok(())
-    }
-
-    fn interpret_type(&mut self, ty: TypeDecl) -> CompileResult<()> {
-        let mut builder = CodeBuilder::new();
-        std::mem::swap(&mut builder, &mut self.builder);
-
-        let type_name = ty.name;
-        builder.build_type(type_name, |builder, ctx| {
-            for (vis, name, ty) in ty.members {
-                ctx.add_member(name, vis, ty);
-            }
-
-            for method in ty.methods {
-                ctx.add_method(builder, method.name, Visibility::Exposed, |builder, ctx| {
-                    let mut argument_block = Block::new();
-                    for (arg, _ty) in method.arguments {
-                        let loc = ctx.reserve_reg(arg)?;
-                        bytecode!(@append argument_block => {
-                            pop loc;
-                        });
-                    }
-                    ctx.push_block(argument_block);
-
-                    // For each expression in the function, evaluate it into instructions
-                    for statement in method.body {
-                        self.statement(statement, builder, ctx)?;
-                    }
-
-                    Ok(())
-                })?;
-            }
-
-            Ok(())
-        })?;
-
-        std::mem::swap(&mut builder, &mut self.builder);
-        drop(builder);
 
         Ok(())
     }
@@ -187,14 +150,8 @@ impl Vice {
 
                 self.interpret_module(import_ast)?;
             }
-            ImportSource::Package(sym) => {
-                let _package = self.builder.interner.resolve(sym).unwrap();
-                todo!("Package code loading")
-            }
-            ImportSource::Native(sym) => {
-                let _path = self.builder.interner.resolve(sym).unwrap();
-                todo!("Native code loading")
-            }
+            ImportSource::Package(_sym) => todo!("Package code loading"),
+            ImportSource::Native(_sym) => todo!("Native code loading"),
         }
 
         Ok(())
@@ -409,8 +366,10 @@ impl Vice {
                     let end = self
                         .expr(builder, ctx, *range.end, None)?
                         .to_register(ctx, None)?;
-                    let increment = ctx.reserve_reg(None)?;
-                    ctx.current_block().inst_load(increment, Value::I32(1));
+                    let one = ctx.reserve_reg(None)?;
+                    bytecode!(@append ctx.current_block() => {
+                        load 1i32, one;
+                    });
 
                     ctx.add_block();
                     let block = ctx.current_block;
@@ -420,16 +379,19 @@ impl Vice {
                     }
 
                     ctx.add_block();
-                    ctx.current_block()
-                        .inst_add(start, increment)
-                        .inst_op_to_reg(start)
-                        .inst_less_than(start, end)
-                        .inst_jump_comp(block as u32);
+                    bytecode!(@append ctx.current_block() => {
+                        add start, one;
+                        opr start;
+                        print start;
+                        less start, end;
+                        jumpcmp block as i32;
+                    });
 
-                    ctx.add_block();
-                    ctx.inst_drop_block(increment, ctx.current_block);
-                    ctx.inst_drop_block(start, ctx.current_block);
-                    ctx.inst_drop_block(end, ctx.current_block);
+                    bytecode!(@append ctx.current_block() => {
+                        drop one;
+                        drop start;
+                        drop end;
+                    });
                     ctx.add_block();
                 } else {
                     todo!("Other range types")
@@ -441,12 +403,19 @@ impl Vice {
                     .to_register(ctx, var_decl.name)?;
             }
 
-            Statement::Return(ret) => {
-                let loaded = self
-                    .expr(builder, ctx, ret.expr, None)?
-                    .to_register(ctx, None)?;
+            Statement::Return(Return { expr, .. }) => {
+                if let Some(ret) = expr {
+                    let loaded = self.expr(builder, ctx, ret, None)?.to_register(ctx, None)?;
 
-                ctx.current_block().inst_push(loaded).inst_return();
+                    bytecode!(@append ctx.current_block() => {
+                        push loaded;
+                    });
+                }
+
+                bytecode!(@append ctx.current_block() => {
+                    ret;
+                });
+
                 ctx.add_block();
             }
             Statement::Continue => todo!("Compile Continue statements"),
@@ -504,5 +473,11 @@ impl Vice {
         }
 
         Ok(())
+    }
+}
+
+impl Default for Vice {
+    fn default() -> Self {
+        Self::new(ViceOptions::default())
     }
 }

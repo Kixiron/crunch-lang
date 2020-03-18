@@ -8,5 +8,6 @@ mod code_builder;
 mod data_location;
 mod intrinsics;
 mod vice;
+mod vir;
 
 pub use self::vice::{Vice, ViceOptions};
