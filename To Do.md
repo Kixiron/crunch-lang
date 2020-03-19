@@ -1,13 +1,19 @@
 # To Do
 
 - [ ] Compiler Pipeline
-  - [ ] Read file
-  - [ ] Tokenize
+  - [X] Read file
+    - [ ] Make sure files aren't re-processed
+  - [X] Tokenize
   - [ ] Parse into AST
-  - [ ] Generate HIR
+    - [ ] Uncoil the beast that is the parser
+      - [ ] Pratt Parsing
   - [ ] Semantic Checking
+  - [ ] Generate HIR & Desugar
   - [ ] Type Checking
-  - [ ] Generate VIR
+  - [ ] High-level Optimization
+  - [ ] Const folding
+  - [ ] Generate LLIR
+  - [ ] Resolve Stack and Register operations
   - [ ] Optimization
   - [ ] Generate bytecode
   - [ ] Final bytecode-level Optimization
@@ -18,8 +24,7 @@
 - [ ] Fully qualified HIR
   - [ ] Desugared
   - [ ] Type Methods are turned into stand-alone functions
-  - [ ] Names are mangled
-- [ ] Three-address representation for low-level
+- [ ] Three-address representation for LLIR
   - [ ] Rework, needs to be better thought out
 - [ ] Fix issue #36, issue in vice with range-related codegen
   - [ ] `vice::vice::tests::range_test`
@@ -40,3 +45,6 @@
     - [ ] Shared set of files already covered
   - [ ] Workers Parse files and push the finished to somewhere
   - [ ] Concurrent String interner
+    - [ ] Dashmap-based
+- [ ] `no_std` RwLock and Mutex implementations
+- [ ] Fast concurrent queue

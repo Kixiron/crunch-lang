@@ -1,6 +1,9 @@
-use crunch_error::parse_prelude::codespan::FileId;
-use string_interner::Sym;
+use crate::symbol_table::SymbolTable;
 
+use crunch_error::parse_prelude::{FileId, ParserDiagnostic};
+use string_interner::{StringInterner, Sym};
+
+use core::ops;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
@@ -18,35 +21,88 @@ pub enum Program {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Location {
-    pub range: (u32, u32),
+    pub range: (usize, usize),
     pub file: FileId,
 }
 
 impl Location {
-    pub fn new(file: FileId, range: (u32, u32)) -> Self {
+    pub fn new(file: FileId, range: (usize, usize)) -> Self {
         Self { range, file }
+    }
+
+    pub fn range(&self) -> ops::Range<usize> {
+        self.range.0..self.range.1
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Decorator {
+    Inline,
+    Intrinsic,
+    Test,
+    Benchmark,
+    // TODO: Flesh out custom decorators
+    Custom,
+}
+
+#[derive(Debug, Clone)]
+pub enum Exposure {
+    CurrentLib,
+    CurrentFile,
+    All,
+}
+
+impl Default for Exposure {
+    fn default() -> Self {
+        Self::CurrentFile
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Attribute {
+    Exposure(Exposure),
+}
+
+impl Attribute {
+    pub fn is_exposure(&self) -> bool {
+        if let Self::Exposure(_) = self {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn as_exposure(self) -> Option<Exposure> {
+        if let Self::Exposure(exp) = self {
+            Some(exp)
+        } else {
+            None
+        }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct FunctionDecl {
-    pub visibility: Visibility,
+    pub decorators: Vec<Decorator>,
+    pub attributes: Vec<Attribute>,
     pub name: Sym,
     pub generics: Vec<Type>,
     pub arguments: Vec<(Sym, Type)>,
     pub returns: Type,
     pub body: Vec<Statement>,
-    pub abs_path: Vec<Sym>,
+    pub decl_loc: Location,
     pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypeDecl {
-    pub visibility: Visibility,
+    pub decorators: Vec<Decorator>,
+    pub attributes: Vec<Attribute>,
     pub name: Sym,
     pub generics: Vec<Type>,
-    pub members: Vec<(Visibility, Sym, Type)>,
+    pub members: Vec<(Exposure, Sym, Type)>,
     pub methods: Vec<FunctionDecl>,
+    pub decl_loc: Location,
     pub loc: Location,
 }
 
@@ -106,29 +162,6 @@ pub enum Exposes {
     All,
     File,
     Some(Vec<(Sym, Option<Sym>)>),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Visibility {
-    Library,
-    Exposed,
-    File,
-}
-
-impl ToString for Visibility {
-    fn to_string(&self) -> String {
-        match self {
-            Self::Library => "lib".to_string(),
-            Self::Exposed => "exposed".to_string(),
-            Self::File => String::new(),
-        }
-    }
-}
-
-impl Default for Visibility {
-    fn default() -> Self {
-        Self::File
-    }
 }
 
 #[derive(Debug, Clone)]

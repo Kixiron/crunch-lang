@@ -133,22 +133,23 @@ impl Vice {
                 };
 
                 let file_name = relative_path.to_string_lossy();
-                let import_ast =
-                    match crunch_parser::Parser::new(Some(&*file_name), &contents).parse() {
-                        Ok((ast, _diagnostics)) => {
-                            // TODO: Emit errors
-                            ast
-                        }
-                        Err(_err) => {
-                            // TODO: Emit errors
-                            return Err(CompileError::new(
-                                CompileErrorTy::CompilationError,
-                                format!("The dependency '{}' failed to compile", file_name),
-                            ));
-                        }
-                    };
-
-                self.interpret_module(import_ast)?;
+                todo!("What is going on here");
+                // let import_ast =
+                //     match crunch_parser::Parser::new(Some(&*file_name), &contents).parse() {
+                //         Ok((ast, _diagnostics)) => {
+                //             // TODO: Emit errors
+                //             ast
+                //         }
+                //         Err(_err) => {
+                //             // TODO: Emit errors
+                //             return Err(CompileError::new(
+                //                 CompileErrorTy::CompilationError,
+                //                 format!("The dependency '{}' failed to compile", file_name),
+                //             ));
+                //         }
+                //     };
+                //
+                // self.interpret_module(import_ast)?;
             }
             ImportSource::Package(_sym) => todo!("Package code loading"),
             ImportSource::Native(_sym) => todo!("Native code loading"),

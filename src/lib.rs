@@ -50,6 +50,7 @@ impl<'a> Crunch<'a> {
     /// Run a source file in the `.crunch` format
     #[inline]
     pub fn run_source_file(options: CrunchCli, path: &Path, stdout: Box<&'a mut dyn CrunchWrite>) {
+        /*
         trace!("Running Source File: {}", path.display());
 
         let source = {
@@ -105,7 +106,7 @@ impl<'a> Crunch<'a> {
 
                 let config = codespan_reporting::term::Config::default();
 
-                let mut files = codespan::Files::new();
+                let mut files = codespan_reporting::files::SimpleFiles::new();
                 files.add(
                     match path.file_name() {
                         Some(name) => name.to_str().unwrap_or("Crunch Source File"),
@@ -123,11 +124,13 @@ impl<'a> Crunch<'a> {
                 }
             }
         }
+        */
     }
 
     /// Run a byte file in the `.crunched` format
     #[inline]
     pub fn run_byte_file(options: CrunchCli, path: &Path, stdout: Box<&'a mut dyn CrunchWrite>) {
+        /*
         trace!("Running Compiled File: {}", path.display());
 
         let source = {
@@ -186,6 +189,7 @@ impl<'a> Crunch<'a> {
         if let Err(err) = Self::new(options, stdout).execute(&functions) {
             println!("{}", err);
         }
+        */
     }
 
     /*

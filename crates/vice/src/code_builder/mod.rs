@@ -1,7 +1,7 @@
 use compactor::Instruction;
 use crunch_error::compile_prelude::*;
 use crunch_parser::{
-    ast::Visibility,
+    ast::Exposure,
     string_interner::{StringInterner, Sym},
 };
 use std::collections::{HashMap, HashSet};
@@ -20,8 +20,8 @@ impl<T: Into<String> + AsRef<str>> Ident for T {}
 
 #[derive(Debug, Clone)]
 pub struct Namespace {
-    functions: HashMap<Sym, (Visibility, FunctionContext)>,
-    types: HashMap<Sym, (Visibility, TypeContext)>,
+    functions: HashMap<Sym, (Exposure, FunctionContext)>,
+    types: HashMap<Sym, (Exposure, TypeContext)>,
 }
 
 #[derive(Debug, Clone)]

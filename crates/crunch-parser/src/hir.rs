@@ -143,14 +143,8 @@ pub enum Hir {
 pub fn compile_hir(
     mangler: &mut Mangler,
     interner: &string_interner::StringInterner<Sym>,
-    FunctionDecl { body, abs_path, .. }: FunctionDecl,
-) -> (Vec<u8>, Vec<Hir>, usize) {
-    let mangled_name = mangler.mangle(
-        &abs_path
-            .iter()
-            .map(|seg| interner.resolve(*seg).unwrap())
-            .collect::<Vec<&str>>(),
-    );
+    FunctionDecl { body, .. }: FunctionDecl,
+) -> (Vec<Hir>, usize) {
     let mut hir = Vec::with_capacity(body.len());
     let mut next_orphan = 0;
     let mut symbols = HashMap::with_capacity(50);
@@ -159,7 +153,7 @@ pub fn compile_hir(
         hir.extend_from_slice(&compile_statement(stmt, &mut next_orphan, &mut symbols));
     }
 
-    (mangled_name, hir, next_orphan)
+    (hir, next_orphan)
 }
 
 /*

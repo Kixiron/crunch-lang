@@ -13,12 +13,18 @@ pub mod parse_prelude {
     pub extern crate codespan;
     pub extern crate codespan_reporting;
 
-    pub use codespan_reporting::diagnostic::{Diagnostic, Label, Severity};
+    pub use codespan_reporting::{
+        diagnostic::{Diagnostic, Label, Severity},
+        files::SimpleFiles,
+    };
     pub use log::{error, info, trace, warn};
 
-    pub type ParseResult<T> = core::result::Result<T, Diagnostic>;
+    pub type FileId = usize;
+    pub type ParserDiagnostic = Diagnostic<FileId>;
+    pub type ParseResult<T> = core::result::Result<T, ParserDiagnostic>;
 
     // TODO: Air-gapped way to make compile errors not reliant on codespan
+    // TODO: Custom `Files` implementation for codespan
 }
 
 pub mod compile_prelude {

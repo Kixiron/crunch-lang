@@ -2,7 +2,7 @@ use super::{CodeBuilder, FunctionContext};
 
 use crunch_error::compile_prelude::*;
 use crunch_parser::{
-    ast::{Type, Visibility},
+    ast::{Exposure, Type},
     string_interner::Sym,
 };
 
@@ -11,8 +11,8 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub struct TypeContext {
     name: Sym,
-    members: HashMap<Sym, (Visibility, Type)>,
-    methods: HashMap<Sym, (Visibility, FunctionContext)>,
+    members: HashMap<Sym, (Exposure, Type)>,
+    methods: HashMap<Sym, (Exposure, FunctionContext)>,
 }
 
 impl TypeContext {
@@ -25,7 +25,7 @@ impl TypeContext {
         }
     }
 
-    pub fn add_member(&mut self, name: Sym, visibility: Visibility, ty: Type) -> &mut Self {
+    pub fn add_member(&mut self, name: Sym, visibility: Exposure, ty: Type) -> &mut Self {
         self.members.insert(name, (visibility, ty));
 
         self
@@ -35,7 +35,7 @@ impl TypeContext {
         &mut self,
         builder: &mut CodeBuilder,
         name: Sym,
-        visibility: Visibility,
+        visibility: Exposure,
         method: M,
     ) -> CompileResult<&mut Self>
     where

@@ -1,6 +1,9 @@
+use core::{fmt, ops};
 use logos::{Lexer, Logos};
 
-#[derive(Logos, Debug, PartialEq, Eq, Clone, Copy)]
+// TODO: Organize all this
+
+#[derive(Logos, Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum TokenType {
     #[regex = "[^ \t\n\r\"\'!@#$%\\^&*()-+=,.<>/?;:\\[\\]{}\\\\|`~]+"]
     Ident,
@@ -18,6 +21,10 @@ pub enum TokenType {
     End,
     #[error]
     Error,
+    #[token = "@"]
+    AtSign,
+    #[token = "!"]
+    Bang,
     #[token = ","]
     Comma,
     #[token = ";"]
@@ -48,6 +55,12 @@ pub enum TokenType {
     RightBrace,
     #[token = "/"]
     Divide,
+    #[token = "%"]
+    Modulo,
+    #[token = "<<"]
+    Shl,
+    #[token = ">>"]
+    Shr,
     #[token = "*"]
     Star,
     #[token = "loop"]
@@ -127,11 +140,17 @@ pub enum TokenType {
     Break,
     #[token = "type"]
     Type,
+    #[token = "or"]
+    Or,
+    #[token = "and"]
+    And,
 }
 
 impl std::fmt::Display for TokenType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let string = match self {
+            Self::Or => "or",
+            Self::And => "and",
             Self::Type => "type",
             Self::End => "EOF",
             Self::Error => "Error",
@@ -141,6 +160,11 @@ impl std::fmt::Display for TokenType {
             Self::In => "in",
             Self::Dot => ".",
             Self::Colon => ":",
+            Self::AtSign => "@",
+            Self::Bang => "!",
+            Self::Modulo => "%",
+            Self::Shl => "<<",
+            Self::Shr => ">>",
             Self::Semicolon => ";",
             Self::Minus => "-",
             Self::Equal => "=",
@@ -296,21 +320,33 @@ impl<'a> Iterator for TokenStream<'a> {
 pub struct Token<'a> {
     pub ty: TokenType,
     pub source: &'a str,
-    pub range: (u32, u32),
+    pub range: (usize, usize),
 }
 
 impl<'a> Token<'a> {
-    pub const fn new(ty: TokenType, source: &'a str, range: std::ops::Range<usize>) -> Self {
+    pub const fn new(ty: TokenType, source: &'a str, range: ops::Range<usize>) -> Self {
         Self {
             ty,
             source,
-            range: (range.start as u32, range.end as u32),
+            range: (range.start, range.end),
         }
+    }
+
+    pub const fn ty(&self) -> TokenType {
+        self.ty
+    }
+
+    pub const fn range(&self) -> ops::Range<usize> {
+        self.range.0..self.range.1
+    }
+
+    pub const fn source(&self) -> &'a str {
+        self.source
     }
 }
 
-impl<'a> std::fmt::Debug for Token<'a> {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<'a> fmt::Debug for Token<'a> {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_struct("Token")
             .field("ty", &self.ty)
             .field("source", &self.source)
