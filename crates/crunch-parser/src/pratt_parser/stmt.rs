@@ -1,5 +1,7 @@
 use super::*;
 
+// TODO: Use arenas over Boxes
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     If {
@@ -12,10 +14,46 @@ pub enum Statement {
     Return(Option<Expression>),
     Break(Option<Expression>),
     Continue,
+    While {
+        condition: Expression,
+        body: Vec<Statement>,
+        then: Option<Vec<Statement>>,
+    },
+    Loop {
+        body: Vec<Statement>,
+        then: Option<Vec<Statement>>,
+    },
+    For {
+        var: Expression,
+        condition: Expression,
+        body: Vec<Statement>,
+        then: Option<Vec<Statement>>,
+    },
+    Match {
+        var: Expression,
+        arms: Vec<(Sym, Option<Expression>, Vec<Statement>)>,
+    },
+    Empty,
 }
+
+// TODO: Type ascription
 
 /// Statement parsing
 impl<'a> Parser<'a> {
+    pub(super) fn statements(
+        &mut self,
+        breaks: &[TokenType],
+        capacity: usize,
+    ) -> ParseResult<Vec<Statement>> {
+        let mut statements = Vec::with_capacity(capacity);
+        while !breaks.contains(&self.peek()?.ty()) {
+            statements.push(self.stmt()?);
+        }
+        statements.shrink_to_fit();
+
+        Ok(statements)
+    }
+
     pub(super) fn stmt(&mut self) -> ParseResult<Statement> {
         match self.peek()?.ty() {
             TokenType::If => self.if_stmt(),
@@ -27,10 +65,7 @@ impl<'a> Parser<'a> {
 
             TokenType::Let => {
                 self.eat(TokenType::Let)?;
-                let var = {
-                    let source = self.eat(TokenType::Ident)?.source();
-                    self.intern_string(source)
-                };
+                let var = self.eat_ident()?;
 
                 self.eat(TokenType::Equal)?;
                 let expr = self.expr()?;
@@ -40,9 +75,13 @@ impl<'a> Parser<'a> {
                 Ok(Statement::VarDeclaration(var, expr))
             }
 
-            TokenType::While => todo!(),
-            TokenType::Loop => todo!(),
-            TokenType::For => todo!(),
+            TokenType::Match => self.match_stmt(),
+
+            TokenType::While => self.while_stmt(),
+
+            TokenType::Loop => self.loop_stmt(),
+
+            TokenType::For => self.for_stmt(),
 
             TokenType::Return => {
                 self.eat(TokenType::Return)?;
@@ -81,13 +120,15 @@ impl<'a> Parser<'a> {
                 Ok(Statement::Continue)
             }
 
-            // Covers function calls & Assignments
+            // Covers function calls & assignments
             TokenType::Ident => {
                 let expr = self.expr()?;
                 self.eat(TokenType::Newline)?;
 
                 Ok(Statement::Expression(expr))
             }
+
+            TokenType::Empty => Ok(Statement::Empty),
 
             t => unimplemented!("{:?}", t),
         }
@@ -98,10 +139,7 @@ impl<'a> Parser<'a> {
         let condition = self.expr()?;
         self.eat(TokenType::Newline)?;
 
-        let mut body = Vec::with_capacity(3);
-        while self.peek()?.ty() != TokenType::Else && self.peek()?.ty() != TokenType::End {
-            body.push(self.stmt()?);
-        }
+        let body = self.statements(&[TokenType::End, TokenType::Else], 10)?;
 
         let next = self.next()?;
         let arm = if next.ty() == TokenType::Else && self.peek()?.ty() == TokenType::If {
@@ -109,10 +147,7 @@ impl<'a> Parser<'a> {
         } else if next.ty() == TokenType::Else {
             self.eat(TokenType::Newline)?;
 
-            let mut body = Vec::with_capacity(3);
-            while self.peek()?.ty() != TokenType::Else && self.peek()?.ty() != TokenType::End {
-                body.push(self.stmt()?);
-            }
+            let body = self.statements(&[TokenType::End, TokenType::Else], 10)?;
 
             Some(Box::new(Statement::If {
                 condition: Expression::Literal(Literal::Bool(true)),
@@ -130,5 +165,102 @@ impl<'a> Parser<'a> {
             body,
             arm,
         })
+    }
+
+    fn match_stmt(&mut self) -> ParseResult<Statement> {
+        self.eat(TokenType::Match)?;
+        let var = self.expr()?;
+        self.eat(TokenType::Newline)?;
+
+        let mut arms = Vec::with_capacity(3);
+        while self.peek()?.ty() != TokenType::End {
+            let capture = self.eat_ident()?;
+
+            let guard = if self.peek()?.ty() == TokenType::Where {
+                self.eat(TokenType::Where)?;
+                Some(self.expr()?)
+            } else {
+                None
+            };
+            self.eat(TokenType::RightRocket)?;
+            self.eat(TokenType::Newline)?;
+
+            let body = self.statements(&[TokenType::End], 5)?;
+
+            self.eat(TokenType::End)?;
+            self.eat(TokenType::Newline)?;
+
+            arms.push((capture, guard, body));
+        }
+        arms.shrink_to_fit();
+
+        self.eat(TokenType::End)?;
+
+        Ok(Statement::Match { var, arms })
+    }
+
+    fn while_stmt(&mut self) -> ParseResult<Statement> {
+        self.eat(TokenType::While)?;
+        let condition = self.expr()?;
+        self.eat(TokenType::Newline)?;
+
+        let body = self.statements(&[TokenType::End, TokenType::Then], 10)?;
+        let then = self.then_stmt()?;
+
+        self.eat(TokenType::End)?;
+
+        Ok(Statement::While {
+            condition,
+            body,
+            then,
+        })
+    }
+
+    fn loop_stmt(&mut self) -> ParseResult<Statement> {
+        self.eat(TokenType::Loop)?;
+        self.eat(TokenType::Newline)?;
+
+        let body = self.statements(&[TokenType::End, TokenType::Then], 10)?;
+        let then = self.then_stmt()?;
+
+        self.eat(TokenType::End)?;
+
+        Ok(Statement::Loop { body, then })
+    }
+
+    fn for_stmt(&mut self) -> ParseResult<Statement> {
+        self.eat(TokenType::For)?;
+        let var = self.expr()?;
+        self.eat(TokenType::In)?;
+        let condition = self.expr()?;
+        self.eat(TokenType::Newline)?;
+
+        let mut body = self.statements(&[TokenType::End, TokenType::Then], 10)?;
+        let then = self.then_stmt()?;
+
+        Ok(Statement::For {
+            var,
+            condition,
+            body,
+            then,
+        })
+    }
+
+    fn then_stmt(&mut self) -> ParseResult<Option<Vec<Statement>>> {
+        Ok(if self.peek()?.ty == TokenType::Then {
+            self.eat(TokenType::Then)?;
+            self.eat(TokenType::Newline)?;
+
+            let then = self.statements(&[TokenType::End, TokenType::Then], 3)?;
+
+            Some(then)
+        } else {
+            None
+        })
+    }
+
+    fn eat_ident(&mut self) -> ParseResult<Sym> {
+        let source = self.eat(TokenType::Ident)?.source();
+        Ok(self.intern_string(source))
     }
 }

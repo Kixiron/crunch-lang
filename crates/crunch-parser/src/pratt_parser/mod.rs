@@ -13,8 +13,12 @@ mod stmt;
 mod tests;
 
 pub use ast::Ast;
-pub use expr::{BinaryOperand, ComparisonOperand, Expression, Literal, PrefixOperand};
+pub use expr::{
+    AssignmentType, BinaryOperand, ComparisonOperand, Expression, Literal, UnaryOperand,
+};
 pub use stmt::Statement;
+
+// TODO: Make the parser a little more lax, it's kinda strict about whitespace
 
 pub struct Parser<'a> {
     token_stream: TokenStream<'a>,
@@ -149,7 +153,7 @@ impl From<usize> for Sym {
 #[derive(Debug, Copy, Clone, PartialEq)]
 #[rustfmt::skip]
 pub enum BinaryPrecedence {
-    Mul, Div, Mod,
+    Mul, Div, Mod, Pow,
     Add, Sub,
     Shl, Shr,
     Less, Greater, LessEq, GreaterEq,
@@ -166,7 +170,7 @@ pub enum BinaryPrecedence {
 impl BinaryPrecedence {
     pub fn precedence(self) -> usize {
         match self {
-            Self::Mul | Self::Div | Self::Mod => 11,
+            Self::Mul | Self::Div | Self::Mod | Self::Pow => 11,
             Self::Add | Self::Sub => 10,
             Self::Shl | Self::Shr => 9,
             Self::Less | Self::Greater | Self::LessEq | Self::GreaterEq => 8,
@@ -190,6 +194,7 @@ impl TryFrom<TokenType> for BinaryPrecedence {
             TokenType::Star => Self::Mul,
             TokenType::Divide => Self::Div,
             TokenType::Modulo => Self::Mod,
+            TokenType::DoubleStar => Self::Pow,
             TokenType::Plus => Self::Add,
             TokenType::Minus => Self::Sub,
             TokenType::Shl => Self::Shl,
@@ -205,7 +210,17 @@ impl TryFrom<TokenType> for BinaryPrecedence {
             TokenType::Pipe => Self::BitOr,
             TokenType::And => Self::LogAnd,
             TokenType::Or => Self::LogOr,
-            TokenType::Equal => Self::Assignment,
+            TokenType::Equal
+            | TokenType::AddAssign
+            | TokenType::SubAssign
+            | TokenType::MultAssign
+            | TokenType::DivAssign
+            | TokenType::ModAssign
+            | TokenType::ShlAssign
+            | TokenType::ShrAssign
+            | TokenType::OrAssign
+            | TokenType::AndAssign
+            | TokenType::XorAssign => Self::Assignment,
             TokenType::If => Self::Ternary,
 
             _ => return Err(()),

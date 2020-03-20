@@ -10,7 +10,7 @@ use core::convert::TryFrom;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     Variable(Sym),
-    PrefixExpr(PrefixOperand, Box<Expression>),
+    UnaryExpr(UnaryOperand, Box<Expression>),
     BinaryOp(Box<Expression>, BinaryOperand, Box<Expression>),
     InlineConditional {
         true_arm: Box<Expression>,
@@ -29,7 +29,6 @@ pub enum Expression {
         index: Box<Expression>,
     },
     Array(Vec<Expression>),
-    // TODO: Actually parse out assignments
     Assignment(Box<Expression>, AssignmentType, Box<Expression>),
 }
 
@@ -37,6 +36,30 @@ pub enum Expression {
 pub enum AssignmentType {
     Normal,
     BinaryOp(BinaryOperand),
+}
+
+impl TryFrom<TokenType> for AssignmentType {
+    type Error = ();
+
+    fn try_from(ty: TokenType) -> Result<Self, Self::Error> {
+        Ok(match ty {
+            TokenType::Equal => Self::Normal,
+
+            TokenType::AddAssign => Self::BinaryOp(BinaryOperand::Add),
+            TokenType::SubAssign => Self::BinaryOp(BinaryOperand::Sub),
+            TokenType::MultAssign => Self::BinaryOp(BinaryOperand::Mult),
+            TokenType::DivAssign => Self::BinaryOp(BinaryOperand::Div),
+            TokenType::ModAssign => Self::BinaryOp(BinaryOperand::Mod),
+            TokenType::PowAssign => Self::BinaryOp(BinaryOperand::Pow),
+            TokenType::ShlAssign => Self::BinaryOp(BinaryOperand::Shl),
+            TokenType::ShrAssign => Self::BinaryOp(BinaryOperand::Shr),
+            TokenType::OrAssign => Self::BinaryOp(BinaryOperand::BitOr),
+            TokenType::AndAssign => Self::BinaryOp(BinaryOperand::BitAnd),
+            TokenType::XorAssign => Self::BinaryOp(BinaryOperand::BitXor),
+
+            _ => return Err(()),
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -89,14 +112,15 @@ impl<'a> TryFrom<&Token<'a>> for Literal {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOperand {
-    Plus,
-    Minus,
+    Add,
+    Sub,
     Mult,
-    Divide,
-    Modulo,
-    BitwiseAnd,
-    BitwiseOr,
-    BitwiseXor,
+    Div,
+    Mod,
+    Pow,
+    BitAnd,
+    BitOr,
+    BitXor,
     Shl,
     Shr,
 }
@@ -106,14 +130,15 @@ impl TryFrom<TokenType> for BinaryOperand {
 
     fn try_from(ty: TokenType) -> Result<Self, Self::Error> {
         Ok(match ty {
-            TokenType::Plus => Self::Plus,
-            TokenType::Minus => Self::Minus,
+            TokenType::Plus => Self::Add,
+            TokenType::Minus => Self::Sub,
             TokenType::Star => Self::Mult,
-            TokenType::Divide => Self::Divide,
-            TokenType::Modulo => Self::Modulo,
-            TokenType::Ampersand => Self::BitwiseAnd,
-            TokenType::Pipe => Self::BitwiseOr,
-            TokenType::Caret => Self::BitwiseXor,
+            TokenType::Divide => Self::Div,
+            TokenType::Modulo => Self::Mod,
+            TokenType::DoubleStar => Self::Pow,
+            TokenType::Ampersand => Self::BitAnd,
+            TokenType::Pipe => Self::BitOr,
+            TokenType::Caret => Self::BitXor,
             TokenType::Shl => Self::Shl,
             TokenType::Shr => Self::Shr,
 
@@ -123,16 +148,18 @@ impl TryFrom<TokenType> for BinaryOperand {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum PrefixOperand {
+pub enum UnaryOperand {
+    Positive,
     Negative,
     Not,
 }
 
-impl TryFrom<TokenType> for PrefixOperand {
+impl TryFrom<TokenType> for UnaryOperand {
     type Error = (); // TODO: Maybe should be Diagnostic?
 
     fn try_from(ty: TokenType) -> Result<Self, Self::Error> {
         Ok(match ty {
+            TokenType::Plus => Self::Positive,
             TokenType::Minus => Self::Negative,
             TokenType::Bang => Self::Not,
 
@@ -201,12 +228,12 @@ impl<'a> Parser<'a> {
             },
 
             // Prefix Operators
-            TokenType::Minus | TokenType::Bang => |parser, token| {
+            TokenType::Minus | TokenType::Bang | TokenType::Plus => |parser, token| {
                 trace!("Prefix Operators");
                 let operand = Box::new(parser.expr()?);
 
-                Ok(Expression::PrefixExpr(
-                    PrefixOperand::try_from(token.ty()).unwrap(),
+                Ok(Expression::UnaryExpr(
+                    UnaryOperand::try_from(token.ty()).unwrap(),
                     operand,
                 ))
             },
@@ -243,6 +270,7 @@ impl<'a> Parser<'a> {
 
                     break;
                 }
+                elements.shrink_to_fit();
                 parser.eat(TokenType::RightBrace)?;
 
                 Ok(Expression::Array(elements))
@@ -255,10 +283,79 @@ impl<'a> Parser<'a> {
     fn postfix(ty: TokenType) -> Option<PostfixParselet<'a>> {
         Some(match ty {
             // Function calls
-            TokenType::LeftParen => Self::function_call,
+            TokenType::LeftParen => |parser, _left_paren, caller| {
+                trace!("Postfix Function Call");
+
+                let mut arguments = Vec::with_capacity(5);
+                loop {
+                    if let Ok(peek) = parser.peek() {
+                        if peek.ty() != TokenType::RightParen {
+                            arguments.push(parser.expr()?);
+
+                            if let Ok(peek) = parser.peek() {
+                                if peek.ty() == TokenType::Comma {
+                                    parser.eat(TokenType::Comma)?;
+                                    continue;
+                                }
+                            }
+
+                            break;
+                        }
+                    }
+
+                    break;
+                }
+                arguments.shrink_to_fit();
+                parser.eat(TokenType::RightParen)?;
+
+                Ok(Expression::FunctionCall {
+                    caller: Box::new(caller),
+                    arguments,
+                })
+            },
+
+            // Dotted function calls
+            TokenType::Dot => |parser, _dot, expr| {
+                trace!("Postfix Dotted Function Call");
+
+                let mut caller = parser.expr()?;
+                if let Expression::FunctionCall {
+                    caller: _,
+                    ref mut arguments,
+                } = caller
+                {
+                    arguments.reserve(1);
+                    arguments.insert(0, expr);
+                } else {
+                    todo!("Error?");
+                }
+
+                Ok(caller)
+            },
 
             // Array indexing
             TokenType::LeftBrace => Self::index_array,
+
+            // Assignments
+            TokenType::Equal
+            | TokenType::AddAssign
+            | TokenType::SubAssign
+            | TokenType::MultAssign
+            | TokenType::DivAssign
+            | TokenType::ModAssign
+            | TokenType::PowAssign
+            | TokenType::ShlAssign
+            | TokenType::ShrAssign
+            | TokenType::OrAssign
+            | TokenType::AndAssign
+            | TokenType::XorAssign => |parser, assign, left| {
+                trace!("Postfix assignment");
+
+                let assign = AssignmentType::try_from(assign.ty()).unwrap();
+                let right = Box::new(parser.expr()?);
+
+                Ok(Expression::Assignment(Box::new(left), assign, right))
+            },
 
             _ => return None,
         })
@@ -272,6 +369,7 @@ impl<'a> Parser<'a> {
             | TokenType::Star
             | TokenType::Divide
             | TokenType::Modulo
+            | TokenType::DoubleStar
             | TokenType::Ampersand
             | TokenType::Pipe
             | TokenType::Caret
@@ -318,9 +416,6 @@ impl<'a> Parser<'a> {
                 })
             },
 
-            // Function calls
-            TokenType::LeftParen => Self::function_call,
-
             // Array indexing
             TokenType::LeftBrace => Self::index_array,
 
@@ -328,37 +423,11 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn function_call(&mut self, _: Token<'a>, caller: Expression) -> ParseResult<Expression> {
-        trace!("Function Call");
-
-        let mut arguments = Vec::with_capacity(5);
-        loop {
-            if let Ok(peek) = self.peek() {
-                if peek.ty() != TokenType::RightParen {
-                    arguments.push(self.expr()?);
-
-                    if let Ok(peek) = self.peek() {
-                        if peek.ty() == TokenType::Comma {
-                            self.eat(TokenType::Comma)?;
-                            continue;
-                        }
-                    }
-
-                    break;
-                }
-            }
-
-            break;
-        }
-        self.eat(TokenType::RightParen)?;
-
-        Ok(Expression::FunctionCall {
-            caller: Box::new(caller),
-            arguments,
-        })
-    }
-
-    fn index_array(&mut self, _: Token<'a>, array: Expression) -> ParseResult<Expression> {
+    fn index_array(
+        &mut self,
+        _left_bracket: Token<'a>,
+        array: Expression,
+    ) -> ParseResult<Expression> {
         trace!("Index Array");
 
         let index = Box::new(self.expr()?);

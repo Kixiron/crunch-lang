@@ -5,65 +5,36 @@ use logos::{Lexer, Logos};
 
 #[derive(Logos, Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum TokenType {
+    #[end]
+    EOF,
+    #[error]
+    Error,
+
     #[regex = "[a-zA-Z_][a-zA-Z0-9_]*"]
     Ident,
-    #[regex = "\"[^\"]*\""]
-    #[regex = "'[^']*'"]
-    String,
-    #[regex = "[1234567890]+"]
-    Int,
+
     #[regex = "::[^\r\n]*"]
     #[regex = "::[^\n]*"]
     Comment,
     #[token = "\n"]
     #[token = "\r\n"]
     Newline,
-    #[end]
-    EOF,
-    #[error]
-    Error,
-    #[token = "@"]
-    AtSign,
-    #[token = "!"]
-    Bang,
-    #[token = ","]
-    Comma,
-    #[token = ";"]
-    Semicolon,
+    #[token = " "]
+    Space,
+
+    #[regex = "\"[^\"]*\""]
+    #[regex = "'[^']*'"]
+    String,
+    #[regex = "[1234567890]+"]
+    Int,
+    #[token = "true"]
+    #[token = "false"]
+    Bool,
+
     #[token = "in"]
     In,
     #[token = "let"]
     Let,
-    #[token = "+"]
-    Plus,
-    #[token = ":"]
-    Colon,
-    #[token = "-"]
-    Minus,
-    #[token = "="]
-    Equal,
-    #[token = "=="]
-    IsEqual,
-    #[token = "!="]
-    IsNotEqual,
-    #[token = ">="]
-    GreaterThanEqual,
-    #[token = "<="]
-    LessThanEqual,
-    #[token = "["]
-    LeftBrace,
-    #[token = "]"]
-    RightBrace,
-    #[token = "/"]
-    Divide,
-    #[token = "%"]
-    Modulo,
-    #[token = "<<"]
-    Shl,
-    #[token = ">>"]
-    Shr,
-    #[token = "*"]
-    Star,
     #[token = "loop"]
     Loop,
     #[token = "while"]
@@ -74,29 +45,6 @@ pub enum TokenType {
     Else,
     #[token = "fn"]
     Function,
-    #[token = "("]
-    LeftParen,
-    #[token = ")"]
-    RightParen,
-    #[token = "{"]
-    LeftBracket,
-    #[token = "}"]
-    RightBracket,
-    #[token = " "]
-    Space,
-    #[token = "->"]
-    RightArrow,
-    #[token = "<-"]
-    LeftArrow,
-    #[token = "true"]
-    #[token = "false"]
-    Bool,
-    #[token = "@print"]
-    Print,
-    #[token = "@collect"]
-    Collect,
-    #[token = "@halt"]
-    Halt,
     #[token = "import"]
     Import,
     #[token = "exposing"]
@@ -105,26 +53,12 @@ pub enum TokenType {
     Export,
     #[token = "as"]
     As,
-    #[token = "@exit"]
-    SyscallExit,
     #[token = "lib"]
     Library,
     #[token = "end"]
     End,
-    #[token = "<"]
-    LeftCaret,
-    #[token = ">"]
-    RightCaret,
-    #[token = "|"]
-    Pipe,
-    #[token = "&"]
-    Ampersand,
     #[token = "bin"]
     Binary,
-    #[token = "^"]
-    Caret,
-    #[token = "."]
-    Dot,
     #[token = "exposed"]
     Exposed,
     #[token = "empty"]
@@ -145,71 +79,125 @@ pub enum TokenType {
     Or,
     #[token = "and"]
     And,
+    #[token = "match"]
+    Match,
+    #[token = "where"]
+    Where,
+
+    #[token = "="]
+    Equal,
+    #[token = "+="]
+    AddAssign,
+    #[token = "-="]
+    SubAssign,
+    #[token = "*="]
+    MultAssign,
+    #[token = "/="]
+    DivAssign,
+    #[token = "%="]
+    ModAssign,
+    #[token = "**="]
+    PowAssign,
+    #[token = "<<="]
+    ShlAssign,
+    #[token = ">>="]
+    ShrAssign,
+    #[token = "|="]
+    OrAssign,
+    #[token = "&="]
+    AndAssign,
+    #[token = "^="]
+    XorAssign,
+
+    #[token = "=="]
+    IsEqual,
+    #[token = "!="]
+    IsNotEqual,
+    #[token = ">="]
+    GreaterThanEqual,
+    #[token = "<="]
+    LessThanEqual,
+    #[token = "<"]
+    LeftCaret,
+    #[token = ">"]
+    RightCaret,
+
+    #[token = "!"]
+    Bang,
+
+    #[token = "+"]
+    Plus,
+    #[token = "-"]
+    Minus,
+    #[token = "/"]
+    Divide,
+    #[token = "*"]
+    Star,
+    #[token = "%"]
+    Modulo,
+    #[token = "**"]
+    DoubleStar,
+    #[token = "<<"]
+    Shl,
+    #[token = ">>"]
+    Shr,
+    #[token = "|"]
+    Pipe,
+    #[token = "&"]
+    Ampersand,
+    #[token = "^"]
+    Caret,
+
+    #[token = "["]
+    LeftBrace,
+    #[token = "]"]
+    RightBrace,
+    #[token = "("]
+    LeftParen,
+    #[token = ")"]
+    RightParen,
+    #[token = "{"]
+    LeftBracket,
+    #[token = "}"]
+    RightBracket,
+    #[token = "->"]
+    RightArrow,
+    #[token = "<-"]
+    LeftArrow,
+    #[token = "=>"]
+    RightRocket,
+
+    #[token = "@"]
+    AtSign,
+    #[token = ","]
+    Comma,
+    #[token = ";"]
+    Semicolon,
+    #[token = ":"]
+    Colon,
+    #[token = "."]
+    Dot,
+    #[token = ".."]
+    DoubleDot,
 }
 
 impl std::fmt::Display for TokenType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let string = match self {
-            Self::Or => "or",
-            Self::And => "and",
-            Self::Type => "type",
             Self::EOF => "EOF",
             Self::Error => "Error",
-            Self::Comma => ",",
-            Self::Let => "let",
-            Self::Plus => "+",
-            Self::In => "in",
-            Self::Dot => ".",
-            Self::Colon => ":",
-            Self::AtSign => "@",
-            Self::Bang => "!",
-            Self::Modulo => "%",
-            Self::Shl => "<<",
-            Self::Shr => ">>",
-            Self::Semicolon => ";",
-            Self::Minus => "-",
-            Self::Equal => "=",
-            Self::IsEqual => "==",
-            Self::IsNotEqual => "!=",
-            Self::GreaterThanEqual => ">=",
-            Self::LessThanEqual => "<=",
-            Self::LeftBrace => "[",
-            Self::RightBrace => "]",
-            Self::Divide => "/",
-            Self::Star => "*",
-            Self::Pipe => "|",
-            Self::Caret => "^",
-            Self::Ampersand => "&",
-            Self::Loop => "loop",
-            Self::While => "while",
-            Self::If => "if",
-            Self::Else => "else",
-            Self::Function => "fn",
-            Self::LeftParen => "(",
-            Self::RightParen => ")",
-            Self::LeftBracket => "{",
-            Self::RightBracket => "}",
+
             Self::Ident => "Ident",
-            Self::Int => "int",
-            Self::String => "str",
-            Self::Space => " ",
+
             Self::Comment => "Comment",
             Self::Newline => "Newline",
-            Self::RightArrow => "->",
-            Self::LeftArrow => "<-",
+            Self::Space => " ",
+
+            Self::String => "str",
+            Self::Int => "int",
             Self::Bool => "bool",
-            Self::Print => "@print",
-            Self::Collect => "@collect",
-            Self::Halt => "@halt",
-            Self::Import => "import",
-            Self::Exposing => "exposing",
-            Self::Export => "export",
-            Self::As => "as",
-            Self::SyscallExit => "@exit",
-            Self::Library => "lib",
-            Self::End => "end",
-            Self::LeftCaret => "<",
-            Self::RightCaret => ">",
+
+            Self::Let => "let",
             Self::Return => "return",
             Self::Continue => "continue",
             Self::Break => "break",
@@ -218,6 +206,74 @@ impl std::fmt::Display for TokenType {
             Self::Empty => "empty",
             Self::Then => "then",
             Self::For => "for",
+            Self::Or => "or",
+            Self::And => "and",
+            Self::Type => "type",
+            Self::Loop => "loop",
+            Self::While => "while",
+            Self::If => "if",
+            Self::Else => "else",
+            Self::Function => "fn",
+            Self::Import => "import",
+            Self::Exposing => "exposing",
+            Self::Export => "export",
+            Self::As => "as",
+            Self::Library => "lib",
+            Self::End => "end",
+            Self::In => "in",
+            Self::Match => "match",
+            Self::Where => "where",
+
+            Self::Equal => "=",
+            Self::AddAssign => "+=",
+            Self::SubAssign => "-=",
+            Self::MultAssign => "*=",
+            Self::DivAssign => "/=",
+            Self::ModAssign => "%=",
+            Self::PowAssign => "**=",
+            Self::ShlAssign => "<<=",
+            Self::ShrAssign => ">>=",
+            Self::OrAssign => "|=",
+            Self::AndAssign => "&=",
+            Self::XorAssign => "^=",
+
+            Self::IsEqual => "==",
+            Self::IsNotEqual => "!=",
+            Self::GreaterThanEqual => ">=",
+            Self::LessThanEqual => "<=",
+            Self::LeftCaret => "<",
+            Self::RightCaret => ">",
+
+            Self::Bang => "!",
+
+            Self::Plus => "+",
+            Self::Minus => "-",
+            Self::Divide => "/",
+            Self::Star => "*",
+            Self::Modulo => "%",
+            Self::DoubleStar => "**",
+            Self::Pipe => "|",
+            Self::Caret => "^",
+            Self::Ampersand => "&",
+            Self::Shl => "<<",
+            Self::Shr => ">>",
+
+            Self::LeftBrace => "[",
+            Self::RightBrace => "]",
+            Self::LeftParen => "(",
+            Self::RightParen => ")",
+            Self::LeftBracket => "{",
+            Self::RightBracket => "}",
+            Self::RightArrow => "->",
+            Self::LeftArrow => "<-",
+            Self::RightRocket => "=>",
+
+            Self::AtSign => "@",
+            Self::Comma => ",",
+            Self::Semicolon => ";",
+            Self::Colon => ":",
+            Self::Dot => ".",
+            Self::DoubleDot => "..",
         };
 
         write!(f, "{}", string)

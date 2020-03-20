@@ -41,18 +41,18 @@ fn parse_stmt<'a>(source: &'a str, idents: Vec<&str>) -> Option<Statement> {
 }
 
 #[test]
-fn expressions() {
+fn expr() {
     assert_eq!(
-        Some(Expression::PrefixExpr(
-            PrefixOperand::Not,
+        Some(Expression::UnaryExpr(
+            UnaryOperand::Not,
             Box::new(Expression::BinaryOp(
                 Box::new(Expression::Literal(Literal::I32(5))),
-                BinaryOperand::Plus,
-                Box::new(Expression::PrefixExpr(
-                    PrefixOperand::Negative,
+                BinaryOperand::Add,
+                Box::new(Expression::UnaryExpr(
+                    UnaryOperand::Negative,
                     Box::new(Expression::BinaryOp(
                         Box::new(Expression::Literal(Literal::I32(10))),
-                        BinaryOperand::Divide,
+                        BinaryOperand::Div,
                         Box::new(Expression::BinaryOp(
                             Box::new(Expression::Parenthesised(Box::new(Expression::BinaryOp(
                                 Box::new(Expression::FunctionCall {
@@ -62,14 +62,14 @@ fn expressions() {
                                         Expression::Variable(1.into())
                                     ]
                                 }),
-                                BinaryOperand::Modulo,
+                                BinaryOperand::Mod,
                                 Box::new(Expression::InlineConditional {
                                     true_arm: Box::new(Expression::Literal(Literal::I32(200))),
                                     condition: Box::new(Expression::Literal(Literal::I32(10))),
                                     false_arm: Box::new(Expression::Literal(Literal::I32(52))),
                                 })
                             )))),
-                            BinaryOperand::Minus,
+                            BinaryOperand::Sub,
                             Box::new(Expression::Parenthesised(Box::new(Expression::Literal(
                                 Literal::Bool(true)
                             ))))
@@ -86,7 +86,7 @@ fn expressions() {
 }
 
 #[test]
-fn single_paren() {
+fn single_paren_expr() {
     assert_eq!(
         Some(Expression::Comparison(
             Box::new(Expression::Literal(Literal::I32(10))),
@@ -100,7 +100,7 @@ fn single_paren() {
 }
 
 #[test]
-fn index_array() {
+fn index_array_expr() {
     assert_eq!(
         Some(Expression::IndexArray {
             array: Box::new(Expression::Variable(0.into())),
@@ -111,14 +111,14 @@ fn index_array() {
 }
 
 #[test]
-fn array_literal() {
+fn array_literal_expr() {
     assert_eq!(
         Some(Expression::Array(vec![
             Expression::Literal(Literal::Bool(true)),
             Expression::Variable(0.into()),
             Expression::BinaryOp(
                 Box::new(Expression::Literal(Literal::I32(100))),
-                BinaryOperand::Divide,
+                BinaryOperand::Div,
                 Box::new(Expression::Literal(Literal::I32(5)))
             )
         ])),
@@ -127,7 +127,7 @@ fn array_literal() {
 }
 
 #[test]
-fn comparisons() {
+fn comparisons_expr() {
     let ten = Box::new(Expression::Literal(Literal::I32(10)));
     let nine = Box::new(Expression::Literal(Literal::I32(9)));
 
@@ -139,6 +139,7 @@ fn comparisons() {
         )),
         parse_expr("10 > 9", Vec::new())
     );
+
     assert_eq!(
         Some(Expression::Comparison(
             ten.clone(),
@@ -147,6 +148,7 @@ fn comparisons() {
         )),
         parse_expr("10 < 9", Vec::new())
     );
+
     assert_eq!(
         Some(Expression::Comparison(
             ten.clone(),
@@ -155,6 +157,7 @@ fn comparisons() {
         )),
         parse_expr("10 >= 9", Vec::new())
     );
+
     assert_eq!(
         Some(Expression::Comparison(
             ten.clone(),
@@ -163,6 +166,7 @@ fn comparisons() {
         )),
         parse_expr("10 <= 9", Vec::new())
     );
+
     assert_eq!(
         Some(Expression::Comparison(
             ten.clone(),
@@ -171,6 +175,7 @@ fn comparisons() {
         )),
         parse_expr("10 == 9", Vec::new())
     );
+
     assert_eq!(
         Some(Expression::Comparison(
             ten.clone(),
@@ -182,15 +187,17 @@ fn comparisons() {
 }
 
 #[test]
-fn literals() {
+fn literals_expr() {
     assert_eq!(
         Some(Expression::Literal(Literal::I32(100))),
         parse_expr("100", Vec::new())
     );
+
     assert_eq!(
         Some(Expression::Literal(Literal::Bool(false))),
         parse_expr("false", Vec::new())
     );
+
     assert_eq!(
         Some(Expression::Literal(Literal::Bool(true))),
         parse_expr("true", Vec::new())
@@ -198,7 +205,7 @@ fn literals() {
 }
 
 #[test]
-fn func_call() {
+fn func_call_expr() {
     assert_eq!(
         Some(Expression::FunctionCall {
             caller: Box::new(Expression::Variable(0.into())),
@@ -220,26 +227,132 @@ fn func_call() {
 }
 
 #[test]
-fn bin_ops() {
+fn dotted_func_call_expr() {
+    assert_eq!(
+        Some(Expression::FunctionCall {
+            caller: Box::new(Expression::Variable(1.into())),
+            arguments: vec![Expression::Variable(0.into())],
+        }),
+        parse_expr("test_func.function()", vec!["test_func", "function"])
+    );
+}
+
+#[test]
+fn assignment_expr() {
+    assert_eq!(
+        Some(Expression::Assignment(
+            Box::new(Expression::Variable(0.into())),
+            AssignmentType::Normal,
+            Box::new(Expression::Literal(Literal::I32(100)))
+        )),
+        parse_expr("i = 100", vec!["i"])
+    );
+
+    assert_eq!(
+        Some(Expression::Assignment(
+            Box::new(Expression::Variable(0.into())),
+            AssignmentType::BinaryOp(BinaryOperand::Add),
+            Box::new(Expression::Literal(Literal::I32(100)))
+        )),
+        parse_expr("i += 100", vec!["i"])
+    );
+
+    assert_eq!(
+        Some(Expression::Assignment(
+            Box::new(Expression::Variable(0.into())),
+            AssignmentType::BinaryOp(BinaryOperand::Sub),
+            Box::new(Expression::Literal(Literal::I32(100)))
+        )),
+        parse_expr("i -= 100", vec!["i"])
+    );
+
+    assert_eq!(
+        Some(Expression::Assignment(
+            Box::new(Expression::Variable(0.into())),
+            AssignmentType::BinaryOp(BinaryOperand::Mult),
+            Box::new(Expression::Literal(Literal::I32(100)))
+        )),
+        parse_expr("i *= 100", vec!["i"])
+    );
+
+    assert_eq!(
+        Some(Expression::Assignment(
+            Box::new(Expression::Variable(0.into())),
+            AssignmentType::BinaryOp(BinaryOperand::Div),
+            Box::new(Expression::Literal(Literal::I32(100)))
+        )),
+        parse_expr("i /= 100", vec!["i"])
+    );
+
+    assert_eq!(
+        Some(Expression::Assignment(
+            Box::new(Expression::Variable(0.into())),
+            AssignmentType::BinaryOp(BinaryOperand::Mod),
+            Box::new(Expression::Literal(Literal::I32(100)))
+        )),
+        parse_expr("i %= 100", vec!["i"])
+    );
+
+    assert_eq!(
+        Some(Expression::Assignment(
+            Box::new(Expression::Variable(0.into())),
+            AssignmentType::BinaryOp(BinaryOperand::Pow),
+            Box::new(Expression::Literal(Literal::I32(100)))
+        )),
+        parse_expr("i **= 100", vec!["i"])
+    );
+
+    assert_eq!(
+        Some(Expression::Assignment(
+            Box::new(Expression::Variable(0.into())),
+            AssignmentType::BinaryOp(BinaryOperand::BitAnd),
+            Box::new(Expression::Literal(Literal::I32(100)))
+        )),
+        parse_expr("i &= 100", vec!["i"])
+    );
+
+    assert_eq!(
+        Some(Expression::Assignment(
+            Box::new(Expression::Variable(0.into())),
+            AssignmentType::BinaryOp(BinaryOperand::BitOr),
+            Box::new(Expression::Literal(Literal::I32(100)))
+        )),
+        parse_expr("i |= 100", vec!["i"])
+    );
+
+    assert_eq!(
+        Some(Expression::Assignment(
+            Box::new(Expression::Variable(0.into())),
+            AssignmentType::BinaryOp(BinaryOperand::BitXor),
+            Box::new(Expression::Literal(Literal::I32(100)))
+        )),
+        parse_expr("i ^= 100", vec!["i"])
+    );
+}
+
+#[test]
+fn bin_ops_expr() {
     let ten = Box::new(Expression::Literal(Literal::I32(10)));
     let nine = Box::new(Expression::Literal(Literal::I32(9)));
 
     assert_eq!(
         Some(Expression::BinaryOp(
             ten.clone(),
-            BinaryOperand::Plus,
+            BinaryOperand::Add,
             nine.clone()
         )),
         parse_expr("10 + 9", Vec::new())
     );
+
     assert_eq!(
         Some(Expression::BinaryOp(
             ten.clone(),
-            BinaryOperand::Minus,
+            BinaryOperand::Sub,
             nine.clone()
         )),
         parse_expr("10 - 9", Vec::new())
     );
+
     assert_eq!(
         Some(Expression::BinaryOp(
             ten.clone(),
@@ -248,46 +361,61 @@ fn bin_ops() {
         )),
         parse_expr("10 * 9", Vec::new())
     );
+
     assert_eq!(
         Some(Expression::BinaryOp(
             ten.clone(),
-            BinaryOperand::Divide,
+            BinaryOperand::Div,
             nine.clone()
         )),
         parse_expr("10 / 9", Vec::new())
     );
+
     assert_eq!(
         Some(Expression::BinaryOp(
             ten.clone(),
-            BinaryOperand::Modulo,
+            BinaryOperand::Mod,
             nine.clone()
         )),
         parse_expr("10 % 9", Vec::new())
     );
+
     assert_eq!(
         Some(Expression::BinaryOp(
             ten.clone(),
-            BinaryOperand::BitwiseAnd,
+            BinaryOperand::Pow,
+            nine.clone()
+        )),
+        parse_expr("10 ** 9", Vec::new())
+    );
+
+    assert_eq!(
+        Some(Expression::BinaryOp(
+            ten.clone(),
+            BinaryOperand::BitAnd,
             nine.clone()
         )),
         parse_expr("10 & 9", Vec::new())
     );
+
     assert_eq!(
         Some(Expression::BinaryOp(
             ten.clone(),
-            BinaryOperand::BitwiseOr,
+            BinaryOperand::BitOr,
             nine.clone()
         )),
         parse_expr("10 | 9", Vec::new())
     );
+
     assert_eq!(
         Some(Expression::BinaryOp(
             ten.clone(),
-            BinaryOperand::BitwiseXor,
+            BinaryOperand::BitXor,
             nine.clone()
         )),
         parse_expr("10 ^ 9", Vec::new())
     );
+
     assert_eq!(
         Some(Expression::BinaryOp(
             ten.clone(),
@@ -296,6 +424,7 @@ fn bin_ops() {
         )),
         parse_expr("10 << 9", Vec::new())
     );
+
     assert_eq!(
         Some(Expression::BinaryOp(
             ten.clone(),
@@ -307,17 +436,26 @@ fn bin_ops() {
 }
 
 #[test]
-fn prefix_ops() {
+fn prefix_ops_expr() {
     assert_eq!(
-        Some(Expression::PrefixExpr(
-            PrefixOperand::Not,
+        Some(Expression::UnaryExpr(
+            UnaryOperand::Positive,
+            Box::new(Expression::Literal(Literal::I32(0)))
+        )),
+        parse_expr("+0", Vec::new())
+    );
+
+    assert_eq!(
+        Some(Expression::UnaryExpr(
+            UnaryOperand::Not,
             Box::new(Expression::Literal(Literal::I32(0)))
         )),
         parse_expr("!0", Vec::new())
     );
+
     assert_eq!(
-        Some(Expression::PrefixExpr(
-            PrefixOperand::Negative,
+        Some(Expression::UnaryExpr(
+            UnaryOperand::Negative,
             Box::new(Expression::Literal(Literal::I32(0)))
         )),
         parse_expr("-0", Vec::new())
@@ -325,7 +463,7 @@ fn prefix_ops() {
 }
 
 #[test]
-fn inline_conditional() {
+fn inline_conditional_expr() {
     assert_eq!(
         Some(Expression::InlineConditional {
             true_arm: Box::new(Expression::Literal(Literal::I32(0))),
@@ -337,7 +475,7 @@ fn inline_conditional() {
 }
 
 #[test]
-fn if_statements() {
+fn if_stmt() {
     assert_eq!(
         Some(Statement::If {
             condition: Expression::Literal(Literal::Bool(true)),
@@ -460,10 +598,11 @@ fn return_stmt() {
         Some(Statement::Return(None)),
         parse_stmt("return\n", Vec::new())
     );
+
     assert_eq!(
         Some(Statement::Return(Some(Expression::BinaryOp(
             Box::new(Expression::Literal(Literal::I32(10))),
-            BinaryOperand::Plus,
+            BinaryOperand::Add,
             Box::new(Expression::Literal(Literal::I32(9)))
         )))),
         parse_stmt("return 10 + 9\n", Vec::new())
@@ -476,10 +615,11 @@ fn break_stmt() {
         Some(Statement::Break(None)),
         parse_stmt("break\n", Vec::new())
     );
+
     assert_eq!(
         Some(Statement::Break(Some(Expression::BinaryOp(
             Box::new(Expression::Literal(Literal::I32(10))),
-            BinaryOperand::Plus,
+            BinaryOperand::Add,
             Box::new(Expression::Literal(Literal::I32(9)))
         )))),
         parse_stmt("break 10 + 9\n", Vec::new())
@@ -491,5 +631,141 @@ fn continue_stmt() {
     assert_eq!(
         Some(Statement::Continue),
         parse_stmt("continue\n", Vec::new())
+    );
+}
+
+#[test]
+fn while_stmt() {
+    assert_eq!(
+        Some(Statement::While {
+            condition: Expression::Literal(Literal::Bool(true)),
+            body: vec![Statement::Expression(Expression::FunctionCall {
+                caller: Box::new(Expression::Variable(0.into())),
+                arguments: vec![Expression::Literal(Literal::Bool(true))],
+            })],
+            then: None,
+        }),
+        parse_stmt("while true\nprintln(true)\nend", vec!["println"])
+    );
+
+    assert_eq!(
+        Some(Statement::While {
+            condition: Expression::Literal(Literal::Bool(true)),
+            body: vec![Statement::Expression(Expression::FunctionCall {
+                caller: Box::new(Expression::Variable(0.into())),
+                arguments: vec![Expression::Literal(Literal::Bool(true))],
+            })],
+            then: Some(vec![Statement::Expression(Expression::FunctionCall {
+                caller: Box::new(Expression::Variable(0.into())),
+                arguments: vec![Expression::Literal(Literal::Bool(true))],
+            })]),
+        }),
+        parse_stmt(
+            "while true\nprintln(true)\nthen\nprintln(true)\nend",
+            vec!["println"]
+        )
+    );
+}
+
+#[test]
+fn loop_stmt() {
+    assert_eq!(
+        Some(Statement::Loop {
+            body: vec![Statement::Expression(Expression::FunctionCall {
+                caller: Box::new(Expression::Variable(0.into())),
+                arguments: vec![Expression::Literal(Literal::Bool(true))],
+            })],
+            then: None,
+        }),
+        parse_stmt("loop\nprintln(true)\nend", vec!["println"])
+    );
+
+    assert_eq!(
+        Some(Statement::Loop {
+            body: vec![Statement::Expression(Expression::FunctionCall {
+                caller: Box::new(Expression::Variable(0.into())),
+                arguments: vec![Expression::Literal(Literal::Bool(true))],
+            })],
+            then: Some(vec![Statement::Expression(Expression::FunctionCall {
+                caller: Box::new(Expression::Variable(0.into())),
+                arguments: vec![Expression::Literal(Literal::Bool(true))],
+            })]),
+        }),
+        parse_stmt(
+            "loop\nprintln(true)\nthen\nprintln(true)\nend",
+            vec!["println"]
+        )
+    );
+}
+
+#[test]
+fn for_stmt() {
+    assert_eq!(
+        Some(Statement::For {
+            var: Expression::Variable(0.into()),
+            condition: Expression::Literal(Literal::I32(100)),
+            body: vec![Statement::Expression(Expression::FunctionCall {
+                caller: Box::new(Expression::Variable(1.into())),
+                arguments: vec![Expression::Literal(Literal::Bool(true))],
+            })],
+            then: None,
+        }),
+        parse_stmt("for i in 100\nprintln(true)\nend", vec!["i", "println"])
+    );
+
+    assert_eq!(
+        Some(Statement::For {
+            var: Expression::Variable(0.into()),
+            condition: Expression::Literal(Literal::I32(100)),
+            body: vec![Statement::Expression(Expression::FunctionCall {
+                caller: Box::new(Expression::Variable(1.into())),
+                arguments: vec![Expression::Literal(Literal::Bool(true))],
+            })],
+            then: Some(vec![Statement::Expression(Expression::FunctionCall {
+                caller: Box::new(Expression::Variable(1.into())),
+                arguments: vec![Expression::Literal(Literal::Bool(true))],
+            })]),
+        }),
+        parse_stmt(
+            "for i in 100\nprintln(true)\nthen\nprintln(true)\nend",
+            vec!["i", "println"]
+        )
+    );
+}
+
+#[test]
+fn match_stmt() {
+    simple_logger::init().unwrap();
+
+    assert_eq!(
+        Some(Statement::Match {
+            var: Expression::Variable(0.into()),
+            arms: vec![
+                (
+                    1.into(),
+                    Some(Expression::Comparison(
+                        Box::new(Expression::Variable(1.into())),
+                        ComparisonOperand::Less,
+                        Box::new(Expression::Literal(Literal::I32(6)))
+                    )),
+                    vec![Statement::Expression(Expression::FunctionCall {
+                        caller: Box::new(Expression::Variable(2.into())),
+                        arguments: vec![Expression::Literal(Literal::I32(6))]
+                    })],
+                ),
+                (
+                    1.into(),
+                    None,
+                    vec![Statement::Expression(Expression::FunctionCall {
+                        caller: Box::new(Expression::Variable(2.into())),
+                        arguments: vec![Expression::Variable(1.into())]
+                    })],
+                )
+            ]
+        }),
+        parse_stmt(
+            "match something\ni where i < 6 =>\nprintln(6)\nend\ni =>\nprintln(i)\nend\nend",
+            vec!["something", "i", "println"]
+        )
     );
 }

@@ -1,56 +1,154 @@
-Program ::= ( FunctionDeclaration | TypeDeclaration | Import )*
+Program ::=
+    ( FunctionDeclaration
+    | TypeDeclaration
+    | EnumDeclaration
+    | TraitDeclaration
+    | Import
+    )*
 
-FunctionDeclaration ::= Decorator* Visibility? 'fn' Ident ( '<' Ident ','? '>' )? '(' FunctionArguments* ')' ( '->' Ident )? '\n' Body End
-FunctionArguments ::= ( Ident ( ':' Ident )? ) | ( FunctionArguments ',' )
+/* Function Declarations */
+FunctionDeclaration ::= Decorator* Attibute* 'fn' Ident Generics? '(' FunctionArguments? ')' ( '->' Ident )? '\n' Statement+ 'end'
+FunctionArguments ::= AbscriptedArg | AbscriptedArg ',' FunctionArguments
+AbscriptedArg ::= Ident ( ':' Ident )?
 
-TypeDeclaration ::= Visibility? 'type' Ident ( '<' Ident ',' '>' )? '\n' TypeArguments* Function* End
-TypeArguments ::= ( ( Ident ':' Ident ) | TypeArguments ',' ) '\n'
+/* Type Declarations */
+TypeDeclaration ::= Decorator* Attibute* 'type' Ident Generics? '\n' TypeArguments? FunctionDeclaration* 'end'
+TypeArguments ::= TypeArg '\n' | TypeArg '\n' TypeArguments
+TypeArg ::= Attibute* Ident ':' Ident
 
-Import ::= 'import' ImportDestination? String ( 'exposing' ( '*' | ( Ident ( 'as' Ident )? ',' ? )+ ) )? '\n'
+/* Enum Declarations */
+EnumDeclaration ::= Decorator* Attibute* 'enum' Ident Generics? '\n' EnumVariant* 'end'
+EnumVariant ::= UnitVariant | TupleVariant
+
+UnitVariant ::= Ident '\n'
+
+TupleVariant ::= Ident '(' TupleVariantParams? ')' '\n'
+TupleVariantParams ::=  Ident | Ident ',' TupleVariantParams
+
+/* Trait Declarations */
+TraitDeclaration ::= Decorator* Attribute* 'trait' Ident Generics? '\n' FunctionDeclaration* 'end'
+
+/* Imports */
+Import ::= 'import' ImportDestination? String ( 'exposing' ( '*' | ImportMembers? ) | 'as' Ident ) '\n'
+ImportMembers ::= ImportMemberArg | ImportMemberArg ',' ImportMembers
+ImportMemberArg ::= Ident ( 'as' Ident )?
 ImportDestination ::= 'lib' | 'pkg'
 
-VarDeclaration ::= 'let' Ident ( ':' Ident )? '=' Expr '\n'
-Assignment ::= Ident Assigner Expr '\n'
+/* Decorators, Attibutes & Generics */
+Decorator ::= '@' Ident ( '(' DecoratorArgs? ')' )? '\n'
+DecoratorArgs ::= Expr | DecoratorArgs ',' Expr
 
-If ::= 'if' Expr '\n' Body ElseIf* Else? End
-ElseIf ::= 'else if' Expr '\n' Body
-Else ::= 'else' '\n' Body
+Attribute ::= Visibility
+Visibility ::= 'exposed' | 'lib'
 
-While ::= 'while' Expr '\n' Body ( 'then' '\n' Body )? End
-Loop ::= 'loop' Body 'end'
-For ::= 'for' Ident 'in' Expr '\n' Body ( 'then' '\n' Body )?  End
+Generics ::= '<' GenericParam? '>'
+GenericParam ::= Ident | Ident ',' GenericParam
 
-BinaryOperation ::= Expr BinaryOperand Expr
-Comparison ::= Expr Comparator Expr
-
-BinaryOperand ::= ( '+' | '-' | '*' | '/' | '^' | '|' | '&' ) ( '?' | '!' )?
-Comparator ::= '==' | '<=' | '>=' | '<' | '>'
-Assigner ::= '=' | ( BinaryOperand '=' )
-
+/* Idents */
 Ident ::= [a-zA-Z_][a-zA-Z0-9_]*
-Literal ::= String | Integer | Boolean
-String ::= '"' [^"]* '"' | "'" [^']* "'"
-Integer ::= [0-9]+
+
+/* Literals */
+Literal ::= String | Boolean | Integer | Float
+
+/* String Literals */
+String ::= StringPrefix? StringDelim [^StringDelim]* StringDelim
+StringPrefix ::= 'b'
+StringDelim ::= '"' | "'" | '"""' | "'''"
+
+/* Boolean Literals */
 Boolean ::= 'true' | 'false'
+
+/* Integer Literals */
+Integer ::= Sign? ( Digits | '0x' HexDigits ) 
+Sign ::= '-' | '+'
+Digits ::= [0-9][0-9_]*
+HexDigits ::= [0-9a-fA-F][0-9a-fA-F_]*
+IntSuffix ::= 'byte' | 'int'
+
+/* Float Literals */
+Float ::= Sign? ( DecimalFloat | HexFloat )
+
+/* Decimal Float Literals */
+DecimalFloat ::= 
+    Digits '.' Digits? DecimalExp? DecimalFloatSuffix?
+    | Digits DecimalExp DecimalFloatSuffix?
+    | Digits DecimalExp? DecimalFloatSuffix
+DecimalExp ::= DecimalExpIndicator Sign? Digits
+DecimalExpIndicator ::= 'e' | 'E'
+DecimalFloatSuffix ::= 'f' | 'F'
+
+/* Hex Float Literals */
+HexFloat ::= '0x' HexDigits '.' ?HexFloatExp?
+HexFloatExp ::= HexFloatExpIndicator Sign? Digits
+HexFloatExpIndicator ::= 'p' | 'P'
+
+/* Expressions */
+Expr ::= 
+    Literal
+    | Unary
+    | Range
+    | Comparison
+    | BinaryOperation
+    | Ident
+    | '(' Expr ')'
+    | IndexArray
+    | InlineConditional
+    | FunctionCall
+    | Array
+    | Assignment
+
+Unary ::= ( '+' | '-' | '!' ) Expr
+
 Range ::= Expr '..' Expr
 
-Decorator ::= '@' Ident ( '(' DecoratorArgs* ')' )? '\n'
-DecoratorArgs ::= ( Ident | Literal ) | ( DecoratorArgs ',' ( Ident | Literal ) )
-Visibility ::= 'exposed' | 'lib'
-End ::= 'end'
+Array ::= '[' ArrayElements? ']'
+ArrayElements ::= Expr | ArrayElements ',' Expr
 
-Expr ::= Literal | Range | Comparison | BinaryOperation | Ident | ( '(' Expr ')' ) | IndexArray | InlineConditional | FunctionCall
-Array ::= '[' ( Expr | ArrayElements ) ']'
-ArrayElements ::= Expr | ( ArrayElements ',' Expr )
 IndexArray ::= Expr '[' Expr ']'
-InlineConditional ::= Expr if Expr else Expr
-FunctionCall ::= Expr '(' FunctionCallArgs* ')'
-FunctionArgs ::= Expr | ( FunctionArgs ',' Expr )
 
-Statement ::= If | While | Loop | For | VarDeclaration | Return | Continue | Break | ( Expr '\n' )
+InlineConditional ::= Expr 'if' Expr 'else' Expr
+
+FunctionCall ::= ( Expr '.' )? Expr '(' FunctionCallArgs? ')'
+FunctionArgs ::= Expr | FunctionArgs ',' Expr
+
+BinaryOperation ::= Expr BinaryOperand Expr
+BinaryOperand ::= 
+    '+' | '-' | '*' | '/' | '%' | '**' 
+    | '^' | '|' | '&' | '<<' | '>>'
+
+Comparison ::= Expr Comparator Expr
+Comparator ::= '==' | '!=' | '<=' | '>=' | '<' | '>'
+
+Assignment ::= Ident Assigner Expr '\n'
+Assigner ::= '=' | BinaryOperand '='
+
+/* Statements */
+Statement ::= 
+    While
+    | Loop
+    | For
+    | If
+    | Match
+    | VarDecl
+    | Return
+    | Continue
+    | Break
+    | Expr '\n'
+    | 'empty'
+
 Return ::= 'return' Expr? '\n'
 Continue ::= 'continue' '\n'
 Break ::= 'break' Expr? '\n'
-Match ::= 'match' Expr '\n' ( Ident ( 'where' Expr )? '=>' '\n' Statement+ 'end'
 
-Body ::= Statement+ | 'empty'
+Match ::= 'match' Expr '\n' ( Ident ( 'where' Expr )? '=>' '\n' Statement+ )+ 'end'
+
+If ::= 'if' Expr '\n' Statement+ '\n' ElseIf* Else? 'end'
+ElseIf ::= 'else' 'if' Expr '\n' Statement+
+Else ::= 'else' '\n' Statement+
+
+While ::= 'while' Expr '\n' Statement+ ThenClause? 'end'
+Loop ::= 'loop' '\n' Statement+ ThenClause? 'end'
+For ::= 'for' Expr 'in' Expr '\n' Statement+ ThenClause?  'end'
+ThenClause ::= 'then' '\n' Statement+
+
+VarDecl ::= 'let' Ident ( ':' Ident )? '=' Expr '\n'
