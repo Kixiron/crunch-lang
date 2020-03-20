@@ -10,36 +10,6 @@ use core::{char, ops, panic::Location as PanicLoc};
 
 use std::sync::{Mutex, RwLock};
 
-/*
-  _________  ___  ___  _______           ________  ________  ________  ________  _______   ________          ________   _______   _______   ________  ________
- |\___   ___\\  \|\  \|\  ___ \         |\   __  \|\   __  \|\   __  \|\   ____\|\  ___ \ |\   __  \        |\   ___  \|\  ___ \ |\  ___ \ |\   ___ \|\   ____\
- \|___ \  \_\ \  \\\  \ \   __/|        \ \  \|\  \ \  \|\  \ \  \|\  \ \  \___|\ \   __/|\ \  \|\  \       \ \  \\ \  \ \   __/|\ \   __/|\ \  \_|\ \ \  \___|_
-      \ \  \ \ \   __  \ \  \_|/__       \ \   ____\ \   __  \ \   _  _\ \_____  \ \  \_|/_\ \   _  _\       \ \  \\ \  \ \  \_|/_\ \  \_|/_\ \  \ \\ \ \_____  \
-       \ \  \ \ \  \ \  \ \  \_|\ \       \ \  \___|\ \  \ \  \ \  \\  \\|____|\  \ \  \_|\ \ \  \\  \|       \ \  \\ \  \ \  \_|\ \ \  \_|\ \ \  \_\\ \|____|\  \
-        \ \__\ \ \__\ \__\ \_______\       \ \__\    \ \__\ \__\ \__\\ _\ ____\_\  \ \_______\ \__\\ _\        \ \__\\ \__\ \_______\ \_______\ \_______\____\_\  \
-         \|__|  \|__|\|__|\|_______|        \|__|     \|__|\|__|\|__|\|__|\_________\|_______|\|__|\|__|        \|__| \|__|\|_______|\|_______|\|_______|\_________\
-                                                                         \|_________|                                                                   \|_________|
-
-
-  _________  ________          ________  _______  _________        ___  _________  ________           ________  ___  ___  ___  _________
- |\___   ___\\   __  \        |\   ____\|\  ___ \|\___   ___\     |\  \|\___   ___\\   ____\         |\   ____\|\  \|\  \|\  \|\___   ___\
- \|___ \  \_\ \  \|\  \       \ \  \___|\ \   __/\|___ \  \_|     \ \  \|___ \  \_\ \  \___|_        \ \  \___|\ \  \\\  \ \  \|___ \  \_|
-      \ \  \ \ \  \\\  \       \ \  \  __\ \  \_|/__  \ \  \       \ \  \   \ \  \ \ \_____  \        \ \_____  \ \   __  \ \  \   \ \  \
-       \ \  \ \ \  \\\  \       \ \  \|\  \ \  \_|\ \  \ \  \       \ \  \   \ \  \ \|____|\  \        \|____|\  \ \  \ \  \ \  \   \ \  \
-        \ \__\ \ \_______\       \ \_______\ \_______\  \ \__\       \ \__\   \ \__\  ____\_\  \         ____\_\  \ \__\ \__\ \__\   \ \__\
-         \|__|  \|_______|        \|_______|\|_______|   \|__|        \|__|    \|__| |\_________\       |\_________\|__|\|__|\|__|    \|__|
-                                                                                     \|_________|       \|_________|
-
-
-  _________  ________  ________  _______  _________  ___  ___  _______   ________
- |\___   ___\\   __  \|\   ____\|\  ___ \|\___   ___\\  \|\  \|\  ___ \ |\   __  \
- \|___ \  \_\ \  \|\  \ \  \___|\ \   __/\|___ \  \_\ \  \\\  \ \   __/|\ \  \|\  \
-      \ \  \ \ \  \\\  \ \  \  __\ \  \_|/__  \ \  \ \ \   __  \ \  \_|/_\ \   _  _\
-       \ \  \ \ \  \\\  \ \  \|\  \ \  \_|\ \  \ \  \ \ \  \ \  \ \  \_|\ \ \  \\  \|
-        \ \__\ \ \_______\ \_______\ \_______\  \ \__\ \ \__\ \__\ \_______\ \__\\ _\
-         \|__|  \|_______|\|_______|\|_______|   \|__|  \|__|\|__|\|_______|\|__|\|__|
-*/
-
 pub struct Parser<'a> {
     token_stream: TokenStream<'a>,
     next: Option<Token<'a>>,
@@ -285,7 +255,7 @@ impl<'a> Parser<'a> {
         let mut members = Vec::new();
         let mut peek = self.peek()?;
 
-        while peek.ty != TokenType::Function && peek.ty != TokenType::EndBlock {
+        while peek.ty != TokenType::Function && peek.ty != TokenType::End {
             if peek.ty == TokenType::Newline {
                 self.eat(TokenType::Newline)?;
                 peek = self.peek()?;
@@ -323,7 +293,7 @@ impl<'a> Parser<'a> {
         }
 
         let mut methods = Vec::new();
-        while peek.ty != TokenType::EndBlock {
+        while peek.ty != TokenType::End {
             if peek.ty == TokenType::Newline {
                 self.eat(TokenType::Newline)?;
                 peek = self.peek()?;
@@ -339,7 +309,7 @@ impl<'a> Parser<'a> {
             peek = self.peek()?;
         }
 
-        let end = self.eat(TokenType::EndBlock)?.range.1;
+        let end = self.eat(TokenType::End)?.range.1;
 
         Ok(TypeDecl {
             decorators: type_decorators,
@@ -553,7 +523,7 @@ impl<'a> Parser<'a> {
     fn loop_loop(&mut self) -> ParseResult<Loop> {
         let start = self.eat(TokenType::Loop)?.range.0;
         let body = self.body()?;
-        let end = self.eat(TokenType::EndBlock)?.range.1;
+        let end = self.eat(TokenType::End)?.range.1;
 
         Ok(Loop {
             body,
@@ -568,7 +538,7 @@ impl<'a> Parser<'a> {
             self.eat(TokenType::Newline)?;
 
             let body = self.body()?;
-            let end = self.eat(TokenType::EndBlock)?.range.1;
+            let end = self.eat(TokenType::End)?.range.1;
             (
                 Some(Else {
                     body,
@@ -577,7 +547,7 @@ impl<'a> Parser<'a> {
                 end,
             )
         } else {
-            let end = self.eat(TokenType::EndBlock)?.range.1;
+            let end = self.eat(TokenType::End)?.range.1;
             (None, end)
         };
 
@@ -1112,7 +1082,7 @@ impl<'a> Parser<'a> {
 
             peek = self.peek()?;
         }
-        let end = self.eat(TokenType::EndBlock)?.range.1;
+        let end = self.eat(TokenType::End)?.range.1;
 
         Ok(Conditional {
             _if: if_clauses,
@@ -1229,7 +1199,7 @@ impl<'a> Parser<'a> {
 
         let body = self.body()?;
 
-        let end = self.eat(TokenType::EndBlock)?.range.1;
+        let end = self.eat(TokenType::End)?.range.1;
 
         info!(
             "Finished parsing Function {:?}: {}",

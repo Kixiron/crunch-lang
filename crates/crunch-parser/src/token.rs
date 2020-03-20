@@ -5,7 +5,7 @@ use logos::{Lexer, Logos};
 
 #[derive(Logos, Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum TokenType {
-    #[regex = "[^ \t\n\r\"\'!@#$%\\^&*()-+=,.<>/?;:\\[\\]{}\\\\|`~]+"]
+    #[regex = "[a-zA-Z_][a-zA-Z0-9_]*"]
     Ident,
     #[regex = "\"[^\"]*\""]
     #[regex = "'[^']*'"]
@@ -13,12 +13,13 @@ pub enum TokenType {
     #[regex = "[1234567890]+"]
     Int,
     #[regex = "::[^\r\n]*"]
+    #[regex = "::[^\n]*"]
     Comment,
     #[token = "\n"]
     #[token = "\r\n"]
     Newline,
     #[end]
-    End,
+    EOF,
     #[error]
     Error,
     #[token = "@"]
@@ -109,7 +110,7 @@ pub enum TokenType {
     #[token = "lib"]
     Library,
     #[token = "end"]
-    EndBlock,
+    End,
     #[token = "<"]
     LeftCaret,
     #[token = ">"]
@@ -152,7 +153,7 @@ impl std::fmt::Display for TokenType {
             Self::Or => "or",
             Self::And => "and",
             Self::Type => "type",
-            Self::End => "EOF",
+            Self::EOF => "EOF",
             Self::Error => "Error",
             Self::Comma => ",",
             Self::Let => "let",
@@ -206,7 +207,7 @@ impl std::fmt::Display for TokenType {
             Self::As => "as",
             Self::SyscallExit => "@exit",
             Self::Library => "lib",
-            Self::EndBlock => "end",
+            Self::End => "end",
             Self::LeftCaret => "<",
             Self::RightCaret => ">",
             Self::Return => "return",
@@ -242,7 +243,7 @@ impl<'a> TokenIter<'a> {
         self.lexer.advance();
 
         match self.current.ty {
-            TokenType::End => None,
+            TokenType::EOF => None,
             _ => Some(self.current),
         }
     }
@@ -299,7 +300,7 @@ impl<'a> TokenStream<'a> {
             match token.ty {
                 TokenType::Space => self.next_token(),
                 TokenType::Comment if self.skip_comments => self.next_token(),
-                TokenType::End => None,
+                TokenType::EOF => None,
                 _ => Some(token),
             }
         } else {
@@ -372,7 +373,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn keyword_led_ident() {
         let mut exposed_function = TokenStream::new("exposed_function", true).into_iter();
 

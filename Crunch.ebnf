@@ -11,13 +11,10 @@ ImportDestination ::= 'lib' | 'pkg'
 
 VarDeclaration ::= 'let' Ident ( ':' Ident )? '=' Expr '\n'
 Assignment ::= Ident Assigner Expr '\n'
-FunctionCall ::= Ident ( '.' Ident )? '(' FunctionCallArgs* ')' '\n'
-FunctionCallArgs ::= Expr | ( FunctionCallArgs ',' Expr )
 
-If ::= 'if' Comparison '\n' Body ElseIf* Else? End
-ElseIf ::= 'else if' Comparison '\n' Body
+If ::= 'if' Expr '\n' Body ElseIf* Else? End
+ElseIf ::= 'else if' Expr '\n' Body
 Else ::= 'else' '\n' Body
-InlineIf ::= 'if' Expr 'then' Expr 'else' Expr /* Usage of an inline if statement is still tbd */
 
 While ::= 'while' Expr '\n' Body ( 'then' '\n' Body )? End
 Loop ::= 'loop' Body 'end'
@@ -30,26 +27,30 @@ BinaryOperand ::= ( '+' | '-' | '*' | '/' | '^' | '|' | '&' ) ( '?' | '!' )?
 Comparator ::= '==' | '<=' | '>=' | '<' | '>'
 Assigner ::= '=' | ( BinaryOperand '=' )
 
-Ident ::= [a-zA-Z]+
+Ident ::= [a-zA-Z_][a-zA-Z0-9_]*
 Literal ::= String | Integer | Boolean
 String ::= '"' [^"]* '"' | "'" [^']* "'"
 Integer ::= [0-9]+
 Boolean ::= 'true' | 'false'
 Range ::= Expr '..' Expr
 
-Return ::= 'return' Expr '\n'
-Continue ::= 'continue' '\n'
-Break ::= 'break' '\n'
-
 Decorator ::= '@' Ident ( '(' DecoratorArgs* ')' )? '\n'
 DecoratorArgs ::= ( Ident | Literal ) | ( DecoratorArgs ',' ( Ident | Literal ) )
 Visibility ::= 'exposed' | 'lib'
 End ::= 'end'
 
-Expr ::= Literal | Range | Comparison | BinaryOperation | Ident | ( '(' Expr ')' )
-Array ::= '[' (( Expr ';' Integer ) | ArrayInner ) ']'
-ArrayInner ::= Expr | ( ArrayInner ',' Expr )
+Expr ::= Literal | Range | Comparison | BinaryOperation | Ident | ( '(' Expr ')' ) | IndexArray | InlineConditional | FunctionCall
+Array ::= '[' ( Expr | ArrayElements ) ']'
+ArrayElements ::= Expr | ( ArrayElements ',' Expr )
+IndexArray ::= Expr '[' Expr ']'
+InlineConditional ::= Expr if Expr else Expr
+FunctionCall ::= Expr '(' FunctionCallArgs* ')'
+FunctionArgs ::= Expr | ( FunctionArgs ',' Expr )
 
-Statement ::= If | While | Loop | For | FunctionCall | Assignment | VarDeclaration | Return | Continue | Break | ( Expr '\n' )
+Statement ::= If | While | Loop | For | VarDeclaration | Return | Continue | Break | ( Expr '\n' )
+Return ::= 'return' Expr? '\n'
+Continue ::= 'continue' '\n'
+Break ::= 'break' Expr? '\n'
+Match ::= 'match' Expr '\n' ( Ident ( 'where' Expr )? '=>' '\n' Statement+ 'end'
 
 Body ::= Statement+ | 'empty'
