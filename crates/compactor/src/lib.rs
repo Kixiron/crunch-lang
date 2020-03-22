@@ -2,12 +2,6 @@
 
 extern crate alloc;
 
-#[cfg(feature = "runtime")]
-thread_local! {
-    static CRUNCH_ALLOCATOR: core::cell::UnsafeCell<ballast::BumpHeap> =
-        core::cell::UnsafeCell::new(ballast::BumpHeap::new(ballast::BumpOptions::default()));
-}
-
 mod compactor;
 mod compactor_options;
 mod instruction;

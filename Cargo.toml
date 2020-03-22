@@ -55,8 +55,8 @@ version = "2.33.0"
 default-features = false
 version = "1.6.0"
 
-[dependencies.ballast]
-path = "crates/ballast"
+# [dependencies.ballast]
+# path = "crates/ballast"
 
 [dependencies.crunch-error]
 path = "crates/crunch-error"
@@ -88,6 +88,7 @@ members = [
 [profile.release]
 opt-level = 3
 lto = "fat"
+debug = true
 
 [badges]
 is-it-maintained-issue-resolution = { repository = "https://github.com/Kixiron/crunch-lang" }

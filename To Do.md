@@ -6,7 +6,10 @@
   - [X] Tokenize
   - [ ] Parse into AST
     - [ ] Uncoil the beast that is the parser
-      - [ ] Pratt Parsing
+      - [X] Pratt Parsing
+      - [ ] Decide about decorator declarations, should they be a separate type of declaration?
+        - [ ] Allows declaration-only namespacing
+        - [ ] Allows greater freedom with system to allow codegen/macro type utilities
   - [ ] Semantic Checking
   - [ ] Generate HIR & Desugar
   - [ ] Type Checking
@@ -48,3 +51,4 @@
     - [ ] Dashmap-based
 - [ ] `no_std` RwLock and Mutex implementations
 - [ ] Fast concurrent queue
+- [ ] Get rid of phf

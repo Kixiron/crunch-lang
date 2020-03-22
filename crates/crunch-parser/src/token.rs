@@ -1,7 +1,10 @@
-use core::{fmt, ops};
 use logos::{Lexer, Logos};
 
-// TODO: Organize all this
+use alloc::vec::Vec;
+use core::{fmt, ops};
+
+// TODO: Cull tokens
+// TODO: Further organize tokens
 
 #[derive(Logos, Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum TokenType {
@@ -22,19 +25,43 @@ pub enum TokenType {
     #[token = " "]
     Space,
 
-    #[regex = "\"[^\"]*\""]
-    #[regex = "'[^']*'"]
+    // TODO: Fix
+    // #[regex = "b?\"\"\"[^\"\"\"]*\"\"\""]
+    // #[regex = "b?'''[^''']*'''"]
+    #[regex = r###"b?"(\\.|[^\\"])*""###] // " <- This is here to restore syntax highlighting
+    #[regex = r#"b?'(\\.|[^\\'])*'"#]
     String,
-    #[regex = "[1234567890]+"]
+    #[regex = r#"[+-]?0[xX][0-9a-fA-F][0-9a-fA-F_]*"#]
+    #[regex = r#"[+-]?[0-9][0-9_]*"#]
     Int,
+    // This is a crime
+    // TODO: Fix these regexes, they capture integers
+    #[token = "inf"]
+    #[token = "NaN"]
+    #[regex = r#"[+-]?([0-9][0-9_]*\.|[0-9][0-9_]*\.[0-9][0-9_]*|\.[0-9][0-9_]*)([eE][+-]?[0-9][0-9_]*)?"#]
+    #[regex = r#"[+-]?0[xX][0-9a-fA-F]+\.([pP][+-]?[0-9]+)?"#]
+    #[regex = r#"[+-]?0[xX][0-9a-fA-F]+\.[0-9a-fA-F]+([pP][+-]?[0-9]+)?"#]
+    #[regex = r#"[+-]?0[xX]\.[0-9a-fA-F]+([pP][+-]?[0-9]+)?"#]
+    Float,
     #[token = "true"]
     #[token = "false"]
     Bool,
 
-    #[token = "in"]
-    In,
+    #[token = "fn"]
+    Function,
+    #[token = "import"]
+    Import,
     #[token = "let"]
     Let,
+    #[token = "type"]
+    Type,
+    #[token = "enum"]
+    Enum,
+    #[token = "trait"]
+    Trait,
+
+    #[token = "in"]
+    In,
     #[token = "loop"]
     Loop,
     #[token = "while"]
@@ -43,26 +70,6 @@ pub enum TokenType {
     If,
     #[token = "else"]
     Else,
-    #[token = "fn"]
-    Function,
-    #[token = "import"]
-    Import,
-    #[token = "exposing"]
-    Exposing,
-    #[token = "export"]
-    Export,
-    #[token = "as"]
-    As,
-    #[token = "lib"]
-    Library,
-    #[token = "end"]
-    End,
-    #[token = "bin"]
-    Binary,
-    #[token = "exposed"]
-    Exposed,
-    #[token = "empty"]
-    Empty,
     #[token = "then"]
     Then,
     #[token = "for"]
@@ -73,14 +80,30 @@ pub enum TokenType {
     Continue,
     #[token = "break"]
     Break,
-    #[token = "type"]
-    Type,
+    #[token = "match"]
+    Match,
+
+    #[token = "exposing"]
+    Exposing,
+    #[token = "export"]
+    Export,
+    #[token = "as"]
+    As,
+    #[token = "lib"]
+    Library,
+    #[token = "end"]
+    End,
+    #[token = "pkg"]
+    Package,
+    #[token = "exposed"]
+    Exposed,
+    #[token = "empty"]
+    Empty,
+
     #[token = "or"]
     Or,
     #[token = "and"]
     And,
-    #[token = "match"]
-    Match,
     #[token = "where"]
     Where,
 
@@ -181,8 +204,8 @@ pub enum TokenType {
     DoubleDot,
 }
 
-impl std::fmt::Display for TokenType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for TokenType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let string = match self {
             Self::EOF => "EOF",
             Self::Error => "Error",
@@ -195,13 +218,14 @@ impl std::fmt::Display for TokenType {
 
             Self::String => "str",
             Self::Int => "int",
+            Self::Float => "float",
             Self::Bool => "bool",
 
             Self::Let => "let",
             Self::Return => "return",
             Self::Continue => "continue",
             Self::Break => "break",
-            Self::Binary => "bin",
+            Self::Package => "pkg",
             Self::Exposed => "exposed",
             Self::Empty => "empty",
             Self::Then => "then",
@@ -214,6 +238,8 @@ impl std::fmt::Display for TokenType {
             Self::If => "if",
             Self::Else => "else",
             Self::Function => "fn",
+            Self::Enum => "enum",
+            Self::Trait => "trait",
             Self::Import => "import",
             Self::Exposing => "exposing",
             Self::Export => "export",
@@ -313,8 +339,8 @@ impl<'a> Iterator for TokenIter<'a> {
     }
 }
 
-impl<'a> std::fmt::Debug for TokenIter<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<'a> fmt::Debug for TokenIter<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let lexer = {
             let lexer = self.lexer.clone();
             let current = Token::new(lexer.token, lexer.slice(), lexer.range());
@@ -375,9 +401,9 @@ impl<'a> Iterator for TokenStream<'a> {
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub struct Token<'a> {
-    pub ty: TokenType,
-    pub source: &'a str,
-    pub range: (usize, usize),
+    ty: TokenType,
+    pub(crate) source: &'a str,
+    range: (usize, usize),
 }
 
 impl<'a> Token<'a> {
@@ -415,18 +441,6 @@ impl<'a> fmt::Debug for Token<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn token_test() {
-        const CODE: &str = include_str!("../../../tests/parse_test.crunch");
-
-        let tokens = TokenStream::new(CODE, true)
-            .into_iter()
-            .map(|t| t.ty)
-            .collect::<Vec<_>>();
-
-        println!("{:#?}", tokens);
-    }
 
     #[test]
     fn keyword_led_ident() {

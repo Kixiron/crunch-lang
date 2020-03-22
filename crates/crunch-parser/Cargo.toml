@@ -10,19 +10,19 @@ version = "0.7.1"
 [dependencies.logos]
 version = "0.10.0-rc2"
 
-[dependencies.crunch-error]
-path = "../crunch-error"
-
-[dependencies.randomize]
-version = "3.0.1"
+[dependencies.hexponent]
+version = "0.2.3"
 default-features = false
 
 [dependencies.hashbrown]
 version = "0.7.1"
 
+[dependencies.parking_lot]
+version = "0.10.0"
+default-features = false
+
+[dependencies.crunch-error]
+path = "../crunch-error"
+
 [dependencies.pipeline-job]
 path = "../pipeline-job"
-
-[dev-dependencies.simple_logger]
-version = "1.6.0"
-default-features = false

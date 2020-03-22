@@ -14,5 +14,5 @@ path = "../compactor"
 [dependencies.crunch-error]
 path = "../crunch-error"
 
-[dependencies.tagged-box]
-path = "../tagged-box"
+# [dependencies.tagged-box]
+# path = "../tagged-box"

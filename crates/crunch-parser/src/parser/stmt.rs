@@ -1,5 +1,7 @@
 use super::*;
 
+use alloc::{boxed::Box, vec::Vec};
+
 // TODO: Use arenas over Boxes
 
 #[derive(Debug, Clone, PartialEq)]
@@ -40,20 +42,6 @@ pub enum Statement {
 
 /// Statement parsing
 impl<'a> Parser<'a> {
-    pub(super) fn statements(
-        &mut self,
-        breaks: &[TokenType],
-        capacity: usize,
-    ) -> ParseResult<Vec<Statement>> {
-        let mut statements = Vec::with_capacity(capacity);
-        while !breaks.contains(&self.peek()?.ty()) {
-            statements.push(self.stmt()?);
-        }
-        statements.shrink_to_fit();
-
-        Ok(statements)
-    }
-
     pub(super) fn stmt(&mut self) -> ParseResult<Statement> {
         match self.peek()?.ty() {
             TokenType::If => self.if_stmt(),
@@ -120,18 +108,39 @@ impl<'a> Parser<'a> {
                 Ok(Statement::Continue)
             }
 
-            // Covers function calls & assignments
-            TokenType::Ident => {
+            TokenType::Empty => Ok(Statement::Empty),
+
+            // Expressions
+            TokenType::Ident
+            | TokenType::Int
+            | TokenType::String
+            | TokenType::Float
+            | TokenType::Bool
+            | TokenType::Minus
+            | TokenType::Bang
+            | TokenType::Plus
+            | TokenType::LeftBrace => {
                 let expr = self.expr()?;
                 self.eat(TokenType::Newline)?;
 
                 Ok(Statement::Expression(expr))
             }
 
-            TokenType::Empty => Ok(Statement::Empty),
-
-            t => unimplemented!("{:?}", t),
+            ty => {
+                Err(Diagnostic::error()
+                    .with_message(format!("Expected a statement, got a `{}`", ty)))
+            }
         }
+    }
+
+    fn statements(&mut self, breaks: &[TokenType], capacity: usize) -> ParseResult<Vec<Statement>> {
+        let mut statements = Vec::with_capacity(capacity);
+        while !breaks.contains(&self.peek()?.ty()) {
+            statements.push(self.stmt()?);
+        }
+        statements.shrink_to_fit();
+
+        Ok(statements)
     }
 
     fn if_stmt(&mut self) -> ParseResult<Statement> {
@@ -154,10 +163,11 @@ impl<'a> Parser<'a> {
                 body,
                 arm: None,
             }))
-        } else {
-            // TODO: Error
-            assert!(next.ty() == TokenType::End);
+        } else if next.ty() == TokenType::End {
             None
+        } else {
+            return Err(Diagnostic::error()
+                .with_message(format!("Expected an `end`, got a `{}`", next.ty())));
         };
 
         Ok(Statement::If {
@@ -235,7 +245,7 @@ impl<'a> Parser<'a> {
         let condition = self.expr()?;
         self.eat(TokenType::Newline)?;
 
-        let mut body = self.statements(&[TokenType::End, TokenType::Then], 10)?;
+        let body = self.statements(&[TokenType::End, TokenType::Then], 10)?;
         let then = self.then_stmt()?;
 
         Ok(Statement::For {
@@ -247,7 +257,7 @@ impl<'a> Parser<'a> {
     }
 
     fn then_stmt(&mut self) -> ParseResult<Option<Vec<Statement>>> {
-        Ok(if self.peek()?.ty == TokenType::Then {
+        Ok(if self.peek()?.ty() == TokenType::Then {
             self.eat(TokenType::Then)?;
             self.eat(TokenType::Newline)?;
 
@@ -257,10 +267,5 @@ impl<'a> Parser<'a> {
         } else {
             None
         })
-    }
-
-    fn eat_ident(&mut self) -> ParseResult<Sym> {
-        let source = self.eat(TokenType::Ident)?.source();
-        Ok(self.intern_string(source))
     }
 }

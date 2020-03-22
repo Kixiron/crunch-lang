@@ -1,18 +1,23 @@
 use crate::token::{Token, TokenStream, TokenType};
 
 use crunch_error::parse_prelude::{Diagnostic, Label, ParseResult};
+use parking_lot::RwLock;
 use string_interner::{StringInterner, Symbol};
 
-use core::{convert::TryFrom, num::NonZeroU64};
-use std::sync::{Arc, RwLock};
+use alloc::{format, sync::Arc, vec, vec::Vec};
+use core::{convert::TryFrom, mem, num::NonZeroU64};
 
 mod ast;
 mod expr;
 mod stmt;
+mod string_esc;
 #[cfg(test)]
 mod tests;
 
-pub use ast::Ast;
+pub use ast::{
+    Ast, Attribute, BuiltinType, Decorator, EnumVariant, ImportDest, ImportExposure, Type,
+    TypeMember, Visibility,
+};
 pub use expr::{
     AssignmentType, BinaryOperand, ComparisonOperand, Expression, Literal, UnaryOperand,
 };
@@ -20,22 +25,20 @@ pub use stmt::Statement;
 
 // TODO: Make the parser a little more lax, it's kinda strict about whitespace
 
+type Interner = Arc<RwLock<StringInterner<Sym>>>;
+
 pub struct Parser<'a> {
     token_stream: TokenStream<'a>,
     next: Option<Token<'a>>,
     peek: Option<Token<'a>>,
 
     current_file: usize,
-    string_interner: Arc<RwLock<StringInterner<Sym>>>,
+    string_interner: Interner,
 }
 
 /// Initialization and high-level usage
 impl<'a> Parser<'a> {
-    pub fn new(
-        source: &'a str,
-        current_file: usize,
-        string_interner: Arc<RwLock<StringInterner<Sym>>>,
-    ) -> Self {
+    pub fn new(source: &'a str, current_file: usize, string_interner: Interner) -> Self {
         let (token_stream, next, peek) = Self::lex(source);
 
         Self {
@@ -47,10 +50,26 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse() -> Result<(Vec<Ast>, Vec<Diagnostic<usize>>), Vec<Diagnostic<usize>>> {
-        todo!()
+    // TODO: Decide when an error has occurred, and allow returning of warnings
+    // TODO: Should this consume? Is there a viable reason to re-parse?
+    // TODO: Maybe consuming is alright, the token stream itself is consumed, so nothing really usable is
+    //       left in the parser after this function is run on it
+    pub fn parse(mut self) -> Result<(Vec<Ast>, Vec<Diagnostic<usize>>), Vec<Diagnostic<usize>>> {
+        let mut ast = Vec::with_capacity(20);
+        let mut diagnostics = Vec::with_capacity(20);
+
+        while self.peek().is_ok() {
+            match self.ast() {
+                Ok(node) => ast.push(node),
+                Err(diag) => diagnostics.push(diag),
+            }
+        }
+
+        Ok((ast, diagnostics))
     }
 
+    // TODO: Source own lexer, logos is slow on compile times, maybe something generator-based
+    //       whenever those stabilize?
     pub fn lex(source: &'a str) -> (TokenStream<'a>, Option<Token<'a>>, Option<Token<'a>>) {
         let mut token_stream = TokenStream::new(source, true);
         let next = None;
@@ -64,15 +83,10 @@ impl<'a> Parser<'a> {
 impl<'a> Parser<'a> {
     fn next(&mut self) -> ParseResult<Token<'a>> {
         let mut next = self.token_stream.next_token();
-        std::mem::swap(&mut next, &mut self.peek);
+        mem::swap(&mut next, &mut self.peek);
         self.next = next;
 
-        dbg!(next).ok_or(Diagnostic::error().with_message("Unexpected End Of File"))
-    }
-
-    fn current(&mut self) -> ParseResult<Token<'a>> {
-        self.next
-            .ok_or(Diagnostic::error().with_message("Unexpected End Of File"))
+        next.ok_or(Diagnostic::error().with_message("Unexpected End Of File"))
     }
 
     fn peek(&self) -> ParseResult<Token<'a>> {
@@ -89,13 +103,11 @@ impl<'a> Parser<'a> {
             Err(Diagnostic::error()
                 .with_message(format!(
                     "Unexpected Token: Expected '{}', found '{}'",
-                    expected, token.ty
+                    expected,
+                    token.ty()
                 ))
-                .with_labels(vec![Label::primary(
-                    self.current_file,
-                    token.range.0 as usize..token.range.1 as usize,
-                )
-                .with_message(format!("Expected {}", expected))]))
+                .with_labels(vec![Label::primary(self.current_file, token.range())
+                    .with_message(format!("Expected {}", expected))]))
         }
     }
 
@@ -110,11 +122,12 @@ impl<'a> Parser<'a> {
     }
 
     fn intern_string(&self, string: &str) -> Sym {
-        if let Some(sym) = self.string_interner.read().unwrap().get(string) {
-            sym
-        } else {
-            self.string_interner.write().unwrap().get_or_intern(string)
-        }
+        intern_string(&self.string_interner, string)
+    }
+
+    fn eat_ident(&mut self) -> ParseResult<Sym> {
+        let source = self.eat(TokenType::Ident)?.source();
+        Ok(self.intern_string(source))
     }
 }
 
@@ -130,7 +143,7 @@ impl Symbol for Sym {
     /// If the given `usize` is greater than `u32::MAX - 1`.
     fn from_usize(val: usize) -> Self {
         assert!(
-            val < u64::MAX as usize,
+            val < u64::max_value() as usize,
             "Symbol value {} is too large and not supported by `string_interner::Sym` type",
             val
         );
@@ -148,6 +161,15 @@ impl From<usize> for Sym {
     fn from(val: usize) -> Self {
         Sym::from_usize(val)
     }
+}
+
+// Attempts to not acquire a write lock on the interner unless it has to
+fn intern_string(interner: &Interner, string: &str) -> Sym {
+    if let Some(sym) = interner.read().get(string) {
+        return sym;
+    }
+
+    interner.write().get_or_intern(string)
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]

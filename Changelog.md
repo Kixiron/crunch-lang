@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added AST -> HIR translation
 - Added HIR -> VIR translation
+- Started work on multithreaded compiler pipeline
 
 ### Changed
 
@@ -19,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Compactor` now stores a `Box<&mut dyn CrunchWrite>` as stdout
 - `Crunch` now requires a `Box<&mut dyn CrunchWrite>` for all its standalone operations
 - The Crunch binary now uses a `BufWriter<Stdout>` for its stdout
+- Completely overhauled AST
+- Parser completely rewritten, now a pratt-based recursive descent parser
 
 ### Deprecated
 

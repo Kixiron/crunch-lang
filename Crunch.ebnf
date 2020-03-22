@@ -1,3 +1,6 @@
+/* The grammar specification for Crunch */
+/* Uses the W3C EBNF Spec as defined here: https://www.w3.org/TR/2010/REC-xquery-20101214/#EBNFNotation */
+
 Program ::=
     ( FunctionDeclaration
     | TypeDeclaration
@@ -39,7 +42,7 @@ Decorator ::= '@' Ident ( '(' DecoratorArgs? ')' )? '\n'
 DecoratorArgs ::= Expr | DecoratorArgs ',' Expr
 
 Attribute ::= Visibility
-Visibility ::= 'exposed' | 'lib'
+Visibility ::= 'exposed' | 'sealed'
 
 Generics ::= '<' GenericParam? '>'
 GenericParam ::= Ident | Ident ',' GenericParam
@@ -59,31 +62,32 @@ StringDelim ::= '"' | "'" | '"""' | "'''"
 Boolean ::= 'true' | 'false'
 
 /* Integer Literals */
-Integer ::= Sign? ( Digits | '0x' HexDigits ) 
+Integer ::= Sign? ( Digits | '0x' HexDigits )
 Sign ::= '-' | '+'
 Digits ::= [0-9][0-9_]*
 HexDigits ::= [0-9a-fA-F][0-9a-fA-F_]*
 IntSuffix ::= 'byte' | 'int'
 
 /* Float Literals */
-Float ::= Sign? ( DecimalFloat | HexFloat )
+Float ::= 'inf' | 'NaN' | Sign? ( DecimalFloat | HexFloat )
 
 /* Decimal Float Literals */
-DecimalFloat ::= 
-    Digits '.' Digits? DecimalExp? DecimalFloatSuffix?
+DecimalFloat ::= Sign?
+    ( Digits '.' Digits? DecimalExp? DecimalFloatSuffix?
     | Digits DecimalExp DecimalFloatSuffix?
     | Digits DecimalExp? DecimalFloatSuffix
+    )
 DecimalExp ::= DecimalExpIndicator Sign? Digits
 DecimalExpIndicator ::= 'e' | 'E'
 DecimalFloatSuffix ::= 'f' | 'F'
 
 /* Hex Float Literals */
-HexFloat ::= '0x' HexDigits '.' ?HexFloatExp?
+HexFloat ::= '0x' HexDigits '.' HexFloatExp?
 HexFloatExp ::= HexFloatExpIndicator Sign? Digits
 HexFloatExpIndicator ::= 'p' | 'P'
 
 /* Expressions */
-Expr ::= 
+Expr ::=
     Literal
     | Unary
     | Range
@@ -112,8 +116,8 @@ FunctionCall ::= ( Expr '.' )? Expr '(' FunctionCallArgs? ')'
 FunctionArgs ::= Expr | FunctionArgs ',' Expr
 
 BinaryOperation ::= Expr BinaryOperand Expr
-BinaryOperand ::= 
-    '+' | '-' | '*' | '/' | '%' | '**' 
+BinaryOperand ::=
+    '+' | '-' | '*' | '/' | '%' | '**'
     | '^' | '|' | '&' | '<<' | '>>'
 
 Comparison ::= Expr Comparator Expr
@@ -123,7 +127,7 @@ Assignment ::= Ident Assigner Expr '\n'
 Assigner ::= '=' | BinaryOperand '='
 
 /* Statements */
-Statement ::= 
+Statement ::=
     While
     | Loop
     | For

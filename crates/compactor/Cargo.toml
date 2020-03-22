@@ -13,8 +13,8 @@ std = []
 [dependencies.crunch-error]
 path = "../crunch-error"
 
-[dependencies.ballast]
-path = "../ballast"
+# [dependencies.ballast]
+# path = "../ballast"
 
 [dependencies.dlopen]
 version = "0.1.8"

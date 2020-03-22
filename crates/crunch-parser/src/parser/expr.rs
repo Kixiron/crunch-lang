@@ -3,6 +3,7 @@ use crate::token::Token;
 
 use crunch_error::parse_prelude::{trace, Diagnostic, ParseResult};
 
+use alloc::{boxed::Box, format, string::String, vec::Vec};
 use core::convert::TryFrom;
 
 // TODO: Use arenas over Boxes
@@ -21,6 +22,10 @@ pub enum Expression {
     FunctionCall {
         caller: Box<Expression>,
         arguments: Vec<Expression>,
+    },
+    MemberFunctionCall {
+        member: Box<Expression>,
+        function: Box<Expression>,
     },
     Literal(Literal),
     Comparison(Box<Expression>, ComparisonOperand, Box<Expression>),
@@ -93,19 +98,139 @@ impl TryFrom<TokenType> for ComparisonOperand {
 pub enum Literal {
     I32(i32),
     Bool(bool),
+    String(String),
+    ByteVec(Vec<u8>),
+    F32(f32),
 }
 
+// TODO: Actually make this throw useful errors
+// FIXME: Not unicode-aware, will panic on unicode boundaries
+// TODO: Make these errors actually helpful, and verify that the parsing matches with what is lexed
 impl<'a> TryFrom<&Token<'a>> for Literal {
-    type Error = ();
+    type Error = Diagnostic<usize>;
 
-    // TODO: strings & floats
     fn try_from(token: &Token<'a>) -> Result<Self, Self::Error> {
         Ok(match token.ty() {
-            // TODO: Better integer parsing
-            TokenType::Int => Self::I32(token.source().parse::<i32>().unwrap()),
-            TokenType::Bool => Self::Bool(token.source().parse::<bool>().unwrap()),
+            TokenType::Float => {
+                let mut string = token.source();
 
-            _ => return Err(()),
+                if string == "inf" {
+                    return Ok(Literal::F32(core::f32::INFINITY));
+                } else if string == "NaN" {
+                    return Ok(Literal::F32(core::f32::NAN));
+                }
+
+                let negative = if &string[..1] == "-" {
+                    string = &string[1..];
+                    true
+                } else if &string[..1] == "+" {
+                    string = &string[1..];
+                    false
+                } else {
+                    false
+                };
+
+                let mut float = if string.len() >= 2 && &string[..2] == "0x" || &string[..2] == "0X"
+                {
+                    use hexponent::FloatLiteral;
+
+                    let float: FloatLiteral = string.parse().map_err(|_| {
+                        Diagnostic::error().with_message("Invalid hex float literal")
+                    })?;
+                    float.convert::<f32>().inner()
+                } else {
+                    string
+                        .parse::<f32>()
+                        .map_err(|_| Diagnostic::error().with_message("Invalid float literal"))?
+                };
+
+                if negative {
+                    float = -float;
+                }
+
+                Literal::F32(float)
+            }
+
+            TokenType::String => {
+                let mut string = token.source().chars().collect::<Vec<char>>();
+
+                let byte_str = if string[0] == 'b' {
+                    string.remove(0);
+                    true
+                } else {
+                    false
+                };
+
+                let string = match string[0] {
+                    '\'' | '"'
+                        if string.len() >= 6
+                            && (&string[..3] == &['\'', '\'', '\'']
+                                || &string[..3] == &['"', '"', '"']) =>
+                    {
+                        string.drain(..3).for_each(|d| drop(d));
+                        string.drain(string.len() - 3..).for_each(|d| drop(d));
+
+                        string_esc::unescape_string(&mut string.into_iter())?
+                    }
+
+                    '\'' | '"' => {
+                        string.drain(..1).for_each(|d| drop(d));
+                        string.drain(string.len() - 1..).for_each(|d| drop(d));
+
+                        string_esc::unescape_string(&mut string.into_iter())?
+                    }
+
+                    _ => unreachable!(),
+                };
+
+                if byte_str {
+                    Literal::ByteVec(string.as_bytes().to_vec())
+                } else {
+                    Literal::String(string)
+                }
+            }
+
+            TokenType::Int => {
+                let mut string = token.source();
+
+                let negative = if &string[..1] == "-" {
+                    string = &string[1..];
+                    true
+                } else if &string[..1] == "+" {
+                    string = &string[1..];
+                    false
+                } else {
+                    false
+                };
+
+                let mut int = if string.len() >= 2 && (&string[..2] == "0x" || &string[..2] == "0X")
+                {
+                    i32::from_str_radix(&string[2..], 16)
+                        .map_err(|_| Diagnostic::error().with_message("Invalid hex int literal"))?
+                } else {
+                    i32::from_str_radix(string, 10)
+                        .map_err(|_| Diagnostic::error().with_message("Invalid int literal"))?
+                };
+
+                if negative {
+                    int = -int;
+                }
+
+                Literal::I32(int)
+            }
+
+            TokenType::Bool => Self::Bool(
+                token
+                    .source()
+                    .parse::<bool>()
+                    .map_err(|_| Diagnostic::error().with_message("Invalid bool literal"))?,
+            ),
+
+            ty => {
+                return Err(
+                    Diagnostic::error().with_message(format!("`{}` is not a valid literal", ty))
+                )
+            }
         })
     }
 }
@@ -196,7 +321,7 @@ impl<'a> Parser<'a> {
                 if let Some(infix) = Self::infix(token.ty()) {
                     left = infix(self, token, left)?;
                 } else {
-                    continue;
+                    break;
                 }
             }
 
@@ -211,21 +336,19 @@ impl<'a> Parser<'a> {
             // Variables
             TokenType::Ident => |parser, token| {
                 trace!("Prefix Ident");
-                let ident = parser
-                    .string_interner
-                    .write()
-                    .unwrap()
-                    .get_or_intern(token.source());
+                let ident = parser.intern_string(token.source());
 
                 Ok(Expression::Variable(ident))
             },
 
             // Literals
-            TokenType::Int | TokenType::Bool => |_parser, lit| {
-                trace!("Prefix Literal");
+            TokenType::Int | TokenType::Bool | TokenType::Float | TokenType::String => {
+                |_parser, lit| {
+                    trace!("Prefix Literal");
 
-                Ok(Expression::Literal(Literal::try_from(&lit).unwrap()))
-            },
+                    Ok(Expression::Literal(Literal::try_from(&lit)?))
+                }
+            }
 
             // Prefix Operators
             TokenType::Minus | TokenType::Bang | TokenType::Plus => |parser, token| {
@@ -252,24 +375,16 @@ impl<'a> Parser<'a> {
                 trace!("Prefix array literal");
 
                 let mut elements = Vec::with_capacity(5);
-                loop {
-                    if let Ok(peek) = parser.peek() {
-                        if peek.ty() != TokenType::RightParen {
-                            elements.push(parser.expr()?);
+                while parser.peek()?.ty() != TokenType::RightParen {
+                    elements.push(parser.expr()?);
 
-                            if let Ok(peek) = parser.peek() {
-                                if peek.ty() == TokenType::Comma {
-                                    parser.eat(TokenType::Comma)?;
-                                    continue;
-                                }
-                            }
-
-                            break;
-                        }
+                    if parser.peek()?.ty() == TokenType::Comma {
+                        parser.eat(TokenType::Comma)?;
+                    } else {
+                        break;
                     }
-
-                    break;
                 }
+
                 elements.shrink_to_fit();
                 parser.eat(TokenType::RightBrace)?;
 
@@ -287,24 +402,16 @@ impl<'a> Parser<'a> {
                 trace!("Postfix Function Call");
 
                 let mut arguments = Vec::with_capacity(5);
-                loop {
-                    if let Ok(peek) = parser.peek() {
-                        if peek.ty() != TokenType::RightParen {
-                            arguments.push(parser.expr()?);
+                while parser.peek()?.ty() != TokenType::RightParen {
+                    arguments.push(parser.expr()?);
 
-                            if let Ok(peek) = parser.peek() {
-                                if peek.ty() == TokenType::Comma {
-                                    parser.eat(TokenType::Comma)?;
-                                    continue;
-                                }
-                            }
-
-                            break;
-                        }
+                    if parser.peek()?.ty() == TokenType::Comma {
+                        parser.eat(TokenType::Comma)?;
+                    } else {
+                        break;
                     }
-
-                    break;
                 }
+
                 arguments.shrink_to_fit();
                 parser.eat(TokenType::RightParen)?;
 
@@ -315,22 +422,15 @@ impl<'a> Parser<'a> {
             },
 
             // Dotted function calls
-            TokenType::Dot => |parser, _dot, expr| {
+            TokenType::Dot => |parser, _dot, member| {
                 trace!("Postfix Dotted Function Call");
 
-                let mut caller = parser.expr()?;
-                if let Expression::FunctionCall {
-                    caller: _,
-                    ref mut arguments,
-                } = caller
-                {
-                    arguments.reserve(1);
-                    arguments.insert(0, expr);
-                } else {
-                    todo!("Error?");
-                }
+                let function = Box::new(parser.expr()?);
 
-                Ok(caller)
+                Ok(Expression::MemberFunctionCall {
+                    member: Box::new(member),
+                    function,
+                })
             },
 
             // Array indexing

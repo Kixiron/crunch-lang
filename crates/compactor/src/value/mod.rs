@@ -2,9 +2,8 @@ mod compare;
 
 pub use compare::Compare;
 
-use crate::{return_frame::ReturnFrame, CRUNCH_ALLOCATOR};
+use crate::return_frame::ReturnFrame;
 
-use ballast::Rooted;
 use crunch_error::runtime_prelude::*;
 use num_bigint::BigInt;
 
@@ -18,6 +17,11 @@ use alloc::{
     vec::Vec,
 };
 use core::{fmt, mem};
+
+#[derive(Debug)]
+pub struct Rooted<T> {
+    __: core::marker::PhantomData<T>,
+}
 
 // TODO: Test all implemented operations
 // TODO: Implement all inter-int operations
@@ -66,16 +70,17 @@ impl Clone for Value {
             Self::I32(i) => Self::I32(*i),
             Self::I64(i) => Self::I64(*i),
             Self::GcInt(i) => {
-                let (sign, digits) = (&**i).to_u32_digits();
-                Self::GcInt(unsafe {
-                    CRUNCH_ALLOCATOR.with(|alloc| {
-                        alloc
-                            .get()
-                            .as_mut()
-                            .unwrap()
-                            .alloc(BigInt::new(sign, digits))
-                    })
-                })
+                // let (sign, digits) = (&**i).to_u32_digits();
+                // Self::GcInt(unsafe {
+                //     CRUNCH_ALLOCATOR.with(|alloc| {
+                //         alloc
+                //             .get()
+                //             .as_mut()
+                //             .unwrap()
+                //             .alloc(BigInt::new(sign, digits))
+                //     })
+                // })
+                todo!()
             }
 
             Self::F32(f) => Self::F32(*f),
@@ -84,7 +89,8 @@ impl Clone for Value {
             Self::Char(c) => Self::Char(*c),
             Self::Str(s) => Self::Str(s),
             Self::GcString(s) => Self::GcString(unsafe {
-                CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc((&**s).clone()))
+                // CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc((&**s).clone()))
+                todo!()
             }),
 
             Self::Bool(b) => Self::Bool(*b),
@@ -166,7 +172,7 @@ impl Value {
             (Self::I16(left), Self::I16(right)) => Compare::ordering(left, right),
             (Self::I32(left), Self::I32(right)) => Compare::ordering(left, right),
             (Self::I64(left), Self::I64(right)) => Compare::ordering(left, right),
-            (Self::GcInt(left), Self::GcInt(right)) => Compare::ordering(&**left, &**right),
+            (Self::GcInt(left), Self::GcInt(right)) => todo!(), //Compare::ordering(&**left, &**right),
 
             (Self::F32(left), Self::F32(right)) => Compare::ordering(left, right),
             (Self::F64(left), Self::F64(right)) => Compare::ordering(left, right),
@@ -211,13 +217,14 @@ impl Value {
             #[cfg(feature = "dll-ffi")]
             Self::Library(lib) => format!("{:?}", lib),
             Self::Char(c) => c.to_string(),
-            Self::GcString(string) => (&**string).to_string(),
+            //Self::GcString(string) => (&**string).to_string(),
             Self::Str(string) => (*string).to_string(),
-            Self::GcInt(int) => (&**int).to_string(),
+            //Self::GcInt(int) => (&**int).to_string(),
             Self::Generator(gen) => format!("{:p}", gen.function_index as *const u8),
             Self::Array(arr) => format!("{:?}", arr),
             Self::Null => "null".to_string(),
             Self::None => "NoneType".to_string(),
+            _ => todo!(),
         }
     }
 
@@ -278,18 +285,22 @@ impl Value {
                     int += *right;
 
                     Self::GcInt(unsafe {
-                        CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
+                        // CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
+                        todo!()
                     })
                 }
             }
             (Self::GcInt(left), Self::GcInt(right)) => {
-                let (sign, digits) = (&**left).to_u32_digits();
-                let mut int = BigInt::new(sign, digits);
-                int += &**right;
+                // let (sign, digits) = (&**left).to_u32_digits();
+                // let mut int = BigInt::new(sign, digits);
+                // int += &**right;
+                //
+                // Self::GcInt(unsafe {
+                //     // CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
+                //     todo!()
+                // })
 
-                Self::GcInt(unsafe {
-                    CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
-                })
+                todo!()
             }
 
             (Self::F32(left), Self::F32(right)) => Self::F32(left + right),
@@ -301,18 +312,22 @@ impl Value {
                 string.push_str(right);
 
                 Self::GcString(unsafe {
-                    CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(string))
+                    // CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(string))
+                    todo!()
                 })
             }
 
             (Self::GcString(left), Self::GcString(right)) => {
-                let mut string = String::with_capacity((&**left).len() + (&**right).len());
-                string.push_str(&**left);
-                string.push_str(&**right);
+                // let mut string = String::with_capacity((&**left).len() + (&**right).len());
+                // string.push_str(&**left);
+                // string.push_str(&**right);
+                //
+                // Self::GcString(unsafe {
+                //     // CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(string))
+                //     todo!()
+                // })
 
-                Self::GcString(unsafe {
-                    CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(string))
-                })
+                todo!()
             }
 
             (left, right) if *left == &Self::None || *right == &Self::None => {
@@ -386,18 +401,21 @@ impl Value {
                     int -= *right;
 
                     Self::GcInt(unsafe {
-                        CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
+                        // CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
+                        todo!()
                     })
                 }
             }
             (Self::GcInt(left), Self::GcInt(right)) => {
-                let (sign, digits) = (&**left).to_u32_digits();
-                let mut int = BigInt::new(sign, digits);
-                int -= &**right;
+                // let (sign, digits) = (&**left).to_u32_digits();
+                // let mut int = BigInt::new(sign, digits);
+                // int -= &**right;
+                //
+                // Self::GcInt(unsafe {
+                //     CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
+                // })
 
-                Self::GcInt(unsafe {
-                    CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
-                })
+                todo!()
             }
 
             (Self::F32(left), Self::F32(right)) => Self::F32(left - right),
@@ -455,20 +473,24 @@ impl Value {
                 Self::I64((*left as i64).checked_div(*right).unwrap_or(0))
             }
             (Self::GcInt(left), Self::GcInt(right)) => {
-                if **left == 0 || **right == 0 {
-                    Self::GcInt(unsafe {
-                        CRUNCH_ALLOCATOR
-                            .with(|alloc| alloc.get().as_mut().unwrap().alloc(BigInt::from(0)))
-                    })
-                } else {
-                    let (sign, digits) = (&**left).to_u32_digits();
-                    let mut int = BigInt::new(sign, digits);
-                    int /= &**right;
+                // if **left == 0 || **right == 0 {
+                //     Self::GcInt(unsafe {
+                //         // CRUNCH_ALLOCATOR
+                //         //     .with(|alloc| alloc.get().as_mut().unwrap().alloc(BigInt::from(0)))
+                //         todo!()
+                //     })
+                // } else {
+                //     let (sign, digits) = (&**left).to_u32_digits();
+                //     let mut int = BigInt::new(sign, digits);
+                //     int /= &**right;
+                //
+                //     Self::GcInt(unsafe {
+                //         // CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
+                //         todo!()
+                //     })
+                // }
 
-                    Self::GcInt(unsafe {
-                        CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
-                    })
-                }
+                todo!()
             }
 
             (Self::F32(left), Self::F32(right)) if *left != 0.0 && *right != 0.0 => {
@@ -546,18 +568,21 @@ impl Value {
                     int *= *right;
 
                     Self::GcInt(unsafe {
-                        CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
+                        // CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
+                        todo!()
                     })
                 }
             }
             (Self::GcInt(left), Self::GcInt(right)) => {
-                let (sign, digits) = (*left).to_u32_digits();
-                let mut int = BigInt::new(sign, digits);
-                int *= &**right;
+                // let (sign, digits) = (*left).to_u32_digits();
+                // let mut int = BigInt::new(sign, digits);
+                // int *= &**right;
+                //
+                // Self::GcInt(unsafe {
+                //     CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
+                // })
 
-                Self::GcInt(unsafe {
-                    CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
-                })
+                todo!()
             }
 
             (Self::F32(left), Self::F32(right)) if *left != 0.0 && *right != 0.0 => {
@@ -605,13 +630,15 @@ impl Value {
             (Self::I64(left), Self::I64(right)) => Self::I64(left | right),
             (Self::I32(left), Self::I64(right)) => Self::I64((*left as i64) | right),
             (Self::GcInt(left), Self::GcInt(right)) => {
-                let (sign, digits) = (*left).to_u32_digits();
-                let mut int = BigInt::new(sign, digits);
-                int |= &**right;
+                // let (sign, digits) = (*left).to_u32_digits();
+                // let mut int = BigInt::new(sign, digits);
+                // int |= &**right;
+                //
+                // Self::GcInt(unsafe {
+                //     CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
+                // })
 
-                Self::GcInt(unsafe {
-                    CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
-                })
+                todo!()
             }
 
             (left, right) if *left == Self::None || *right == Self::None => {
@@ -646,13 +673,15 @@ impl Value {
             (Self::I64(left), Self::I64(right)) => Self::I64(left ^ right),
             (Self::I32(left), Self::I64(right)) => Self::I64((*left as i64) ^ right),
             (Self::GcInt(left), Self::GcInt(right)) => {
-                let (sign, digits) = (*left).to_u32_digits();
-                let mut int = BigInt::new(sign, digits);
-                int ^= &**right;
+                // let (sign, digits) = (*left).to_u32_digits();
+                // let mut int = BigInt::new(sign, digits);
+                // int ^= &**right;
+                //
+                // Self::GcInt(unsafe {
+                //     CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
+                // })
 
-                Self::GcInt(unsafe {
-                    CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
-                })
+                todo!()
             }
 
             (left, right) if *left == Self::None || *right == Self::None => {
@@ -687,13 +716,15 @@ impl Value {
             (Self::I64(left), Self::I64(right)) => Self::I64(left & right),
             (Self::I32(left), Self::I64(right)) => Self::I64((*left as i64) & right),
             (Self::GcInt(left), Self::GcInt(right)) => {
-                let (sign, digits) = (*left).to_u32_digits();
-                let mut int = BigInt::new(sign, digits);
-                int &= &**right;
+                // let (sign, digits) = (*left).to_u32_digits();
+                // let mut int = BigInt::new(sign, digits);
+                // int &= &**right;
+                //
+                // Self::GcInt(unsafe {
+                //     CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
+                // })
 
-                Self::GcInt(unsafe {
-                    CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(int))
-                })
+                todo!()
             }
 
             (left, right) if *left == Self::None || *right == Self::None => {
@@ -727,7 +758,8 @@ impl Value {
             Self::I32(int) => Self::I32(!int),
             Self::I64(int) => Self::I64(!int),
             Self::GcInt(int) => Self::GcInt(unsafe {
-                CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(!(&**int)))
+                // CRUNCH_ALLOCATOR.with(|alloc| alloc.get().as_mut().unwrap().alloc(!(&**int)))
+                todo!()
             }),
 
             Self::F32(_int) => unimplemented!("No idea how floats work"),
@@ -819,12 +851,14 @@ impl Into<Vec<u8>> for Value {
                 vec
             }
             Self::GcString(string) => {
-                let bytes = (*string).as_bytes();
+                // let bytes = (*string).as_bytes();
+                //
+                // let mut vec = Vec::with_capacity(bytes.len() + 1);
+                // vec.push(0x0B);
+                // vec.extend_from_slice(&bytes);
+                // vec
 
-                let mut vec = Vec::with_capacity(bytes.len() + 1);
-                vec.push(0x0B);
-                vec.extend_from_slice(&bytes);
-                vec
+                todo!()
             }
 
             _ => unimplemented!(),
