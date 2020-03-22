@@ -44,7 +44,7 @@ pub enum AssignmentType {
 }
 
 impl TryFrom<TokenType> for AssignmentType {
-    type Error = ();
+    type Error = Diagnostic<usize>;
 
     fn try_from(ty: TokenType) -> Result<Self, Self::Error> {
         Ok(match ty {
@@ -62,7 +62,10 @@ impl TryFrom<TokenType> for AssignmentType {
             TokenType::AndAssign => Self::BinaryOp(BinaryOperand::BitAnd),
             TokenType::XorAssign => Self::BinaryOp(BinaryOperand::BitXor),
 
-            _ => return Err(()),
+            ty => {
+                return Err(Diagnostic::error()
+                    .with_message(format!("Expected an assignment, got `{}`", ty)));
+            }
         })
     }
 }
@@ -78,7 +81,7 @@ pub enum ComparisonOperand {
 }
 
 impl TryFrom<TokenType> for ComparisonOperand {
-    type Error = ();
+    type Error = Diagnostic<usize>;
 
     fn try_from(ty: TokenType) -> Result<Self, Self::Error> {
         Ok(match ty {
@@ -89,7 +92,10 @@ impl TryFrom<TokenType> for ComparisonOperand {
             TokenType::IsEqual => Self::Equal,
             TokenType::IsNotEqual => Self::NotEqual,
 
-            _ => return Err(()),
+            _ => {
+                return Err(Diagnostic::error()
+                    .with_message(format!("Expected a comparison, got `{}`", ty)));
+            }
         })
     }
 }
@@ -251,7 +257,7 @@ pub enum BinaryOperand {
 }
 
 impl TryFrom<TokenType> for BinaryOperand {
-    type Error = ();
+    type Error = Diagnostic<usize>;
 
     fn try_from(ty: TokenType) -> Result<Self, Self::Error> {
         Ok(match ty {
@@ -267,7 +273,10 @@ impl TryFrom<TokenType> for BinaryOperand {
             TokenType::Shl => Self::Shl,
             TokenType::Shr => Self::Shr,
 
-            _ => return Err(()),
+            ty => {
+                return Err(Diagnostic::error()
+                    .with_message(format!("Expected a binary operand, got `{}`", ty)));
+            }
         })
     }
 }
@@ -280,7 +289,7 @@ pub enum UnaryOperand {
 }
 
 impl TryFrom<TokenType> for UnaryOperand {
-    type Error = (); // TODO: Maybe should be Diagnostic?
+    type Error = Diagnostic<usize>;
 
     fn try_from(ty: TokenType) -> Result<Self, Self::Error> {
         Ok(match ty {
@@ -288,7 +297,10 @@ impl TryFrom<TokenType> for UnaryOperand {
             TokenType::Minus => Self::Negative,
             TokenType::Bang => Self::Not,
 
-            _ => return Err(()),
+            ty => {
+                return Err(Diagnostic::error()
+                    .with_message(format!("Expected a unary operand, got `{}`", ty)))
+            }
         })
     }
 }
@@ -356,7 +368,7 @@ impl<'a> Parser<'a> {
                 let operand = Box::new(parser.expr()?);
 
                 Ok(Expression::UnaryExpr(
-                    UnaryOperand::try_from(token.ty()).unwrap(),
+                    UnaryOperand::try_from(token.ty())?,
                     operand,
                 ))
             },
@@ -451,7 +463,7 @@ impl<'a> Parser<'a> {
             | TokenType::XorAssign => |parser, assign, left| {
                 trace!("Postfix assignment");
 
-                let assign = AssignmentType::try_from(assign.ty()).unwrap();
+                let assign = AssignmentType::try_from(assign.ty())?;
                 let right = Box::new(parser.expr()?);
 
                 Ok(Expression::Assignment(Box::new(left), assign, right))
@@ -480,7 +492,7 @@ impl<'a> Parser<'a> {
 
                 Ok(Expression::BinaryOp(
                     Box::new(left),
-                    BinaryOperand::try_from(operand.ty()).unwrap(),
+                    BinaryOperand::try_from(operand.ty())?,
                     right,
                 ))
             },
@@ -497,7 +509,7 @@ impl<'a> Parser<'a> {
 
                 Ok(Expression::Comparison(
                     Box::new(left),
-                    ComparisonOperand::try_from(comparison.ty()).unwrap(),
+                    ComparisonOperand::try_from(comparison.ty())?,
                     right,
                 ))
             },

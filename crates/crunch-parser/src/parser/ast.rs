@@ -183,14 +183,17 @@ impl Attribute {
 }
 
 impl TryFrom<TokenType> for Attribute {
-    type Error = ();
+    type Error = Diagnostic<usize>;
 
     fn try_from(ty: TokenType) -> Result<Self, Self::Error> {
         Ok(match ty {
             TokenType::Exposed => Self::Visibility(Visibility::Exposed),
             TokenType::Package => Self::Visibility(Visibility::Package),
 
-            _ => return Err(()),
+            ty => {
+                return Err(Diagnostic::error()
+                    .with_message(format!("Expected an attribute, got `{}`", ty)));
+            }
         })
     }
 }
@@ -228,7 +231,7 @@ impl<'a> Parser<'a> {
             }
 
             TokenType::Exposed | TokenType::Package => {
-                attributes.push(Attribute::try_from(self.next()?.ty()).unwrap());
+                attributes.push(Attribute::try_from(self.next()?.ty())?);
 
                 Ok(None)
             }
@@ -338,7 +341,7 @@ impl<'a> Parser<'a> {
                     .string_interner
                     .read()
                     .resolve(file)
-                    .unwrap()
+                    .expect("Shouldn't have a resolution problem, just interned the file's path")
                     .split('.')
                     .last()
                     .ok_or(
@@ -388,7 +391,7 @@ impl<'a> Parser<'a> {
                 TokenType::AtSign => self.decorator(&mut method_decorators)?,
 
                 TokenType::Exposed | TokenType::Package => {
-                    method_attributes.push(Attribute::try_from(self.next()?.ty()).unwrap())
+                    method_attributes.push(Attribute::try_from(self.next()?.ty())?)
                 }
 
                 TokenType::Function => {
@@ -572,7 +575,7 @@ impl<'a> Parser<'a> {
                 TokenType::AtSign => self.decorator(&mut member_decorators)?,
 
                 TokenType::Exposed | TokenType::Package => {
-                    member_attributes.push(Attribute::try_from(self.next()?.ty()).unwrap());
+                    member_attributes.push(Attribute::try_from(self.next()?.ty())?);
                 }
 
                 TokenType::Function => methods.push(self.function(
