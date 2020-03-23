@@ -1,6 +1,9 @@
 use crate::token::{Token, TokenStream, TokenType};
 
-use crunch_error::parse_prelude::{Diagnostic, Label, ParseResult};
+use crunch_error::{
+    codespan_reporting,
+    parse_prelude::{Diagnostic, Label, ParseResult},
+};
 use parking_lot::RwLock;
 use string_interner::{StringInterner, Symbol};
 
@@ -60,8 +63,22 @@ impl<'a> Parser<'a> {
 
         while self.peek().is_ok() {
             match self.ast() {
-                Ok(node) => ast.push(node),
-                Err(diag) => diagnostics.push(diag),
+                Ok((node, diag)) => {
+                    ast.push(node);
+                    diagnostics.extend_from_slice(&diag);
+                }
+
+                Err(diag) => {
+                    use codespan_reporting::diagnostic::Severity;
+
+                    diagnostics.extend_from_slice(&diag);
+
+                    if diag.last().map(|d| d.severity) == Some(Severity::Error)
+                        || diag.last().map(|d| d.severity) == Some(Severity::Bug)
+                    {
+                        return Err(diagnostics);
+                    }
+                }
             }
         }
 
@@ -81,33 +98,39 @@ impl<'a> Parser<'a> {
 
 /// Utility functions
 impl<'a> Parser<'a> {
-    fn next(&mut self) -> ParseResult<Token<'a>> {
+    fn next(&mut self) -> Result<Token<'a>, Vec<Diagnostic<usize>>> {
         let mut next = self.token_stream.next_token();
         mem::swap(&mut next, &mut self.peek);
         self.next = next;
 
-        next.ok_or(Diagnostic::error().with_message("Unexpected End Of File"))
+        next.ok_or(vec![
+            Diagnostic::error().with_message("Unexpected End Of File")
+        ])
     }
 
-    fn peek(&self) -> ParseResult<Token<'a>> {
-        self.peek
-            .ok_or(Diagnostic::error().with_message("Unexpected End Of File"))
+    fn peek(&self) -> Result<Token<'a>, Vec<Diagnostic<usize>>> {
+        self.peek.ok_or(vec![
+            Diagnostic::error().with_message("Unexpected End Of File")
+        ])
     }
 
-    fn eat(&mut self, expected: TokenType) -> ParseResult<Token<'a>> {
+    fn eat(&mut self, expected: TokenType) -> Result<Token<'a>, Vec<Diagnostic<usize>>> {
         let token = self.next()?;
 
         if token.ty() == expected {
             Ok(token)
         } else {
-            Err(Diagnostic::error()
+            Err(vec![Diagnostic::error()
                 .with_message(format!(
                     "Unexpected Token: Expected '{}', found '{}'",
                     expected,
                     token.ty()
                 ))
-                .with_labels(vec![Label::primary(self.current_file, token.range())
-                    .with_message(format!("Expected {}", expected))]))
+                .with_labels(vec![Label::primary(
+                    self.current_file,
+                    token.range(),
+                )
+                .with_message(format!("Expected {}", expected))])])
         }
     }
 
@@ -125,9 +148,9 @@ impl<'a> Parser<'a> {
         intern_string(&self.string_interner, string)
     }
 
-    fn eat_ident(&mut self) -> ParseResult<Sym> {
-        let source = self.eat(TokenType::Ident)?.source();
-        Ok(self.intern_string(source))
+    fn eat_ident(&mut self) -> Result<Sym, Vec<Diagnostic<usize>>> {
+        let token = self.eat(TokenType::Ident)?;
+        Ok(self.intern_string(token.source()))
     }
 }
 

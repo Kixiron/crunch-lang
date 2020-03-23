@@ -1,6 +1,6 @@
-use crunch_error::parse_prelude::{Diagnostic, ParseResult};
+use crunch_error::parse_prelude::Diagnostic;
 
-use alloc::{format, string::String, vec::IntoIter};
+use alloc::{format, string::String, vec, vec::IntoIter, vec::Vec};
 use core::char;
 
 // TODO: *Having* errors is a good start, but make them good ones
@@ -13,7 +13,9 @@ use core::char;
 // TODO: The bit escape is probably wholly unneeded, but octal escapes are needed
 
 #[inline]
-pub(super) fn unescape_string(queue: &mut IntoIter<char>) -> ParseResult<String> {
+pub(super) fn unescape_string(
+    queue: &mut IntoIter<char>,
+) -> Result<String, Vec<Diagnostic<usize>>> {
     let mut queue = CharStream::new(queue);
     let mut s = String::new();
 
@@ -36,8 +38,8 @@ pub(super) fn unescape_string(queue: &mut IntoIter<char>) -> ParseResult<String>
             'b' => s.push(unescape_bits(&mut queue)?),
 
             c => {
-                return Err(Diagnostic::error()
-                    .with_message(format!("Unrecognized escape sequence: `\\{}`", c)));
+                return Err(vec![Diagnostic::error()
+                    .with_message(format!("Unrecognized escape sequence: `\\{}`", c))]);
             }
         };
     }
@@ -46,11 +48,13 @@ pub(super) fn unescape_string(queue: &mut IntoIter<char>) -> ParseResult<String>
 }
 
 #[inline]
-fn unescape_unicode<'a>(queue: &mut CharStream<'a>) -> ParseResult<char> {
+fn unescape_unicode<'a>(queue: &mut CharStream<'a>) -> Result<char, Vec<Diagnostic<usize>>> {
     let mut s = String::with_capacity(4);
 
     if queue.next()? != '{' {
-        return Err(Diagnostic::error().with_message("Escape sequences start with a `{`"));
+        return Err(vec![
+            Diagnostic::error().with_message("Escape sequences start with a `{`")
+        ]);
     }
 
     for _ in 0..4 {
@@ -58,24 +62,28 @@ fn unescape_unicode<'a>(queue: &mut CharStream<'a>) -> ParseResult<char> {
     }
 
     if queue.next()? != '}' {
-        return Err(Diagnostic::error().with_message("Escape sequences end with a `}`"));
+        return Err(vec![
+            Diagnostic::error().with_message("Escape sequences end with a `}`")
+        ]);
     }
 
     let u = u32::from_str_radix(&s, 16).map_err(|_| {
-        Diagnostic::error().with_message(format!("Invalid unicode escape: `\\u{{{}}}`", s))
+        vec![Diagnostic::error().with_message(format!("Invalid unicode escape: `\\u{{{}}}`", s))]
     })?;
 
-    char::from_u32(u).ok_or(
-        Diagnostic::error().with_message(format!("Invalid unicode escape: `\\u{{{:X}}}`", u)),
-    )
+    char::from_u32(u).ok_or(vec![
+        Diagnostic::error().with_message(format!("Invalid unicode escape: `\\u{{{:X}}}`", u))
+    ])
 }
 
 #[inline]
-fn unescape_byte<'a>(queue: &mut CharStream<'a>) -> ParseResult<char> {
+fn unescape_byte<'a>(queue: &mut CharStream<'a>) -> Result<char, Vec<Diagnostic<usize>>> {
     let mut s = String::with_capacity(2);
 
     if queue.next()? != '{' {
-        return Err(Diagnostic::error().with_message("Escape sequences start with a `{{`"));
+        return Err(vec![
+            Diagnostic::error().with_message("Escape sequences start with a `{{`")
+        ]);
     }
 
     for _ in 0..2 {
@@ -83,20 +91,24 @@ fn unescape_byte<'a>(queue: &mut CharStream<'a>) -> ParseResult<char> {
     }
 
     if queue.next()? != '}' {
-        return Err(Diagnostic::error().with_message("Escape sequences end with a `}`"));
+        return Err(vec![
+            Diagnostic::error().with_message("Escape sequences end with a `}`")
+        ]);
     }
 
     u8::from_str_radix(&s, 16).map(|b| b as char).map_err(|_| {
-        Diagnostic::error().with_message(format!("Invalid byte escape: `\\x{{{}}}", s))
+        vec![Diagnostic::error().with_message(format!("Invalid byte escape: `\\x{{{}}}", s))]
     })
 }
 
 #[inline]
-fn unescape_bits<'a>(queue: &mut CharStream<'a>) -> ParseResult<char> {
+fn unescape_bits<'a>(queue: &mut CharStream<'a>) -> Result<char, Vec<Diagnostic<usize>>> {
     let mut s = String::with_capacity(8);
 
     if queue.next()? != '{' {
-        return Err(Diagnostic::error().with_message("Escape sequences start with a `{{`"));
+        return Err(vec![
+            Diagnostic::error().with_message("Escape sequences start with a `{{`")
+        ]);
     }
 
     for _ in 0..8 {
@@ -104,11 +116,13 @@ fn unescape_bits<'a>(queue: &mut CharStream<'a>) -> ParseResult<char> {
     }
 
     if queue.next()? != '}' {
-        return Err(Diagnostic::error().with_message("Escape sequences end with a `}`"));
+        return Err(vec![
+            Diagnostic::error().with_message("Escape sequences end with a `}`")
+        ]);
     }
 
     u8::from_str_radix(&s, 2).map(|b| b as char).map_err(|_| {
-        Diagnostic::error().with_message(format!("Invalid bit escape: `\\b{{{}}}`", s))
+        vec![Diagnostic::error().with_message(format!("Invalid bit escape: `\\b{{{}}}`", s))]
     })
 }
 
@@ -119,11 +133,13 @@ impl<'a> CharStream<'a> {
         Self(chars)
     }
 
-    pub fn next(&mut self) -> ParseResult<char> {
+    pub fn next(&mut self) -> Result<char, Vec<Diagnostic<usize>>> {
         if let Some(c) = self.0.next() {
             Ok(c)
         } else {
-            Err(Diagnostic::error().with_message("Unexpected end of string literal"))
+            Err(vec![
+                Diagnostic::error().with_message("Unexpected end of string literal")
+            ])
         }
     }
 }

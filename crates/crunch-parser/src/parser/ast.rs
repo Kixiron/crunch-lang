@@ -55,7 +55,7 @@ pub enum Type {
 }
 
 impl<'a> TryFrom<(Token<'a>, usize, &Interner)> for Type {
-    type Error = Diagnostic<usize>;
+    type Error = Vec<Diagnostic<usize>>;
 
     fn try_from(
         (token, file, interner): (Token<'a>, usize, &Interner),
@@ -67,10 +67,10 @@ impl<'a> TryFrom<(Token<'a>, usize, &Interner)> for Type {
                 Ok(Self::Custom(super::intern_string(interner, token.source())))
             }
         } else {
-            Err(Diagnostic::error().with_message(format!(
+            Err(vec![Diagnostic::error().with_message(format!(
                 "Expected an ident for a type name, got `{}`",
                 token.ty()
-            )))
+            ))])
         }
     }
 }
@@ -91,7 +91,7 @@ pub enum BuiltinType {
 }
 
 impl<'a> TryFrom<(Token<'a>, usize, &Interner)> for BuiltinType {
-    type Error = Diagnostic<usize>;
+    type Error = Vec<Diagnostic<usize>>;
 
     fn try_from(
         (mut token, file, interner): (Token<'a>, usize, &Interner),
@@ -112,8 +112,10 @@ impl<'a> TryFrom<(Token<'a>, usize, &Interner)> for BuiltinType {
             }
 
             ty => {
-                return Err(Diagnostic::error()
-                    .with_message(format!("Expected an ident for type name, got `{}`", ty)))
+                return Err(vec![Diagnostic::error().with_message(format!(
+                    "Expected an ident for type name, got `{}`",
+                    ty
+                ))])
             }
         })
     }
@@ -183,7 +185,7 @@ impl Attribute {
 }
 
 impl TryFrom<TokenType> for Attribute {
-    type Error = Diagnostic<usize>;
+    type Error = Vec<Diagnostic<usize>>;
 
     fn try_from(ty: TokenType) -> Result<Self, Self::Error> {
         Ok(match ty {
@@ -191,8 +193,8 @@ impl TryFrom<TokenType> for Attribute {
             TokenType::Package => Self::Visibility(Visibility::Package),
 
             ty => {
-                return Err(Diagnostic::error()
-                    .with_message(format!("Expected an attribute, got `{}`", ty)));
+                return Err(vec![Diagnostic::error()
+                    .with_message(format!("Expected an attribute, got `{}`", ty))]);
             }
         })
     }
@@ -208,13 +210,20 @@ pub enum Visibility {
 impl<'a> Parser<'a> {
     pub(super) fn ast(&mut self) -> ParseResult<Ast> {
         let (mut decorators, mut attributes) = (Vec::with_capacity(5), Vec::with_capacity(5));
+        let mut diagnostics = Vec::with_capacity(10);
+
         while self.peek().is_ok() {
-            if let Some(node) = self.ast_impl(&mut decorators, &mut attributes)? {
-                return Ok(node);
+            match self.ast_impl(&mut decorators, &mut attributes)? {
+                (Some(node), diag) => {
+                    diagnostics.extend_from_slice(&diag);
+                    return Ok((node, diagnostics));
+                }
+                (None, diag) => diagnostics.extend_from_slice(&diag),
             }
         }
 
-        Err(Diagnostic::error().with_message("Unexpected EOF"))
+        diagnostics.push(Diagnostic::error().with_message("Unexpected EOF"));
+        Err(diagnostics)
     }
 
     // Returns None when the function should be re-called, usually because an attribute or decorator was parsed
@@ -225,52 +234,62 @@ impl<'a> Parser<'a> {
     ) -> ParseResult<Option<Ast>> {
         match self.peek()?.ty() {
             TokenType::AtSign => {
-                self.decorator(decorators)?;
+                let (_, diag) = self.decorator(decorators)?;
 
-                Ok(None)
+                Ok((None, diag))
             }
 
             TokenType::Exposed | TokenType::Package => {
-                attributes.push(Attribute::try_from(self.next()?.ty())?);
+                let attr = Attribute::try_from(self.next()?.ty())?;
+                attributes.push(attr);
 
-                Ok(None)
+                Ok((None, Vec::new()))
             }
 
-            TokenType::Function => Ok(Some(
-                self.function(mem::take(decorators), mem::take(attributes))?,
-            )),
+            TokenType::Function => {
+                let (func, diag) = self.function(mem::take(decorators), mem::take(attributes))?;
+                Ok((Some(func), diag))
+            },
 
-            TokenType::Type => Ok(Some(
-                self.type_decl(mem::take(decorators), mem::take(attributes))?,
-            )),
+            TokenType::Type => {
+                let (ty, diag) = self.type_decl(mem::take(decorators), mem::take(attributes))?;
+                Ok((Some(
+                ty
+            ), diag))
+            },
 
-            TokenType::Enum => Ok(Some(
-                self.enum_decl(mem::take(decorators), mem::take(attributes))?,
-            )),
+            TokenType::Enum => {
+                let (enu, diag) = self.enum_decl(mem::take(decorators), mem::take(attributes))?;
+                Ok((Some(
+                enu
+            ), diag))}
 
-            TokenType::Trait => Ok(Some(
-                self.trait_decl(mem::take(decorators), mem::take(attributes))?,
-            )),
+            TokenType::Trait => {
+                let (tra, diag) = self.trait_decl(mem::take(decorators), mem::take(attributes))?;
+                Ok((Some(tra), diag))
+            },
 
             TokenType::Import => {
                 if attributes.len() != 0 {
-                    return Err(Diagnostic::error()
-                        .with_message("Import declarations cannot have attributes"));
+                    return Err(vec![Diagnostic::error()
+                        .with_message("Import declarations cannot have attributes")]);
                 }
 
-                Ok(Some(self.import(mem::take(decorators))?))
+                let (import, diag) = self.import(mem::take(decorators))?;
+
+                Ok((Some(import), diag))
             }
 
             TokenType::Newline => {
                 self.eat(TokenType::Newline)?;
-                Ok(None)
+                Ok((None, Vec::new()))
             }
 
-            ty => Err(
+            ty => Err(vec![
                 Diagnostic::error().with_message(format!(
                     "Expected a function, type, enum, trait, import, decorator or attribute, got a `{}`", 
                     ty,
-                ))),
+                ))]),
         }
     }
 
@@ -284,7 +303,7 @@ impl<'a> Parser<'a> {
         {
             self.intern_string(&string)
         } else {
-            unreachable!("Ate a string token, the only literal type produced should be a String");
+            unreachable!("Ate a string token, the only literal type produced should be a String")
         };
 
         let dest = if self.peek()?.ty() == TokenType::Library {
@@ -344,9 +363,9 @@ impl<'a> Parser<'a> {
                     .expect("Shouldn't have a resolution problem, just interned the file's path")
                     .split('.')
                     .last()
-                    .ok_or(
-                        Diagnostic::error().with_message("You must declare a file to import from"),
-                    )?
+                    .ok_or(vec![
+                        Diagnostic::error().with_message("You must declare a file to import from")
+                    ])?
                     .to_string();
 
                 self.intern_string(&last_segment)
@@ -357,11 +376,14 @@ impl<'a> Parser<'a> {
 
         self.eat(TokenType::Newline)?;
 
-        Ok(Ast::Import {
-            file,
-            dest,
-            exposes,
-        })
+        Ok((
+            Ast::Import {
+                file,
+                dest,
+                exposes,
+            },
+            Vec::new(),
+        ))
     }
 
     fn trait_decl(
@@ -379,7 +401,7 @@ impl<'a> Parser<'a> {
 
         self.eat(TokenType::Trait)?;
         let name = self.eat_ident()?;
-        let generics = self.generics()?;
+        let (generics, mut diagnostics) = self.generics()?;
         self.eat(TokenType::Newline)?;
 
         let (mut method_decorators, mut method_attributes) =
@@ -388,10 +410,13 @@ impl<'a> Parser<'a> {
         let mut methods = Vec::with_capacity(4);
         while self.peek()?.ty() != TokenType::End {
             match self.peek()?.ty() {
-                TokenType::AtSign => self.decorator(&mut method_decorators)?,
+                TokenType::AtSign => {
+                    let (_, diag) = self.decorator(&mut method_decorators)?;
+                    diagnostics.extend_from_slice(&diag);
+                }
 
                 TokenType::Exposed | TokenType::Package => {
-                    method_attributes.push(Attribute::try_from(self.next()?.ty())?)
+                    method_attributes.push(Attribute::try_from(self.next()?.ty())?);
                 }
 
                 TokenType::Function => {
@@ -401,10 +426,13 @@ impl<'a> Parser<'a> {
                     method_attributes.shrink_to_fit();
                     method_decorators.shrink_to_fit();
 
-                    methods.push(self.function(
+                    let (method, diag) = self.function(
                         mem::take(&mut method_decorators),
                         mem::take(&mut method_attributes),
-                    )?)
+                    )?;
+
+                    diagnostics.extend_from_slice(&diag);
+                    methods.push(method);
                 }
 
                 TokenType::Newline => {
@@ -412,9 +440,10 @@ impl<'a> Parser<'a> {
                 }
 
                 _ => {
-                    return Err(Diagnostic::error().with_message(format!(
+                    diagnostics.push(Diagnostic::error().with_message(format!(
                         "Only methods, attributes and decorators are allowed inside trait bodies"
                     )));
+                    return Err(diagnostics);
                 }
             }
         }
@@ -422,13 +451,16 @@ impl<'a> Parser<'a> {
 
         self.eat(TokenType::End)?;
 
-        Ok(Ast::Trait {
-            decorators,
-            attributes,
-            name,
-            generics,
-            methods,
-        })
+        Ok((
+            Ast::Trait {
+                decorators,
+                attributes,
+                name,
+                generics,
+                methods,
+            },
+            diagnostics,
+        ))
     }
 
     fn enum_decl(
@@ -446,14 +478,17 @@ impl<'a> Parser<'a> {
 
         self.eat(TokenType::Enum)?;
         let name = self.eat_ident()?;
-        let generics = self.generics()?;
+        let (generics, mut diagnostics) = self.generics()?;
         self.eat(TokenType::Newline)?;
 
         let mut variant_decorators = Vec::with_capacity(7);
         let mut variants = Vec::with_capacity(7);
         while self.peek()?.ty() != TokenType::End {
             match self.peek()?.ty() {
-                TokenType::AtSign => self.decorator(&mut variant_decorators)?,
+                TokenType::AtSign => {
+                    let (_, diag) = self.decorator(&mut variant_decorators)?;
+                    diagnostics.extend_from_slice(&diag);
+                }
 
                 TokenType::Ident => {
                     let name = self.eat_ident()?;
@@ -463,7 +498,9 @@ impl<'a> Parser<'a> {
 
                         let mut elements = Vec::with_capacity(3);
                         while self.peek()?.ty() != TokenType::RightParen {
-                            elements.push(self.eat_type()?);
+                            let (ty, diag) = self.eat_type()?;
+                            elements.push(ty);
+                            diagnostics.extend_from_slice(&diag);
 
                             // TODO: Nice error here
                             if self.peek()?.ty() == TokenType::Comma {
@@ -494,26 +531,32 @@ impl<'a> Parser<'a> {
                 }
 
                 ty => {
-                    return Err(Diagnostic::error().with_message(format!(
+                    diagnostics.push(Diagnostic::error().with_message(format!(
                         "Only decorators and enum variants are allowed inside enum declarations, got a `{}`", 
                         ty,
                     )));
+                    return Err(diagnostics);
                 }
             }
         }
         variants.shrink_to_fit();
         self.eat(TokenType::End)?;
 
-        Ok(Ast::Enum {
-            decorators,
-            attributes,
-            name,
-            generics,
-            variants,
-        })
+        Ok((
+            Ast::Enum {
+                decorators,
+                attributes,
+                name,
+                generics,
+                variants,
+            },
+            diagnostics,
+        ))
     }
 
     fn decorator(&mut self, decorators: &mut Vec<Decorator>) -> ParseResult<()> {
+        let mut diagnostics = Vec::new();
+
         self.eat(TokenType::AtSign)?;
         let name = self.eat_ident()?;
 
@@ -522,7 +565,9 @@ impl<'a> Parser<'a> {
 
             let mut args = Vec::with_capacity(5);
             while self.peek()?.ty() != TokenType::RightParen {
-                args.push(self.expr()?);
+                let (expr, diag) = self.expr()?;
+                args.push(expr);
+                diagnostics.extend_from_slice(&diag);
 
                 if let Ok(peek) = self.peek() {
                     if peek.ty() == TokenType::Comma {
@@ -543,7 +588,7 @@ impl<'a> Parser<'a> {
 
         decorators.push(Decorator { name, args });
 
-        Ok(())
+        Ok(((), diagnostics))
     }
 
     fn type_decl(
@@ -561,7 +606,7 @@ impl<'a> Parser<'a> {
 
         self.eat(TokenType::Type)?;
         let name = self.eat_ident()?;
-        let generics = self.generics()?;
+        let (generics, mut diagnostics) = self.generics()?;
         self.eat(TokenType::Newline)?;
 
         let (mut member_decorators, mut member_attributes) =
@@ -572,23 +617,34 @@ impl<'a> Parser<'a> {
 
         while self.peek()?.ty() != TokenType::End {
             match self.peek()?.ty() {
-                TokenType::AtSign => self.decorator(&mut member_decorators)?,
+                TokenType::AtSign => {
+                    let (_, diag) = self.decorator(&mut member_decorators)?;
+                    diagnostics.extend_from_slice(&diag);
+                }
 
                 TokenType::Exposed | TokenType::Package => {
                     member_attributes.push(Attribute::try_from(self.next()?.ty())?);
                 }
 
-                TokenType::Function => methods.push(self.function(
-                    mem::take(&mut member_decorators),
-                    mem::take(&mut member_attributes),
-                )?),
+                TokenType::Function => {
+                    let (method, diag) = self.function(
+                        mem::take(&mut member_decorators),
+                        mem::take(&mut member_attributes),
+                    )?;
+                    methods.push(method);
+                    diagnostics.extend_from_slice(&diag);
+                }
 
                 TokenType::Ident => {
+                    let mut diagnostics = Vec::new();
                     let name = self.eat_ident()?;
 
                     let ty = if self.peek()?.ty() == TokenType::Colon {
                         self.eat(TokenType::Colon)?;
-                        self.eat_type()?
+                        let (ty, diag) = self.eat_type()?;
+                        diagnostics.extend_from_slice(&diag);
+
+                        ty
                     } else {
                         Type::default()
                     };
@@ -615,28 +671,33 @@ impl<'a> Parser<'a> {
                 }
 
                 _ => {
-                    return Err(Diagnostic::error().with_message(
+                    diagnostics.push(Diagnostic::error().with_message(
                         "You can only have members and methods inside of type declarations",
                     ));
+                    return Err(diagnostics);
                 }
             }
         }
         self.eat(TokenType::End)?;
 
         if member_attributes.len() != 0 || member_decorators.len() != 0 {
-            return Err(Diagnostic::error().with_message(
+            diagnostics.push(Diagnostic::error().with_message(
                 "Attributes and functions must be before members or methods in type declarations",
             ));
+            return Err(diagnostics);
         }
 
-        Ok(Ast::Type {
-            decorators,
-            attributes,
-            name,
-            generics,
-            members,
-            methods,
-        })
+        Ok((
+            Ast::Type {
+                decorators,
+                attributes,
+                name,
+                generics,
+                members,
+                methods,
+            },
+            diagnostics,
+        ))
     }
 
     fn function(
@@ -654,13 +715,17 @@ impl<'a> Parser<'a> {
 
         self.eat(TokenType::Function)?;
         let name = self.eat_ident()?;
-        let generics = self.generics()?;
-        let args = self.function_args()?;
+        let (generics, mut diagnostics) = self.generics()?;
+        let (args, diag) = self.function_args()?;
+        diagnostics.extend_from_slice(&diag);
 
         let returns = if self.peek()?.ty() == TokenType::RightArrow {
             self.eat(TokenType::RightArrow)?;
 
-            self.eat_type()?
+            let (ty, diag) = self.eat_type()?;
+            diagnostics.extend_from_slice(&diag);
+
+            ty
         } else {
             Type::default()
         };
@@ -668,23 +733,29 @@ impl<'a> Parser<'a> {
 
         let mut body = Vec::with_capacity(20);
         while self.peek()?.ty() != TokenType::End {
-            body.push(self.stmt()?);
+            let (stmt, diag) = self.stmt()?;
+            body.push(stmt);
+            diagnostics.extend_from_slice(&diag);
         }
         self.eat(TokenType::End)?;
         body.shrink_to_fit();
 
-        Ok(Ast::Function {
-            decorators,
-            attributes,
-            name,
-            generics,
-            args,
-            returns,
-            body,
-        })
+        Ok((
+            Ast::Function {
+                decorators,
+                attributes,
+                name,
+                generics,
+                args,
+                returns,
+                body,
+            },
+            diagnostics,
+        ))
     }
 
     fn function_args(&mut self) -> ParseResult<Vec<(Sym, Type)>> {
+        let mut diagnostics = Vec::new();
         self.eat(TokenType::LeftParen)?;
 
         let mut args = Vec::with_capacity(7);
@@ -694,7 +765,10 @@ impl<'a> Parser<'a> {
             let ty = if self.peek()?.ty() == TokenType::Colon {
                 self.eat(TokenType::Colon)?;
 
-                self.eat_type()?
+                let (ty, diag) = self.eat_type()?;
+                diagnostics.extend_from_slice(&diag);
+
+                ty
             } else {
                 Type::default()
             };
@@ -710,15 +784,17 @@ impl<'a> Parser<'a> {
         self.eat(TokenType::RightParen)?;
         args.shrink_to_fit();
 
-        Ok(args)
+        Ok((args, diagnostics))
     }
 
     fn eat_type(&mut self) -> ParseResult<Type> {
-        Type::try_from((
+        let ty = Type::try_from((
             self.eat(TokenType::Ident)?,
             self.current_file,
             &self.string_interner,
-        ))
+        ))?;
+
+        Ok((ty, Vec::new()))
     }
 
     fn generics(&mut self) -> ParseResult<Vec<Sym>> {
@@ -739,9 +815,9 @@ impl<'a> Parser<'a> {
             self.eat(TokenType::RightCaret)?;
             generics.shrink_to_fit();
 
-            Ok(generics)
+            Ok((generics, Vec::new()))
         } else {
-            Ok(Vec::new())
+            Ok((Vec::new(), Vec::new()))
         }
     }
 }

@@ -34,6 +34,7 @@ pub enum Expression {
         index: Box<Expression>,
     },
     Array(Vec<Expression>),
+    RepeatedArray(Box<Expression>, Box<Expression>),
     Assignment(Box<Expression>, AssignmentType, Box<Expression>),
 }
 
@@ -44,7 +45,7 @@ pub enum AssignmentType {
 }
 
 impl TryFrom<TokenType> for AssignmentType {
-    type Error = Diagnostic<usize>;
+    type Error = Vec<Diagnostic<usize>>;
 
     fn try_from(ty: TokenType) -> Result<Self, Self::Error> {
         Ok(match ty {
@@ -63,8 +64,8 @@ impl TryFrom<TokenType> for AssignmentType {
             TokenType::XorAssign => Self::BinaryOp(BinaryOperand::BitXor),
 
             ty => {
-                return Err(Diagnostic::error()
-                    .with_message(format!("Expected an assignment, got `{}`", ty)));
+                return Err(vec![Diagnostic::error()
+                    .with_message(format!("Expected an assignment, got `{}`", ty))]);
             }
         })
     }
@@ -81,7 +82,7 @@ pub enum ComparisonOperand {
 }
 
 impl TryFrom<TokenType> for ComparisonOperand {
-    type Error = Diagnostic<usize>;
+    type Error = Vec<Diagnostic<usize>>;
 
     fn try_from(ty: TokenType) -> Result<Self, Self::Error> {
         Ok(match ty {
@@ -93,8 +94,8 @@ impl TryFrom<TokenType> for ComparisonOperand {
             TokenType::IsNotEqual => Self::NotEqual,
 
             _ => {
-                return Err(Diagnostic::error()
-                    .with_message(format!("Expected a comparison, got `{}`", ty)));
+                return Err(vec![Diagnostic::error()
+                    .with_message(format!("Expected a comparison, got `{}`", ty))]);
             }
         })
     }
@@ -113,7 +114,7 @@ pub enum Literal {
 // FIXME: Not unicode-aware, will panic on unicode boundaries
 // TODO: Make these errors actually helpful, and verify that the parsing matches with what is lexed
 impl<'a> TryFrom<&Token<'a>> for Literal {
-    type Error = Diagnostic<usize>;
+    type Error = Vec<Diagnostic<usize>>;
 
     fn try_from(token: &Token<'a>) -> Result<Self, Self::Error> {
         Ok(match token.ty() {
@@ -141,13 +142,13 @@ impl<'a> TryFrom<&Token<'a>> for Literal {
                     use hexponent::FloatLiteral;
 
                     let float: FloatLiteral = string.parse().map_err(|_| {
-                        Diagnostic::error().with_message("Invalid hex float literal")
+                        vec![Diagnostic::error().with_message("Invalid hex float literal")]
                     })?;
                     float.convert::<f32>().inner()
                 } else {
-                    string
-                        .parse::<f32>()
-                        .map_err(|_| Diagnostic::error().with_message("Invalid float literal"))?
+                    string.parse::<f32>().map_err(|_| {
+                        vec![Diagnostic::error().with_message("Invalid float literal")]
+                    })?
                 };
 
                 if negative {
@@ -211,11 +212,13 @@ impl<'a> TryFrom<&Token<'a>> for Literal {
 
                 let mut int = if string.len() >= 2 && (&string[..2] == "0x" || &string[..2] == "0X")
                 {
-                    i32::from_str_radix(&string[2..], 16)
-                        .map_err(|_| Diagnostic::error().with_message("Invalid hex int literal"))?
+                    i32::from_str_radix(&string[2..], 16).map_err(|_| {
+                        vec![Diagnostic::error().with_message("Invalid hex int literal")]
+                    })?
                 } else {
-                    i32::from_str_radix(string, 10)
-                        .map_err(|_| Diagnostic::error().with_message("Invalid int literal"))?
+                    i32::from_str_radix(string, 10).map_err(|_| {
+                        vec![Diagnostic::error().with_message("Invalid int literal")]
+                    })?
                 };
 
                 if negative {
@@ -229,13 +232,13 @@ impl<'a> TryFrom<&Token<'a>> for Literal {
                 token
                     .source()
                     .parse::<bool>()
-                    .map_err(|_| Diagnostic::error().with_message("Invalid bool literal"))?,
+                    .map_err(|_| vec![Diagnostic::error().with_message("Invalid bool literal")])?,
             ),
 
             ty => {
-                return Err(
+                return Err(vec![
                     Diagnostic::error().with_message(format!("`{}` is not a valid literal", ty))
-                )
+                ])
             }
         })
     }
@@ -257,7 +260,7 @@ pub enum BinaryOperand {
 }
 
 impl TryFrom<TokenType> for BinaryOperand {
-    type Error = Diagnostic<usize>;
+    type Error = Vec<Diagnostic<usize>>;
 
     fn try_from(ty: TokenType) -> Result<Self, Self::Error> {
         Ok(match ty {
@@ -274,8 +277,8 @@ impl TryFrom<TokenType> for BinaryOperand {
             TokenType::Shr => Self::Shr,
 
             ty => {
-                return Err(Diagnostic::error()
-                    .with_message(format!("Expected a binary operand, got `{}`", ty)));
+                return Err(vec![Diagnostic::error()
+                    .with_message(format!("Expected a binary operand, got `{}`", ty))]);
             }
         })
     }
@@ -289,7 +292,7 @@ pub enum UnaryOperand {
 }
 
 impl TryFrom<TokenType> for UnaryOperand {
-    type Error = Diagnostic<usize>;
+    type Error = Vec<Diagnostic<usize>>;
 
     fn try_from(ty: TokenType) -> Result<Self, Self::Error> {
         Ok(match ty {
@@ -298,8 +301,8 @@ impl TryFrom<TokenType> for UnaryOperand {
             TokenType::Bang => Self::Not,
 
             ty => {
-                return Err(Diagnostic::error()
-                    .with_message(format!("Expected a unary operand, got `{}`", ty)))
+                return Err(vec![Diagnostic::error()
+                    .with_message(format!("Expected a unary operand, got `{}`", ty))])
             }
         })
     }
@@ -319,11 +322,15 @@ impl<'a> Parser<'a> {
         let mut token = self.next()?;
 
         if let Some(prefix) = Self::prefix(token.ty()) {
-            let mut left = prefix(self, token)?;
+            let (mut left, mut diag) = prefix(self, token)?;
+
             if let Ok(peek) = self.peek() {
                 if let Some(postfix) = Self::postfix(peek.ty()) {
                     token = self.next()?;
-                    left = postfix(self, token, left)?;
+
+                    let (postfix, post_diag) = postfix(self, token, left)?;
+                    diag.extend_from_slice(&post_diag);
+                    left = postfix;
                 }
             }
 
@@ -331,15 +338,19 @@ impl<'a> Parser<'a> {
                 token = self.next()?;
 
                 if let Some(infix) = Self::infix(token.ty()) {
-                    left = infix(self, token, left)?;
+                    let (infix, in_diag) = infix(self, token, left)?;
+                    diag.extend_from_slice(&in_diag);
+                    left = infix;
                 } else {
                     break;
                 }
             }
 
-            Ok(left)
+            Ok((left, diag))
         } else {
-            Err(Diagnostic::error().with_message(format!("Could not parse `{}`", token.ty())))
+            Err(vec![
+                Diagnostic::error().with_message(format!("Could not parse `{}`", token.ty()))
+            ])
         }
     }
 
@@ -347,48 +358,43 @@ impl<'a> Parser<'a> {
         Some(match ty {
             // Variables
             TokenType::Ident => |parser, token| {
-                trace!("Prefix Ident");
                 let ident = parser.intern_string(token.source());
 
-                Ok(Expression::Variable(ident))
+                Ok((Expression::Variable(ident), Vec::new()))
             },
 
             // Literals
             TokenType::Int | TokenType::Bool | TokenType::Float | TokenType::String => {
-                |_parser, lit| {
-                    trace!("Prefix Literal");
-
-                    Ok(Expression::Literal(Literal::try_from(&lit)?))
-                }
+                |_parser, lit| Ok((Expression::Literal(Literal::try_from(&lit)?), Vec::new()))
             }
 
             // Prefix Operators
             TokenType::Minus | TokenType::Bang | TokenType::Plus => |parser, token| {
-                trace!("Prefix Operators");
-                let operand = Box::new(parser.expr()?);
+                let (operand, diagnostics) = parser.expr()?;
 
-                Ok(Expression::UnaryExpr(
-                    UnaryOperand::try_from(token.ty())?,
-                    operand,
+                Ok((
+                    Expression::UnaryExpr(UnaryOperand::try_from(token.ty())?, Box::new(operand)),
+                    diagnostics,
                 ))
             },
 
             // Grouping via parentheses
             TokenType::LeftParen => |parser, _| {
-                trace!("Prefix Left Paren");
-                let expr = Box::new(parser.expr()?);
+                let (expr, diag) = parser.expr()?;
                 parser.eat(TokenType::RightParen)?;
 
-                Ok(Expression::Parenthesised(expr))
+                Ok((Expression::Parenthesised(Box::new(expr)), diag))
             },
 
             // Array literals
             TokenType::LeftBrace => |parser, _| {
-                trace!("Prefix array literal");
-
+                let mut diagnostics = Vec::new();
                 let mut elements = Vec::with_capacity(5);
-                while parser.peek()?.ty() != TokenType::RightParen {
-                    elements.push(parser.expr()?);
+
+                while parser.peek()?.ty() != TokenType::RightBrace {
+                    let (elm, diag) = parser.expr()?;
+                    diagnostics.extend_from_slice(&diag);
+                    elements.push(elm);
 
                     if parser.peek()?.ty() == TokenType::Comma {
                         parser.eat(TokenType::Comma)?;
@@ -400,7 +406,7 @@ impl<'a> Parser<'a> {
                 elements.shrink_to_fit();
                 parser.eat(TokenType::RightBrace)?;
 
-                Ok(Expression::Array(elements))
+                Ok((Expression::Array(elements), diagnostics))
             },
 
             _ => return None,
@@ -411,11 +417,13 @@ impl<'a> Parser<'a> {
         Some(match ty {
             // Function calls
             TokenType::LeftParen => |parser, _left_paren, caller| {
-                trace!("Postfix Function Call");
-
+                let mut diagnostics = Vec::new();
                 let mut arguments = Vec::with_capacity(5);
+
                 while parser.peek()?.ty() != TokenType::RightParen {
-                    arguments.push(parser.expr()?);
+                    let (arg, diag) = parser.expr()?;
+                    diagnostics.extend_from_slice(&diag);
+                    arguments.push(arg);
 
                     if parser.peek()?.ty() == TokenType::Comma {
                         parser.eat(TokenType::Comma)?;
@@ -427,22 +435,26 @@ impl<'a> Parser<'a> {
                 arguments.shrink_to_fit();
                 parser.eat(TokenType::RightParen)?;
 
-                Ok(Expression::FunctionCall {
-                    caller: Box::new(caller),
-                    arguments,
-                })
+                Ok((
+                    Expression::FunctionCall {
+                        caller: Box::new(caller),
+                        arguments,
+                    },
+                    diagnostics,
+                ))
             },
 
             // Dotted function calls
             TokenType::Dot => |parser, _dot, member| {
-                trace!("Postfix Dotted Function Call");
+                let (func, diag) = parser.expr()?;
 
-                let function = Box::new(parser.expr()?);
-
-                Ok(Expression::MemberFunctionCall {
-                    member: Box::new(member),
-                    function,
-                })
+                Ok((
+                    Expression::MemberFunctionCall {
+                        member: Box::new(member),
+                        function: Box::new(func),
+                    },
+                    diag,
+                ))
             },
 
             // Array indexing
@@ -464,9 +476,12 @@ impl<'a> Parser<'a> {
                 trace!("Postfix assignment");
 
                 let assign = AssignmentType::try_from(assign.ty())?;
-                let right = Box::new(parser.expr()?);
+                let (right, diagnostics) = parser.expr()?;
 
-                Ok(Expression::Assignment(Box::new(left), assign, right))
+                Ok((
+                    Expression::Assignment(Box::new(left), assign, Box::new(right)),
+                    diagnostics,
+                ))
             },
 
             _ => return None,
@@ -488,12 +503,15 @@ impl<'a> Parser<'a> {
             | TokenType::Shl
             | TokenType::Shr => |parser, operand, left| {
                 trace!("Infix Binary Op");
-                let right = Box::new(parser.expr()?);
+                let (right, diagnostics) = parser.expr()?;
 
-                Ok(Expression::BinaryOp(
-                    Box::new(left),
-                    BinaryOperand::try_from(operand.ty())?,
-                    right,
+                Ok((
+                    Expression::BinaryOp(
+                        Box::new(left),
+                        BinaryOperand::try_from(operand.ty())?,
+                        Box::new(right),
+                    ),
+                    diagnostics,
                 ))
             },
 
@@ -505,27 +523,33 @@ impl<'a> Parser<'a> {
             | TokenType::IsEqual
             | TokenType::IsNotEqual => |parser, comparison, left| {
                 trace!("Comparison Op");
-                let right = Box::new(parser.expr()?);
+                let (right, diagnostics) = parser.expr()?;
 
-                Ok(Expression::Comparison(
-                    Box::new(left),
-                    ComparisonOperand::try_from(comparison.ty())?,
-                    right,
+                Ok((
+                    Expression::Comparison(
+                        Box::new(left),
+                        ComparisonOperand::try_from(comparison.ty())?,
+                        Box::new(right),
+                    ),
+                    diagnostics,
                 ))
             },
 
             // <ret> if <cond> else <cond>
             TokenType::If => |parser, _, true_arm| {
-                trace!("Infix Conditional");
-                let condition = Box::new(parser.expr()?);
+                let (condition, mut diagnostics) = parser.expr()?;
                 parser.eat(TokenType::Else)?;
-                let false_arm = Box::new(parser.expr()?);
+                let (false_arm, diag) = parser.expr()?;
+                diagnostics.extend_from_slice(&diag);
 
-                Ok(Expression::InlineConditional {
-                    true_arm: Box::new(true_arm),
-                    condition,
-                    false_arm,
-                })
+                Ok((
+                    Expression::InlineConditional {
+                        true_arm: Box::new(true_arm),
+                        condition: Box::new(condition),
+                        false_arm: Box::new(false_arm),
+                    },
+                    diagnostics,
+                ))
             },
 
             // Array indexing
@@ -542,12 +566,15 @@ impl<'a> Parser<'a> {
     ) -> ParseResult<Expression> {
         trace!("Index Array");
 
-        let index = Box::new(self.expr()?);
+        let (index, diagnostics) = self.expr()?;
         self.eat(TokenType::RightBrace)?;
 
-        Ok(Expression::IndexArray {
-            array: Box::new(array),
-            index,
-        })
+        Ok((
+            Expression::IndexArray {
+                array: Box::new(array),
+                index: Box::new(index),
+            },
+            diagnostics,
+        ))
     }
 }

@@ -5,11 +5,11 @@ use string_interner::StringInterner;
 use alloc::{boxed::Box, sync::Arc, vec, vec::Vec};
 use core::convert::TryFrom;
 
-fn emit_diagnostic(
-    source: &str,
-    diagnostic: crunch_error::codespan_reporting::diagnostic::Diagnostic<usize>,
+fn emit_diagnostics<'a>(
+    source: &'a str,
+    diagnostics: Vec<crunch_error::codespan_reporting::diagnostic::Diagnostic<usize>>,
 ) {
-    use crunch_error::{codespan_reporting, parse_prelude::SimpleFiles};
+    use crunch_error::parse_prelude::SimpleFiles;
 
     let mut files = SimpleFiles::new();
     files.add("<test file>", source);
@@ -19,7 +19,9 @@ fn emit_diagnostic(
     );
     let config = codespan_reporting::term::Config::default();
 
-    codespan_reporting::term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
+    for diag in diagnostics {
+        codespan_reporting::term::emit(&mut writer.lock(), &config, &files, &diag).unwrap();
+    }
 }
 
 // TODO: Make this a result when Diagnostics are Debug
@@ -30,9 +32,12 @@ fn parse_expr<'a>(source: &'a str, idents: Vec<&str>) -> Option<Expression> {
     }
 
     match Parser::new(source, 0, interner).expr() {
-        Ok(ast) => Some(ast),
+        Ok((ast, diag)) => {
+            emit_diagnostics(source, diag);
+            Some(ast)
+        }
         Err(err) => {
-            emit_diagnostic(source, err);
+            emit_diagnostics(source, err);
             None
         }
     }
@@ -45,9 +50,12 @@ fn parse_stmt<'a>(source: &'a str, idents: Vec<&str>) -> Option<Statement> {
     }
 
     match Parser::new(source, 0, interner).stmt() {
-        Ok(ast) => Some(ast),
+        Ok((ast, diag)) => {
+            emit_diagnostics(source, diag);
+            Some(ast)
+        }
         Err(err) => {
-            emit_diagnostic(source, err);
+            emit_diagnostics(source, err);
             None
         }
     }
@@ -60,9 +68,12 @@ fn parse_ast<'a>(source: &'a str, idents: Vec<&str>) -> Option<Ast> {
     }
 
     match Parser::new(source, 0, interner).ast() {
-        Ok(ast) => Some(ast),
+        Ok((ast, diag)) => {
+            emit_diagnostics(source, diag);
+            Some(ast)
+        }
         Err(err) => {
-            emit_diagnostic(source, err);
+            emit_diagnostics(source, err);
             None
         }
     }

@@ -21,7 +21,10 @@ pub mod parse_prelude {
 
     pub type FileId = usize;
     pub type ParserDiagnostic = Diagnostic<FileId>;
-    pub type ParseResult<T> = core::result::Result<T, ParserDiagnostic>;
+    pub type ParseResult<T> = core::result::Result<
+        (T, alloc::vec::Vec<ParserDiagnostic>),
+        alloc::vec::Vec<ParserDiagnostic>,
+    >;
 
     // TODO: Air-gapped way to make compile errors not reliant on codespan
     // TODO: Custom `Files` implementation for codespan
