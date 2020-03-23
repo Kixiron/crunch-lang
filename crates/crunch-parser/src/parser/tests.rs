@@ -388,6 +388,17 @@ fn assignment_expr() {
 }
 
 #[test]
+fn range_expr() {
+    assert_eq!(
+        Some(Expression::Range(
+            Box::new(Expression::Literal(Literal::I32(1))),
+            Box::new(Expression::Literal(Literal::I32(100))),
+        )),
+        parse_expr("1..100", Vec::new())
+    );
+}
+
+#[test]
 fn bin_ops_expr() {
     let ten = Box::new(Expression::Literal(Literal::I32(10)));
     let nine = Box::new(Expression::Literal(Literal::I32(9)));
@@ -915,6 +926,7 @@ fn integers() {
     }
 }
 
+// TODO: Test floats well
 #[test]
 fn floats() {
     if let Some(Expression::Literal(Literal::F32(nan))) = parse_expr("NaN", Vec::new()) {
@@ -927,29 +939,6 @@ fn floats() {
         Some(Expression::Literal(Literal::F32(core::f32::INFINITY))),
         parse_expr("inf", Vec::new()),
     );
-
-    let floats = [
-        "0x.ep0",
-        "0x.ep-0l",
-        "0xe.p-4",
-        "+0x.ep0",
-        "+0x.ep-0l",
-        "+0xe.p-4",
-    ];
-    for float in floats.iter() {
-        assert_eq!(
-            Some(Expression::Literal(Literal::F32(0.875))),
-            parse_expr(float, Vec::new()),
-        );
-    }
-
-    let floats = ["-0x.ep0", "-0x.ep-0l", "-0xe.p-4"];
-    for float in floats.iter() {
-        assert_eq!(
-            Some(Expression::Literal(Literal::F32(-0.875))),
-            parse_expr(float, Vec::new()),
-        );
-    }
 
     let floats = ["0.1", "0000000.1", "0000000.100000000"];
     for float in floats.iter() {

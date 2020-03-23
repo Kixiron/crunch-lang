@@ -1,99 +1,268 @@
 {
-    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-    "name": "Crunch",
-    "comment": "Crunch Language support for VSCode",
-    "version": "0.0.1",
-    "fileTypes": [
-        "crunch"
-    ],
-    "patterns": [{
-            "name": "keyword.control.crunch",
-            "match": "\\b(if|else|while|for|loop|for|end)\\b"
-        },
-        {
-            "name": "string.quoted.double.crunch",
-            "begin": "\"",
-            "end": "\"",
+    "repository": {
+        "comment": {
             "patterns": [{
-                "name": "constant.character.escape.crunch",
-                "match": "\\\\."
+                "name": "comment.line.crunch",
+                "begin": "::",
+                "end": "$"
+            }, {
+                "name": "comment.line.documentation.crunch",
+                "begin": ":::",
+                "end": "$"
             }]
         },
-        {
-            "name": "string.quoted.double.crunch",
-            "begin": "'",
-            "end": "'",
+        "keyword": {
             "patterns": [{
-                "name": "constant.character.escape.crunch",
-                "match": "\\\\."
+                "name": "keyword.control.crunch",
+                "match": "\\b(break|continue|else|if|in|for|loop|match|return|while|empty|then|where)\\b"
+            }, {
+                "name": "variable.language.self.crunch",
+                "match": "\\b(self)\\b"
+            }, {
+                "name": "keyword.other.as.crunch",
+                "match": "(\\b(as)\\b)"
             }]
         },
-        {
-            "name": "keyword.other.crunch",
-            "match": "\\b(let|return|break|import|export|then|empty|continue|in)\\b"
-        },
-        {
-            "name": "keyword.other.fn.crunch",
-            "match": "fn"
-        },
-        {
-            "name": "comment.line.crunch",
-            "match": "::[^\r\n]*$"
-        },
-        {
-            "name": "keyword.operator.crunch",
-            "match": "\\b(\\+|-|\\*|\\|\\>\\>|\\<\\<|\\||&|!)\\b"
-        },
-        {
-            "name": "storage.type.crunch",
-            "match": "\\b(type)\\b"
-        },
-        {
-            "name": "constant.numeric.integer.decimal.crunch",
-            "match": "\\b[1234567890]+\\b"
-        },
-        {
-            "name": "constant.language.boolean.crunch",
-            "match": "\\b(true|false)\\b"
-        },
-        {
-            "name": "storage.modifier.visibility.crunch",
-            "match": "\\b(exposed|exposing)\\b"
-        },
-        {
-            "name": "keyword.operator.assignment.crunch",
-            "match": "="
-        },
-        {
-            "name": "storage.type.core.crunch",
-            "match": "\\b(int|str|bool|unit)\\b"
-        },
-        {
-            "name": "keyword.operator.comparison.crunch",
-            "match": "\\b(==|\\>=|\\<=|\\<|\\>)\\b"
-        },
-        {
-            "name": "entity.name.function.crunch",
-            "match": "(?<=fn )([a-zA-Z][a-zA-Z0-9_]+)"
-        },
-        {
-            "match": "([a-zA-Z][a-zA-Z0-9_]+)(\\<)(T)(\\>)(?=[(])",
-            "name": "entity.name.function.crunch",
-            "captures": {
-                "1": {
-                    "name": "entity.name.function.crunch"
+        "entity": {
+            "patterns": [{
+                "match": "(?<=fn )([a-zA-Z][a-zA-Z0-9_]+)",
+                "name": "entity.name.function.crunch"
+            }, {
+                "match": "\\b(enum|type|trait|import)\\b",
+                "name": "storage.type.crunch"
+            }, {
+                "match": "([a-zA-Z][a-zA-Z0-9_]+)(?=[(])",
+                "name": "entity.name.function.crunch"
+            }, {
+                "match": "([a-zA-Z]+)(?=[(])",
+                "name": "entity.name.function.crunch"
+            }, {
+                "match": "(@([a-zA-Z][a-zA-Z0-9_]+))(\\(([a-zA-Z][a-zA-Z0-9_]+)*\\))?",
+                "captures": {
+                    "1": {
+                        "name": "entity.name.function.crunch"
+                    }
                 }
-            }
+            }]
         },
-        {
-            "match": "(?!Err|Ok|Some)([a-zA-Z][a-zA-Z0-9_]+)(?=[(])",
-            "name": "entity.name.function.crunch"
+        "variable": {
+            "patterns": [{
+                "match": "(let) ([a-zA-Z_][a-zA-Z0-9_]+)",
+                "captures": {
+                    "1": {
+                        "name": "storage.type.crunch"
+                    }
+                }
+            }]
         },
-        {
-            "match": "(?!Err|Ok|Some)([a-zA-Z]+)(?=[(])",
-            "name": "entity.name.function.crunch"
+        "constant": {
+            "patterns": [{
+                    "comment": "Floating point literal (fraction)",
+                    "name": "constant.numeric.float.crunch",
+                    "match": "\\b[0-9][0-9_]*\\.[0-9][0-9_]*([eE][+-]?[0-9_]+)?\\b"
+                },
+                {
+                    "comment": "Floating point literal (exponent)",
+                    "name": "constant.numeric.float.crunch",
+                    "match": "\\b[0-9][0-9_]*(\\.[0-9][0-9_]*)?[eE][+-]?[0-9_]+\\b"
+                },
+                {
+                    "comment": "Integer literal (decimal)",
+                    "name": "constant.numeric.integer.decimal.crunch",
+                    "match": "\\b[0-9][0-9_]*\\b"
+                },
+                {
+                    "comment": "Integer literal (hexadecimal)",
+                    "name": "constant.numeric.integer.hexadecimal.crunch",
+                    "match": "\\b0x[a-fA-F0-9_]+\\b"
+                },
+                {
+                    "comment": "Integer literal (octal)",
+                    "name": "constant.numeric.integer.octal.crunch",
+                    "match": "\\b0o[0-7_]+\\b"
+                },
+                {
+                    "comment": "Integer literal (binary)",
+                    "name": "constant.numeric.integer.binary.crunch",
+                    "match": "\\b0b[01_]+\\b"
+                },
+                {
+                    "name": "constant.language.boolean.crunch",
+                    "match": "\\b(true|false)\\b"
+                }
+            ]
+        },
+        "punctuation": {
+            "patterns": [{
+                    "name": "punctuation.separator.type.crunch",
+                    "match": ":\\s+?(?=(bool|unit|int|float|str))"
+                },
+                {
+                    "name": "punctuation.other.comma.crunch",
+                    "match": ","
+                },
+                {
+                    "name": "punctuation.other.paren.crunch",
+                    "match": "[)(]"
+                }
+            ]
+        },
+        "storage": {
+            "patterns": [{
+                "name": "storage.type.function.crunch",
+                "match": "\\b(fn)\\b"
+            }, {
+                "name": "storage.type.end.crunch",
+                "match": "\\b(end)\\b"
+            }, {
+                "name": "storage.type.crunch",
+                "match": "\\b(enum|type|trait|import)\\b"
+            }, {
+                "name": "storage.type.core.crunch",
+                "match": "\\b(bool|unit|int|float|str)\\b"
+            }, {
+                "name": "storage.type.access.crunch",
+                "match": "(exposed|pkg)"
+            }]
+        },
+        "string": {
+            "patterns": [{
+                    "name": "constant.character.escape.crunch",
+                    "match": "\\\\(x[0-9A-Fa-f]{2}|[0-2][0-7]{0,2}|3[0-6][0-7]?|37[0-7]?|[4-7][0-7]?|.)"
+                },
+                {
+                    "name": "string.quoted.single.crunch",
+                    "begin": "b?'",
+                    "end": "'",
+                    "patterns": [{
+                            "name": "constant.character.escape.crunch",
+                            "match": "\\\\(x[0-9A-Fa-f]{2}|[0-2][0-7]{0,2}|3[0-6][0-7]?|37[0-7]?|[4-7][0-7]?|.)"
+                        },
+                        {
+                            "name": "constant.other.placeholder.crunch",
+                            "match": "(\\{)([a-zA-Z0-9_?:$.*<>]+)?(\\})"
+                        }
+                    ]
+                }, {
+                    "name": "string.quoted.double.crunch",
+                    "begin": "b?\"",
+                    "end": "\"",
+                    "patterns": [{
+                            "name": "constant.character.escape.crunch",
+                            "match": "\\\\(x[0-9A-Fa-f]{2}|[0-2][0-7]{0,2}|3[0-6][0-7]?|37[0-7]?|[4-7][0-7]?|.)"
+                        },
+                        {
+                            "name": "constant.other.placeholder.crunch",
+                            "match": "(\\{)([a-zA-Z0-9_?:$.*<>]+)?(\\})"
+                        }
+                    ]
+                }
+            ]
+        },
+        "support": {
+            "patterns": []
+        },
+        "operator": {
+            "patterns": [{
+                    "name": "keyword.operator.member-access.crunch",
+                    "match": "(\\.)(?=parse)"
+                },
+                {
+                    "name": "keyword.operator.member-access.crunch",
+                    "match": "\\s(\\.)\\b"
+                },
+                {
+                    "name": "keyword.operator.member-access.crunch",
+                    "match": "\\b(\\.)\\b"
+                },
+                {
+                    "name": "keyword.operator.member-access.crunch",
+                    "match": "\\B(\\.)\\b"
+                },
+                {
+                    "name": "keyword.operator.member-access.crunch",
+                    "match": "(\\.)(?=to_string)"
+                }, {
+                    "name": "keyword.operator.range.crunch",
+                    "match": "(\\.\\.)"
+                }, {
+                    "name": "keyword.operator.match.crunch",
+                    "match": "(=>)"
+                }, {
+                    "name": "keyword.operator.return-type.crunch",
+                    "match": "(->)"
+                }, {
+                    "name": "keyword.operator.assignment.crunch",
+                    "match": "(\\=)"
+                }, {
+                    "name": "keyword.operator.comparison.crunch",
+                    "match": "\\b(==|\\>=|\\<=|\\<|\\>|!=)\\b"
+                }, {
+                    "name": "keyword.operator.comparison.crunch",
+                    "match": "\\b(and|or)\\b"
+                }, {
+                    "name": "keyword.operator.assignment.crunch",
+                    "match": "\\b(\\+=|-=|/=|\\*=|%=|\\^=|&=|\\|=|<<=|>>=|=)\\b"
+                }, {
+                    "name": "keyword.operator.comparison.crunch",
+                    "match": "(&&|\\|\\||==|!=)"
+                }, {
+                    "name": "keyword.operator.comparison.crunch",
+                    "match": "\\s(<|>)"
+                }, {
+                    "name": "keyword.operator.comparison.crunch",
+                    "match": "\\B(<=|>=)\\B"
+                }, {
+                    "name": "keyword.operator.arithmetic.crunch",
+                    "match": "(!|\\+|-|/|\\*|%|\\^|\\||<<|>>)"
+                }, {
+                    "name": "keyword.operator.exposing.crunch",
+                    "match": "\\b(exposing)\\b"
+                }
+            ]
         }
-    ],
-    "repository": {},
-    "scopeName": "source.crunch"
+    },
+    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "name": "crunch",
+    "scopeName": "source.crunch",
+    "patterns": [{
+            "include": "#comment"
+        },
+        {
+            "include": "#constant"
+        },
+        {
+            "include": "#entity"
+        },
+        {
+            "include": "#meta"
+        },
+        {
+            "include": "#punctuation"
+        },
+        {
+            "include": "#string"
+        },
+        {
+            "include": "#support"
+        },
+        {
+            "include": "#type"
+        },
+        {
+            "include": "#unsorted"
+        },
+        {
+            "include": "#variable"
+        },
+        {
+            "include": "#operator"
+        },
+        {
+            "include": "#keyword"
+        },
+        {
+            "include": "#storage"
+        }
+    ]
 }

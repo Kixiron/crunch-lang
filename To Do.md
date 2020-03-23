@@ -10,6 +10,11 @@
       - [ ] Decide about decorator declarations, should they be a separate type of declaration?
         - [ ] Allows declaration-only namespacing
         - [ ] Allows greater freedom with system to allow codegen/macro type utilities
+      - [ ] Unit type
+      - [ ] Syntax highlighting
+      - [ ] Throwing errors
+      - [ ] Floats
+      - [ ] Escape sequences
   - [ ] Semantic Checking
   - [ ] Generate HIR & Desugar
   - [ ] Type Checking

@@ -36,6 +36,7 @@ pub enum Expression {
     Array(Vec<Expression>),
     RepeatedArray(Box<Expression>, Box<Expression>),
     Assignment(Box<Expression>, AssignmentType, Box<Expression>),
+    Range(Box<Expression>, Box<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -455,6 +456,13 @@ impl<'a> Parser<'a> {
                     },
                     diag,
                 ))
+            },
+
+            // Ranges
+            TokenType::DoubleDot => |parser, _, start| {
+                let (end, diag) = parser.expr()?;
+
+                Ok((Expression::Range(Box::new(start), Box::new(end)), diag))
             },
 
             // Array indexing

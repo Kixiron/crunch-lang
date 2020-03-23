@@ -38,10 +38,8 @@ pub enum TokenType {
     // TODO: Fix these regexes, they capture integers
     #[token = "inf"]
     #[token = "NaN"]
-    #[regex = r#"[+-]?([0-9][0-9_]*\.|[0-9][0-9_]*\.[0-9][0-9_]*|\.[0-9][0-9_]*)([eE][+-]?[0-9][0-9_]*)?"#]
-    #[regex = r#"[+-]?0[xX][0-9a-fA-F]+\.([pP][+-]?[0-9]+)?"#]
+    #[regex = r#"[+-]?[0-9][0-9_]*\.[0-9][0-9_]*([eE][+-]?[0-9][0-9_]*)?"#]
     #[regex = r#"[+-]?0[xX][0-9a-fA-F]+\.[0-9a-fA-F]+([pP][+-]?[0-9]+)?"#]
-    #[regex = r#"[+-]?0[xX]\.[0-9a-fA-F]+([pP][+-]?[0-9]+)?"#]
     Float,
     #[token = "true"]
     #[token = "false"]
