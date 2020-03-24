@@ -43,6 +43,8 @@ pub enum Statement {
 /// Statement parsing
 impl<'a> Parser<'a> {
     pub(super) fn stmt(&mut self) -> ParseResult<Statement> {
+        let _frame = self.add_stack_frame()?;
+
         match self.peek()?.ty() {
             TokenType::If => self.if_stmt(),
 
@@ -154,6 +156,8 @@ impl<'a> Parser<'a> {
     }
 
     fn if_stmt(&mut self) -> ParseResult<Statement> {
+        let _frame = self.add_stack_frame()?;
+
         self.eat(TokenType::If)?;
         let (condition, mut diagnostics) = self.expr()?;
         self.eat(TokenType::Newline)?;

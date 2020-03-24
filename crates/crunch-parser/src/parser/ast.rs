@@ -234,6 +234,8 @@ impl<'a> Parser<'a> {
         decorators: &mut Vec<Decorator>,
         attributes: &mut Vec<Attribute>,
     ) -> ParseResult<Option<Ast>> {
+        let _frame = self.add_stack_frame()?;
+
         match self.peek()?.ty() {
             TokenType::AtSign => {
                 let (_, diag) = self.decorator(decorators)?;
@@ -250,24 +252,25 @@ impl<'a> Parser<'a> {
 
             TokenType::Function => {
                 let (func, diag) = self.function(mem::take(decorators), mem::take(attributes))?;
+
                 Ok((Some(func), diag))
             },
 
             TokenType::Type => {
                 let (ty, diag) = self.type_decl(mem::take(decorators), mem::take(attributes))?;
-                Ok((Some(
-                ty
-            ), diag))
+
+                Ok((Some(ty), diag))
             },
 
             TokenType::Enum => {
                 let (enu, diag) = self.enum_decl(mem::take(decorators), mem::take(attributes))?;
-                Ok((Some(
-                enu
-            ), diag))}
+
+                Ok((Some(enu), diag))
+            }
 
             TokenType::Trait => {
                 let (tra, diag) = self.trait_decl(mem::take(decorators), mem::take(attributes))?;
+                
                 Ok((Some(tra), diag))
             },
 

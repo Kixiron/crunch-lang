@@ -7,7 +7,7 @@ use crunch_error::{
 use parking_lot::RwLock;
 use string_interner::{StringInterner, Symbol};
 
-use alloc::{format, sync::Arc, vec, vec::Vec};
+use alloc::{format, rc::Rc, sync::Arc, vec, vec::Vec};
 use core::{convert::TryFrom, mem, num::NonZeroU64};
 
 mod ast;
@@ -35,6 +35,7 @@ pub struct Parser<'a> {
     next: Option<Token<'a>>,
     peek: Option<Token<'a>>,
 
+    stack_frames: StackGuard,
     current_file: usize,
     string_interner: Interner,
 }
@@ -48,6 +49,7 @@ impl<'a> Parser<'a> {
             token_stream,
             next,
             peek,
+            stack_frames: StackGuard::new(),
             current_file,
             string_interner,
         }
@@ -157,6 +159,38 @@ impl<'a> Parser<'a> {
     fn eat_ident(&mut self) -> Result<Sym, Vec<Diagnostic<usize>>> {
         let token = self.eat(TokenType::Ident)?;
         Ok(self.intern_string(token.source()))
+    }
+
+    fn add_stack_frame(&self) -> Result<StackGuard, Vec<Diagnostic<usize>>> {
+        // TODO: Find out what this number should be
+        #[cfg(debug_assertions)]
+        const MAX_DEPTH: usize = 50;
+        #[cfg(not(debug_assertions))]
+        const MAX_DEPTH: usize = 200;
+
+        let guard = self.stack_frames.clone();
+        let depth = guard.frames();
+        if depth > MAX_DEPTH {
+            return Err(vec![Diagnostic::error().with_message(format!(
+                "Fatal: maximum recursion depth exceeded ({} > {})",
+                depth, MAX_DEPTH
+            ))]);
+        }
+
+        Ok(guard)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct StackGuard(Rc<()>);
+
+impl StackGuard {
+    pub fn new() -> Self {
+        Self(Rc::new(()))
+    }
+
+    pub fn frames(&self) -> usize {
+        Rc::strong_count(&self.0)
     }
 }
 

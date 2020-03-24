@@ -320,6 +320,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_expression(&mut self, precedence: usize) -> ParseResult<Expression> {
+        let _frame = self.add_stack_frame()?;
         let mut token = self.next()?;
 
         if let Some(prefix) = Self::prefix(token.ty()) {
