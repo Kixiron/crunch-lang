@@ -42,15 +42,18 @@ pub enum Statement {
 
 /// Statement parsing
 impl<'a> Parser<'a> {
-    pub(super) fn stmt(&mut self) -> ParseResult<Statement> {
+    pub(super) fn stmt(&mut self) -> ParseResult<Option<Statement>> {
         let _frame = self.add_stack_frame()?;
 
         match self.peek()?.ty() {
-            TokenType::If => self.if_stmt(),
+            TokenType::If => {
+                let (stmt, diag) = self.if_stmt()?;
+                Ok((Some(stmt), diag))
+            }
 
             TokenType::Newline => {
                 self.eat(TokenType::Newline)?;
-                self.stmt()
+                Ok((None, Vec::new()))
             }
 
             TokenType::Let => {
@@ -62,16 +65,28 @@ impl<'a> Parser<'a> {
 
                 self.eat(TokenType::Newline)?;
 
-                Ok((Statement::VarDeclaration(var, expr), diag))
+                Ok((Some(Statement::VarDeclaration(var, expr)), diag))
             }
 
-            TokenType::Match => self.match_stmt(),
+            TokenType::Match => {
+                let (stmt, diag) = self.match_stmt()?;
+                Ok((Some(stmt), diag))
+            }
 
-            TokenType::While => self.while_stmt(),
+            TokenType::While => {
+                let (stmt, diag) = self.while_stmt()?;
+                Ok((Some(stmt), diag))
+            }
 
-            TokenType::Loop => self.loop_stmt(),
+            TokenType::Loop => {
+                let (stmt, diag) = self.loop_stmt()?;
+                Ok((Some(stmt), diag))
+            }
 
-            TokenType::For => self.for_stmt(),
+            TokenType::For => {
+                let (stmt, diag) = self.for_stmt()?;
+                Ok((Some(stmt), diag))
+            }
 
             TokenType::Return => {
                 self.eat(TokenType::Return)?;
@@ -79,12 +94,12 @@ impl<'a> Parser<'a> {
                 if self.peek()?.ty() == TokenType::Newline {
                     self.eat(TokenType::Newline)?;
 
-                    Ok((Statement::Return(None), Vec::new()))
+                    Ok((Some(Statement::Return(None)), Vec::new()))
                 } else {
                     let (expr, diag) = self.expr()?;
                     self.eat(TokenType::Newline)?;
 
-                    Ok((Statement::Return(Some(expr)), diag))
+                    Ok((Some(Statement::Return(Some(expr))), diag))
                 }
             }
 
@@ -94,12 +109,12 @@ impl<'a> Parser<'a> {
                 if self.peek()?.ty() == TokenType::Newline {
                     self.eat(TokenType::Newline)?;
 
-                    Ok((Statement::Break(None), Vec::new()))
+                    Ok((Some(Statement::Break(None)), Vec::new()))
                 } else {
                     let (expr, diag) = self.expr()?;
                     self.eat(TokenType::Newline)?;
 
-                    Ok((Statement::Break(Some(expr)), diag))
+                    Ok((Some(Statement::Break(Some(expr))), diag))
                 }
             }
 
@@ -107,13 +122,14 @@ impl<'a> Parser<'a> {
                 self.eat(TokenType::Continue)?;
                 self.eat(TokenType::Newline)?;
 
-                Ok((Statement::Continue, Vec::new()))
+                Ok((Some(Statement::Continue), Vec::new()))
             }
 
             TokenType::Empty => {
                 self.eat(TokenType::Empty)?;
+                self.eat(TokenType::Newline)?;
 
-                Ok((Statement::Empty, Vec::new()))
+                Ok((Some(Statement::Empty), Vec::new()))
             }
 
             // Expressions
@@ -129,7 +145,7 @@ impl<'a> Parser<'a> {
                 let (expr, diag) = self.expr()?;
                 self.eat(TokenType::Newline)?;
 
-                Ok((Statement::Expression(expr), diag))
+                Ok((Some(Statement::Expression(expr)), diag))
             }
 
             _ => {
@@ -150,9 +166,13 @@ impl<'a> Parser<'a> {
         let mut diagnostics = Vec::new();
 
         while !breaks.contains(&self.peek()?.ty()) {
-            let (stmt, diag) = self.stmt()?;
-            diagnostics.extend_from_slice(&diag);
-            statements.push(stmt);
+            match self.stmt()? {
+                (Some(stmt), diag) => {
+                    diagnostics.extend_from_slice(&diag);
+                    statements.push(stmt);
+                }
+                (None, diag) => diagnostics.extend_from_slice(&diag),
+            }
         }
         statements.shrink_to_fit();
 
@@ -169,39 +189,31 @@ impl<'a> Parser<'a> {
         let (body, diag) = self.statements(&[TokenType::End, TokenType::Else], 10)?;
         diagnostics.extend_from_slice(&diag);
 
-        let next = self.next()?;
-        let arm = if next.ty() == TokenType::Else && self.peek()?.ty() == TokenType::If {
-            let (stmt, diag) = self.if_stmt()?;
-            diagnostics.extend_from_slice(&diag);
+        let delimiter = self.eat_of(&[TokenType::Else, TokenType::End])?;
+        let arm = match delimiter.ty() {
+            TokenType::Else if self.peek()?.ty() == TokenType::If => {
+                let (stmt, diag) = self.if_stmt()?;
+                diagnostics.extend_from_slice(&diag);
 
-            Some(Box::new(stmt))
-        } else if next.ty() == TokenType::Else {
-            self.eat(TokenType::Newline)?;
-
-            let (body, diag) = self.statements(&[TokenType::End, TokenType::Else], 10)?;
-            diagnostics.extend_from_slice(&diag);
-
-            Some(Box::new(Statement::If {
-                condition: Expression::Literal(Literal::Bool(true)),
-                body,
-                arm: None,
-            }))
-        } else if next.ty() == TokenType::End {
-            None
-        } else if next.ty() == TokenType::Newline {
-            while self.peek()?.ty() == TokenType::Newline {
-                self.eat(TokenType::Newline)?;
+                Some(Box::new(stmt))
             }
-            self.eat(TokenType::End)?;
 
-            None
-        } else {
-            diagnostics.push(
-                Diagnostic::error()
-                    .with_message(format!("Expected an `end`, got a `{}`", next.ty())),
-            );
+            TokenType::Else => {
+                self.eat(TokenType::Newline)?;
 
-            return Err(diagnostics);
+                let (body, diag) = self.statements(&[TokenType::End], 10)?;
+                diagnostics.extend_from_slice(&diag);
+
+                Some(Box::new(Statement::If {
+                    condition: Expression::Literal(Literal::Bool(true)),
+                    body,
+                    arm: None,
+                }))
+            }
+
+            TokenType::End => None,
+
+            _ => unreachable!(),
         };
 
         Ok((

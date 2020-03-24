@@ -23,16 +23,16 @@ def rand_ty() -> str:
 def rand_params() -> str:
     params = ""
     
-    for _ in range(0, random.randint(0, 50)):
-        params += f" {rand_ident(random.randint(20, 50))} : {rand_ty()} , "
+    for _ in range(0, random.randint(0, 20)):
+        params += f" {rand_ident(random.randint(5, 10))} : {rand_ty()} , "
         
     return params
 
 def rand_call_params() -> str:
     params = " "
     
-    for _ in range(0, random.randint(0, 50)):
-        params += rand_ident(random.randint(20, 50))
+    for _ in range(0, random.randint(0, 20)):
+        params += rand_ident(random.randint(5, 10))
         params += " , "
         
     return params
@@ -72,7 +72,7 @@ def expr(paren: bool) -> str:
 def statement(indentlev: int) -> str:
     stmts = ["if", "let", "func", "return"]
     # "match", "for", "while", "loop", 
-    
+
     stmt = random.choice(stmts)
     
     if stmt == "return":
@@ -101,7 +101,7 @@ def statement(indentlev: int) -> str:
     elif stmt == "let":
         stmt = indent(indentlev)
         stmt += "let "
-        stmt += rand_ident(random.randint(2, 100))
+        stmt += rand_ident(random.randint(2, 10))
         stmt += " = "
         stmt += expr(True)
         stmt += " "
@@ -122,7 +122,7 @@ def function(indentlev: int) -> str:
     func = f"fn {rand_ident(random.randint(5, 15))}({rand_params()}) -> {rand_ty()}\n"
     indentlev += 1
     
-    for _ in range(10, random.randint(20, 50)):
+    for _ in range(10, random.randint(1, 20)):
         func += statement(indentlev)
     
     indentlev -= 1

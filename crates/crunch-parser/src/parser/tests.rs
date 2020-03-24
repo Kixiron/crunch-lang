@@ -54,7 +54,7 @@ fn parse_stmt<'a>(source: &'a str, idents: Vec<&str>) -> Option<Statement> {
     match Parser::new(source, 0, interner).stmt() {
         Ok((ast, diag)) => {
             emit_diagnostics(source, diag);
-            Some(ast)
+            ast
         }
         Err(err) => {
             emit_diagnostics(source, err);
@@ -72,7 +72,7 @@ fn parse_ast<'a>(source: &'a str, idents: Vec<&str>) -> Option<Ast> {
     match Parser::new(source, 0, interner).ast() {
         Ok((ast, diag)) => {
             emit_diagnostics(source, diag);
-            Some(ast)
+            ast
         }
         Err(err) => {
             emit_diagnostics(source, err);
@@ -646,7 +646,7 @@ fn nested_if_stmt() {
         Some(Statement::If {
             condition: Expression::Literal(Literal::Bool(true)),
             body: vec![Statement::If {
-                condition: Expression::Literal(Literal::Bool(true)),
+                condition: Expression::Literal(Literal::Bool(false)),
                 body: vec![Statement::Expression(Expression::FunctionCall {
                     caller: Box::new(Expression::Variable(0.into())),
                     arguments: vec![Expression::Literal(Literal::I32(1))],
@@ -678,6 +678,58 @@ fn decl_var() {
             Expression::Literal(Literal::Bool(true))
         )),
         parse_stmt("let variable = true\n", vec!["variable"])
+    );
+}
+
+#[test]
+fn long_func_decl_stmt() {
+    let assign = "let jkpwn = vssekgmbxoxshmhinx( jnldfzbd , kcqpq , gbuaqbax , argro , xhmfc , bredcp , pwlfywfkb , vgsjjcy , exomcmbf , cjsjpvgcl , omtlfpw , ssdrm , kxrtaun , xexzz , ejvmxj , ssmqkbqqi , )\n";
+    let idents = vec![
+        "jkpwn",
+        "vssekgmbxoxshmhinx",
+        "jnldfzbd",
+        "kcqpq",
+        "gbuaqbax",
+        "argro",
+        "xhmfc",
+        "bredcp",
+        "pwlfywfkb",
+        "vgsjjcy",
+        "exomcmbf",
+        "cjsjpvgcl",
+        "omtlfpw",
+        "ssdrm",
+        "kxrtaun",
+        "xexzz",
+        "ejvmxj",
+        "ssmqkbqqi",
+    ];
+
+    assert_eq!(
+        Some(Statement::VarDeclaration(
+            0.into(),
+            Expression::FunctionCall {
+                caller: Box::new(Expression::Variable(1.into())),
+                arguments: vec![
+                    Expression::Variable(2.into()),
+                    Expression::Variable(3.into()),
+                    Expression::Variable(4.into()),
+                    Expression::Variable(5.into()),
+                    Expression::Variable(6.into()),
+                    Expression::Variable(7.into()),
+                    Expression::Variable(8.into()),
+                    Expression::Variable(9.into()),
+                    Expression::Variable(10.into()),
+                    Expression::Variable(11.into()),
+                    Expression::Variable(12.into()),
+                    Expression::Variable(13.into()),
+                    Expression::Variable(14.into()),
+                    Expression::Variable(15.into()),
+                    Expression::Variable(16.into()),
+                ],
+            }
+        )),
+        parse_stmt(assign, idents)
     );
 }
 

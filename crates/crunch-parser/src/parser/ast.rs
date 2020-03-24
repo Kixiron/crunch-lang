@@ -210,7 +210,7 @@ pub enum Visibility {
 }
 
 impl<'a> Parser<'a> {
-    pub(super) fn ast(&mut self) -> ParseResult<Ast> {
+    pub(super) fn ast(&mut self) -> ParseResult<Option<Ast>> {
         let (mut decorators, mut attributes) = (Vec::with_capacity(5), Vec::with_capacity(5));
         let mut diagnostics = Vec::with_capacity(10);
 
@@ -218,14 +218,13 @@ impl<'a> Parser<'a> {
             match self.ast_impl(&mut decorators, &mut attributes)? {
                 (Some(node), diag) => {
                     diagnostics.extend_from_slice(&diag);
-                    return Ok((node, diagnostics));
+                    return Ok((Some(node), diagnostics));
                 }
                 (None, diag) => diagnostics.extend_from_slice(&diag),
             }
         }
 
-        diagnostics.push(Diagnostic::error().with_message("Unexpected EOF"));
-        Err(diagnostics)
+        Ok((None, diagnostics))
     }
 
     // Returns None when the function should be re-called, usually because an attribute or decorator was parsed
@@ -270,7 +269,7 @@ impl<'a> Parser<'a> {
 
             TokenType::Trait => {
                 let (tra, diag) = self.trait_decl(mem::take(decorators), mem::take(attributes))?;
-                
+
                 Ok((Some(tra), diag))
             },
 
@@ -738,9 +737,13 @@ impl<'a> Parser<'a> {
 
         let mut body = Vec::with_capacity(20);
         while self.peek()?.ty() != TokenType::End {
-            let (stmt, diag) = self.stmt()?;
-            body.push(stmt);
-            diagnostics.extend_from_slice(&diag);
+            match self.stmt()? {
+                (Some(stmt), diag) => {
+                    diagnostics.extend_from_slice(&diag);
+                    body.push(stmt);
+                }
+                (None, diag) => diagnostics.extend_from_slice(&diag),
+            }
         }
         self.eat(TokenType::End)?;
         body.shrink_to_fit();

@@ -19,22 +19,22 @@ fn emit_diagnostics<'a>(
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut file = File::open("test.crunch")?;
-    let mut buf = String::new();
-    file.read_to_string(&mut buf)?;
+fn main() {
+    let mut file = File::open("test.crunch").unwrap();
+    let mut buf = String::with_capacity(10000);
+    file.read_to_string(&mut buf).unwrap();
 
     let interner = std::sync::Arc::new(parking_lot::RwLock::new(
         string_interner::StringInterner::new(),
     ));
 
-    match crunch_parser::Parser::new(&buf, 0, interner.clone()).parse() {
-        Ok((ast, diag)) => {
-            emit_diagnostics(&buf, diag);
-            println!("{:?}", ast);
+    loop {
+        match crunch_parser::Parser::new(&buf, 0, interner.clone()).parse() {
+            Ok((ast, diag)) => {
+                emit_diagnostics(&buf, diag);
+                // println!("{:#?}", ast);
+            }
+            Err(err) => emit_diagnostics(&buf, err),
         }
-        Err(err) => emit_diagnostics(&buf, err),
     }
-
-    Ok(())
 }

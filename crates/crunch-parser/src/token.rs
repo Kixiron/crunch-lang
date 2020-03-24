@@ -441,6 +441,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn break_up_weird_stuff() {
+        let mut stream = TokenStream::new("bredcp", true).into_iter();
+
+        assert_eq!(
+            stream.next(),
+            Some(Token {
+                ty: TokenType::Ident,
+                source: "bredcp",
+                range: (0, 6)
+            })
+        );
+        assert_eq!(stream.next(), None);
+    }
+
+    #[test]
     fn keyword_led_ident() {
         let mut exposed_function = TokenStream::new("exposed_function", true).into_iter();
 
@@ -453,7 +468,6 @@ mod tests {
             })
         );
         assert_eq!(exposed_function.next(), None);
-        assert!(exposed_function.collect::<Vec<_>>().is_empty());
     }
 
     #[test]
@@ -470,7 +484,6 @@ mod tests {
             })
         );
         assert_eq!(exposed_function.next(), None);
-        assert!(exposed_function.collect::<Vec<_>>().is_empty());
 
         let mut exposed_function =
             TokenStream::new(":: test<int, bool>(test2)\n", true).into_iter();
@@ -484,6 +497,5 @@ mod tests {
             })
         );
         assert_eq!(exposed_function.next(), None);
-        assert!(exposed_function.collect::<Vec<_>>().is_empty());
     }
 }

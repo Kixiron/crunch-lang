@@ -65,7 +65,9 @@ impl<'a> Parser<'a> {
         while self.peek().is_ok() {
             match self.ast() {
                 Ok((node, diag)) => {
-                    ast.push(node);
+                    if let Some(node) = node {
+                        ast.push(node);
+                    }
                     diagnostics.extend_from_slice(&diag);
                 }
 
@@ -92,6 +94,8 @@ impl<'a> Parser<'a> {
         let mut token_stream = TokenStream::new(source, true);
         let next = None;
         let peek = token_stream.next_token();
+
+        dbg!(token_stream.clone().into_iter().collect::<Vec<_>>());
 
         (token_stream, next, peek)
     }
@@ -135,6 +139,33 @@ impl<'a> Parser<'a> {
                     token.range(),
                 )
                 .with_message(format!("Expected {}", expected))])])
+        }
+    }
+
+    #[inline(always)]
+    fn eat_of(&mut self, expected: &[TokenType]) -> Result<Token<'a>, Vec<Diagnostic<usize>>> {
+        let token = self.next()?;
+
+        if expected.contains(&token.ty()) {
+            Ok(token)
+        } else {
+            let expected = expected
+                .iter()
+                .map(|t| format!("'{}'", t))
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            Err(vec![Diagnostic::error()
+                .with_message(format!(
+                    "Unexpected Token: Expected one of {}, found '{}'",
+                    expected,
+                    token.ty()
+                ))
+                .with_labels(vec![Label::primary(
+                    self.current_file,
+                    token.range(),
+                )
+                .with_message(format!("Expected one of {}", expected))])])
         }
     }
 
