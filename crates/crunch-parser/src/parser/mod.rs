@@ -13,7 +13,7 @@ use core::{convert::TryFrom, mem, num::NonZeroU64};
 mod ast;
 mod expr;
 mod stmt;
-mod string_esc;
+mod string_escapes;
 #[cfg(test)]
 mod tests;
 
@@ -98,6 +98,7 @@ impl<'a> Parser<'a> {
 
 /// Utility functions
 impl<'a> Parser<'a> {
+    #[inline(always)]
     fn next(&mut self) -> Result<Token<'a>, Vec<Diagnostic<usize>>> {
         let mut next = self.token_stream.next_token();
         mem::swap(&mut next, &mut self.peek);
@@ -108,12 +109,14 @@ impl<'a> Parser<'a> {
         ])
     }
 
+    #[inline(always)]
     fn peek(&self) -> Result<Token<'a>, Vec<Diagnostic<usize>>> {
         self.peek.ok_or(vec![
             Diagnostic::error().with_message("Unexpected End Of File")
         ])
     }
 
+    #[inline(always)]
     fn eat(&mut self, expected: TokenType) -> Result<Token<'a>, Vec<Diagnostic<usize>>> {
         let token = self.next()?;
 
@@ -134,6 +137,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    #[inline(always)]
     fn current_precedence(&self) -> usize {
         self.peek
             .map(|p| {
@@ -144,10 +148,12 @@ impl<'a> Parser<'a> {
             .unwrap_or(0)
     }
 
+    #[inline(always)]
     fn intern_string(&self, string: &str) -> Sym {
         intern_string(&self.string_interner, string)
     }
 
+    #[inline(always)]
     fn eat_ident(&mut self) -> Result<Sym, Vec<Diagnostic<usize>>> {
         let token = self.eat(TokenType::Ident)?;
         Ok(self.intern_string(token.source()))

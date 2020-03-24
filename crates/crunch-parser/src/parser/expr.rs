@@ -178,14 +178,14 @@ impl<'a> TryFrom<&Token<'a>> for Literal {
                         string.drain(..3).for_each(|d| drop(d));
                         string.drain(string.len() - 3..).for_each(|d| drop(d));
 
-                        string_esc::unescape_string(&mut string.into_iter())?
+                        string_escapes::unescape_string(string)?
                     }
 
                     '\'' | '"' => {
                         string.drain(..1).for_each(|d| drop(d));
                         string.drain(string.len() - 1..).for_each(|d| drop(d));
 
-                        string_esc::unescape_string(&mut string.into_iter())?
+                        string_escapes::unescape_string(string)?
                     }
 
                     _ => unreachable!(),

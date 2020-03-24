@@ -26,10 +26,10 @@ fn main() {
     ));
 
     println!("Starting parser loop");
-    for (idx, file) in files.into_iter().enumerate() {
+    for (idx, file) in files.iter().enumerate() {
         println!("{}: {:?}", idx, file);
 
-        if let Ok((ast, _)) = crunch_parser::Parser::new(&file, idx, interner.clone()).parse() {
+        if let Ok((ast, _)) = crunch_parser::Parser::new(file, idx, interner.clone()).parse() {
             println!("{:?}", ast);
         } else {
             println!("error");

@@ -87,6 +87,7 @@ pub enum BuiltinType {
     Float,
     Boolean,
     String,
+    Unit,
     Vec(Box<Type>),
 }
 
@@ -101,6 +102,7 @@ impl<'a> TryFrom<(Token<'a>, usize, &Interner)> for BuiltinType {
             "int" => Self::Integer,
             "float" => Self::Float,
             "bool" => Self::Boolean,
+            "unit" => Self::Unit,
             ty if ty.starts_with("[") && ty.ends_with("]") => {
                 token.source = &token.source()[1..ty.len() - 1];
 

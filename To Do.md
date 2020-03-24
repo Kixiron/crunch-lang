@@ -10,11 +10,15 @@
       - [ ] Decide about decorator declarations, should they be a separate type of declaration?
         - [ ] Allows declaration-only namespacing
         - [ ] Allows greater freedom with system to allow codegen/macro type utilities
-      - [ ] Unit type
-      - [ ] Syntax highlighting
+      - [X] Unit type
+      - [X] Syntax highlighting
       - [ ] Throwing errors
       - [ ] Floats
       - [ ] Escape sequences
+      - [ ] String Formatting
+        - [ ] Use interleaved arrays
+        - [ ] Inlined string variables e.g. `"{var}"`
+        - [ ] String format specifiers e.g. `"{:?}"`
   - [ ] Semantic Checking
   - [ ] Generate HIR & Desugar
   - [ ] Type Checking
@@ -57,3 +61,4 @@
 - [ ] `no_std` RwLock and Mutex implementations
 - [ ] Fast concurrent queue
 - [ ] Get rid of phf
+- [ ] Async
