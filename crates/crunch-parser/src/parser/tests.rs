@@ -5,6 +5,8 @@ use string_interner::StringInterner;
 use alloc::{boxed::Box, sync::Arc, vec, vec::Vec};
 use core::convert::TryFrom;
 
+use parking_lot::RwLock;
+
 fn emit_diagnostics<'a>(
     source: &'a str,
     diagnostics: Vec<crunch_error::codespan_reporting::diagnostic::Diagnostic<usize>>,
@@ -635,6 +637,25 @@ fn if_stmt() {
             "if true\nprintln(1)\nelse if 1 > 5\nprintln(2)\nelse\nprintln(3)\nend",
             vec!["println"]
         )
+    );
+}
+
+#[test]
+fn nested_if_stmt() {
+    assert_eq!(
+        Some(Statement::If {
+            condition: Expression::Literal(Literal::Bool(true)),
+            body: vec![Statement::If {
+                condition: Expression::Literal(Literal::Bool(true)),
+                body: vec![Statement::Expression(Expression::FunctionCall {
+                    caller: Box::new(Expression::Variable(0.into())),
+                    arguments: vec![Expression::Literal(Literal::I32(1))],
+                })],
+                arm: None,
+            }],
+            arm: None,
+        }),
+        parse_stmt("if true\nif false\nprintln(1)\nend\nend", vec!["println"])
     );
 }
 

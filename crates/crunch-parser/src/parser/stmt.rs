@@ -132,11 +132,15 @@ impl<'a> Parser<'a> {
                 Ok((Statement::Expression(expr), diag))
             }
 
-            ty => {
-                Err(vec![Diagnostic::error().with_message(format!(
-                    "Expected a statement, got a `{}`",
-                    ty
-                ))])
+            _ => {
+                let token = self.peek()?;
+
+                Err(vec![Diagnostic::error()
+                    .with_message(format!("Expected a statement, got a `{}`", token.ty(),))
+                    .with_labels(vec![Label::primary(
+                        self.current_file,
+                        token.range(),
+                    )])])
             }
         }
     }
@@ -183,6 +187,13 @@ impl<'a> Parser<'a> {
                 arm: None,
             }))
         } else if next.ty() == TokenType::End {
+            None
+        } else if next.ty() == TokenType::Newline {
+            while self.peek()?.ty() == TokenType::Newline {
+                self.eat(TokenType::Newline)?;
+            }
+            self.eat(TokenType::End)?;
+
             None
         } else {
             diagnostics.push(

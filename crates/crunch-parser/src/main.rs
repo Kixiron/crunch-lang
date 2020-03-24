@@ -1,38 +1,40 @@
-fn main() {
-    println!("Getting files");
-    let files = std::fs::read_dir("../../tests/")
-        .unwrap()
-        .filter_map(|f| {
-            if let Ok(f) = f {
-                if let Some(ext) = f.path().extension() {
-                    if &*ext == "crunch" {
-                        use std::io::Read;
+use std::{fs::File, io::Read};
 
-                        let mut file = std::fs::File::open(&f.path()).unwrap();
-                        let mut contents = String::new();
-                        file.read_to_string(&mut contents).unwrap();
+fn emit_diagnostics<'a>(
+    source: &'a str,
+    diagnostics: Vec<crunch_error::codespan_reporting::diagnostic::Diagnostic<usize>>,
+) {
+    use crunch_error::parse_prelude::{codespan_reporting, SimpleFiles};
 
-                        return Some(contents);
-                    }
-                }
-            }
+    let mut files = SimpleFiles::new();
+    files.add("<test file>", source);
 
-            None
-        })
-        .collect::<Vec<String>>();
+    let writer = codespan_reporting::term::termcolor::StandardStream::stderr(
+        codespan_reporting::term::termcolor::ColorChoice::Auto,
+    );
+    let config = codespan_reporting::term::Config::default();
+
+    for diag in diagnostics {
+        codespan_reporting::term::emit(&mut writer.lock(), &config, &files, &diag).unwrap();
+    }
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut file = File::open("test.crunch")?;
+    let mut buf = String::new();
+    file.read_to_string(&mut buf)?;
 
     let interner = std::sync::Arc::new(parking_lot::RwLock::new(
         string_interner::StringInterner::new(),
     ));
 
-    println!("Starting parser loop");
-    for (idx, file) in files.iter().enumerate() {
-        println!("{}: {:?}", idx, file);
-
-        if let Ok((ast, _)) = crunch_parser::Parser::new(file, idx, interner.clone()).parse() {
+    match crunch_parser::Parser::new(&buf, 0, interner.clone()).parse() {
+        Ok((ast, diag)) => {
+            emit_diagnostics(&buf, diag);
             println!("{:?}", ast);
-        } else {
-            println!("error");
         }
+        Err(err) => emit_diagnostics(&buf, err),
     }
+
+    Ok(())
 }

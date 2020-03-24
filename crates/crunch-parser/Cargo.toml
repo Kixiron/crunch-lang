@@ -4,6 +4,11 @@ version = "0.1.0"
 authors = ["Chase Wilson <contact@chasewilson.dev>"]
 edition = "2018"
 
+[features]
+default = ["concurrent"]
+std = []
+concurrent = ["parking_lot", "dashmap", "std"]
+
 [dependencies.string-interner]
 version = "0.7.1"
 
@@ -20,6 +25,11 @@ version = "0.7.1"
 [dependencies.parking_lot]
 version = "0.10.0"
 default-features = false
+optional = true
+
+[dependencies.dashmap]
+version = "3.7.0"
+optional = true
 
 [dependencies.crunch-error]
 path = "../crunch-error"
