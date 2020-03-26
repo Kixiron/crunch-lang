@@ -81,9 +81,7 @@ proptest = "0.9.5"
 cc = "1.0.50"
 
 [workspace]
-members = [
-    "crates/*"
-]
+members = ["crates/*"]
 
 [profile.release]
 opt-level = 3

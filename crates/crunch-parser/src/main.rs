@@ -2,11 +2,9 @@ use std::{fs::File, io::Read};
 
 fn emit_diagnostics<'a>(
     source: &'a str,
-    diagnostics: Vec<crunch_error::codespan_reporting::diagnostic::Diagnostic<usize>>,
+    diagnostics: Vec<codespan_reporting::diagnostic::Diagnostic<usize>>,
 ) {
-    use crunch_error::parse_prelude::{codespan_reporting, SimpleFiles};
-
-    let mut files = SimpleFiles::new();
+    let mut files = Files::new();
     files.add("<test file>", source);
 
     let writer = codespan_reporting::term::termcolor::StandardStream::stderr(
@@ -28,13 +26,11 @@ fn main() {
         string_interner::StringInterner::new(),
     ));
 
-    loop {
-        match crunch_parser::Parser::new(&buf, 0, interner.clone()).parse() {
-            Ok((ast, diag)) => {
-                emit_diagnostics(&buf, diag);
-                // println!("{:#?}", ast);
-            }
-            Err(err) => emit_diagnostics(&buf, err),
+    match crunch_parser::Parser::new(&buf, files::FileId::new(0), interner.clone()).parse() {
+        Ok((ast, warn)) => {
+            warn.emit();
+            println!("{:#?}", ast);
         }
+        Err(err) => err.emit(),
     }
 }

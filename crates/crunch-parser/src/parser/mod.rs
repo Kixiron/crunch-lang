@@ -1,15 +1,12 @@
 use crate::{
+    error::{Error, ErrorHandler, FileId, Locatable, Location, ParseResult, SyntaxError},
     token::{Token, TokenStream, TokenType},
     Interner, Sym,
 };
 
-use crunch_error::{
-    codespan_reporting,
-    parse_prelude::{Diagnostic, Label, ParseResult},
-};
-
-use alloc::{format, rc::Rc, vec, vec::Vec};
-use core::{convert::TryFrom, mem};
+use alloc::{format, rc::Rc, vec::Vec};
+use core::{convert::TryFrom, mem, num::NonZeroUsize, ops};
+use stadium::Stadium;
 
 mod ast;
 mod expr;
@@ -23,9 +20,9 @@ pub use ast::{
     TypeMember, Visibility,
 };
 pub use expr::{
-    AssignmentType, BinaryOperand, ComparisonOperand, Expression, Literal, UnaryOperand,
+    AssignmentType, BinaryOperand, ComparisonOperand, Expr, Expression, Literal, UnaryOperand,
 };
-pub use stmt::Statement;
+pub use stmt::{Statement, Stmt};
 
 // TODO: Make the parser a little more lax, it's kinda strict about whitespace
 
@@ -34,22 +31,47 @@ pub struct Parser<'a> {
     next: Option<Token<'a>>,
     peek: Option<Token<'a>>,
 
+    error_handler: ErrorHandler,
     stack_frames: StackGuard,
-    current_file: usize,
+    current_file: FileId,
+
+    expr_arena: Stadium<Expression<'a>>,
+    stmt_arena: Stadium<Statement<'a>>,
+
     string_interner: Interner,
+}
+
+pub struct SyntaxTree<'a> {
+    ast: Vec<Ast<'a>>,
+    exprs: Stadium<Expression<'a>>,
+    stmts: Stadium<Statement<'a>>,
+}
+
+impl<'a> ops::Deref for SyntaxTree<'a> {
+    type Target = [Ast<'a>];
+
+    fn deref(&self) -> &Self::Target {
+        &self.ast
+    }
 }
 
 /// Initialization and high-level usage
 impl<'a> Parser<'a> {
-    pub fn new(source: &'a str, current_file: usize, string_interner: Interner) -> Self {
+    pub fn new(source: &'a str, current_file: FileId, string_interner: Interner) -> Self {
         let (token_stream, next, peek) = Self::lex(source);
 
         Self {
             token_stream,
             next,
             peek,
+
+            error_handler: ErrorHandler::new(),
             stack_frames: StackGuard::new(),
             current_file,
+
+            expr_arena: Stadium::with_capacity(NonZeroUsize::new(512).unwrap()),
+            stmt_arena: Stadium::with_capacity(NonZeroUsize::new(512).unwrap()),
+
             string_interner,
         }
     }
@@ -58,34 +80,32 @@ impl<'a> Parser<'a> {
     // TODO: Should this consume? Is there a viable reason to re-parse?
     // TODO: Maybe consuming is alright, the token stream itself is consumed, so nothing really usable is
     //       left in the parser after this function is run on it
-    pub fn parse(mut self) -> Result<(Vec<Ast>, Vec<Diagnostic<usize>>), Vec<Diagnostic<usize>>> {
+    pub fn parse(mut self) -> Result<(SyntaxTree<'a>, ErrorHandler), ErrorHandler> {
         let mut ast = Vec::with_capacity(20);
-        let mut diagnostics = Vec::with_capacity(20);
 
         while self.peek().is_ok() {
             match self.ast() {
-                Ok((node, diag)) => {
+                Ok(node) => {
                     if let Some(node) = node {
                         ast.push(node);
                     }
-                    diagnostics.extend_from_slice(&diag);
                 }
 
-                Err(diag) => {
-                    use codespan_reporting::diagnostic::Severity;
+                Err(err) => {
+                    self.error_handler.push_err(err);
 
-                    diagnostics.extend_from_slice(&diag);
-
-                    if diag.last().map(|d| d.severity) == Some(Severity::Error)
-                        || diag.last().map(|d| d.severity) == Some(Severity::Bug)
-                    {
-                        return Err(diagnostics);
-                    }
+                    todo!("eat until next top-level token")
                 }
             }
         }
 
-        Ok((ast, diagnostics))
+        let ast = SyntaxTree {
+            ast,
+            exprs: self.expr_arena,
+            stmts: self.stmt_arena,
+        };
+
+        Ok((ast, self.error_handler))
     }
 
     // TODO: Source own lexer, logos is slow on compile times, maybe something generator-based
@@ -95,8 +115,6 @@ impl<'a> Parser<'a> {
         let next = None;
         let peek = token_stream.next_token();
 
-        dbg!(token_stream.clone().into_iter().collect::<Vec<_>>());
-
         (token_stream, next, peek)
     }
 }
@@ -104,46 +122,44 @@ impl<'a> Parser<'a> {
 /// Utility functions
 impl<'a> Parser<'a> {
     #[inline(always)]
-    fn next(&mut self) -> Result<Token<'a>, Vec<Diagnostic<usize>>> {
+    fn next(&mut self) -> ParseResult<Token<'a>> {
+        let _frame = self.add_stack_frame()?;
         let mut next = self.token_stream.next_token();
         mem::swap(&mut next, &mut self.peek);
         self.next = next;
 
-        next.ok_or(vec![
-            Diagnostic::error().with_message("Unexpected End Of File")
-        ])
+        next.ok_or(Locatable::file(Error::EndOfFile, self.current_file))
     }
 
     #[inline(always)]
-    fn peek(&self) -> Result<Token<'a>, Vec<Diagnostic<usize>>> {
-        self.peek.ok_or(vec![
-            Diagnostic::error().with_message("Unexpected End Of File")
-        ])
+    fn peek(&self) -> ParseResult<Token<'a>> {
+        let _frame = self.add_stack_frame()?;
+        self.peek
+            .ok_or(Locatable::file(Error::EndOfFile, self.current_file))
     }
 
     #[inline(always)]
-    fn eat(&mut self, expected: TokenType) -> Result<Token<'a>, Vec<Diagnostic<usize>>> {
+    fn eat(&mut self, expected: TokenType) -> ParseResult<Token<'a>> {
+        let _frame = self.add_stack_frame()?;
         let token = self.next()?;
 
         if token.ty() == expected {
             Ok(token)
         } else {
-            Err(vec![Diagnostic::error()
-                .with_message(format!(
-                    "Unexpected Token: Expected '{}', found '{}'",
+            Err(Locatable::new(
+                Error::Syntax(SyntaxError::Generic(format!(
+                    "Expected {}, got {}",
                     expected,
                     token.ty()
-                ))
-                .with_labels(vec![Label::primary(
-                    self.current_file,
-                    token.range(),
-                )
-                .with_message(format!("Expected {}", expected))])])
+                ))),
+                Location::new(&token, self.current_file),
+            ))
         }
     }
 
     #[inline(always)]
-    fn eat_of(&mut self, expected: &[TokenType]) -> Result<Token<'a>, Vec<Diagnostic<usize>>> {
+    fn eat_of(&mut self, expected: &[TokenType]) -> ParseResult<Token<'a>> {
+        let _frame = self.add_stack_frame()?;
         let token = self.next()?;
 
         if expected.contains(&token.ty()) {
@@ -155,17 +171,14 @@ impl<'a> Parser<'a> {
                 .collect::<Vec<_>>()
                 .join(", ");
 
-            Err(vec![Diagnostic::error()
-                .with_message(format!(
-                    "Unexpected Token: Expected one of {}, found '{}'",
+            Err(Locatable::new(
+                Error::Syntax(SyntaxError::Generic(format!(
+                    "Expected one of {}, got {}",
                     expected,
                     token.ty()
-                ))
-                .with_labels(vec![Label::primary(
-                    self.current_file,
-                    token.range(),
-                )
-                .with_message(format!("Expected one of {}", expected))])])
+                ))),
+                Location::new(&token, self.current_file),
+            ))
         }
     }
 
@@ -186,25 +199,25 @@ impl<'a> Parser<'a> {
     }
 
     #[inline(always)]
-    fn eat_ident(&mut self) -> Result<Sym, Vec<Diagnostic<usize>>> {
+    fn eat_ident(&mut self) -> ParseResult<Sym> {
         let token = self.eat(TokenType::Ident)?;
         Ok(self.intern_string(token.source()))
     }
 
-    fn add_stack_frame(&self) -> Result<StackGuard, Vec<Diagnostic<usize>>> {
+    fn add_stack_frame(&self) -> ParseResult<StackGuard> {
         // TODO: Find out what this number should be
         #[cfg(debug_assertions)]
         const MAX_DEPTH: usize = 50;
         #[cfg(not(debug_assertions))]
-        const MAX_DEPTH: usize = 200;
+        const MAX_DEPTH: usize = 150;
 
         let guard = self.stack_frames.clone();
         let depth = guard.frames();
         if depth > MAX_DEPTH {
-            return Err(vec![Diagnostic::error().with_message(format!(
-                "Fatal: maximum recursion depth exceeded ({} > {})",
-                depth, MAX_DEPTH
-            ))]);
+            return Err(Locatable::file(
+                Error::Syntax(SyntaxError::RecursionLimit(depth, MAX_DEPTH)),
+                self.current_file,
+            ));
         }
 
         Ok(guard)

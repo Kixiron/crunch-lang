@@ -1,19 +1,19 @@
 use super::*;
-
-use string_interner::StringInterner;
+use crate::files::FileId;
 
 use alloc::{boxed::Box, sync::Arc, vec, vec::Vec};
 use core::convert::TryFrom;
+use string_interner::StringInterner;
 
 use parking_lot::RwLock;
 
 fn emit_diagnostics<'a>(
     source: &'a str,
-    diagnostics: Vec<crunch_error::codespan_reporting::diagnostic::Diagnostic<usize>>,
+    diagnostics: Vec<codespan_reporting::diagnostic::Diagnostic<usize>>,
 ) {
-    use crunch_error::parse_prelude::SimpleFiles;
+    use crate::files::Files;
 
-    let mut files = SimpleFiles::new();
+    let mut files = Files::new();
     files.add("<test file>", source);
 
     let writer = codespan_reporting::term::termcolor::StandardStream::stderr(
@@ -1090,7 +1090,7 @@ fn types_ast() {
     // TODO: Use straight compares when Diagnostic is Debug
     for (token, ty) in builtins.iter() {
         assert_eq!(
-            Type::try_from((*token, 0usize, &interner)).ok(),
+            Type::try_from((*token, FileId::new(0usize), &interner)).ok(),
             Some(ty.clone())
         );
     }
@@ -1109,7 +1109,7 @@ fn types_ast() {
         interner.write().get_or_intern(token.source());
 
         assert_eq!(
-            Type::try_from((*token, 0usize, &interner)).ok(),
+            Type::try_from((*token, FileId::new(0usize), &interner)).ok(),
             Some(Type::Custom(idx.into()))
         );
     }

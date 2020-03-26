@@ -3,9 +3,11 @@
 extern crate alloc;
 pub extern crate string_interner;
 
+mod error;
+mod files;
 pub mod parser;
 pub mod symbol_table;
-pub mod token;
+mod token;
 
 pub use parser::Parser;
 

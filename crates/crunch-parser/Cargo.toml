@@ -31,8 +31,11 @@ optional = true
 version = "3.7.0"
 optional = true
 
-[dependencies.crunch-error]
-path = "../crunch-error"
+[dependencies.codespan-reporting]
+version = "0.9.1"
 
-[dependencies.pipeline-job]
-path = "../pipeline-job"
+[dependencies.thiserror]
+version = "1.0.13"
+
+[dependencies.stadium]
+git = "https://github.com/Kixiron/stadium.git"

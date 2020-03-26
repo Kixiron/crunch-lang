@@ -1,43 +1,47 @@
-use super::*;
+use super::{Expr, Interner, Literal, Parser, Stmt, Sym};
+use crate::{
+    error::{Error, FileId, Locatable, Location, ParseResult, SyntaxError},
+    token::{Token, TokenType},
+};
 
 use alloc::{boxed::Box, string::ToString, vec::Vec};
-use core::mem;
+use core::{convert::TryFrom, mem};
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Ast {
+pub enum Ast<'a> {
     Function {
-        decorators: Vec<Decorator>,
+        decorators: Vec<Decorator<'a>>,
         attributes: Vec<Attribute>,
         name: Sym,
         generics: Vec<Sym>,
         args: Vec<(Sym, Type)>,
         returns: Type,
-        body: Vec<Statement>,
+        body: Vec<Stmt<'a>>,
     },
 
     Type {
-        decorators: Vec<Decorator>,
+        decorators: Vec<Decorator<'a>>,
         attributes: Vec<Attribute>,
         name: Sym,
         generics: Vec<Sym>,
-        members: Vec<TypeMember>,
-        methods: Vec<Ast>,
+        members: Vec<TypeMember<'a>>,
+        methods: Vec<Ast<'a>>,
     },
 
     Enum {
-        decorators: Vec<Decorator>,
+        decorators: Vec<Decorator<'a>>,
         attributes: Vec<Attribute>,
         name: Sym,
         generics: Vec<Sym>,
-        variants: Vec<EnumVariant>,
+        variants: Vec<EnumVariant<'a>>,
     },
 
     Trait {
-        decorators: Vec<Decorator>,
+        decorators: Vec<Decorator<'a>>,
         attributes: Vec<Attribute>,
         name: Sym,
         generics: Vec<Sym>,
-        methods: Vec<Ast>,
+        methods: Vec<Ast<'a>>,
     },
 
     Import {
@@ -54,11 +58,11 @@ pub enum Type {
     Infer,
 }
 
-impl<'a> TryFrom<(Token<'a>, usize, &Interner)> for Type {
-    type Error = Vec<Diagnostic<usize>>;
+impl<'a> TryFrom<(Token<'a>, FileId, &Interner)> for Type {
+    type Error = Locatable<Error>;
 
     fn try_from(
-        (token, file, interner): (Token<'a>, usize, &Interner),
+        (token, file, interner): (Token<'a>, FileId, &Interner),
     ) -> Result<Self, Self::Error> {
         if token.ty() == TokenType::Ident {
             if let Ok(ty) = BuiltinType::try_from((token, file, interner)) {
@@ -67,10 +71,12 @@ impl<'a> TryFrom<(Token<'a>, usize, &Interner)> for Type {
                 Ok(Self::Custom(super::intern_string(interner, token.source())))
             }
         } else {
-            Err(vec![Diagnostic::error().with_message(format!(
-                "Expected an ident for a type name, got `{}`",
-                token.ty()
-            ))])
+            Err(Locatable::new(
+                Error::Syntax(SyntaxError::Generic(
+                    "Expected an ident as a type name".to_string(),
+                )),
+                Location::new(&token, file),
+            ))
         }
     }
 }
@@ -91,11 +97,11 @@ pub enum BuiltinType {
     Vec(Box<Type>),
 }
 
-impl<'a> TryFrom<(Token<'a>, usize, &Interner)> for BuiltinType {
-    type Error = Vec<Diagnostic<usize>>;
+impl<'a> TryFrom<(Token<'a>, FileId, &Interner)> for BuiltinType {
+    type Error = Locatable<Error>;
 
     fn try_from(
-        (mut token, file, interner): (Token<'a>, usize, &Interner),
+        (mut token, file, interner): (Token<'a>, FileId, &Interner),
     ) -> Result<Self, Self::Error> {
         Ok(match token.source() {
             "str" => Self::String,
@@ -113,11 +119,13 @@ impl<'a> TryFrom<(Token<'a>, usize, &Interner)> for BuiltinType {
                 }
             }
 
-            ty => {
-                return Err(vec![Diagnostic::error().with_message(format!(
-                    "Expected an ident for type name, got `{}`",
-                    ty
-                ))])
+            _ => {
+                return Err(Locatable::new(
+                    Error::Syntax(SyntaxError::Generic(
+                        "Expected an ident as a type name".to_string(),
+                    )),
+                    Location::new(&token, file),
+                ));
             }
         })
     }
@@ -144,30 +152,30 @@ impl Default for ImportDest {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum EnumVariant {
+pub enum EnumVariant<'a> {
     Unit {
         name: Sym,
-        decorators: Vec<Decorator>,
+        decorators: Vec<Decorator<'a>>,
     },
     Tuple {
         name: Sym,
         elements: Vec<Type>,
-        decorators: Vec<Decorator>,
+        decorators: Vec<Decorator<'a>>,
     },
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypeMember {
-    pub decorators: Vec<Decorator>,
+pub struct TypeMember<'a> {
+    pub decorators: Vec<Decorator<'a>>,
     pub attributes: Vec<Attribute>,
     pub name: Sym,
     pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Decorator {
+pub struct Decorator<'a> {
     pub name: Sym,
-    pub args: Vec<Expression>,
+    pub args: Vec<Expr<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -186,17 +194,22 @@ impl Attribute {
     }
 }
 
-impl TryFrom<TokenType> for Attribute {
-    type Error = Vec<Diagnostic<usize>>;
+impl<'a> TryFrom<(&Token<'a>, FileId)> for Attribute {
+    type Error = Locatable<Error>;
 
-    fn try_from(ty: TokenType) -> Result<Self, Self::Error> {
-        Ok(match ty {
+    fn try_from((token, file): (&Token<'a>, FileId)) -> Result<Self, Self::Error> {
+        Ok(match token.ty() {
             TokenType::Exposed => Self::Visibility(Visibility::Exposed),
             TokenType::Package => Self::Visibility(Visibility::Package),
 
-            ty => {
-                return Err(vec![Diagnostic::error()
-                    .with_message(format!("Expected an attribute, got `{}`", ty))]);
+            _ => {
+                return Err(Locatable::new(
+                    Error::Syntax(SyntaxError::Generic(format!(
+                        "Expected an attribute, got `{}`",
+                        token.ty()
+                    ))),
+                    Location::new(token, file),
+                ));
             }
         })
     }
@@ -204,106 +217,105 @@ impl TryFrom<TokenType> for Attribute {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Visibility {
-    FileLocal,
+    FileIdLocal,
     Package,
     Exposed,
 }
 
 impl<'a> Parser<'a> {
-    pub(super) fn ast(&mut self) -> ParseResult<Option<Ast>> {
+    pub(super) fn ast(&mut self) -> ParseResult<Option<Ast<'a>>> {
+        let _frame = self.add_stack_frame()?;
+
         let (mut decorators, mut attributes) = (Vec::with_capacity(5), Vec::with_capacity(5));
-        let mut diagnostics = Vec::with_capacity(10);
 
         while self.peek().is_ok() {
-            match self.ast_impl(&mut decorators, &mut attributes)? {
-                (Some(node), diag) => {
-                    diagnostics.extend_from_slice(&diag);
-                    return Ok((Some(node), diagnostics));
-                }
-                (None, diag) => diagnostics.extend_from_slice(&diag),
+            if let Some(node) = self.ast_impl(&mut decorators, &mut attributes)? {
+                return Ok(Some(node));
             }
         }
 
-        Ok((None, diagnostics))
+        Ok(None)
     }
 
     // Returns None when the function should be re-called, usually because an attribute or decorator was parsed
     fn ast_impl(
         &mut self,
-        decorators: &mut Vec<Decorator>,
+        decorators: &mut Vec<Decorator<'a>>,
         attributes: &mut Vec<Attribute>,
-    ) -> ParseResult<Option<Ast>> {
+    ) -> ParseResult<Option<Ast<'a>>> {
         let _frame = self.add_stack_frame()?;
 
         match self.peek()?.ty() {
             TokenType::AtSign => {
-                let (_, diag) = self.decorator(decorators)?;
+                self.decorator(decorators)?;
 
-                Ok((None, diag))
+                Ok(None)
             }
 
             TokenType::Exposed | TokenType::Package => {
-                let attr = Attribute::try_from(self.next()?.ty())?;
+                let attr = Attribute::try_from((&self.next()?, self.current_file))?;
                 attributes.push(attr);
 
-                Ok((None, Vec::new()))
+                Ok(None)
             }
 
             TokenType::Function => {
-                let (func, diag) = self.function(mem::take(decorators), mem::take(attributes))?;
+                let func = self.function(mem::take(decorators), mem::take(attributes))?;
 
-                Ok((Some(func), diag))
-            },
+                Ok(Some(func))
+            }
 
             TokenType::Type => {
-                let (ty, diag) = self.type_decl(mem::take(decorators), mem::take(attributes))?;
+                let ty = self.type_decl(mem::take(decorators), mem::take(attributes))?;
 
-                Ok((Some(ty), diag))
-            },
+                Ok(Some(ty))
+            }
 
             TokenType::Enum => {
-                let (enu, diag) = self.enum_decl(mem::take(decorators), mem::take(attributes))?;
+                let enu = self.enum_decl(mem::take(decorators), mem::take(attributes))?;
 
-                Ok((Some(enu), diag))
+                Ok(Some(enu))
             }
 
             TokenType::Trait => {
-                let (tra, diag) = self.trait_decl(mem::take(decorators), mem::take(attributes))?;
+                let tra = self.trait_decl(mem::take(decorators), mem::take(attributes))?;
 
-                Ok((Some(tra), diag))
-            },
+                Ok(Some(tra))
+            }
 
             TokenType::Import => {
                 if attributes.len() != 0 {
-                    return Err(vec![Diagnostic::error()
-                        .with_message("Import declarations cannot have attributes")]);
+                    return Err(Locatable::new(
+                        Error::Syntax(SyntaxError::NoAttributesAllowed("import")),
+                        Location::new(&self.peek()?, self.current_file),
+                    ));
                 }
 
-                let (import, diag) = self.import(mem::take(decorators))?;
+                let import = self.import(mem::take(decorators))?;
 
-                Ok((Some(import), diag))
+                Ok(Some(import))
             }
 
             TokenType::Newline => {
                 self.eat(TokenType::Newline)?;
-                Ok((None, Vec::new()))
+                Ok(None)
             }
 
-            ty => Err(vec![
-                Diagnostic::error().with_message(format!(
-                    "Expected a function, type, enum, trait, import, decorator or attribute, got a `{}`", 
-                    ty,
-                ))]),
+            ty => Err(Locatable::new(
+                Error::Syntax(SyntaxError::InvalidTopLevel(ty)),
+                Location::new(&self.peek()?, self.current_file),
+            )),
         }
     }
 
-    fn import(&mut self, mut decorators: Vec<Decorator>) -> ParseResult<Ast> {
+    fn import(&mut self, mut decorators: Vec<Decorator<'a>>) -> ParseResult<Ast<'a>> {
+        let _frame = self.add_stack_frame()?;
         decorators.shrink_to_fit();
 
         self.eat(TokenType::Import)?;
 
         let file = if let Literal::String(string) =
-            Literal::try_from(&self.eat(TokenType::String)?)?
+            Literal::try_from((&self.eat(TokenType::String)?, self.current_file))?
         {
             self.intern_string(&string)
         } else {
@@ -367,9 +379,10 @@ impl<'a> Parser<'a> {
                     .expect("Shouldn't have a resolution problem, just interned the file's path")
                     .split('.')
                     .last()
-                    .ok_or(vec![
-                        Diagnostic::error().with_message("You must declare a file to import from")
-                    ])?
+                    .ok_or(Locatable::new(
+                        Error::Syntax(SyntaxError::MissingImport),
+                        Location::new(&self.peek()?, self.current_file),
+                    ))?
                     .to_string();
 
                 self.intern_string(&last_segment)
@@ -380,32 +393,30 @@ impl<'a> Parser<'a> {
 
         self.eat(TokenType::Newline)?;
 
-        Ok((
-            Ast::Import {
-                file,
-                dest,
-                exposes,
-            },
-            Vec::new(),
-        ))
+        Ok(Ast::Import {
+            file,
+            dest,
+            exposes,
+        })
     }
 
     fn trait_decl(
         &mut self,
-        mut decorators: Vec<Decorator>,
+        mut decorators: Vec<Decorator<'a>>,
         mut attributes: Vec<Attribute>,
-    ) -> ParseResult<Ast> {
+    ) -> ParseResult<Ast<'a>> {
+        let _frame = self.add_stack_frame()?;
         decorators.shrink_to_fit();
         attributes.shrink_to_fit();
 
         if !attributes.iter().any(Attribute::is_visibility) {
             attributes.reserve(1);
-            attributes.push(Attribute::Visibility(Visibility::FileLocal));
+            attributes.push(Attribute::Visibility(Visibility::FileIdLocal));
         }
 
         self.eat(TokenType::Trait)?;
         let name = self.eat_ident()?;
-        let (generics, mut diagnostics) = self.generics()?;
+        let generics = self.generics()?;
         self.eat(TokenType::Newline)?;
 
         let (mut method_decorators, mut method_attributes) =
@@ -415,27 +426,26 @@ impl<'a> Parser<'a> {
         while self.peek()?.ty() != TokenType::End {
             match self.peek()?.ty() {
                 TokenType::AtSign => {
-                    let (_, diag) = self.decorator(&mut method_decorators)?;
-                    diagnostics.extend_from_slice(&diag);
+                    self.decorator(&mut method_decorators)?;
                 }
 
                 TokenType::Exposed | TokenType::Package => {
-                    method_attributes.push(Attribute::try_from(self.next()?.ty())?);
+                    method_attributes
+                        .push(Attribute::try_from((&self.next()?, self.current_file))?);
                 }
 
                 TokenType::Function => {
                     if !method_attributes.iter().any(Attribute::is_visibility) {
-                        method_attributes.push(Attribute::Visibility(Visibility::FileLocal));
+                        method_attributes.push(Attribute::Visibility(Visibility::FileIdLocal));
                     }
                     method_attributes.shrink_to_fit();
                     method_decorators.shrink_to_fit();
 
-                    let (method, diag) = self.function(
+                    let method = self.function(
                         mem::take(&mut method_decorators),
                         mem::take(&mut method_attributes),
                     )?;
 
-                    diagnostics.extend_from_slice(&diag);
                     methods.push(method);
                 }
 
@@ -444,10 +454,10 @@ impl<'a> Parser<'a> {
                 }
 
                 _ => {
-                    diagnostics.push(Diagnostic::error().with_message(format!(
-                        "Only methods, attributes and decorators are allowed inside trait bodies"
-                    )));
-                    return Err(diagnostics);
+                    return Err(Locatable::new(
+                        Error::Syntax(SyntaxError::Generic("Only methods, attributes and decorators are allowed inside trait bodies".to_string())),
+                        Location::new(&self.peek()?, self.current_file),
+                    ));
                 }
             }
         }
@@ -455,34 +465,32 @@ impl<'a> Parser<'a> {
 
         self.eat(TokenType::End)?;
 
-        Ok((
-            Ast::Trait {
-                decorators,
-                attributes,
-                name,
-                generics,
-                methods,
-            },
-            diagnostics,
-        ))
+        Ok(Ast::Trait {
+            decorators,
+            attributes,
+            name,
+            generics,
+            methods,
+        })
     }
 
     fn enum_decl(
         &mut self,
-        mut decorators: Vec<Decorator>,
+        mut decorators: Vec<Decorator<'a>>,
         mut attributes: Vec<Attribute>,
-    ) -> ParseResult<Ast> {
+    ) -> ParseResult<Ast<'a>> {
+        let _frame = self.add_stack_frame()?;
         decorators.shrink_to_fit();
         attributes.shrink_to_fit();
 
         if !attributes.iter().any(Attribute::is_visibility) {
             attributes.reserve(1);
-            attributes.push(Attribute::Visibility(Visibility::FileLocal));
+            attributes.push(Attribute::Visibility(Visibility::FileIdLocal));
         }
 
         self.eat(TokenType::Enum)?;
         let name = self.eat_ident()?;
-        let (generics, mut diagnostics) = self.generics()?;
+        let generics = self.generics()?;
         self.eat(TokenType::Newline)?;
 
         let mut variant_decorators = Vec::with_capacity(7);
@@ -490,8 +498,7 @@ impl<'a> Parser<'a> {
         while self.peek()?.ty() != TokenType::End {
             match self.peek()?.ty() {
                 TokenType::AtSign => {
-                    let (_, diag) = self.decorator(&mut variant_decorators)?;
-                    diagnostics.extend_from_slice(&diag);
+                    self.decorator(&mut variant_decorators)?;
                 }
 
                 TokenType::Ident => {
@@ -502,9 +509,8 @@ impl<'a> Parser<'a> {
 
                         let mut elements = Vec::with_capacity(3);
                         while self.peek()?.ty() != TokenType::RightParen {
-                            let (ty, diag) = self.eat_type()?;
+                            let ty = self.eat_type()?;
                             elements.push(ty);
-                            diagnostics.extend_from_slice(&diag);
 
                             // TODO: Nice error here
                             if self.peek()?.ty() == TokenType::Comma {
@@ -535,31 +541,30 @@ impl<'a> Parser<'a> {
                 }
 
                 ty => {
-                    diagnostics.push(Diagnostic::error().with_message(format!(
-                        "Only decorators and enum variants are allowed inside enum declarations, got a `{}`", 
-                        ty,
-                    )));
-                    return Err(diagnostics);
+                    return Err(Locatable::new(
+                        Error::Syntax(SyntaxError::Generic(format!(
+                            "Only decorators and enum variants are allowed inside enum declarations, got a `{}`", 
+                            ty,
+                        ))),
+                        Location::new(&self.peek()?, self.current_file),
+                    ));
                 }
             }
         }
         variants.shrink_to_fit();
         self.eat(TokenType::End)?;
 
-        Ok((
-            Ast::Enum {
-                decorators,
-                attributes,
-                name,
-                generics,
-                variants,
-            },
-            diagnostics,
-        ))
+        Ok(Ast::Enum {
+            decorators,
+            attributes,
+            name,
+            generics,
+            variants,
+        })
     }
 
-    fn decorator(&mut self, decorators: &mut Vec<Decorator>) -> ParseResult<()> {
-        let mut diagnostics = Vec::new();
+    fn decorator(&mut self, decorators: &mut Vec<Decorator<'a>>) -> ParseResult<()> {
+        let _frame = self.add_stack_frame()?;
 
         self.eat(TokenType::AtSign)?;
         let name = self.eat_ident()?;
@@ -569,9 +574,8 @@ impl<'a> Parser<'a> {
 
             let mut args = Vec::with_capacity(5);
             while self.peek()?.ty() != TokenType::RightParen {
-                let (expr, diag) = self.expr()?;
+                let expr = self.expr()?;
                 args.push(expr);
-                diagnostics.extend_from_slice(&diag);
 
                 if let Ok(peek) = self.peek() {
                     if peek.ty() == TokenType::Comma {
@@ -592,25 +596,26 @@ impl<'a> Parser<'a> {
 
         decorators.push(Decorator { name, args });
 
-        Ok(((), diagnostics))
+        Ok(())
     }
 
     fn type_decl(
         &mut self,
-        mut decorators: Vec<Decorator>,
+        mut decorators: Vec<Decorator<'a>>,
         mut attributes: Vec<Attribute>,
-    ) -> ParseResult<Ast> {
+    ) -> ParseResult<Ast<'a>> {
+        let _frame = self.add_stack_frame()?;
         decorators.shrink_to_fit();
         attributes.shrink_to_fit();
 
         if !attributes.iter().any(Attribute::is_visibility) {
             attributes.reserve(1);
-            attributes.push(Attribute::Visibility(Visibility::FileLocal));
+            attributes.push(Attribute::Visibility(Visibility::FileIdLocal));
         }
 
         self.eat(TokenType::Type)?;
         let name = self.eat_ident()?;
-        let (generics, mut diagnostics) = self.generics()?;
+        let generics = self.generics()?;
         self.eat(TokenType::Newline)?;
 
         let (mut member_decorators, mut member_attributes) =
@@ -622,31 +627,28 @@ impl<'a> Parser<'a> {
         while self.peek()?.ty() != TokenType::End {
             match self.peek()?.ty() {
                 TokenType::AtSign => {
-                    let (_, diag) = self.decorator(&mut member_decorators)?;
-                    diagnostics.extend_from_slice(&diag);
+                    self.decorator(&mut member_decorators)?;
                 }
 
                 TokenType::Exposed | TokenType::Package => {
-                    member_attributes.push(Attribute::try_from(self.next()?.ty())?);
+                    member_attributes
+                        .push(Attribute::try_from((&self.next()?, self.current_file))?);
                 }
 
                 TokenType::Function => {
-                    let (method, diag) = self.function(
+                    let method = self.function(
                         mem::take(&mut member_decorators),
                         mem::take(&mut member_attributes),
                     )?;
                     methods.push(method);
-                    diagnostics.extend_from_slice(&diag);
                 }
 
                 TokenType::Ident => {
-                    let mut diagnostics = Vec::new();
                     let name = self.eat_ident()?;
 
                     let ty = if self.peek()?.ty() == TokenType::Colon {
                         self.eat(TokenType::Colon)?;
-                        let (ty, diag) = self.eat_type()?;
-                        diagnostics.extend_from_slice(&diag);
+                        let ty = self.eat_type()?;
 
                         ty
                     } else {
@@ -654,7 +656,7 @@ impl<'a> Parser<'a> {
                     };
 
                     if !member_attributes.iter().any(Attribute::is_visibility) {
-                        member_attributes.push(Attribute::Visibility(Visibility::FileLocal));
+                        member_attributes.push(Attribute::Visibility(Visibility::FileIdLocal));
                     }
                     member_attributes.shrink_to_fit();
                     member_decorators.shrink_to_fit();
@@ -674,60 +676,56 @@ impl<'a> Parser<'a> {
                     self.eat(TokenType::Newline)?;
                 }
 
-                _ => {
-                    diagnostics.push(Diagnostic::error().with_message(
-                        "You can only have members and methods inside of type declarations",
+                ty => {
+                    return Err(Locatable::new(
+                        Error::Syntax(SyntaxError::InvalidTopLevel(ty)),
+                        Location::new(&self.peek()?, self.current_file),
                     ));
-                    return Err(diagnostics);
                 }
             }
         }
         self.eat(TokenType::End)?;
 
         if member_attributes.len() != 0 || member_decorators.len() != 0 {
-            diagnostics.push(Diagnostic::error().with_message(
-                "Attributes and functions must be before members or methods in type declarations",
+            return Err(Locatable::new(
+                Error::Syntax(SyntaxError::Generic("Attributes and functions must be before members or methods in type declarations".to_string())),
+                Location::new(&self.peek()?, self.current_file),
             ));
-            return Err(diagnostics);
         }
 
-        Ok((
-            Ast::Type {
-                decorators,
-                attributes,
-                name,
-                generics,
-                members,
-                methods,
-            },
-            diagnostics,
-        ))
+        Ok(Ast::Type {
+            decorators,
+            attributes,
+            name,
+            generics,
+            members,
+            methods,
+        })
     }
 
     fn function(
         &mut self,
-        mut decorators: Vec<Decorator>,
+        mut decorators: Vec<Decorator<'a>>,
         mut attributes: Vec<Attribute>,
-    ) -> ParseResult<Ast> {
+    ) -> ParseResult<Ast<'a>> {
+        let _frame = self.add_stack_frame()?;
         decorators.shrink_to_fit();
         attributes.shrink_to_fit();
 
         if !attributes.iter().any(Attribute::is_visibility) {
             attributes.reserve(1);
-            attributes.push(Attribute::Visibility(Visibility::FileLocal));
+            attributes.push(Attribute::Visibility(Visibility::FileIdLocal));
         }
 
         self.eat(TokenType::Function)?;
         let name = self.eat_ident()?;
-        let (generics, mut diagnostics) = self.generics()?;
-        let (args, diag) = self.function_args()?;
-        diagnostics.extend_from_slice(&diag);
+        let generics = self.generics()?;
+        let args = self.function_args()?;
 
         let returns = if self.peek()?.ty() == TokenType::RightArrow {
             self.eat(TokenType::RightArrow)?;
 
-            let (ty, diag) = self.eat_type()?;
-            diagnostics.extend_from_slice(&diag);
+            let ty = self.eat_type()?;
 
             ty
         } else {
@@ -737,33 +735,26 @@ impl<'a> Parser<'a> {
 
         let mut body = Vec::with_capacity(20);
         while self.peek()?.ty() != TokenType::End {
-            match self.stmt()? {
-                (Some(stmt), diag) => {
-                    diagnostics.extend_from_slice(&diag);
-                    body.push(stmt);
-                }
-                (None, diag) => diagnostics.extend_from_slice(&diag),
+            if let Some(stmt) = self.stmt()? {
+                body.push(stmt);
             }
         }
         self.eat(TokenType::End)?;
         body.shrink_to_fit();
 
-        Ok((
-            Ast::Function {
-                decorators,
-                attributes,
-                name,
-                generics,
-                args,
-                returns,
-                body,
-            },
-            diagnostics,
-        ))
+        Ok(Ast::Function {
+            decorators,
+            attributes,
+            name,
+            generics,
+            args,
+            returns,
+            body,
+        })
     }
 
     fn function_args(&mut self) -> ParseResult<Vec<(Sym, Type)>> {
-        let mut diagnostics = Vec::new();
+        let _frame = self.add_stack_frame()?;
         self.eat(TokenType::LeftParen)?;
 
         let mut args = Vec::with_capacity(7);
@@ -773,8 +764,7 @@ impl<'a> Parser<'a> {
             let ty = if self.peek()?.ty() == TokenType::Colon {
                 self.eat(TokenType::Colon)?;
 
-                let (ty, diag) = self.eat_type()?;
-                diagnostics.extend_from_slice(&diag);
+                let ty = self.eat_type()?;
 
                 ty
             } else {
@@ -792,20 +782,23 @@ impl<'a> Parser<'a> {
         self.eat(TokenType::RightParen)?;
         args.shrink_to_fit();
 
-        Ok((args, diagnostics))
+        Ok(args)
     }
 
     fn eat_type(&mut self) -> ParseResult<Type> {
+        let _frame = self.add_stack_frame()?;
         let ty = Type::try_from((
             self.eat(TokenType::Ident)?,
             self.current_file,
             &self.string_interner,
         ))?;
 
-        Ok((ty, Vec::new()))
+        Ok(ty)
     }
 
     fn generics(&mut self) -> ParseResult<Vec<Sym>> {
+        let _frame = self.add_stack_frame()?;
+
         if self.peek()?.ty() == TokenType::LeftCaret {
             self.eat(TokenType::LeftCaret)?;
 
@@ -823,9 +816,9 @@ impl<'a> Parser<'a> {
             self.eat(TokenType::RightCaret)?;
             generics.shrink_to_fit();
 
-            Ok((generics, Vec::new()))
+            Ok(generics)
         } else {
-            Ok((Vec::new(), Vec::new()))
+            Ok(Vec::new())
         }
     }
 }

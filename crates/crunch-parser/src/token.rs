@@ -202,9 +202,9 @@ pub enum TokenType {
     DoubleDot,
 }
 
-impl fmt::Display for TokenType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let string = match self {
+impl TokenType {
+    pub fn to_str(&self) -> &'static str {
+        match self {
             Self::EOF => "EOF",
             Self::Error => "Error",
 
@@ -298,7 +298,13 @@ impl fmt::Display for TokenType {
             Self::Colon => ":",
             Self::Dot => ".",
             Self::DoubleDot => "..",
-        };
+        }
+    }
+}
+
+impl fmt::Display for TokenType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let string = self.to_str();
 
         write!(f, "{}", string)
     }
@@ -426,6 +432,12 @@ impl<'a> Token<'a> {
     }
 }
 
+impl<'a> Into<(usize, usize)> for &Token<'a> {
+    fn into(self) -> (usize, usize) {
+        self.range
+    }
+}
+
 impl<'a> fmt::Debug for Token<'a> {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_struct("Token")
@@ -450,6 +462,18 @@ mod tests {
                 ty: TokenType::Ident,
                 source: "bredcp",
                 range: (0, 6)
+            })
+        );
+        assert_eq!(stream.next(), None);
+
+        let mut stream = TokenStream::new("breuyue", true).into_iter();
+
+        assert_eq!(
+            stream.next(),
+            Some(Token {
+                ty: TokenType::Ident,
+                source: "breuyue",
+                range: (0, 7)
             })
         );
         assert_eq!(stream.next(), None);

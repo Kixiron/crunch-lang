@@ -1,39 +1,43 @@
+use super::Expr;
 use super::*;
 
-use alloc::{boxed::Box, vec::Vec};
+use alloc::vec::Vec;
+use stadium::Ticket;
 
 // TODO: Use arenas over Boxes
 
+pub type Stmt<'a> = Ticket<'a, Statement<'a>>;
+
 #[derive(Debug, Clone, PartialEq)]
-pub enum Statement {
+pub enum Statement<'a> {
     If {
-        condition: Expression,
-        body: Vec<Statement>,
-        arm: Option<Box<Statement>>,
+        condition: Expr<'a>,
+        body: Vec<Stmt<'a>>,
+        arm: Option<Stmt<'a>>,
     },
-    Expression(Expression),
-    VarDeclaration(Sym, Expression),
-    Return(Option<Expression>),
-    Break(Option<Expression>),
+    Expression(Expr<'a>),
+    VarDeclaration(Sym, Expr<'a>),
+    Return(Option<Expr<'a>>),
+    Break(Option<Expr<'a>>),
     Continue,
     While {
-        condition: Expression,
-        body: Vec<Statement>,
-        then: Option<Vec<Statement>>,
+        condition: Expr<'a>,
+        body: Vec<Stmt<'a>>,
+        then: Option<Vec<Stmt<'a>>>,
     },
     Loop {
-        body: Vec<Statement>,
-        then: Option<Vec<Statement>>,
+        body: Vec<Stmt<'a>>,
+        then: Option<Vec<Stmt<'a>>>,
     },
     For {
-        var: Expression,
-        condition: Expression,
-        body: Vec<Statement>,
-        then: Option<Vec<Statement>>,
+        var: Expr<'a>,
+        condition: Expr<'a>,
+        body: Vec<Stmt<'a>>,
+        then: Option<Vec<Stmt<'a>>>,
     },
     Match {
-        var: Expression,
-        arms: Vec<(Sym, Option<Expression>, Vec<Statement>)>,
+        var: Expr<'a>,
+        arms: Vec<(Sym, Option<Expr<'a>>, Vec<Stmt<'a>>)>,
     },
     Empty,
 }
@@ -42,50 +46,51 @@ pub enum Statement {
 
 /// Statement parsing
 impl<'a> Parser<'a> {
-    pub(super) fn stmt(&mut self) -> ParseResult<Option<Statement>> {
+    pub(super) fn stmt(&mut self) -> ParseResult<Option<Stmt<'a>>> {
         let _frame = self.add_stack_frame()?;
 
         match self.peek()?.ty() {
             TokenType::If => {
-                let (stmt, diag) = self.if_stmt()?;
-                Ok((Some(stmt), diag))
+                let stmt = self.if_stmt()?;
+                Ok(Some(stmt))
             }
 
             TokenType::Newline => {
                 self.eat(TokenType::Newline)?;
-                Ok((None, Vec::new()))
+                Ok(None)
             }
 
             TokenType::Let => {
                 self.eat(TokenType::Let)?;
                 let var = self.eat_ident()?;
-
                 self.eat(TokenType::Equal)?;
-                let (expr, diag) = self.expr()?;
-
+                let expr = self.expr()?;
                 self.eat(TokenType::Newline)?;
 
-                Ok((Some(Statement::VarDeclaration(var, expr)), diag))
+                let stmt = self.stmt_arena.alloc(Statement::VarDeclaration(var, expr));
+
+                Ok(Some(stmt))
             }
 
             TokenType::Match => {
-                let (stmt, diag) = self.match_stmt()?;
-                Ok((Some(stmt), diag))
+                let stmt = self.match_stmt()?;
+
+                Ok(Some(stmt))
             }
 
             TokenType::While => {
-                let (stmt, diag) = self.while_stmt()?;
-                Ok((Some(stmt), diag))
+                let stmt = self.while_stmt()?;
+                Ok(Some(stmt))
             }
 
             TokenType::Loop => {
-                let (stmt, diag) = self.loop_stmt()?;
-                Ok((Some(stmt), diag))
+                let stmt = self.loop_stmt()?;
+                Ok(Some(stmt))
             }
 
             TokenType::For => {
-                let (stmt, diag) = self.for_stmt()?;
-                Ok((Some(stmt), diag))
+                let stmt = self.for_stmt()?;
+                Ok(Some(stmt))
             }
 
             TokenType::Return => {
@@ -93,13 +98,15 @@ impl<'a> Parser<'a> {
 
                 if self.peek()?.ty() == TokenType::Newline {
                     self.eat(TokenType::Newline)?;
+                    let stmt = self.stmt_arena.alloc(Statement::Return(None));
 
-                    Ok((Some(Statement::Return(None)), Vec::new()))
+                    Ok(Some(stmt))
                 } else {
-                    let (expr, diag) = self.expr()?;
+                    let expr = self.expr()?;
                     self.eat(TokenType::Newline)?;
+                    let stmt = self.stmt_arena.alloc(Statement::Return(Some(expr)));
 
-                    Ok((Some(Statement::Return(Some(expr))), diag))
+                    Ok(Some(stmt))
                 }
             }
 
@@ -108,13 +115,15 @@ impl<'a> Parser<'a> {
 
                 if self.peek()?.ty() == TokenType::Newline {
                     self.eat(TokenType::Newline)?;
+                    let stmt = self.stmt_arena.alloc(Statement::Break(None));
 
-                    Ok((Some(Statement::Break(None)), Vec::new()))
+                    Ok(Some(stmt))
                 } else {
-                    let (expr, diag) = self.expr()?;
+                    let expr = self.expr()?;
                     self.eat(TokenType::Newline)?;
+                    let stmt = self.stmt_arena.alloc(Statement::Break(Some(expr)));
 
-                    Ok((Some(Statement::Break(Some(expr))), diag))
+                    Ok(Some(stmt))
                 }
             }
 
@@ -122,14 +131,18 @@ impl<'a> Parser<'a> {
                 self.eat(TokenType::Continue)?;
                 self.eat(TokenType::Newline)?;
 
-                Ok((Some(Statement::Continue), Vec::new()))
+                let stmt = self.stmt_arena.alloc(Statement::Continue);
+
+                Ok(Some(stmt))
             }
 
             TokenType::Empty => {
                 self.eat(TokenType::Empty)?;
                 self.eat(TokenType::Newline)?;
 
-                Ok((Some(Statement::Empty), Vec::new()))
+                let stmt = self.stmt_arena.alloc(Statement::Empty);
+
+                Ok(Some(stmt))
             }
 
             // Expressions
@@ -142,73 +155,73 @@ impl<'a> Parser<'a> {
             | TokenType::Bang
             | TokenType::Plus
             | TokenType::LeftBrace => {
-                let (expr, diag) = self.expr()?;
+                let expr = self.expr()?;
                 self.eat(TokenType::Newline)?;
+                let stmt = self.stmt_arena.alloc(Statement::Expression(expr));
 
-                Ok((Some(Statement::Expression(expr)), diag))
+                Ok(Some(stmt))
             }
 
             _ => {
                 let token = self.peek()?;
 
-                Err(vec![Diagnostic::error()
-                    .with_message(format!("Expected a statement, got a `{}`", token.ty(),))
-                    .with_labels(vec![Label::primary(
-                        self.current_file,
-                        token.range(),
-                    )])])
+                Err(Locatable::new(
+                    Error::Syntax(SyntaxError::Generic(format!(
+                        "Expected a statement, got a `{}`",
+                        token.ty(),
+                    ))),
+                    Location::new(&self.peek()?, self.current_file),
+                ))
             }
         }
     }
 
-    fn statements(&mut self, breaks: &[TokenType], capacity: usize) -> ParseResult<Vec<Statement>> {
+    fn statements(&mut self, breaks: &[TokenType], capacity: usize) -> ParseResult<Vec<Stmt<'a>>> {
+        let _frame = self.add_stack_frame()?;
+
         let mut statements = Vec::with_capacity(capacity);
-        let mut diagnostics = Vec::new();
 
         while !breaks.contains(&self.peek()?.ty()) {
-            match self.stmt()? {
-                (Some(stmt), diag) => {
-                    diagnostics.extend_from_slice(&diag);
-                    statements.push(stmt);
-                }
-                (None, diag) => diagnostics.extend_from_slice(&diag),
+            if let Some(stmt) = self.stmt()? {
+                statements.push(stmt);
             }
         }
         statements.shrink_to_fit();
 
-        Ok((statements, diagnostics))
+        Ok(statements)
     }
 
-    fn if_stmt(&mut self) -> ParseResult<Statement> {
+    fn if_stmt(&mut self) -> ParseResult<Stmt<'a>> {
         let _frame = self.add_stack_frame()?;
 
         self.eat(TokenType::If)?;
-        let (condition, mut diagnostics) = self.expr()?;
+        let condition = self.expr()?;
         self.eat(TokenType::Newline)?;
 
-        let (body, diag) = self.statements(&[TokenType::End, TokenType::Else], 10)?;
-        diagnostics.extend_from_slice(&diag);
+        let body = self.statements(&[TokenType::End, TokenType::Else], 10)?;
 
         let delimiter = self.eat_of(&[TokenType::Else, TokenType::End])?;
         let arm = match delimiter.ty() {
             TokenType::Else if self.peek()?.ty() == TokenType::If => {
-                let (stmt, diag) = self.if_stmt()?;
-                diagnostics.extend_from_slice(&diag);
+                let stmt = self.if_stmt()?;
 
-                Some(Box::new(stmt))
+                Some(stmt)
             }
 
             TokenType::Else => {
                 self.eat(TokenType::Newline)?;
 
-                let (body, diag) = self.statements(&[TokenType::End], 10)?;
-                diagnostics.extend_from_slice(&diag);
-
-                Some(Box::new(Statement::If {
-                    condition: Expression::Literal(Literal::Bool(true)),
+                let body = self.statements(&[TokenType::End], 10)?;
+                let condition = self
+                    .expr_arena
+                    .alloc(Expression::Literal(Literal::Bool(true)));
+                let stmt = self.stmt_arena.alloc(Statement::If {
+                    condition,
                     body,
                     arm: None,
-                }))
+                });
+
+                Some(stmt)
             }
 
             TokenType::End => None,
@@ -216,19 +229,20 @@ impl<'a> Parser<'a> {
             _ => unreachable!(),
         };
 
-        Ok((
-            Statement::If {
-                condition,
-                body,
-                arm,
-            },
-            diagnostics,
-        ))
+        let stmt = self.stmt_arena.alloc(Statement::If {
+            condition,
+            body,
+            arm,
+        });
+
+        Ok(stmt)
     }
 
-    fn match_stmt(&mut self) -> ParseResult<Statement> {
+    fn match_stmt(&mut self) -> ParseResult<Stmt<'a>> {
+        let _frame = self.add_stack_frame()?;
+
         self.eat(TokenType::Match)?;
-        let (var, mut diagnostics) = self.expr()?;
+        let var = self.expr()?;
         self.eat(TokenType::Newline)?;
 
         let mut arms = Vec::with_capacity(3);
@@ -237,8 +251,7 @@ impl<'a> Parser<'a> {
 
             let guard = if self.peek()?.ty() == TokenType::Where {
                 self.eat(TokenType::Where)?;
-                let (expr, diag) = self.expr()?;
-                diagnostics.extend_from_slice(&diag);
+                let expr = self.expr()?;
 
                 Some(expr)
             } else {
@@ -247,8 +260,7 @@ impl<'a> Parser<'a> {
             self.eat(TokenType::RightRocket)?;
             self.eat(TokenType::Newline)?;
 
-            let (body, diag) = self.statements(&[TokenType::End], 5)?;
-            diagnostics.extend_from_slice(&diag);
+            let body = self.statements(&[TokenType::End], 5)?;
 
             self.eat(TokenType::End)?;
             self.eat(TokenType::Newline)?;
@@ -259,81 +271,85 @@ impl<'a> Parser<'a> {
 
         self.eat(TokenType::End)?;
 
-        Ok((Statement::Match { var, arms }, diagnostics))
+        let stmt = self.stmt_arena.alloc(Statement::Match { var, arms });
+
+        Ok(stmt)
     }
 
-    fn while_stmt(&mut self) -> ParseResult<Statement> {
+    fn while_stmt(&mut self) -> ParseResult<Stmt<'a>> {
+        let _frame = self.add_stack_frame()?;
+
         self.eat(TokenType::While)?;
-        let (condition, mut diagnostics) = self.expr()?;
+        let condition = self.expr()?;
         self.eat(TokenType::Newline)?;
 
-        let (body, diag) = self.statements(&[TokenType::End, TokenType::Then], 10)?;
-        diagnostics.extend_from_slice(&diag);
+        let body = self.statements(&[TokenType::End, TokenType::Then], 10)?;
 
-        let (then, diag) = self.then_stmt()?;
-        diagnostics.extend_from_slice(&diag);
+        let then = self.then_stmt()?;
 
         self.eat(TokenType::End)?;
 
-        Ok((
-            Statement::While {
-                condition,
-                body,
-                then,
-            },
-            diagnostics,
-        ))
+        let stmt = self.stmt_arena.alloc(Statement::While {
+            condition,
+            body,
+            then,
+        });
+
+        Ok(stmt)
     }
 
-    fn loop_stmt(&mut self) -> ParseResult<Statement> {
+    fn loop_stmt(&mut self) -> ParseResult<Stmt<'a>> {
+        let _frame = self.add_stack_frame()?;
+
         self.eat(TokenType::Loop)?;
         self.eat(TokenType::Newline)?;
 
-        let (body, mut diagnostics) = self.statements(&[TokenType::End, TokenType::Then], 10)?;
+        let body = self.statements(&[TokenType::End, TokenType::Then], 10)?;
 
-        let (then, diag) = self.then_stmt()?;
-        diagnostics.extend_from_slice(&diag);
+        let then = self.then_stmt()?;
 
         self.eat(TokenType::End)?;
 
-        Ok((Statement::Loop { body, then }, diagnostics))
+        let stmt = self.stmt_arena.alloc(Statement::Loop { body, then });
+
+        Ok(stmt)
     }
 
-    fn for_stmt(&mut self) -> ParseResult<Statement> {
+    fn for_stmt(&mut self) -> ParseResult<Stmt<'a>> {
+        let _frame = self.add_stack_frame()?;
+
         self.eat(TokenType::For)?;
-        let (var, mut diagnostics) = self.expr()?;
+        let var = self.expr()?;
         self.eat(TokenType::In)?;
-        let (condition, diag) = self.expr()?;
-        diagnostics.extend_from_slice(&diag);
+        let condition = self.expr()?;
         self.eat(TokenType::Newline)?;
 
-        let (body, diag) = self.statements(&[TokenType::End, TokenType::Then], 10)?;
-        diagnostics.extend_from_slice(&diag);
+        let body = self.statements(&[TokenType::End, TokenType::Then], 10)?;
 
-        let (then, diag) = self.then_stmt()?;
-        diagnostics.extend_from_slice(&diag);
+        let then = self.then_stmt()?;
 
-        Ok((
-            Statement::For {
-                var,
-                condition,
-                body,
-                then,
-            },
-            diagnostics,
-        ))
+        let stmt = self.stmt_arena.alloc(Statement::For {
+            var,
+            condition,
+            body,
+            then,
+        });
+
+        Ok(stmt)
     }
 
-    fn then_stmt(&mut self) -> ParseResult<Option<Vec<Statement>>> {
+    fn then_stmt(&mut self) -> ParseResult<Option<Vec<Stmt<'a>>>> {
+        let _frame = self.add_stack_frame()?;
+
         Ok(if self.peek()?.ty() == TokenType::Then {
             self.eat(TokenType::Then)?;
             self.eat(TokenType::Newline)?;
 
-            let (then, diagnostics) = self.statements(&[TokenType::End, TokenType::Then], 3)?;
+            let then = self.statements(&[TokenType::End, TokenType::Then], 3)?;
 
-            (Some(then), diagnostics)
+            Some(then)
         } else {
-            (None, Vec::new())
+            None
         })
     }
 }
