@@ -81,7 +81,7 @@ proptest = "0.9.5"
 cc = "1.0.50"
 
 [workspace]
-members = ["crates/*", "crunch-fuzzing"]
+members = ["crates/*"]
 
 [profile.release]
 opt-level = 3
