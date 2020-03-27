@@ -1143,7 +1143,7 @@ checksum = "5c2fb2ec9bcd216a5b0d0ccf31ab17b5ed1d627960edff65bbe95d3ce221cefc"
 [[package]]
 name = "stadium"
 version = "0.1.0"
-source = "git+https://github.com/Kixiron/stadium.git#8c60d378cb5c752a5ad9cbc0fd4cce139b4f944b"
+source = "git+https://github.com/Kixiron/stadium.git#3cbc865ab07972c1248f40fdfb48f346e5cdb30d"
 
 [[package]]
 name = "string-interner"

@@ -1,21 +1,5 @@
+use crunch_parser::{files::Files, PrettyPrinter};
 use std::{fs::File, io::Read};
-
-fn emit_diagnostics<'a>(
-    source: &'a str,
-    diagnostics: Vec<codespan_reporting::diagnostic::Diagnostic<usize>>,
-) {
-    let mut files = Files::new();
-    files.add("<test file>", source);
-
-    let writer = codespan_reporting::term::termcolor::StandardStream::stderr(
-        codespan_reporting::term::termcolor::ColorChoice::Auto,
-    );
-    let config = codespan_reporting::term::Config::default();
-
-    for diag in diagnostics {
-        codespan_reporting::term::emit(&mut writer.lock(), &config, &files, &diag).unwrap();
-    }
-}
 
 fn main() {
     let mut file = File::open("test.crunch").unwrap();
@@ -26,11 +10,16 @@ fn main() {
         string_interner::StringInterner::new(),
     ));
 
-    match crunch_parser::Parser::new(&buf, files::FileId::new(0), interner.clone()).parse() {
+    let mut files = Files::new();
+    let id = files.add("<test file>", &buf).unwrap();
+
+    match crunch_parser::Parser::new(&buf, id, interner.clone()).parse() {
         Ok((ast, warn)) => {
-            warn.emit();
-            println!("{:#?}", ast);
+            warn.emit(&files);
+            let mut pp = PrettyPrinter::new(interner.clone());
+            let out = std::io::stdout();
+            pp.pretty_print(&mut out.lock(), &ast).unwrap();
         }
-        Err(err) => err.emit(),
+        Err(err) => err.emit(&files),
     }
 }

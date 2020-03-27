@@ -1,6 +1,7 @@
 use super::*;
 use crate::{
-    error::{Error, FileId, Locatable, Location, ParseResult, SyntaxError},
+    error::{Error, Locatable, Location, ParseResult, SyntaxError},
+    files::FileId,
     token::Token,
 };
 
@@ -8,39 +9,36 @@ use alloc::{format, string::String, vec::Vec};
 use core::convert::TryFrom;
 use stadium::Ticket;
 
-// TODO: Use arenas over Boxes
-
-pub type Expr<'a> = Ticket<'a, Expression<'a>>;
+pub type Expr<'expr> = Ticket<'expr, Expression<'expr>>;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Expression<'a> {
+pub enum Expression<'expr> {
     Variable(Sym),
-    UnaryExpr(UnaryOperand, Expr<'a>),
-    BinaryOp(Expr<'a>, BinaryOperand, Expr<'a>),
+    UnaryExpr(UnaryOperand, Expr<'expr>),
+    BinaryOp(Expr<'expr>, BinaryOperand, Expr<'expr>),
     InlineConditional {
-        true_arm: Expr<'a>,
-        condition: Expr<'a>,
-        false_arm: Expr<'a>,
+        true_arm: Expr<'expr>,
+        condition: Expr<'expr>,
+        false_arm: Expr<'expr>,
     },
-    Parenthesised(Expr<'a>),
+    Parenthesised(Expr<'expr>),
     FunctionCall {
-        caller: Expr<'a>,
-        arguments: Vec<Expr<'a>>,
+        caller: Expr<'expr>,
+        arguments: Vec<Expr<'expr>>,
     },
     MemberFunctionCall {
-        member: Expr<'a>,
-        function: Expr<'a>,
+        member: Expr<'expr>,
+        function: Expr<'expr>,
     },
     Literal(Literal),
-    Comparison(Expr<'a>, ComparisonOperand, Expr<'a>),
+    Comparison(Expr<'expr>, ComparisonOperand, Expr<'expr>),
     IndexArray {
-        array: Expr<'a>,
-        index: Expr<'a>,
+        array: Expr<'expr>,
+        index: Expr<'expr>,
     },
-    Array(Vec<Expr<'a>>),
-    RepeatedArray(Expr<'a>, Expr<'a>),
-    Assignment(Expr<'a>, AssignmentType, Expr<'a>),
-    Range(Expr<'a>, Expr<'a>),
+    Array(Vec<Expr<'expr>>),
+    Assignment(Expr<'expr>, AssignmentType, Expr<'expr>),
+    Range(Expr<'expr>, Expr<'expr>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -49,10 +47,10 @@ pub enum AssignmentType {
     BinaryOp(BinaryOperand),
 }
 
-impl<'a> TryFrom<(&Token<'a>, FileId)> for AssignmentType {
+impl<'src> TryFrom<(&Token<'src>, FileId)> for AssignmentType {
     type Error = Locatable<Error>;
 
-    fn try_from((token, file): (&Token<'a>, FileId)) -> Result<Self, Self::Error> {
+    fn try_from((token, file): (&Token<'src>, FileId)) -> Result<Self, Self::Error> {
         const ASSIGN_TOKENS: &[TokenType] = &[
             TokenType::Equal,
             TokenType::AddAssign,
@@ -111,10 +109,10 @@ pub enum ComparisonOperand {
     NotEqual,
 }
 
-impl<'a> TryFrom<(&Token<'a>, FileId)> for ComparisonOperand {
+impl<'src> TryFrom<(&Token<'src>, FileId)> for ComparisonOperand {
     type Error = Locatable<Error>;
 
-    fn try_from((token, file): (&Token<'a>, FileId)) -> Result<Self, Self::Error> {
+    fn try_from((token, file): (&Token<'src>, FileId)) -> Result<Self, Self::Error> {
         const COMPARE_TOKENS: &[TokenType] = &[
             TokenType::RightCaret,
             TokenType::LeftCaret,
@@ -162,10 +160,10 @@ pub enum Literal {
 // TODO: Actually make this throw useful errors
 // FIXME: Not unicode-aware, will panic on unicode boundaries
 // TODO: Make these errors actually helpful, and verify that the parsing matches with what is lexed
-impl<'a> TryFrom<(&Token<'a>, FileId)> for Literal {
+impl<'src> TryFrom<(&Token<'src>, FileId)> for Literal {
     type Error = Locatable<Error>;
 
-    fn try_from((token, file): (&Token<'a>, FileId)) -> Result<Self, Self::Error> {
+    fn try_from((token, file): (&Token<'src>, FileId)) -> Result<Self, Self::Error> {
         Ok(match token.ty() {
             TokenType::Float => {
                 let mut string = token.source();
@@ -345,10 +343,10 @@ pub enum BinaryOperand {
     Shr,
 }
 
-impl<'a> TryFrom<(&Token<'a>, FileId)> for BinaryOperand {
+impl<'src> TryFrom<(&Token<'src>, FileId)> for BinaryOperand {
     type Error = Locatable<Error>;
 
-    fn try_from((token, file): (&Token<'a>, FileId)) -> Result<Self, Self::Error> {
+    fn try_from((token, file): (&Token<'src>, FileId)) -> Result<Self, Self::Error> {
         Ok(match token.ty() {
             TokenType::Plus => Self::Add,
             TokenType::Minus => Self::Sub,
@@ -382,10 +380,10 @@ pub enum UnaryOperand {
     Not,
 }
 
-impl<'a> TryFrom<(&Token<'a>, FileId)> for UnaryOperand {
+impl<'src> TryFrom<(&Token<'src>, FileId)> for UnaryOperand {
     type Error = Locatable<Error>;
 
-    fn try_from((token, file): (&Token<'a>, FileId)) -> Result<Self, Self::Error> {
+    fn try_from((token, file): (&Token<'src>, FileId)) -> Result<Self, Self::Error> {
         Ok(match token.ty() {
             TokenType::Plus => Self::Positive,
             TokenType::Minus => Self::Negative,
@@ -404,19 +402,22 @@ impl<'a> TryFrom<(&Token<'a>, FileId)> for UnaryOperand {
     }
 }
 
-type PrefixParselet<'a> = fn(&mut Parser<'a>, Token<'a>) -> ParseResult<Expr<'a>>;
-type PostfixParselet<'a> = fn(&mut Parser<'a>, Token<'a>, Expr<'a>) -> ParseResult<Expr<'a>>;
-type InfixParselet<'a> = fn(&mut Parser<'a>, Token<'a>, Expr<'a>) -> ParseResult<Expr<'a>>;
+type PrefixParselet<'src, 'expr, 'stmt> =
+    fn(&mut Parser<'src, 'expr, 'stmt>, Token<'src>) -> ParseResult<Expr<'expr>>;
+type PostfixParselet<'src, 'expr, 'stmt> =
+    fn(&mut Parser<'src, 'expr, 'stmt>, Token<'src>, Expr<'expr>) -> ParseResult<Expr<'expr>>;
+type InfixParselet<'src, 'expr, 'stmt> =
+    fn(&mut Parser<'src, 'expr, 'stmt>, Token<'src>, Expr<'expr>) -> ParseResult<Expr<'expr>>;
 
 /// Expression Parsing
-impl<'a> Parser<'a> {
-    pub(super) fn expr(&mut self) -> ParseResult<Expr<'a>> {
+impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
+    pub(super) fn expr(&mut self) -> ParseResult<Expr<'expr>> {
         let _frame = self.add_stack_frame()?;
 
         self.parse_expression(0)
     }
 
-    fn parse_expression(&mut self, precedence: usize) -> ParseResult<Expr<'a>> {
+    fn parse_expression(&mut self, precedence: usize) -> ParseResult<Expr<'expr>> {
         let _frame = self.add_stack_frame()?;
         let mut token = self.next()?;
 
@@ -452,7 +453,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn prefix(ty: TokenType) -> Option<PrefixParselet<'a>> {
+    fn prefix(ty: TokenType) -> Option<PrefixParselet<'src, 'expr, 'stmt>> {
         Some(match ty {
             // Variables
             TokenType::Ident => |parser, token| {
@@ -529,7 +530,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn postfix(ty: TokenType) -> Option<PostfixParselet<'a>> {
+    fn postfix(ty: TokenType) -> Option<PostfixParselet<'src, 'expr, 'stmt>> {
         Some(match ty {
             // Function calls
             TokenType::LeftParen => |parser, _left_paren, caller| {
@@ -608,7 +609,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn infix(ty: TokenType) -> Option<InfixParselet<'a>> {
+    fn infix(ty: TokenType) -> Option<InfixParselet<'src, 'expr, 'stmt>> {
         Some(match ty {
             // Binary Operations
             TokenType::Plus
@@ -674,7 +675,11 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn index_array(&mut self, _left_bracket: Token<'a>, array: Expr<'a>) -> ParseResult<Expr<'a>> {
+    fn index_array(
+        &mut self,
+        _left_bracket: Token<'src>,
+        array: Expr<'expr>,
+    ) -> ParseResult<Expr<'expr>> {
         let _frame = self.add_stack_frame()?;
 
         let index = self.expr()?;

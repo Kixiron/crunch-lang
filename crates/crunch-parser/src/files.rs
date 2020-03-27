@@ -20,7 +20,7 @@ impl File {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct FileId(u32);
 
 impl FileId {

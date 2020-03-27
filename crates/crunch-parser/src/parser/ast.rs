@@ -1,6 +1,7 @@
 use super::{Expr, Interner, Literal, Parser, Stmt, Sym};
 use crate::{
-    error::{Error, FileId, Locatable, Location, ParseResult, SyntaxError},
+    error::{Error, Locatable, Location, ParseResult, SyntaxError},
+    files::FileId,
     token::{Token, TokenType},
 };
 
@@ -8,40 +9,40 @@ use alloc::{boxed::Box, string::ToString, vec::Vec};
 use core::{convert::TryFrom, mem};
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Ast<'a> {
+pub enum Ast<'expr, 'stmt> {
     Function {
-        decorators: Vec<Decorator<'a>>,
+        decorators: Vec<Decorator<'expr>>,
         attributes: Vec<Attribute>,
         name: Sym,
         generics: Vec<Sym>,
         args: Vec<(Sym, Type)>,
         returns: Type,
-        body: Vec<Stmt<'a>>,
+        body: Vec<Stmt<'expr, 'stmt>>,
     },
 
     Type {
-        decorators: Vec<Decorator<'a>>,
+        decorators: Vec<Decorator<'expr>>,
         attributes: Vec<Attribute>,
         name: Sym,
         generics: Vec<Sym>,
-        members: Vec<TypeMember<'a>>,
-        methods: Vec<Ast<'a>>,
+        members: Vec<TypeMember<'expr>>,
+        methods: Vec<Ast<'expr, 'stmt>>,
     },
 
     Enum {
-        decorators: Vec<Decorator<'a>>,
+        decorators: Vec<Decorator<'expr>>,
         attributes: Vec<Attribute>,
         name: Sym,
         generics: Vec<Sym>,
-        variants: Vec<EnumVariant<'a>>,
+        variants: Vec<EnumVariant<'expr>>,
     },
 
     Trait {
-        decorators: Vec<Decorator<'a>>,
+        decorators: Vec<Decorator<'expr>>,
         attributes: Vec<Attribute>,
         name: Sym,
         generics: Vec<Sym>,
-        methods: Vec<Ast<'a>>,
+        methods: Vec<Ast<'expr, 'stmt>>,
     },
 
     Import {
@@ -152,30 +153,30 @@ impl Default for ImportDest {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum EnumVariant<'a> {
+pub enum EnumVariant<'expr> {
     Unit {
         name: Sym,
-        decorators: Vec<Decorator<'a>>,
+        decorators: Vec<Decorator<'expr>>,
     },
     Tuple {
         name: Sym,
         elements: Vec<Type>,
-        decorators: Vec<Decorator<'a>>,
+        decorators: Vec<Decorator<'expr>>,
     },
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypeMember<'a> {
-    pub decorators: Vec<Decorator<'a>>,
+pub struct TypeMember<'expr> {
+    pub decorators: Vec<Decorator<'expr>>,
     pub attributes: Vec<Attribute>,
     pub name: Sym,
     pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Decorator<'a> {
+pub struct Decorator<'expr> {
     pub name: Sym,
-    pub args: Vec<Expr<'a>>,
+    pub args: Vec<Expr<'expr>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -217,13 +218,13 @@ impl<'a> TryFrom<(&Token<'a>, FileId)> for Attribute {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Visibility {
-    FileIdLocal,
+    FileLocal,
     Package,
     Exposed,
 }
 
-impl<'a> Parser<'a> {
-    pub(super) fn ast(&mut self) -> ParseResult<Option<Ast<'a>>> {
+impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
+    pub(super) fn ast(&mut self) -> ParseResult<Option<Ast<'expr, 'stmt>>> {
         let _frame = self.add_stack_frame()?;
 
         let (mut decorators, mut attributes) = (Vec::with_capacity(5), Vec::with_capacity(5));
@@ -240,9 +241,9 @@ impl<'a> Parser<'a> {
     // Returns None when the function should be re-called, usually because an attribute or decorator was parsed
     fn ast_impl(
         &mut self,
-        decorators: &mut Vec<Decorator<'a>>,
+        decorators: &mut Vec<Decorator<'expr>>,
         attributes: &mut Vec<Attribute>,
-    ) -> ParseResult<Option<Ast<'a>>> {
+    ) -> ParseResult<Option<Ast<'expr, 'stmt>>> {
         let _frame = self.add_stack_frame()?;
 
         match self.peek()?.ty() {
@@ -308,7 +309,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn import(&mut self, mut decorators: Vec<Decorator<'a>>) -> ParseResult<Ast<'a>> {
+    fn import(&mut self, mut decorators: Vec<Decorator<'expr>>) -> ParseResult<Ast<'expr, 'stmt>> {
         let _frame = self.add_stack_frame()?;
         decorators.shrink_to_fit();
 
@@ -402,16 +403,16 @@ impl<'a> Parser<'a> {
 
     fn trait_decl(
         &mut self,
-        mut decorators: Vec<Decorator<'a>>,
+        mut decorators: Vec<Decorator<'expr>>,
         mut attributes: Vec<Attribute>,
-    ) -> ParseResult<Ast<'a>> {
+    ) -> ParseResult<Ast<'expr, 'stmt>> {
         let _frame = self.add_stack_frame()?;
         decorators.shrink_to_fit();
         attributes.shrink_to_fit();
 
         if !attributes.iter().any(Attribute::is_visibility) {
             attributes.reserve(1);
-            attributes.push(Attribute::Visibility(Visibility::FileIdLocal));
+            attributes.push(Attribute::Visibility(Visibility::FileLocal));
         }
 
         self.eat(TokenType::Trait)?;
@@ -436,7 +437,7 @@ impl<'a> Parser<'a> {
 
                 TokenType::Function => {
                     if !method_attributes.iter().any(Attribute::is_visibility) {
-                        method_attributes.push(Attribute::Visibility(Visibility::FileIdLocal));
+                        method_attributes.push(Attribute::Visibility(Visibility::FileLocal));
                     }
                     method_attributes.shrink_to_fit();
                     method_decorators.shrink_to_fit();
@@ -476,16 +477,16 @@ impl<'a> Parser<'a> {
 
     fn enum_decl(
         &mut self,
-        mut decorators: Vec<Decorator<'a>>,
+        mut decorators: Vec<Decorator<'expr>>,
         mut attributes: Vec<Attribute>,
-    ) -> ParseResult<Ast<'a>> {
+    ) -> ParseResult<Ast<'expr, 'stmt>> {
         let _frame = self.add_stack_frame()?;
         decorators.shrink_to_fit();
         attributes.shrink_to_fit();
 
         if !attributes.iter().any(Attribute::is_visibility) {
             attributes.reserve(1);
-            attributes.push(Attribute::Visibility(Visibility::FileIdLocal));
+            attributes.push(Attribute::Visibility(Visibility::FileLocal));
         }
 
         self.eat(TokenType::Enum)?;
@@ -563,7 +564,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn decorator(&mut self, decorators: &mut Vec<Decorator<'a>>) -> ParseResult<()> {
+    fn decorator(&mut self, decorators: &mut Vec<Decorator<'expr>>) -> ParseResult<()> {
         let _frame = self.add_stack_frame()?;
 
         self.eat(TokenType::AtSign)?;
@@ -601,16 +602,16 @@ impl<'a> Parser<'a> {
 
     fn type_decl(
         &mut self,
-        mut decorators: Vec<Decorator<'a>>,
+        mut decorators: Vec<Decorator<'expr>>,
         mut attributes: Vec<Attribute>,
-    ) -> ParseResult<Ast<'a>> {
+    ) -> ParseResult<Ast<'expr, 'stmt>> {
         let _frame = self.add_stack_frame()?;
         decorators.shrink_to_fit();
         attributes.shrink_to_fit();
 
         if !attributes.iter().any(Attribute::is_visibility) {
             attributes.reserve(1);
-            attributes.push(Attribute::Visibility(Visibility::FileIdLocal));
+            attributes.push(Attribute::Visibility(Visibility::FileLocal));
         }
 
         self.eat(TokenType::Type)?;
@@ -656,7 +657,7 @@ impl<'a> Parser<'a> {
                     };
 
                     if !member_attributes.iter().any(Attribute::is_visibility) {
-                        member_attributes.push(Attribute::Visibility(Visibility::FileIdLocal));
+                        member_attributes.push(Attribute::Visibility(Visibility::FileLocal));
                     }
                     member_attributes.shrink_to_fit();
                     member_decorators.shrink_to_fit();
@@ -705,16 +706,16 @@ impl<'a> Parser<'a> {
 
     fn function(
         &mut self,
-        mut decorators: Vec<Decorator<'a>>,
+        mut decorators: Vec<Decorator<'expr>>,
         mut attributes: Vec<Attribute>,
-    ) -> ParseResult<Ast<'a>> {
+    ) -> ParseResult<Ast<'expr, 'stmt>> {
         let _frame = self.add_stack_frame()?;
         decorators.shrink_to_fit();
         attributes.shrink_to_fit();
 
         if !attributes.iter().any(Attribute::is_visibility) {
             attributes.reserve(1);
-            attributes.push(Attribute::Visibility(Visibility::FileIdLocal));
+            attributes.push(Attribute::Visibility(Visibility::FileLocal));
         }
 
         self.eat(TokenType::Function)?;

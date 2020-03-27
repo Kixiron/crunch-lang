@@ -4,21 +4,25 @@ extern crate alloc;
 pub extern crate string_interner;
 
 mod error;
-mod files;
+pub mod files;
 pub mod parser;
+mod pretty_printer;
 pub mod symbol_table;
 mod token;
 
 pub use parser::Parser;
+pub use pretty_printer::PrettyPrinter;
 
 #[cfg(feature = "concurrent")]
 type SymbolTable = dashmap::DashMap<Sym, ()>;
+
 #[cfg(not(feature = "concurrent"))]
 type SymbolTable = hashbrown::HashMap<Sym, ()>;
 
 // TODO: DashMap-based interner
 #[cfg(feature = "concurrent")]
 type Interner = alloc::sync::Arc<parking_lot::RwLock<string_interner::StringInterner<Sym>>>;
+
 #[cfg(not(feature = "concurrent"))]
 type Interner = string_interner::StringInterner<Sym>;
 

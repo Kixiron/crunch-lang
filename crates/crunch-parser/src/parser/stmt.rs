@@ -6,38 +6,38 @@ use stadium::Ticket;
 
 // TODO: Use arenas over Boxes
 
-pub type Stmt<'a> = Ticket<'a, Statement<'a>>;
+pub type Stmt<'expr, 'stmt> = Ticket<'stmt, Statement<'expr, 'stmt>>;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Statement<'a> {
+pub enum Statement<'expr, 'stmt> {
     If {
-        condition: Expr<'a>,
-        body: Vec<Stmt<'a>>,
-        arm: Option<Stmt<'a>>,
+        condition: Expr<'expr>,
+        body: Vec<Stmt<'stmt, 'expr>>,
+        arm: Option<Stmt<'stmt, 'expr>>,
     },
-    Expression(Expr<'a>),
-    VarDeclaration(Sym, Expr<'a>),
-    Return(Option<Expr<'a>>),
-    Break(Option<Expr<'a>>),
+    Expression(Expr<'expr>),
+    VarDeclaration(Sym, Expr<'expr>),
+    Return(Option<Expr<'expr>>),
+    Break(Option<Expr<'expr>>),
     Continue,
     While {
-        condition: Expr<'a>,
-        body: Vec<Stmt<'a>>,
-        then: Option<Vec<Stmt<'a>>>,
+        condition: Expr<'expr>,
+        body: Vec<Stmt<'stmt, 'expr>>,
+        then: Option<Vec<Stmt<'stmt, 'expr>>>,
     },
     Loop {
-        body: Vec<Stmt<'a>>,
-        then: Option<Vec<Stmt<'a>>>,
+        body: Vec<Stmt<'stmt, 'expr>>,
+        then: Option<Vec<Stmt<'stmt, 'expr>>>,
     },
     For {
-        var: Expr<'a>,
-        condition: Expr<'a>,
-        body: Vec<Stmt<'a>>,
-        then: Option<Vec<Stmt<'a>>>,
+        var: Expr<'expr>,
+        condition: Expr<'expr>,
+        body: Vec<Stmt<'stmt, 'expr>>,
+        then: Option<Vec<Stmt<'stmt, 'expr>>>,
     },
     Match {
-        var: Expr<'a>,
-        arms: Vec<(Sym, Option<Expr<'a>>, Vec<Stmt<'a>>)>,
+        var: Expr<'expr>,
+        arms: Vec<(Sym, Option<Expr<'expr>>, Vec<Stmt<'stmt, 'expr>>)>,
     },
     Empty,
 }
@@ -45,8 +45,8 @@ pub enum Statement<'a> {
 // TODO: Type ascription
 
 /// Statement parsing
-impl<'a> Parser<'a> {
-    pub(super) fn stmt(&mut self) -> ParseResult<Option<Stmt<'a>>> {
+impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
+    pub(super) fn stmt(&mut self) -> ParseResult<Option<Stmt<'stmt, 'expr>>> {
         let _frame = self.add_stack_frame()?;
 
         match self.peek()?.ty() {
@@ -176,7 +176,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn statements(&mut self, breaks: &[TokenType], capacity: usize) -> ParseResult<Vec<Stmt<'a>>> {
+    fn statements(
+        &mut self,
+        breaks: &[TokenType],
+        capacity: usize,
+    ) -> ParseResult<Vec<Stmt<'stmt, 'expr>>> {
         let _frame = self.add_stack_frame()?;
 
         let mut statements = Vec::with_capacity(capacity);
@@ -191,7 +195,7 @@ impl<'a> Parser<'a> {
         Ok(statements)
     }
 
-    fn if_stmt(&mut self) -> ParseResult<Stmt<'a>> {
+    fn if_stmt(&mut self) -> ParseResult<Stmt<'stmt, 'expr>> {
         let _frame = self.add_stack_frame()?;
 
         self.eat(TokenType::If)?;
@@ -238,7 +242,7 @@ impl<'a> Parser<'a> {
         Ok(stmt)
     }
 
-    fn match_stmt(&mut self) -> ParseResult<Stmt<'a>> {
+    fn match_stmt(&mut self) -> ParseResult<Stmt<'stmt, 'expr>> {
         let _frame = self.add_stack_frame()?;
 
         self.eat(TokenType::Match)?;
@@ -276,7 +280,7 @@ impl<'a> Parser<'a> {
         Ok(stmt)
     }
 
-    fn while_stmt(&mut self) -> ParseResult<Stmt<'a>> {
+    fn while_stmt(&mut self) -> ParseResult<Stmt<'stmt, 'expr>> {
         let _frame = self.add_stack_frame()?;
 
         self.eat(TokenType::While)?;
@@ -298,7 +302,7 @@ impl<'a> Parser<'a> {
         Ok(stmt)
     }
 
-    fn loop_stmt(&mut self) -> ParseResult<Stmt<'a>> {
+    fn loop_stmt(&mut self) -> ParseResult<Stmt<'stmt, 'expr>> {
         let _frame = self.add_stack_frame()?;
 
         self.eat(TokenType::Loop)?;
@@ -315,7 +319,7 @@ impl<'a> Parser<'a> {
         Ok(stmt)
     }
 
-    fn for_stmt(&mut self) -> ParseResult<Stmt<'a>> {
+    fn for_stmt(&mut self) -> ParseResult<Stmt<'stmt, 'expr>> {
         let _frame = self.add_stack_frame()?;
 
         self.eat(TokenType::For)?;
@@ -338,7 +342,7 @@ impl<'a> Parser<'a> {
         Ok(stmt)
     }
 
-    fn then_stmt(&mut self) -> ParseResult<Option<Vec<Stmt<'a>>>> {
+    fn then_stmt(&mut self) -> ParseResult<Option<Vec<Stmt<'stmt, 'expr>>>> {
         let _frame = self.add_stack_frame()?;
 
         Ok(if self.peek()?.ty() == TokenType::Then {

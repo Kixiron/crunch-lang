@@ -1,11 +1,12 @@
 use crate::{
-    error::{Error, ErrorHandler, FileId, Locatable, Location, ParseResult, SyntaxError},
+    error::{Error, ErrorHandler, Locatable, Location, ParseResult, SyntaxError},
+    files::FileId,
     token::{Token, TokenStream, TokenType},
     Interner, Sym,
 };
 
 use alloc::{format, rc::Rc, vec::Vec};
-use core::{convert::TryFrom, mem, num::NonZeroUsize, ops};
+use core::{convert::TryFrom, fmt, mem, num::NonZeroUsize, ops};
 use stadium::Stadium;
 
 mod ast;
@@ -26,38 +27,44 @@ pub use stmt::{Statement, Stmt};
 
 // TODO: Make the parser a little more lax, it's kinda strict about whitespace
 
-pub struct Parser<'a> {
-    token_stream: TokenStream<'a>,
-    next: Option<Token<'a>>,
-    peek: Option<Token<'a>>,
-
-    error_handler: ErrorHandler,
-    stack_frames: StackGuard,
-    current_file: FileId,
-
-    expr_arena: Stadium<Expression<'a>>,
-    stmt_arena: Stadium<Statement<'a>>,
-
-    string_interner: Interner,
+pub struct SyntaxTree<'expr, 'stmt> {
+    ast: Vec<Ast<'expr, 'stmt>>,
+    _exprs: Stadium<'expr, Expression<'expr>>,
+    _stmts: Stadium<'stmt, Statement<'expr, 'stmt>>,
 }
 
-pub struct SyntaxTree<'a> {
-    ast: Vec<Ast<'a>>,
-    exprs: Stadium<Expression<'a>>,
-    stmts: Stadium<Statement<'a>>,
+impl<'expr, 'stmt> fmt::Debug for SyntaxTree<'expr, 'stmt> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", &self.ast)
+    }
 }
 
-impl<'a> ops::Deref for SyntaxTree<'a> {
-    type Target = [Ast<'a>];
+impl<'expr, 'stmt> ops::Deref for SyntaxTree<'expr, 'stmt> {
+    type Target = [Ast<'expr, 'stmt>];
 
     fn deref(&self) -> &Self::Target {
         &self.ast
     }
 }
 
+pub struct Parser<'src, 'expr, 'stmt> {
+    token_stream: TokenStream<'src>,
+    next: Option<Token<'src>>,
+    peek: Option<Token<'src>>,
+
+    error_handler: ErrorHandler,
+    stack_frames: StackGuard,
+    current_file: FileId,
+
+    expr_arena: Stadium<'expr, Expression<'expr>>,
+    stmt_arena: Stadium<'stmt, Statement<'expr, 'stmt>>,
+
+    string_interner: Interner,
+}
+
 /// Initialization and high-level usage
-impl<'a> Parser<'a> {
-    pub fn new(source: &'a str, current_file: FileId, string_interner: Interner) -> Self {
+impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
+    pub fn new(source: &'src str, current_file: FileId, string_interner: Interner) -> Self {
         let (token_stream, next, peek) = Self::lex(source);
 
         Self {
@@ -80,7 +87,7 @@ impl<'a> Parser<'a> {
     // TODO: Should this consume? Is there a viable reason to re-parse?
     // TODO: Maybe consuming is alright, the token stream itself is consumed, so nothing really usable is
     //       left in the parser after this function is run on it
-    pub fn parse(mut self) -> Result<(SyntaxTree<'a>, ErrorHandler), ErrorHandler> {
+    pub fn parse(mut self) -> Result<(SyntaxTree<'expr, 'stmt>, ErrorHandler), ErrorHandler> {
         let mut ast = Vec::with_capacity(20);
 
         while self.peek().is_ok() {
@@ -94,15 +101,19 @@ impl<'a> Parser<'a> {
                 Err(err) => {
                     self.error_handler.push_err(err);
 
-                    todo!("eat until next top-level token")
+                    if let Err(err) = self.stress_eat() {
+                        self.error_handler.push_err(err);
+
+                        return Err(self.error_handler);
+                    }
                 }
             }
         }
 
         let ast = SyntaxTree {
             ast,
-            exprs: self.expr_arena,
-            stmts: self.stmt_arena,
+            _exprs: self.expr_arena,
+            _stmts: self.stmt_arena,
         };
 
         Ok((ast, self.error_handler))
@@ -110,7 +121,7 @@ impl<'a> Parser<'a> {
 
     // TODO: Source own lexer, logos is slow on compile times, maybe something generator-based
     //       whenever those stabilize?
-    pub fn lex(source: &'a str) -> (TokenStream<'a>, Option<Token<'a>>, Option<Token<'a>>) {
+    pub fn lex(source: &'src str) -> (TokenStream<'src>, Option<Token<'src>>, Option<Token<'src>>) {
         let mut token_stream = TokenStream::new(source, true);
         let next = None;
         let peek = token_stream.next_token();
@@ -120,9 +131,9 @@ impl<'a> Parser<'a> {
 }
 
 /// Utility functions
-impl<'a> Parser<'a> {
+impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     #[inline(always)]
-    fn next(&mut self) -> ParseResult<Token<'a>> {
+    fn next(&mut self) -> ParseResult<Token<'src>> {
         let _frame = self.add_stack_frame()?;
         let mut next = self.token_stream.next_token();
         mem::swap(&mut next, &mut self.peek);
@@ -132,14 +143,14 @@ impl<'a> Parser<'a> {
     }
 
     #[inline(always)]
-    fn peek(&self) -> ParseResult<Token<'a>> {
+    fn peek(&self) -> ParseResult<Token<'src>> {
         let _frame = self.add_stack_frame()?;
         self.peek
             .ok_or(Locatable::file(Error::EndOfFile, self.current_file))
     }
 
     #[inline(always)]
-    fn eat(&mut self, expected: TokenType) -> ParseResult<Token<'a>> {
+    fn eat(&mut self, expected: TokenType) -> ParseResult<Token<'src>> {
         let _frame = self.add_stack_frame()?;
         let token = self.next()?;
 
@@ -158,7 +169,7 @@ impl<'a> Parser<'a> {
     }
 
     #[inline(always)]
-    fn eat_of(&mut self, expected: &[TokenType]) -> ParseResult<Token<'a>> {
+    fn eat_of(&mut self, expected: &[TokenType]) -> ParseResult<Token<'src>> {
         let _frame = self.add_stack_frame()?;
         let token = self.next()?;
 
@@ -180,6 +191,25 @@ impl<'a> Parser<'a> {
                 Location::new(&token, self.current_file),
             ))
         }
+    }
+
+    fn stress_eat(&mut self) -> ParseResult<()> {
+        const TOP_TOKENS: &[TokenType] = &[
+            TokenType::Function,
+            TokenType::Enum,
+            TokenType::AtSign,
+            TokenType::Exposing,
+            TokenType::Package,
+            TokenType::Trait,
+            TokenType::Type,
+            TokenType::Import,
+        ];
+
+        while !TOP_TOKENS.contains(&self.peek()?.ty()) {
+            self.next()?;
+        }
+
+        Ok(())
     }
 
     #[inline(always)]

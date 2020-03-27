@@ -1,10 +1,7 @@
-use crate::token::TokenType;
+use crate::{files::FileId, token::TokenType};
 
-use std::collections::VecDeque;
+use alloc::collections::VecDeque;
 use thiserror::Error;
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct FileId(usize);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Location {
@@ -22,6 +19,10 @@ impl Location {
 
     pub fn file(file: FileId) -> Self {
         Self { span: None, file }
+    }
+
+    pub fn range(&self) -> Option<core::ops::Range<usize>> {
+        self.span.map(|(s, e)| s..e)
     }
 }
 
@@ -47,12 +48,12 @@ impl<T> Locatable<T> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ErrorHandler<T = Error> {
-    errors: VecDeque<Locatable<T>>,
+pub struct ErrorHandler {
+    errors: VecDeque<Locatable<Error>>,
     warnings: VecDeque<CompileWarning>,
 }
 
-impl<T> ErrorHandler<T> {
+impl ErrorHandler {
     pub fn new() -> Self {
         Self {
             errors: VecDeque::new(),
@@ -60,7 +61,7 @@ impl<T> ErrorHandler<T> {
         }
     }
 
-    pub fn push_err(&mut self, err: Locatable<T>) {
+    pub fn push_err(&mut self, err: Locatable<Error>) {
         self.errors.push_back(err);
     }
 
@@ -68,8 +69,32 @@ impl<T> ErrorHandler<T> {
         self.warnings.push_back(warn);
     }
 
-    pub fn emit(self) {
-        todo!("Emit diagnostics")
+    pub fn emit(mut self, files: &crate::files::Files) {
+        use codespan_reporting::{
+            diagnostic::{Diagnostic, Label},
+            term::{
+                self,
+                termcolor::{ColorChoice, StandardStream},
+                Config,
+            },
+        };
+
+        let writer = StandardStream::stderr(ColorChoice::Auto);
+
+        let config = Config::default();
+
+        let mut diag = Diagnostic::error();
+        while let Some(err) = self.errors.pop_front() {
+            diag.message = format!("{}", err.data);
+
+            if let Some(range) = err.location.range() {
+                diag.labels = vec![Label::primary(err.location.file, range)];
+            } else {
+                diag.labels = Vec::new();
+            }
+
+            term::emit(&mut writer.lock(), &config, files, &diag).unwrap();
+        }
     }
 }
 
