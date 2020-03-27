@@ -1,0 +1,13 @@
+[package]
+name = "crunch-fuzzing"
+version = "0.0.0"
+authors = ["Chase Wilson <contact@chasewilson.dev>"]
+
+[[bin]]
+name = "parse"
+path = "src/parse.rs"
+
+[dependencies]
+crunch-parser = { path = "../crunch-parser" }
+parking_lot = "0.10.0"
+honggfuzz = "0.5.47"
