@@ -39,3 +39,12 @@ version = "1.0.13"
 
 [dependencies.stadium]
 git = "https://github.com/Kixiron/stadium.git"
+
+[dependencies.cfg-if]
+version = "0.1.10"
+
+[dependencies.log]
+version = "0.4.8"
+
+[dev-dependencies.simple_logger]
+version = "1.6.0"

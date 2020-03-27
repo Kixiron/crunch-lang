@@ -15,7 +15,7 @@ pub struct PrettyPrinter {
 
 macro_rules! resolve {
     ($self:expr, $sym:expr) => {
-        $self.interner.read().resolve($sym).unwrap()
+        $self.interner.resolve($sym).unwrap()
     };
 }
 

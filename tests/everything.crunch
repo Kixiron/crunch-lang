@@ -36,6 +36,19 @@ fn main()
             println("Other kind: {kind}")
         end
     end
+
+    let test = 0
+    loop
+        test **= 5
+
+        if test > 100 / 5
+            break
+        end
+    end
+
+    while 1 + 5 <= 12.4
+        continue
+    end
 end
 
 exposed type Divisior
@@ -55,7 +68,7 @@ exposed type Divisior
     end
 end
 
-enum Kinds
+pkg enum Kinds
     One
     Two
     Three

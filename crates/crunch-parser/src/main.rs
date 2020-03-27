@@ -1,4 +1,4 @@
-use crunch_parser::{files::Files, PrettyPrinter};
+use crunch_parser::{files::Files, Interner, PrettyPrinter};
 use std::{fs::File, io::Read};
 
 fn main() {
@@ -6,9 +6,7 @@ fn main() {
     let mut buf = String::with_capacity(10000);
     file.read_to_string(&mut buf).unwrap();
 
-    let interner = std::sync::Arc::new(parking_lot::RwLock::new(
-        string_interner::StringInterner::new(),
-    ));
+    let interner = Interner::new();
 
     let mut files = Files::new();
     let id = files.add("<test file>", &buf).unwrap();

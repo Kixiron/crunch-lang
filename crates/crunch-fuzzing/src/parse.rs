@@ -1,12 +1,9 @@
-use crunch_parser::files::FileId;
+use crunch_parser::{files::FileId, Interner};
 use honggfuzz::fuzz;
-use parking_lot::RwLock;
 use std::sync::Arc;
 
 fn main() {
-    let interner = Arc::new(RwLock::new(
-        crunch_parser::string_interner::StringInterner::new(),
-    ));
+    let interner = Interner::new();
 
     loop {
         fuzz!(|bytes: &[u8]| {

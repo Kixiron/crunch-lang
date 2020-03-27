@@ -11,8 +11,5 @@ path = "src/parse.rs"
 [dependencies.crunch-parser]
 path = "../crunch-parser"
 
-[dependencies.parking_lot]
-version = "0.10.0"
-
 [dependencies.honggfuzz]
 version = "0.5.47"

@@ -69,7 +69,7 @@ impl<'a> TryFrom<(Token<'a>, FileId, &Interner)> for Type {
             if let Ok(ty) = BuiltinType::try_from((token, file, interner)) {
                 Ok(Self::Builtin(ty))
             } else {
-                Ok(Self::Custom(super::intern_string(interner, token.source())))
+                Ok(Self::Custom(interner.intern(token.source())))
             }
         } else {
             Err(Locatable::new(
@@ -375,7 +375,6 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 // Get the last segment of the path as the alias if none is supplied
                 let last_segment = self
                     .string_interner
-                    .read()
                     .resolve(file)
                     .expect("Shouldn't have a resolution problem, just interned the file's path")
                     .split('.')

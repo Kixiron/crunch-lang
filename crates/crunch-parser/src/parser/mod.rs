@@ -7,6 +7,7 @@ use crate::{
 
 use alloc::{format, rc::Rc, vec::Vec};
 use core::{convert::TryFrom, fmt, mem, num::NonZeroUsize, ops};
+use log::{info, trace};
 use stadium::Stadium;
 
 mod ast;
@@ -88,9 +89,13 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     // TODO: Maybe consuming is alright, the token stream itself is consumed, so nothing really usable is
     //       left in the parser after this function is run on it
     pub fn parse(mut self) -> Result<(SyntaxTree<'expr, 'stmt>, ErrorHandler), ErrorHandler> {
+        info!("Started parsing");
+
         let mut ast = Vec::with_capacity(20);
 
         while self.peek().is_ok() {
+            trace!("Parsing top-level token");
+
             match self.ast() {
                 Ok(node) => {
                     if let Some(node) = node {
@@ -104,6 +109,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                     if let Err(err) = self.stress_eat() {
                         self.error_handler.push_err(err);
 
+                        info!("Finished parsing unsuccessfully");
                         return Err(self.error_handler);
                     }
                 }
@@ -116,16 +122,20 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             _stmts: self.stmt_arena,
         };
 
+        info!("Finished parsing successfully");
         Ok((ast, self.error_handler))
     }
 
     // TODO: Source own lexer, logos is slow on compile times, maybe something generator-based
     //       whenever those stabilize?
     pub fn lex(source: &'src str) -> (TokenStream<'src>, Option<Token<'src>>, Option<Token<'src>>) {
+        info!("Started lexing");
+
         let mut token_stream = TokenStream::new(source, true);
         let next = None;
         let peek = token_stream.next_token();
 
+        info!("Finished lexing");
         (token_stream, next, peek)
     }
 }
@@ -198,7 +208,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             TokenType::Function,
             TokenType::Enum,
             TokenType::AtSign,
-            TokenType::Exposing,
+            TokenType::Exposed,
             TokenType::Package,
             TokenType::Trait,
             TokenType::Type,
@@ -225,7 +235,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
     #[inline(always)]
     fn intern_string(&self, string: &str) -> Sym {
-        intern_string(&self.string_interner, string)
+        self.string_interner.intern(string)
     }
 
     #[inline(always)]
@@ -265,15 +275,6 @@ impl StackGuard {
     pub fn frames(&self) -> usize {
         Rc::strong_count(&self.0)
     }
-}
-
-// Attempts to not acquire a write lock on the interner unless it has to
-fn intern_string(interner: &Interner, string: &str) -> Sym {
-    if let Some(sym) = interner.read().get(string) {
-        return sym;
-    }
-
-    interner.write().get_or_intern(string)
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
