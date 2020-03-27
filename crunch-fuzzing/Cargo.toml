@@ -7,10 +7,6 @@ authors = ["Chase Wilson <contact@chasewilson.dev>"]
 name = "parser"
 path = "src/parse.rs"
 
-[[bin]]
-name = "parser-afl"
-path = "src/parse-afl.rs"
-
 [dependencies.crunch-parser]
 path = "../crates/crunch-parser"
 
@@ -19,6 +15,3 @@ version = "0.10.0"
 
 [dependencies.honggfuzz]
 version = "0.5.47"
-
-[dependencies.afl]
-version = "0.6.0"
