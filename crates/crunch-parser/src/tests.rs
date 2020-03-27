@@ -1,7 +1,7 @@
 use super::{ErrorHandler, FileId, Interner, Parser, SyntaxTree};
 
 fn run(src: &str) -> Result<(SyntaxTree, ErrorHandler), ErrorHandler> {
-    let _ = simple_logger::init();
+    // let _ = simple_logger::init();
 
     Parser::new(src, FileId::new(0), Interner::new()).parse()
 }
@@ -51,5 +51,11 @@ fn unicode_yodeling() {
 #[test]
 fn yodelin_imports() {
     let src = include_str!("../crashes/yodelin_imports.fuzz");
+    let _ = run(src);
+}
+
+#[test]
+fn unicode_slicin() {
+    let src = include_str!("../crashes/unicode_slicin.fuzz");
     let _ = run(src);
 }

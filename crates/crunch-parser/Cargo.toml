@@ -4,10 +4,14 @@ version = "0.1.0"
 authors = ["Chase Wilson <contact@chasewilson.dev>"]
 edition = "2018"
 
+[[bin]]
+name = "crunch-parser"
+required-features = ["std"]
+
 [features]
 default = ["concurrent"]
 std = []
-concurrent = ["parking_lot", "dashmap", "std"]
+concurrent = ["parking_lot", "dashmap"]
 
 [dependencies.string-interner]
 version = "0.7.1"
@@ -28,7 +32,7 @@ default-features = false
 optional = true
 
 [dependencies.dashmap]
-version = "3.7.0"
+version = "3.8.0"
 optional = true
 
 [dependencies.codespan-reporting]

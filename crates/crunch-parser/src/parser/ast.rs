@@ -5,7 +5,7 @@ use crate::{
     token::{Token, TokenType},
 };
 
-use alloc::{boxed::Box, string::ToString, vec::Vec};
+use alloc::{boxed::Box, format, string::ToString, vec::Vec};
 use core::{convert::TryFrom, mem};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -315,12 +315,19 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
         self.eat(TokenType::Import)?;
 
-        let file = if let Literal::String(string) =
-            Literal::try_from((&self.eat(TokenType::String)?, self.current_file))?
-        {
-            self.intern_string(&string)
-        } else {
-            unreachable!("Ate a string token, the only literal type produced should be a String")
+        let file = self.eat(TokenType::String)?;
+        let file = match Literal::try_from((&file, self.current_file))? {
+            Literal::String(string) => self.intern_string(&string),
+
+            lit => {
+                let err = if let Literal::ByteVec(_) = lit {
+                    Error::Syntax(SyntaxError::ImportByteStringLiteral)
+                } else {
+                    Error::Syntax(SyntaxError::ImportStringLiteral)
+                };
+
+                return Err(Locatable::new(err, Location::new(&file, self.current_file)));
+            }
         };
 
         let dest = if self.peek()?.ty() == TokenType::Library {

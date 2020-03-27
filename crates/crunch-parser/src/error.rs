@@ -1,6 +1,6 @@
 use crate::{files::FileId, token::TokenType};
 
-use alloc::collections::VecDeque;
+use alloc::{collections::VecDeque, format, string::String, vec, vec::Vec};
 use thiserror::Error;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -141,6 +141,12 @@ pub enum SyntaxError {
 
     #[error("You must give a file to import from in import declarations")]
     MissingImport,
+
+    #[error("File imports must use a string literal")]
+    ImportStringLiteral,
+
+    #[error("File imports must use a string literal, not a byte string literal")]
+    ImportByteStringLiteral,
 }
 
 #[derive(Clone, Debug, Error, PartialEq)]

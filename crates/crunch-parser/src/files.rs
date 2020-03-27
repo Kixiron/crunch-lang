@@ -1,5 +1,6 @@
+use alloc::{string::String, vec::Vec};
 use codespan_reporting::files;
-use std::ops::Range;
+use core::ops::Range;
 
 #[derive(Debug, Clone)]
 struct File {
@@ -10,7 +11,7 @@ struct File {
 
 impl File {
     fn line_start(&self, line_index: usize) -> Option<usize> {
-        use std::cmp::Ordering;
+        use core::cmp::Ordering;
 
         match line_index.cmp(&self.line_starts.len()) {
             Ordering::Less => self.line_starts.get(line_index).cloned(),
@@ -40,7 +41,7 @@ impl Files {
     }
 
     pub fn add(&mut self, name: impl Into<String>, source: impl Into<String>) -> Option<FileId> {
-        use std::convert::TryFrom;
+        use core::convert::TryFrom;
 
         let file_id = FileId(u32::try_from(self.files.len()).ok()?);
         let name = name.into();
