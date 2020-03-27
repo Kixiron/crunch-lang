@@ -13,8 +13,9 @@ fn main() {
     loop {
         fuzz!(|bytes: &[u8]| {
             if let Ok(input_str) = std::str::from_utf8(bytes) {
-                let _ = crunch_parser::Parser::new(&input_str, FileId::new(0), interner.clone())
-                    .parse();
+                let _ =
+                    crunch_parser::Parser::new(&input_str, FileId::new(0), Arc::clone(&interner))
+                        .parse();
             }
         });
     }
