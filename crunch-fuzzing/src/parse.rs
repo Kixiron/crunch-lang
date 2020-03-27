@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate honggfuzz;
 
-use crunch_parser::FileId;
+use crunch_parser::files::FileId;
 use parking_lot::RwLock;
 use std::sync::Arc;
 

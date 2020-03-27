@@ -7,11 +7,7 @@ authors = ["Chase Wilson <contact@chasewilson.dev>"]
 name = "parser"
 path = "src/parse.rs"
 
-[dependencies.crunch-parser]
-path = "../crates/crunch-parser"
-
-[dependencies.parking_lot]
-version = "0.10.0"
-
-[dependencies.honggfuzz]
-version = "0.5.47"
+[dependencies]
+crunch-parser = { path = "../crates/crunch-parser" }
+parking_lot = "0.10.0"
+honggfuzz = "0.5.47"
