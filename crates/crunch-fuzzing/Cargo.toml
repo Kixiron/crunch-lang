@@ -2,12 +2,17 @@
 name = "crunch-fuzzing"
 version = "0.0.0"
 authors = ["Chase Wilson <contact@chasewilson.dev>"]
+edition = "2018"
 
 [[bin]]
 name = "parse"
 path = "src/parse.rs"
 
-[dependencies]
-crunch-parser = { path = "../crunch-parser" }
-parking_lot = "0.10.0"
-honggfuzz = "0.5.47"
+[dependencies.crunch-parser]
+path = "../crunch-parser"
+
+[dependencies.parking_lot]
+version = "0.10.0"
+
+[dependencies.honggfuzz]
+version = "0.5.47"
