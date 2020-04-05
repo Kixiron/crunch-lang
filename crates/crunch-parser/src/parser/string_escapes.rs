@@ -26,7 +26,6 @@ pub(super) fn unescape_string(queue: Vec<char>) -> Result<String, (Error, Range<
             'n' => s.push('\n'),
             'r' => s.push('\r'),
             't' => s.push('\t'),
-            '0' => s.push('\0'),
             'x' => s.push(byte(&mut queue, &mut index)?),
             'u' => s.push(unicode_16(&mut queue, index, &mut index)?),
             'U' => s.push(unicode_32(&mut queue, index, &mut index)?),

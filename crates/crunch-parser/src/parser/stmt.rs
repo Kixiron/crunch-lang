@@ -16,7 +16,7 @@ pub enum Statement<'expr, 'stmt> {
         arm: Option<Stmt<'stmt, 'expr>>,
     },
     Expression(Expr<'expr>),
-    VarDeclaration(Sym, Expr<'expr>),
+    VarDeclaration(Cord, Expr<'expr>),
     Return(Option<Expr<'expr>>),
     Break(Option<Expr<'expr>>),
     Continue,
@@ -37,7 +37,7 @@ pub enum Statement<'expr, 'stmt> {
     },
     Match {
         var: Expr<'expr>,
-        arms: Vec<(Sym, Option<Expr<'expr>>, Vec<Stmt<'stmt, 'expr>>)>,
+        arms: Vec<(Cord, Option<Expr<'expr>>, Vec<Stmt<'stmt, 'expr>>)>,
     },
     Empty,
 }

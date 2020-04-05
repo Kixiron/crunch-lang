@@ -6,49 +6,59 @@ edition = "2018"
 
 [[bin]]
 name = "crunch-parser"
-required-features = ["std"]
 
 [features]
 default = ["concurrent"]
-std = []
-concurrent = ["parking_lot", "dashmap"]
+logging = ["log"]
+single-threaded = ["hashbrown"]
+concurrent = ["dashmap", "lasso/multi-threaded"]
 
-[dependencies.string-interner]
-version = "0.7.1"
-
+# Lexing
 [dependencies.logos]
-version = "0.10.0-rc2"
+version = "0.10.0"
 
+# Hex float parsing
 [dependencies.hexponent]
 version = "0.2.3"
 default-features = false
 
+# no_std hashmap
 [dependencies.hashbrown]
 version = "0.7.1"
-
-[dependencies.parking_lot]
-version = "0.10.0"
-default-features = false
 optional = true
 
+# Concurrent hashmap for symbol table
 [dependencies.dashmap]
-version = "3.8.0"
+version = "3.10.0"
 optional = true
 
+# Pretty error reporting
 [dependencies.codespan-reporting]
-version = "0.9.1"
+version = "0.9.2"
 
-[dependencies.thiserror]
-version = "1.0.13"
-
-[dependencies.stadium]
-git = "https://github.com/Kixiron/stadium.git"
-
+# Easier conditional compilation
 [dependencies.cfg-if]
 version = "0.1.10"
 
+# Logging
 [dependencies.log]
 version = "0.4.8"
+optional = true
 
+# Error enum display impl generation
+# TODO: Replace with manual impl
+[dependencies.derive_more]
+version = "0.99.5"
+
+# Arena allocation
+[dependencies.stadium]
+git = "https://github.com/Kixiron/stadium.git"
+
+# String interning
+[dependencies.lasso]
+git = "https://github.com/Kixiron/lasso.git"
+
+# Logging during tests
 [dev-dependencies.simple_logger]
 version = "1.6.0"
+default-features = false

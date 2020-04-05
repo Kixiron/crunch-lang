@@ -13,7 +13,7 @@ pub type Expr<'expr> = Ticket<'expr, Expression<'expr>>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression<'expr> {
-    Variable(Sym),
+    Variable(Cord),
     UnaryExpr(UnaryOperand, Expr<'expr>),
     BinaryOp(Expr<'expr>, BinaryOperand, Expr<'expr>),
     InlineConditional {
@@ -87,7 +87,7 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for AssignmentType {
                         "Expected one of {}, got '{}'",
                         ASSIGN_TOKENS
                             .iter()
-                            .map(TokenType::to_str)
+                            .map(|t| t.to_str())
                             .collect::<Vec<_>>()
                             .join(", "),
                         ty,
@@ -136,7 +136,7 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for ComparisonOperand {
                         "Expected one of {}, got '{}'",
                         COMPARE_TOKENS
                             .iter()
-                            .map(TokenType::to_str)
+                            .map(|t| t.to_str())
                             .collect::<Vec<_>>()
                             .join(", "),
                         ty,
@@ -224,11 +224,11 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for Literal {
                 let string = match string[0] {
                     '\'' | '"'
                         if string.len() >= 6
-                            && (&string[..3] == &['\'', '\'', '\'']
-                                || &string[..3] == &['"', '"', '"']) =>
+                            && (string[..3] == ['\'', '\'', '\'']
+                                || string[..3] == ['"', '"', '"']) =>
                     {
-                        string.drain(..3).for_each(|d| drop(d));
-                        string.drain(string.len() - 3..).for_each(|d| drop(d));
+                        string.drain(..3).for_each(drop);
+                        string.drain(string.len() - 3..).for_each(drop);
 
                         match string_escapes::unescape_string(string) {
                             Ok(s) => Ok(s),
@@ -246,8 +246,8 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for Literal {
                     }
 
                     '\'' | '"' => {
-                        string.drain(..1).for_each(|d| drop(d));
-                        string.drain(string.len() - 1..).for_each(|d| drop(d));
+                        string.drain(..1).for_each(drop);
+                        string.drain(string.len() - 1..).for_each(drop);
 
                         match string_escapes::unescape_string(string) {
                             Ok(s) => Ok(s),

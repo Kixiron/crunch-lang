@@ -1,17 +1,17 @@
 # To Do
 
 - [ ] Compiler Pipeline
-  - [X] Read file
+  - [x] Read file
     - [ ] Make sure files aren't re-processed
-  - [X] Tokenize
+  - [x] Tokenize
   - [ ] Parse into AST
     - [ ] Uncoil the beast that is the parser
-      - [X] Pratt Parsing
+      - [x] Pratt Parsing
       - [ ] Decide about decorator declarations, should they be a separate type of declaration?
         - [ ] Allows declaration-only namespacing
         - [ ] Allows greater freedom with system to allow codegen/macro type utilities
-      - [X] Unit type
-      - [X] Syntax highlighting
+      - [x] Unit type
+      - [x] Syntax highlighting
       - [ ] Throwing errors
       - [ ] Floats
       - [ ] Escape sequences
@@ -56,8 +56,9 @@
   - [ ] Workers push new files to the queue
     - [ ] Shared set of files already covered
   - [ ] Workers Parse files and push the finished to somewhere
-  - [ ] Concurrent String interner
-    - [ ] Dashmap-based
+  - [x] Concurrent String interner
+    - [x] Dashmap-based
+  - [ ] Single-threaded string interner
 - [ ] `no_std` RwLock and Mutex implementations
 - [ ] Fast concurrent queue
 - [ ] Get rid of phf

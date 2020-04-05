@@ -82,7 +82,7 @@ cc = "1.0.50"
 
 [workspace]
 members = ["crates/*"]
-# exclude= ["crates/crunch-fuzzing"]
+exclude= ["crates/crunch-fuzzing"]
 
 # [target.'cfg(windows)'.workspace]
 # exclude= ["crates/crunch-fuzzing"]

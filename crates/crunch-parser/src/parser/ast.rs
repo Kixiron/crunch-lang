@@ -1,4 +1,4 @@
-use super::{Expr, Interner, Literal, Parser, Stmt, Sym};
+use super::{Cord, Expr, Interner, Literal, Parser, Stmt};
 use crate::{
     error::{Error, Locatable, Location, ParseResult, SyntaxError},
     files::FileId,
@@ -13,9 +13,9 @@ pub enum Ast<'expr, 'stmt> {
     Function {
         decorators: Vec<Decorator<'expr>>,
         attributes: Vec<Attribute>,
-        name: Sym,
-        generics: Vec<Sym>,
-        args: Vec<(Sym, Type)>,
+        name: Cord,
+        generics: Vec<Cord>,
+        args: Vec<(Cord, Type)>,
         returns: Type,
         body: Vec<Stmt<'expr, 'stmt>>,
     },
@@ -23,8 +23,8 @@ pub enum Ast<'expr, 'stmt> {
     Type {
         decorators: Vec<Decorator<'expr>>,
         attributes: Vec<Attribute>,
-        name: Sym,
-        generics: Vec<Sym>,
+        name: Cord,
+        generics: Vec<Cord>,
         members: Vec<TypeMember<'expr>>,
         methods: Vec<Ast<'expr, 'stmt>>,
     },
@@ -32,21 +32,21 @@ pub enum Ast<'expr, 'stmt> {
     Enum {
         decorators: Vec<Decorator<'expr>>,
         attributes: Vec<Attribute>,
-        name: Sym,
-        generics: Vec<Sym>,
+        name: Cord,
+        generics: Vec<Cord>,
         variants: Vec<EnumVariant<'expr>>,
     },
 
     Trait {
         decorators: Vec<Decorator<'expr>>,
         attributes: Vec<Attribute>,
-        name: Sym,
-        generics: Vec<Sym>,
+        name: Cord,
+        generics: Vec<Cord>,
         methods: Vec<Ast<'expr, 'stmt>>,
     },
 
     Import {
-        file: Sym,
+        file: Cord,
         dest: ImportDest,
         exposes: ImportExposure,
     },
@@ -55,7 +55,7 @@ pub enum Ast<'expr, 'stmt> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Builtin(BuiltinType),
-    Custom(Sym),
+    Custom(Cord),
     Infer,
 }
 
@@ -110,7 +110,7 @@ impl<'a> TryFrom<(Token<'a>, FileId, &Interner)> for BuiltinType {
             "float" => Self::Float,
             "bool" => Self::Boolean,
             "unit" => Self::Unit,
-            ty if ty.starts_with("[") && ty.ends_with("]") => {
+            ty if ty.starts_with('[') && ty.ends_with(']') => {
                 token.source = &token.source()[1..ty.len() - 1];
 
                 if token.source() == "" {
@@ -134,9 +134,9 @@ impl<'a> TryFrom<(Token<'a>, FileId, &Interner)> for BuiltinType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ImportExposure {
-    None(Sym),
+    None(Cord),
     All,
-    Members(Vec<(Sym, Option<Sym>)>),
+    Members(Vec<(Cord, Option<Cord>)>),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -155,11 +155,11 @@ impl Default for ImportDest {
 #[derive(Debug, Clone, PartialEq)]
 pub enum EnumVariant<'expr> {
     Unit {
-        name: Sym,
+        name: Cord,
         decorators: Vec<Decorator<'expr>>,
     },
     Tuple {
-        name: Sym,
+        name: Cord,
         elements: Vec<Type>,
         decorators: Vec<Decorator<'expr>>,
     },
@@ -169,13 +169,13 @@ pub enum EnumVariant<'expr> {
 pub struct TypeMember<'expr> {
     pub decorators: Vec<Decorator<'expr>>,
     pub attributes: Vec<Attribute>,
-    pub name: Sym,
+    pub name: Cord,
     pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Decorator<'expr> {
-    pub name: Sym,
+    pub name: Cord,
     pub args: Vec<Expr<'expr>>,
 }
 
@@ -285,7 +285,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             }
 
             TokenType::Import => {
-                if attributes.len() != 0 {
+                if !attributes.is_empty() {
                     return Err(Locatable::new(
                         Error::Syntax(SyntaxError::NoAttributesAllowed("import")),
                         Location::new(&self.peek()?, self.current_file),
@@ -382,8 +382,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 // Get the last segment of the path as the alias if none is supplied
                 let last_segment = self
                     .string_interner
-                    .resolve(file)
-                    .expect("Shouldn't have a resolution problem, just interned the file's path")
+                    .resolve(&file)
                     .split('.')
                     .last()
                     .ok_or(Locatable::new(
@@ -655,9 +654,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
                     let ty = if self.peek()?.ty() == TokenType::Colon {
                         self.eat(TokenType::Colon)?;
-                        let ty = self.eat_type()?;
-
-                        ty
+                        self.eat_type()?
                     } else {
                         Type::default()
                     };
@@ -693,7 +690,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         }
         self.eat(TokenType::End)?;
 
-        if member_attributes.len() != 0 || member_decorators.len() != 0 {
+        if !member_attributes.is_empty() || !member_decorators.is_empty() {
             return Err(Locatable::new(
                 Error::Syntax(SyntaxError::Generic("Attributes and functions must be before members or methods in type declarations".to_string())),
                 Location::new(&self.peek()?, self.current_file),
@@ -731,10 +728,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
         let returns = if self.peek()?.ty() == TokenType::RightArrow {
             self.eat(TokenType::RightArrow)?;
-
-            let ty = self.eat_type()?;
-
-            ty
+            self.eat_type()?
         } else {
             Type::default()
         };
@@ -760,7 +754,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         })
     }
 
-    fn function_args(&mut self) -> ParseResult<Vec<(Sym, Type)>> {
+    fn function_args(&mut self) -> ParseResult<Vec<(Cord, Type)>> {
         let _frame = self.add_stack_frame()?;
         self.eat(TokenType::LeftParen)?;
 
@@ -770,10 +764,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
             let ty = if self.peek()?.ty() == TokenType::Colon {
                 self.eat(TokenType::Colon)?;
-
-                let ty = self.eat_type()?;
-
-                ty
+                self.eat_type()?
             } else {
                 Type::default()
             };
@@ -803,7 +794,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         Ok(ty)
     }
 
-    fn generics(&mut self) -> ParseResult<Vec<Sym>> {
+    fn generics(&mut self) -> ParseResult<Vec<Cord>> {
         let _frame = self.add_stack_frame()?;
 
         if self.peek()?.ty() == TokenType::LeftCaret {

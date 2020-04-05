@@ -1,7 +1,9 @@
-use compiler_pipeline::CompilerPipeline;
+use compiler_pipeline::Pipeline;
 
 fn main() {
-    let pipeline = CompilerPipeline;
+    simple_logger::init().unwrap();
 
-    pipeline.run("../../tests/fibonacci_recursive.crunch");
+    let pipeline = Pipeline::new("../../tests/fibonacci_recursive.crunch");
+
+    pipeline.run();
 }

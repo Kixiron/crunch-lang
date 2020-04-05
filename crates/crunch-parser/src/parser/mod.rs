@@ -2,11 +2,12 @@ use crate::{
     error::{Error, ErrorHandler, Locatable, Location, ParseResult, SyntaxError},
     files::FileId,
     token::{Token, TokenStream, TokenType},
-    Interner, Sym,
+    Cord, Interner,
 };
 
 use alloc::{format, rc::Rc, vec::Vec};
 use core::{convert::TryFrom, fmt, mem, num::NonZeroUsize, ops};
+#[cfg(feature = "logging")]
 use log::{info, trace};
 use stadium::Stadium;
 
@@ -89,11 +90,13 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     // TODO: Maybe consuming is alright, the token stream itself is consumed, so nothing really usable is
     //       left in the parser after this function is run on it
     pub fn parse(mut self) -> Result<(SyntaxTree<'expr, 'stmt>, ErrorHandler), ErrorHandler> {
+        #[cfg(feature = "logging")]
         info!("Started parsing");
 
         let mut ast = Vec::with_capacity(20);
 
         while self.peek().is_ok() {
+            #[cfg(feature = "logging")]
             trace!("Parsing top-level token");
 
             match self.ast() {
@@ -109,6 +112,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                     if let Err(err) = self.stress_eat() {
                         self.error_handler.push_err(err);
 
+                        #[cfg(feature = "logging")]
                         info!("Finished parsing unsuccessfully");
                         return Err(self.error_handler);
                     }
@@ -122,6 +126,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             _stmts: self.stmt_arena,
         };
 
+        #[cfg(feature = "logging")]
         info!("Finished parsing successfully");
         Ok((ast, self.error_handler))
     }
@@ -129,12 +134,14 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     // TODO: Source own lexer, logos is slow on compile times, maybe something generator-based
     //       whenever those stabilize?
     pub fn lex(source: &'src str) -> (TokenStream<'src>, Option<Token<'src>>, Option<Token<'src>>) {
+        #[cfg(feature = "logging")]
         info!("Started lexing");
 
         let mut token_stream = TokenStream::new(source, true);
         let next = None;
         let peek = token_stream.next_token();
 
+        #[cfg(feature = "logging")]
         info!("Finished lexing");
         (token_stream, next, peek)
     }
@@ -149,14 +156,14 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         mem::swap(&mut next, &mut self.peek);
         self.next = next;
 
-        next.ok_or(Locatable::file(Error::EndOfFile, self.current_file))
+        next.ok_or_else(|| Locatable::file(Error::EndOfFile, self.current_file))
     }
 
     #[inline(always)]
     fn peek(&self) -> ParseResult<Token<'src>> {
         let _frame = self.add_stack_frame()?;
         self.peek
-            .ok_or(Locatable::file(Error::EndOfFile, self.current_file))
+            .ok_or_else(|| Locatable::file(Error::EndOfFile, self.current_file))
     }
 
     #[inline(always)]
@@ -234,12 +241,12 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     }
 
     #[inline(always)]
-    fn intern_string(&self, string: &str) -> Sym {
+    fn intern_string(&self, string: &str) -> Cord {
         self.string_interner.intern(string)
     }
 
     #[inline(always)]
-    fn eat_ident(&mut self) -> ParseResult<Sym> {
+    fn eat_ident(&mut self) -> ParseResult<Cord> {
         let token = self.eat(TokenType::Ident)?;
         Ok(self.intern_string(token.source()))
     }

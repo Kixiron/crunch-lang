@@ -1,4 +1,5 @@
-// #![cfg_attr(not(feature = "std"), no_std)] Waiting on thiserror no_std support
+// Waiting on thiserror/#64
+// #![cfg_attr(not(feature = "std"), no_std)]
 
 extern crate alloc;
 
@@ -14,6 +15,6 @@ mod token;
 
 pub use error::ErrorHandler;
 pub use files::{FileId, Files};
-pub use interner::{Interner, Sym};
+pub use interner::{Cord, Interner};
 pub use parser::{Parser, SyntaxTree};
 pub use pretty_printer::PrettyPrinter;

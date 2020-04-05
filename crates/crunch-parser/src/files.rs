@@ -22,7 +22,7 @@ impl File {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct FileId(u32);
+pub struct FileId(pub u32);
 
 impl FileId {
     pub fn new(id: u32) -> Self {
@@ -88,5 +88,11 @@ impl<'files> files::Files<'files> for Files {
         let next_line_start = file.line_start(line_index + 1)?;
 
         Some(line_start..next_line_start)
+    }
+}
+
+impl Default for Files {
+    fn default() -> Self {
+        Self::new()
     }
 }

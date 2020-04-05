@@ -8,14 +8,26 @@ edition = "2018"
 name = "pipeline"
 path = "src/bin.rs"
 
-[dependencies.crunch-parser]
-path = "../crunch-parser"
-
-[dependencies.crunch-error]
-path = "../crunch-error"
+[features]
+no_std = ["pipeline-job/no_std"]
 
 [dependencies.num_cpus]
 version = "1.12.0"
 
+[dependencies.cfg-if]
+version = "0.1.10"
+
+[dependencies.parking_lot]
+version = "0.10.0"
+
+[dependencies.log]
+version = "0.4.8"
+
 [dependencies.pipeline-job]
 path = "../pipeline-job"
+
+[dependencies.crunch-parser]
+path = "../crunch-parser"
+
+[dependencies.simple_logger]
+version = "1.6.0"

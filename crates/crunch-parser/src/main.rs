@@ -1,4 +1,4 @@
-use crunch_parser::{files::Files, Interner, PrettyPrinter};
+use crunch_parser::{files::Files, Interner};
 use std::{fs::File, io::Read};
 
 fn main() {
@@ -14,9 +14,11 @@ fn main() {
     match crunch_parser::Parser::new(&buf, id, interner.clone()).parse() {
         Ok((ast, warn)) => {
             warn.emit(&files);
-            let mut pp = PrettyPrinter::new(interner.clone());
-            let out = std::io::stdout();
-            pp.pretty_print(&mut out.lock(), &ast).unwrap();
+            // let mut pp = PrettyPrinter::new(interner.clone());
+            // let out = std::io::stdout();
+            // pp.pretty_print(&mut out.lock(), &ast).unwrap();
+
+            let _ = ast;
         }
         Err(err) => err.emit(&files),
     }

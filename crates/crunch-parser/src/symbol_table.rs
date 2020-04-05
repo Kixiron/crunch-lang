@@ -1,4 +1,4 @@
-use super::Sym;
+use super::Cord;
 
 use cfg_if::cfg_if;
 
@@ -7,7 +7,7 @@ cfg_if! {
         use dashmap::DashMap;
         use alloc::sync::Arc;
 
-        type Table = Arc<DashMap<Sym, ()>>;
+        type Table = Arc<DashMap<Cord, ()>>;
     } else {
         use hashbrown::HashMap;
         use alloc::rc::Rc;

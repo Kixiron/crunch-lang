@@ -49,6 +49,20 @@ fn main()
     while 1 + 5 <= 12.4
         continue
     end
+
+    let string = b"string"
+    let string = b'string'
+    let float = 0.00
+    let float = -0.00
+    let float = +0.00
+    let float = inf
+    let float = NaN
+    let hex = 0x04Fa
+    let hex = -0x04Fa
+    let hex = +0x04Fa
+    let hex_float = 0xFF.FFe-FF
+    let hex_float = -0xFF.FFe+FF
+    let hex_float = +0xFF.FFe-FF
 end
 
 exposed type Divisior

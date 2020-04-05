@@ -1,7 +1,7 @@
 use crate::{files::FileId, token::TokenType};
 
 use alloc::{collections::VecDeque, format, string::String, vec, vec::Vec};
-use thiserror::Error;
+use derive_more::Display;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Location {
@@ -98,56 +98,63 @@ impl ErrorHandler {
     }
 }
 
-#[derive(Clone, Debug, Error, PartialEq)]
-pub enum Error {
-    #[error("Invalid Syntax: {0}")]
-    Syntax(#[from] SyntaxError),
+impl Default for ErrorHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
-    #[error("Unexpected end of file")]
+// Waiting on thiserror/#64 for no_std with error derives
+#[derive(Clone, Debug, Display, PartialEq)]
+pub enum Error {
+    #[display("Invalid Syntax: {0}")]
+    Syntax(SyntaxError),
+
+    #[display("Unexpected end of file")]
     EndOfFile,
 }
 
-#[derive(Clone, Debug, Error, PartialEq)]
+#[derive(Clone, Debug, Display, PartialEq)]
 pub enum SyntaxError {
-    #[error("{0}")]
+    #[display("{0}")]
     Generic(String),
 
-    #[error("Unrecognized escape sequence: \\{0}")]
+    #[display("Unrecognized escape sequence: \\{0}")]
     UnrecognizedEscapeSeq(char),
 
-    #[error("String escapes are expected to begin with '{{' and end with '}}'")]
+    #[display("String escapes are expected to begin with '{{' and end with '}}'")]
     MissingEscapeBraces,
 
-    #[error("String escapes may only have the characters {0}")]
+    #[display("String escapes may only have the characters {0}")]
     InvalidEscapeCharacters(&'static str),
 
-    #[error("Ran out of string escape specifiers")]
+    #[display("Ran out of string escape specifiers")]
     MissingEscapeSpecifier,
 
-    #[error("Invalid escape sequence: {0}")]
+    #[display("Invalid escape sequence: {0}")]
     InvalidEscapeSeq(String),
 
-    #[error("Invalid {0} literal")]
+    #[display("Invalid {0} literal")]
     InvalidLiteral(&'static str),
 
-    #[error("Recursion limit reached: {0} > {1}")]
+    #[display(fmt = "Recursion limit reached: {0} > {1}", _0, _1)]
     RecursionLimit(usize, usize),
 
-    #[error("Attributes are not allowed on an {0} declaration")]
+    #[display("Attributes are not allowed on an {0} declaration")]
     NoAttributesAllowed(&'static str),
 
-    #[error("Invalid top-level token: {0}")]
+    #[display("Invalid top-level token: {0}")]
     InvalidTopLevel(TokenType),
 
-    #[error("You must give a file to import from in import declarations")]
+    #[display("You must give a file to import from in import declarations")]
     MissingImport,
 
-    #[error("File imports must use a string literal")]
+    #[display("File imports must use a string literal")]
     ImportStringLiteral,
 
-    #[error("File imports must use a string literal, not a byte string literal")]
+    #[display("File imports must use a string literal, not a byte string literal")]
     ImportByteStringLiteral,
 }
 
-#[derive(Clone, Debug, Error, PartialEq)]
+#[derive(Clone, Debug, Display, PartialEq)]
 pub enum CompileWarning {}

@@ -59,3 +59,40 @@ fn unicode_slicin() {
     let src = include_str!("../crashes/unicode_slicin.fuzz");
     let _ = run(src);
 }
+
+#[test]
+fn gobbledegook() {
+    let src =
+        unsafe { std::str::from_utf8_unchecked(include_bytes!("../crashes/gobbledegook.fuzz")) };
+    let _ = run(src);
+}
+
+#[test]
+fn horrible_style() {
+    let src = include_str!("../crashes/horrible_style.fuzz");
+    let _ = run(src);
+}
+
+#[test]
+fn main_24601() {
+    let src = include_str!("../crashes/main_24601.fuzz");
+    let _ = run(src);
+}
+
+#[test]
+fn squares() {
+    let src = include_str!("../crashes/squares.fuzz");
+    let _ = run(src);
+}
+
+#[test]
+fn floatnnnnnn() {
+    let src = include_str!("../crashes/floatnnnnnn.fuzz");
+    let _ = run(src);
+}
+
+#[test]
+fn qic_fatish() {
+    let src = include_str!("../crashes/qic_fatish.fuzz");
+    let _ = run(src);
+}

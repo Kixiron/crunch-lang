@@ -3,9 +3,6 @@ use logos::{Lexer, Logos};
 use alloc::vec::Vec;
 use core::{fmt, ops};
 
-// TODO: Cull tokens
-// TODO: Further organize tokens
-
 #[derive(Logos, Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum TokenType {
     #[end]
@@ -34,6 +31,14 @@ pub enum TokenType {
     #[regex = r#"[+-]?0[xX][0-9a-fA-F][0-9a-fA-F_]*"#]
     #[regex = r#"[+-]?[0-9][0-9_]*"#]
     Int,
+
+    // #[regex = r#"(?x:       0b      [0-1_]*      )"#] UIntBin,
+    // #[regex = r#"(?x: [+-]  0b      [0-1_]*      )"#] SIntBin,
+    // #[regex = r#"(?x:      (0d)?    [0-9_]*      )"#] UIntDec,
+    // #[regex = r#"(?x: [+-] (0d)?    [0-9_]*      )"#] SIntDec,
+    // #[regex = r#"(?x:       0[xX]   [0-9a-fA-F_]*)"#] UIntHex,
+    // #[regex = r#"(?x: [+-]  0[xX]   [0-9a-fA-F_]*)"#] SIntHex,
+
     // This is a crime
     // TODO: Fix these regexes, they capture integers
     #[token = "inf"]
@@ -203,7 +208,7 @@ pub enum TokenType {
 }
 
 impl TokenType {
-    pub fn to_str(&self) -> &'static str {
+    pub fn to_str(self) -> &'static str {
         match self {
             Self::EOF => "EOF",
             Self::Error => "Error",
@@ -452,6 +457,7 @@ impl<'a> fmt::Debug for Token<'a> {
 mod tests {
     use super::*;
 
+    // Waiting on logos/#94 to fix this
     #[test]
     fn break_up_weird_stuff() {
         let mut stream = TokenStream::new("bredcp", true).into_iter();
