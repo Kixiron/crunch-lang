@@ -9,16 +9,17 @@ cfg_if! {
     }
 }
 
-pub use lasso::Cord;
+pub use lasso::SmallSpur;
+
+use alloc::string::{String, ToString};
 
 #[derive(Debug, Clone)]
 pub struct Interner {
-    // TODO: DashMap-based interner
     #[cfg(feature = "concurrent")]
-    interner: Arc<ThreadedRodeo<Cord>>,
+    interner: Arc<ThreadedRodeo<SmallSpur>>,
 
     #[cfg(not(feature = "concurrent"))]
-    interner: Rodeo<Cord>,
+    interner: Rodeo<SmallSpur>,
 }
 
 impl Interner {
@@ -37,11 +38,12 @@ impl Interner {
         }
     }
 
-    pub fn resolve<'a>(&'a self, sym: &Cord) -> &'a str {
-        self.interner.resolve(sym)
+    pub fn resolve<'a>(&'a self, sym: &SmallSpur) -> String {
+        self.interner.resolve(sym).to_string()
     }
 
-    pub fn intern(&self, string: &str) -> Cord {
+    #[track_caller]
+    pub fn intern(&mut self, string: &str) -> SmallSpur {
         self.interner.get_or_intern(string)
     }
 }

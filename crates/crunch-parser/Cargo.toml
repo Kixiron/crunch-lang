@@ -8,7 +8,8 @@ edition = "2018"
 name = "crunch-parser"
 
 [features]
-default = ["concurrent"]
+default = ["concurrent", "no-std"]
+no-std = ["hashbrown", "dashmap/no_std"]
 logging = ["log"]
 single-threaded = ["hashbrown"]
 concurrent = ["dashmap", "lasso/multi-threaded"]

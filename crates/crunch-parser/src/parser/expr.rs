@@ -1,19 +1,21 @@
-use super::*;
 use crate::{
     error::{Error, Locatable, Location, ParseResult, SyntaxError},
     files::FileId,
-    token::Token,
+    parser::{string_escapes, Parser},
+    token::{Token, TokenType},
 };
+
+use lasso::SmallSpur;
+use stadium::Ticket;
 
 use alloc::{format, string::String, vec::Vec};
 use core::convert::TryFrom;
-use stadium::Ticket;
 
 pub type Expr<'expr> = Ticket<'expr, Expression<'expr>>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression<'expr> {
-    Variable(Cord),
+    Variable(SmallSpur),
     UnaryExpr(UnaryOperand, Expr<'expr>),
     BinaryOp(Expr<'expr>, BinaryOperand, Expr<'expr>),
     InlineConditional {
@@ -421,11 +423,13 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         let _frame = self.add_stack_frame()?;
         let mut token = self.next()?;
 
-        if let Some(prefix) = Self::prefix(token.ty()) {
+        let prefix = Self::prefix(token.ty());
+        if let Some(prefix) = prefix {
             let mut left = prefix(self, token)?;
 
             if let Ok(peek) = self.peek() {
-                if let Some(postfix) = Self::postfix(peek.ty()) {
+                let postfix = Self::postfix(peek.ty());
+                if let Some(postfix) = postfix {
                     token = self.next()?;
                     left = postfix(self, token, left)?;
                 }
@@ -434,7 +438,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             while precedence < self.current_precedence() {
                 token = self.next()?;
 
-                if let Some(infix) = Self::infix(token.ty()) {
+                let infix = Self::infix(token.ty());
+                if let Some(infix) = infix {
                     left = infix(self, token, left)?;
                 } else {
                     break;
@@ -459,7 +464,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             TokenType::Ident => |parser, token| {
                 let _frame = parser.add_stack_frame()?;
 
-                let ident = parser.intern_string(token.source());
+                let ident = parser.string_interner.intern(token.source());
                 let expr = parser.expr_arena.alloc(Expression::Variable(ident));
 
                 Ok(expr)

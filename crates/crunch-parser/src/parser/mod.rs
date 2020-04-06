@@ -2,14 +2,15 @@ use crate::{
     error::{Error, ErrorHandler, Locatable, Location, ParseResult, SyntaxError},
     files::FileId,
     token::{Token, TokenStream, TokenType},
-    Cord, Interner,
+    Interner,
 };
 
-use alloc::{format, rc::Rc, vec::Vec};
-use core::{convert::TryFrom, fmt, mem, num::NonZeroUsize, ops};
 #[cfg(feature = "logging")]
 use log::{info, trace};
 use stadium::Stadium;
+
+use alloc::{format, rc::Rc, vec::Vec};
+use core::{convert::TryFrom, fmt, mem, num::NonZeroUsize, ops};
 
 mod ast;
 mod expr;
@@ -238,17 +239,6 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                     .unwrap_or(0)
             })
             .unwrap_or(0)
-    }
-
-    #[inline(always)]
-    fn intern_string(&self, string: &str) -> Cord {
-        self.string_interner.intern(string)
-    }
-
-    #[inline(always)]
-    fn eat_ident(&mut self) -> ParseResult<Cord> {
-        let token = self.eat(TokenType::Ident)?;
-        Ok(self.intern_string(token.source()))
     }
 
     fn add_stack_frame(&self) -> ParseResult<StackGuard> {

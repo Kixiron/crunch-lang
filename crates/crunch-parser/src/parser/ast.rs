@@ -1,9 +1,12 @@
-use super::{Cord, Expr, Interner, Literal, Parser, Stmt};
 use crate::{
     error::{Error, Locatable, Location, ParseResult, SyntaxError},
     files::FileId,
+    interner::Interner,
+    parser::{Expr, Literal, Parser, Stmt},
     token::{Token, TokenType},
 };
+
+use lasso::SmallSpur;
 
 use alloc::{boxed::Box, format, string::ToString, vec::Vec};
 use core::{convert::TryFrom, mem};
@@ -13,9 +16,9 @@ pub enum Ast<'expr, 'stmt> {
     Function {
         decorators: Vec<Decorator<'expr>>,
         attributes: Vec<Attribute>,
-        name: Cord,
-        generics: Vec<Cord>,
-        args: Vec<(Cord, Type)>,
+        name: SmallSpur,
+        generics: Vec<SmallSpur>,
+        args: Vec<(SmallSpur, Type)>,
         returns: Type,
         body: Vec<Stmt<'expr, 'stmt>>,
     },
@@ -23,8 +26,8 @@ pub enum Ast<'expr, 'stmt> {
     Type {
         decorators: Vec<Decorator<'expr>>,
         attributes: Vec<Attribute>,
-        name: Cord,
-        generics: Vec<Cord>,
+        name: SmallSpur,
+        generics: Vec<SmallSpur>,
         members: Vec<TypeMember<'expr>>,
         methods: Vec<Ast<'expr, 'stmt>>,
     },
@@ -32,21 +35,21 @@ pub enum Ast<'expr, 'stmt> {
     Enum {
         decorators: Vec<Decorator<'expr>>,
         attributes: Vec<Attribute>,
-        name: Cord,
-        generics: Vec<Cord>,
+        name: SmallSpur,
+        generics: Vec<SmallSpur>,
         variants: Vec<EnumVariant<'expr>>,
     },
 
     Trait {
         decorators: Vec<Decorator<'expr>>,
         attributes: Vec<Attribute>,
-        name: Cord,
-        generics: Vec<Cord>,
+        name: SmallSpur,
+        generics: Vec<SmallSpur>,
         methods: Vec<Ast<'expr, 'stmt>>,
     },
 
     Import {
-        file: Cord,
+        file: SmallSpur,
         dest: ImportDest,
         exposes: ImportExposure,
     },
@@ -55,28 +58,29 @@ pub enum Ast<'expr, 'stmt> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Builtin(BuiltinType),
-    Custom(Cord),
+    Custom(SmallSpur),
     Infer,
 }
 
-impl<'a> TryFrom<(Token<'a>, FileId, &Interner)> for Type {
-    type Error = Locatable<Error>;
-
-    fn try_from(
-        (token, file, interner): (Token<'a>, FileId, &Interner),
-    ) -> Result<Self, Self::Error> {
+impl<'a> Type {
+    pub(crate) fn try_new<'intern>(
+        (token, file, interner): (Token<'a>, FileId, &'intern mut Interner),
+    ) -> Result<(Self, &'intern mut Interner), (Locatable<Error>, &'intern mut Interner)> {
         if token.ty() == TokenType::Ident {
-            if let Ok(ty) = BuiltinType::try_from((token, file, interner)) {
-                Ok(Self::Builtin(ty))
-            } else {
-                Ok(Self::Custom(interner.intern(token.source())))
+            let ty = BuiltinType::try_new((token, file, interner));
+            match ty {
+                Ok((ty, interner)) => Ok((Self::Builtin(ty), interner)),
+                Err((_, interner)) => Ok((Self::Custom(interner.intern(token.source())), interner)),
             }
         } else {
-            Err(Locatable::new(
-                Error::Syntax(SyntaxError::Generic(
-                    "Expected an ident as a type name".to_string(),
-                )),
-                Location::new(&token, file),
+            Err((
+                Locatable::new(
+                    Error::Syntax(SyntaxError::Generic(
+                        "Expected an ident as a type name".to_string(),
+                    )),
+                    Location::new(&token, file),
+                ),
+                interner,
             ))
         }
     }
@@ -98,45 +102,45 @@ pub enum BuiltinType {
     Vec(Box<Type>),
 }
 
-impl<'a> TryFrom<(Token<'a>, FileId, &Interner)> for BuiltinType {
-    type Error = Locatable<Error>;
-
-    fn try_from(
-        (mut token, file, interner): (Token<'a>, FileId, &Interner),
-    ) -> Result<Self, Self::Error> {
-        Ok(match token.source() {
-            "str" => Self::String,
-            "int" => Self::Integer,
-            "float" => Self::Float,
-            "bool" => Self::Boolean,
-            "unit" => Self::Unit,
+impl<'a> BuiltinType {
+    pub(crate) fn try_new<'intern>(
+        (mut token, file, interner): (Token<'a>, FileId, &'intern mut Interner),
+    ) -> Result<(Self, &'intern mut Interner), (Locatable<Error>, &'intern mut Interner)> {
+        match token.source() {
+            "str" => Ok((Self::String, interner)),
+            "int" => Ok((Self::Integer, interner)),
+            "float" => Ok((Self::Float, interner)),
+            "bool" => Ok((Self::Boolean, interner)),
+            "unit" => Ok((Self::Unit, interner)),
             ty if ty.starts_with('[') && ty.ends_with(']') => {
                 token.source = &token.source()[1..ty.len() - 1];
 
                 if token.source() == "" {
-                    Self::Vec(Box::new(Type::Infer))
+                    Ok((Self::Vec(Box::new(Type::Infer)), interner))
                 } else {
-                    Self::Vec(Box::new(Type::try_from((token, file, interner))?))
+                    let (ty, interner) = Type::try_new((token, file, interner))?;
+                    Ok((Self::Vec(Box::new(ty)), interner))
                 }
             }
 
-            _ => {
-                return Err(Locatable::new(
+            _ => Err((
+                Locatable::new(
                     Error::Syntax(SyntaxError::Generic(
                         "Expected an ident as a type name".to_string(),
                     )),
                     Location::new(&token, file),
-                ));
-            }
-        })
+                ),
+                interner,
+            )),
+        }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ImportExposure {
-    None(Cord),
+    None(SmallSpur),
     All,
-    Members(Vec<(Cord, Option<Cord>)>),
+    Members(Vec<(SmallSpur, Option<SmallSpur>)>),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -155,11 +159,11 @@ impl Default for ImportDest {
 #[derive(Debug, Clone, PartialEq)]
 pub enum EnumVariant<'expr> {
     Unit {
-        name: Cord,
+        name: SmallSpur,
         decorators: Vec<Decorator<'expr>>,
     },
     Tuple {
-        name: Cord,
+        name: SmallSpur,
         elements: Vec<Type>,
         decorators: Vec<Decorator<'expr>>,
     },
@@ -169,13 +173,13 @@ pub enum EnumVariant<'expr> {
 pub struct TypeMember<'expr> {
     pub decorators: Vec<Decorator<'expr>>,
     pub attributes: Vec<Attribute>,
-    pub name: Cord,
+    pub name: SmallSpur,
     pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Decorator<'expr> {
-    pub name: Cord,
+    pub name: SmallSpur,
     pub args: Vec<Expr<'expr>>,
 }
 
@@ -246,7 +250,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     ) -> ParseResult<Option<Ast<'expr, 'stmt>>> {
         let _frame = self.add_stack_frame()?;
 
-        match self.peek()?.ty() {
+        let peek = self.peek()?;
+        match peek.ty() {
             TokenType::AtSign => {
                 self.decorator(decorators)?;
 
@@ -316,8 +321,9 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         self.eat(TokenType::Import)?;
 
         let file = self.eat(TokenType::String)?;
-        let file = match Literal::try_from((&file, self.current_file))? {
-            Literal::String(string) => self.intern_string(&string),
+        let literal = Literal::try_from((&file, self.current_file))?;
+        let file = match literal {
+            Literal::String(string) => self.string_interner.intern(&string),
 
             lit => {
                 let err = if let Literal::ByteVec(_) = lit {
@@ -352,11 +358,18 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             } else {
                 let mut members = Vec::with_capacity(5);
                 while self.peek()?.ty() != TokenType::Newline {
-                    let member = self.eat_ident()?;
+                    let member = {
+                        let ident = self.eat(TokenType::Ident)?;
+                        self.string_interner.intern(ident.source())
+                    };
                     let alias = if self.peek()?.ty() == TokenType::As {
                         self.eat(TokenType::As)?;
+                        let alias = {
+                            let ident = self.eat(TokenType::Ident)?;
+                            self.string_interner.intern(ident.source())
+                        };
 
-                        Some(self.eat_ident()?)
+                        Some(alias)
                     } else {
                         None
                     };
@@ -377,7 +390,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             let alias = if self.peek()?.ty() == TokenType::As {
                 self.eat(TokenType::As)?;
 
-                self.eat_ident()?
+                let ident = self.eat(TokenType::Ident)?;
+                self.string_interner.intern(ident.source())
             } else {
                 // Get the last segment of the path as the alias if none is supplied
                 let last_segment = self
@@ -391,7 +405,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                     ))?
                     .to_string();
 
-                self.intern_string(&last_segment)
+                self.string_interner.intern(&last_segment)
             };
 
             ImportExposure::None(alias)
@@ -421,7 +435,10 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         }
 
         self.eat(TokenType::Trait)?;
-        let name = self.eat_ident()?;
+        let name = {
+            let ident = self.eat(TokenType::Ident)?;
+            self.string_interner.intern(ident.source())
+        };
         let generics = self.generics()?;
         self.eat(TokenType::Newline)?;
 
@@ -495,7 +512,10 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         }
 
         self.eat(TokenType::Enum)?;
-        let name = self.eat_ident()?;
+        let name = {
+            let ident = self.eat(TokenType::Ident)?;
+            self.string_interner.intern(ident.source())
+        };
         let generics = self.generics()?;
         self.eat(TokenType::Newline)?;
 
@@ -508,7 +528,10 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 }
 
                 TokenType::Ident => {
-                    let name = self.eat_ident()?;
+                    let name = {
+                        let ident = self.eat(TokenType::Ident)?;
+                        self.string_interner.intern(ident.source())
+                    };
 
                     if self.peek()?.ty() == TokenType::LeftParen {
                         self.eat(TokenType::LeftParen)?;
@@ -573,7 +596,10 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         let _frame = self.add_stack_frame()?;
 
         self.eat(TokenType::AtSign)?;
-        let name = self.eat_ident()?;
+        let name = {
+            let ident = self.eat(TokenType::Ident)?;
+            self.string_interner.intern(ident.source())
+        };
 
         let args = if self.peek()?.ty() == TokenType::LeftParen {
             self.eat(TokenType::LeftParen)?;
@@ -620,7 +646,10 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         }
 
         self.eat(TokenType::Type)?;
-        let name = self.eat_ident()?;
+        let name = {
+            let ident = self.eat(TokenType::Ident)?;
+            self.string_interner.intern(ident.source())
+        };
         let generics = self.generics()?;
         self.eat(TokenType::Newline)?;
 
@@ -650,7 +679,10 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 }
 
                 TokenType::Ident => {
-                    let name = self.eat_ident()?;
+                    let name = {
+                        let ident = self.eat(TokenType::Ident)?;
+                        self.string_interner.intern(ident.source())
+                    };
 
                     let ty = if self.peek()?.ty() == TokenType::Colon {
                         self.eat(TokenType::Colon)?;
@@ -722,7 +754,10 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         }
 
         self.eat(TokenType::Function)?;
-        let name = self.eat_ident()?;
+        let name = {
+            let ident = self.eat(TokenType::Ident)?;
+            self.string_interner.intern(ident.source())
+        };
         let generics = self.generics()?;
         let args = self.function_args()?;
 
@@ -754,13 +789,16 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         })
     }
 
-    fn function_args(&mut self) -> ParseResult<Vec<(Cord, Type)>> {
+    fn function_args(&mut self) -> ParseResult<Vec<(SmallSpur, Type)>> {
         let _frame = self.add_stack_frame()?;
         self.eat(TokenType::LeftParen)?;
 
         let mut args = Vec::with_capacity(7);
         while self.peek()?.ty() != TokenType::RightParen {
-            let ident = self.eat_ident()?;
+            let ident = {
+                let ident = self.eat(TokenType::Ident)?;
+                self.string_interner.intern(ident.source())
+            };
 
             let ty = if self.peek()?.ty() == TokenType::Colon {
                 self.eat(TokenType::Colon)?;
@@ -785,16 +823,20 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
     fn eat_type(&mut self) -> ParseResult<Type> {
         let _frame = self.add_stack_frame()?;
-        let ty = Type::try_from((
+
+        let ty = match Type::try_new((
             self.eat(TokenType::Ident)?,
             self.current_file,
-            &self.string_interner,
-        ))?;
+            &mut self.string_interner,
+        )) {
+            Ok((ty, _)) => ty,
+            Err((err, _)) => return Err(err),
+        };
 
         Ok(ty)
     }
 
-    fn generics(&mut self) -> ParseResult<Vec<Cord>> {
+    fn generics(&mut self) -> ParseResult<Vec<SmallSpur>> {
         let _frame = self.add_stack_frame()?;
 
         if self.peek()?.ty() == TokenType::LeftCaret {
@@ -802,7 +844,11 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
             let mut generics = Vec::with_capacity(5);
             while self.peek()?.ty() != TokenType::RightCaret {
-                generics.push(self.eat_ident()?);
+                let generic = {
+                    let ident = self.eat(TokenType::Ident)?;
+                    self.string_interner.intern(ident.source())
+                };
+                generics.push(generic);
 
                 if self.peek()?.ty() == TokenType::Comma {
                     self.eat(TokenType::Comma)?;

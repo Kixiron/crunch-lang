@@ -1,7 +1,9 @@
 use crate::{parser::*, Interner};
 
-use lasso::Cord;
+use lasso::SmallSpur;
 
+#[cfg(feature = "no-std")]
+use alloc::{format, vec::Vec};
 use core::fmt::{Result, Write};
 
 pub struct PrettyPrinter {
@@ -75,7 +77,7 @@ impl<'expr, 'stmt> PrettyPrinter {
     fn print_import(
         &mut self,
         f: &mut dyn Write,
-        file: &Cord,
+        file: &SmallSpur,
         dest: &ImportDest,
         exposes: &ImportExposure,
     ) -> Result {
@@ -118,8 +120,8 @@ impl<'expr, 'stmt> PrettyPrinter {
         f: &mut dyn Write,
         decorators: &Vec<Decorator<'expr>>,
         attributes: &Vec<Attribute>,
-        name: &Cord,
-        generics: &Vec<Cord>,
+        name: &SmallSpur,
+        generics: &Vec<SmallSpur>,
         methods: &Vec<Ast<'expr, 'stmt>>,
     ) -> Result {
         for dec in decorators {
@@ -176,8 +178,8 @@ impl<'expr, 'stmt> PrettyPrinter {
         f: &mut dyn Write,
         decorators: &Vec<Decorator<'expr>>,
         attributes: &Vec<Attribute>,
-        name: &Cord,
-        generics: &Vec<Cord>,
+        name: &SmallSpur,
+        generics: &Vec<SmallSpur>,
         variants: &Vec<EnumVariant<'expr>>,
     ) -> Result {
         for dec in decorators {
@@ -249,8 +251,8 @@ impl<'expr, 'stmt> PrettyPrinter {
         f: &mut dyn Write,
         decorators: &Vec<Decorator<'expr>>,
         attributes: &Vec<Attribute>,
-        name: &Cord,
-        generics: &Vec<Cord>,
+        name: &SmallSpur,
+        generics: &Vec<SmallSpur>,
         members: &Vec<TypeMember<'expr>>,
         methods: &Vec<Ast<'expr, 'stmt>>,
     ) -> Result {
@@ -330,9 +332,9 @@ impl<'expr, 'stmt> PrettyPrinter {
         f: &mut dyn Write,
         decorators: &Vec<Decorator<'expr>>,
         attributes: &Vec<Attribute>,
-        name: &Cord,
-        generics: &Vec<Cord>,
-        args: &Vec<(Cord, Type)>,
+        name: &SmallSpur,
+        generics: &Vec<SmallSpur>,
+        args: &Vec<(SmallSpur, Type)>,
         returns: &Type,
         body: &Vec<Stmt<'expr, 'stmt>>,
     ) -> Result {

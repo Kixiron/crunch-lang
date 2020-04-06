@@ -63,7 +63,7 @@ fn unicode_slicin() {
 #[test]
 fn gobbledegook() {
     let src =
-        unsafe { std::str::from_utf8_unchecked(include_bytes!("../crashes/gobbledegook.fuzz")) };
+        unsafe { core::str::from_utf8_unchecked(include_bytes!("../crashes/gobbledegook.fuzz")) };
     let _ = run(src);
 }
 

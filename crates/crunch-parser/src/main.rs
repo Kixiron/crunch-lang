@@ -11,7 +11,7 @@ fn main() {
     let mut files = Files::new();
     let id = files.add("<test file>", &buf).unwrap();
 
-    match crunch_parser::Parser::new(&buf, id, interner.clone()).parse() {
+    match crunch_parser::Parser::new(&buf, id, interner).parse() {
         Ok((ast, warn)) => {
             warn.emit(&files);
             // let mut pp = PrettyPrinter::new(interner.clone());

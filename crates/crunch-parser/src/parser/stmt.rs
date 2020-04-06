@@ -1,8 +1,14 @@
-use super::Expr;
-use super::*;
+use crate::{
+    error::{Error, Locatable, Location, ParseResult, SyntaxError},
+    parser::{Expr, Expression, Literal, Parser},
+    token::TokenType,
+};
 
-use alloc::vec::Vec;
+use lasso::SmallSpur;
 use stadium::Ticket;
+
+#[cfg(feature = "no-std")]
+use alloc::{format, vec::Vec};
 
 // TODO: Use arenas over Boxes
 
@@ -16,7 +22,7 @@ pub enum Statement<'expr, 'stmt> {
         arm: Option<Stmt<'stmt, 'expr>>,
     },
     Expression(Expr<'expr>),
-    VarDeclaration(Cord, Expr<'expr>),
+    VarDeclaration(SmallSpur, Expr<'expr>),
     Return(Option<Expr<'expr>>),
     Break(Option<Expr<'expr>>),
     Continue,
@@ -37,7 +43,7 @@ pub enum Statement<'expr, 'stmt> {
     },
     Match {
         var: Expr<'expr>,
-        arms: Vec<(Cord, Option<Expr<'expr>>, Vec<Stmt<'stmt, 'expr>>)>,
+        arms: Vec<(SmallSpur, Option<Expr<'expr>>, Vec<Stmt<'stmt, 'expr>>)>,
     },
     Empty,
 }
@@ -62,7 +68,11 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
             TokenType::Let => {
                 self.eat(TokenType::Let)?;
-                let var = self.eat_ident()?;
+
+                let var = {
+                    let ident = self.eat(TokenType::Ident)?;
+                    self.string_interner.intern(ident.source())
+                };
                 self.eat(TokenType::Equal)?;
                 let expr = self.expr()?;
                 self.eat(TokenType::Newline)?;
@@ -185,10 +195,14 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
         let mut statements = Vec::with_capacity(capacity);
 
-        while !breaks.contains(&self.peek()?.ty()) {
-            if let Some(stmt) = self.stmt()? {
+        let mut peek = self.peek()?.ty();
+        while !breaks.contains(&peek) {
+            let stmt = self.stmt()?;
+            if let Some(stmt) = stmt {
                 statements.push(stmt);
             }
+
+            peek = self.peek()?.ty();
         }
         statements.shrink_to_fit();
 
@@ -251,7 +265,10 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
         let mut arms = Vec::with_capacity(3);
         while self.peek()?.ty() != TokenType::End {
-            let capture = self.eat_ident()?;
+            let capture = {
+                let ident = self.eat(TokenType::Ident)?;
+                self.string_interner.intern(ident.source())
+            };
 
             let guard = if self.peek()?.ty() == TokenType::Where {
                 self.eat(TokenType::Where)?;

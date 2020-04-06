@@ -1,13 +1,17 @@
 use super::*;
 use crate::{files::FileId, pretty_printer::PrettyPrinter};
 
-use lasso::{Cord, Key};
+use lasso::{Key, SmallSpur};
+
+#[cfg(feature = "no-std")]
+use alloc::{boxed::Box, string::String};
 
 fn format_expr(source: &str) -> String {
     let interner = Interner::default();
-    let mut parser = Parser::new(source, FileId::new(0), interner.clone());
+    let mut parser = Parser::new(source, FileId::new(0), interner);
     let expr = parser.expr().unwrap();
 
+    let interner = core::mem::take(&mut parser.string_interner);
     let mut string = String::new();
     PrettyPrinter::new(interner)
         .print_expr(&mut string, &expr)
@@ -24,9 +28,10 @@ macro_rules! expr_eq {
 
 fn format_stmt(source: &str) -> String {
     let interner = Interner::default();
-    let mut parser = Parser::new(source, FileId::new(0), interner.clone());
+    let mut parser = Parser::new(source, FileId::new(0), interner);
     let stmt = parser.stmt().unwrap().unwrap();
 
+    let interner = core::mem::take(&mut parser.string_interner);
     let mut string = String::new();
     PrettyPrinter::new(interner)
         .print_stmt(&mut string, &stmt)
@@ -43,9 +48,10 @@ macro_rules! stmt_eq {
 
 fn format_ast(source: &str) -> String {
     let interner = Interner::default();
-    let mut parser = Parser::new(source, FileId::new(0), interner.clone());
+    let mut parser = Parser::new(source, FileId::new(0), interner);
     let stmt = parser.ast().unwrap().unwrap();
 
+    let interner = core::mem::take(&mut parser.string_interner);
     let mut string = String::new();
     PrettyPrinter::new(interner)
         .print_ast(&mut string, &stmt)
@@ -343,7 +349,7 @@ fn functions_ast() {
 
 #[test]
 fn types_ast() {
-    let interner = Interner::default();
+    let mut interner = Interner::default();
 
     let builtins = [
         (
@@ -371,8 +377,10 @@ fn types_ast() {
     // TODO: Use straight compares when Diagnostic is Debug
     for (token, ty) in builtins.iter() {
         assert_eq!(
-            Type::try_from((*token, FileId::new(0), &interner)),
-            Ok(ty.clone()),
+            Type::try_new((*token, FileId::new(0), &mut interner))
+                .ok()
+                .map(|(ty, _)| ty),
+            Some(ty.clone()),
         );
     }
 
@@ -390,8 +398,10 @@ fn types_ast() {
         interner.intern(token.source());
 
         assert_eq!(
-            Type::try_from((*token, FileId::new(0), &interner)),
-            Ok(Type::Custom(Cord::try_from_usize(idx).unwrap())),
+            Type::try_new((*token, FileId::new(0), &mut interner))
+                .ok()
+                .map(|(ty, _)| ty),
+            Some(Type::Custom(SmallSpur::try_from_usize(idx).unwrap())),
         );
     }
 }

@@ -1,4 +1,4 @@
-use super::Cord;
+use lasso::SmallSpur;
 
 use cfg_if::cfg_if;
 
@@ -7,12 +7,18 @@ cfg_if! {
         use dashmap::DashMap;
         use alloc::sync::Arc;
 
-        type Table = Arc<DashMap<Cord, ()>>;
+        type Table = Arc<DashMap<SmallSpur, ()>>;
     } else {
-        use hashbrown::HashMap;
+        cfg_if! {
+            if #[cfg(feature = "no-std")] {
+                use hashbrown::HashMap;
+            } else {
+                use std::collections::HashMap;
+            }
+        }
         use alloc::rc::Rc;
 
-        type Table = Rc<HashMap<Sym, ()>>;
+        type Table = Rc<HashMap<SmallSpur, ()>>;
     }
 }
 
