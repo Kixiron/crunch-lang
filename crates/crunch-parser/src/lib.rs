@@ -1,5 +1,4 @@
 #![cfg_attr(feature = "no-std", no_std)]
-#![feature(track_caller)]
 
 extern crate alloc;
 

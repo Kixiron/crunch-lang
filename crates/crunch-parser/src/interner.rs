@@ -42,7 +42,6 @@ impl Interner {
         self.interner.resolve(sym).to_string()
     }
 
-    #[track_caller]
     pub fn intern(&mut self, string: &str) -> SmallSpur {
         self.interner.get_or_intern(string)
     }
