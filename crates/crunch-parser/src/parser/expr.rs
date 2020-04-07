@@ -587,8 +587,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             TokenType::LeftBrace => Self::index_array,
 
             // Assignments
-            TokenType::Equal
-            | TokenType::AddAssign
+            TokenType::AddAssign
             | TokenType::SubAssign
             | TokenType::MultAssign
             | TokenType::DivAssign
@@ -602,6 +601,19 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 let _frame = parser.add_stack_frame()?;
 
                 let assign = AssignmentType::try_from((&assign, parser.current_file))?;
+                let right = parser.expr()?;
+                let expr = parser
+                    .expr_arena
+                    .alloc(Expression::Assignment(left, assign, right));
+
+                Ok(expr)
+            },
+
+            TokenType::Colon => |parser, _colon, left| {
+                let _frame = parser.add_stack_frame()?;
+
+                let equal = parser.eat(TokenType::Equal)?;
+                let assign = AssignmentType::try_from((&equal, parser.current_file))?;
                 let right = parser.expr()?;
                 let expr = parser
                     .expr_arena

@@ -86,10 +86,6 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         }
     }
 
-    // TODO: Decide when an error has occurred, and allow returning of warnings
-    // TODO: Should this consume? Is there a viable reason to re-parse?
-    // TODO: Maybe consuming is alright, the token stream itself is consumed, so nothing really usable is
-    //       left in the parser after this function is run on it
     pub fn parse(mut self) -> Result<(SyntaxTree<'expr, 'stmt>, ErrorHandler), ErrorHandler> {
         #[cfg(feature = "logging")]
         info!("Started parsing");

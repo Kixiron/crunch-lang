@@ -528,7 +528,7 @@ impl<'expr, 'stmt> PrettyPrinter {
             Expression::Assignment(left, ty, right) => {
                 self.print_expr(f, left)?;
                 match ty {
-                    AssignmentType::Normal => write!(f, " = "),
+                    AssignmentType::Normal => write!(f, " := "),
                     AssignmentType::BinaryOp(op) => write!(
                         f,
                         " {}= ",

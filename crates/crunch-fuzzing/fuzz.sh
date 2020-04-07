@@ -1,0 +1,1 @@
+RUSTFLAGS="-Clink-arg=-fuse-ld=gold" HFUZZ_RUN_ARGS="--linux_perf_instr --timeout 1 --threads 15 --max_file_size 2048 --linux_perf_branch --input /data/corpus --output /data/corpus --crashdir /data/crashes" cargo hfuzz run parse

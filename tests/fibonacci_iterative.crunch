@@ -15,8 +15,8 @@ fn fibonacci(n: int) -> int
 
         for i in 0..n
             let c = b
-            a = c
-            b = a + c
+            a := c
+            b := a + c
         end
 
         return a

@@ -1,7 +1,7 @@
 fn use_a_match()
     let i = 10
 
-    i = 5
+    i := 5
 
     if 1 == 10
         empty

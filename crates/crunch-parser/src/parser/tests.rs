@@ -118,7 +118,7 @@ fn dotted_func_call_expr() {
 
 #[test]
 fn assignment_expr() {
-    expr_eq!("i = 100");
+    expr_eq!("i := 100");
     expr_eq!("i += 100");
     expr_eq!("i -= 100");
     expr_eq!("i *= 100");

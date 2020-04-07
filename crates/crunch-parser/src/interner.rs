@@ -11,8 +11,6 @@ cfg_if! {
 
 pub use lasso::SmallSpur;
 
-use alloc::string::{String, ToString};
-
 #[derive(Debug, Clone)]
 pub struct Interner {
     #[cfg(feature = "concurrent")]
@@ -38,8 +36,8 @@ impl Interner {
         }
     }
 
-    pub fn resolve<'a>(&'a self, sym: &SmallSpur) -> String {
-        self.interner.resolve(sym).to_string()
+    pub fn resolve<'a>(&'a self, sym: &SmallSpur) -> &'a str {
+        self.interner.resolve(sym)
     }
 
     pub fn intern(&mut self, string: &str) -> SmallSpur {
