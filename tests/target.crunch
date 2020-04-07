@@ -32,7 +32,7 @@ end
 fn main()
     let name: str = "Syven"
     let age: nullable<int> = null
-    age = 22
+    age := 22
 
     hello(name, age)
 
