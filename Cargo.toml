@@ -9,7 +9,7 @@ repository = "https://github.com/Kixiron/crunch-lang"
 readme = "README.md"
 keywords = ["crunch", "language"]
 categories = ["language"]
-license = "MIT OR Apache-2.0"
+license = "Zlib"
 edition = "2018"
 build = "build.rs"
 default-run = "crunch"
@@ -96,4 +96,5 @@ debug = true
 is-it-maintained-issue-resolution = { repository = "https://github.com/Kixiron/crunch-lang" }
 is-it-maintained-open-issues = { repository = "https://github.com/Kixiron/crunch-lang" }
 maintenance = { status = "experimental" }
-coverage = { repository = "https://github.com/Kixiron/crunch-lang", branch = "master", service = "github" }
+coveralls = { repository = "https://github.com/Kixiron/crunch-lang", branch = "master", service = "github" }
+# TOOD: Set up codecov

@@ -486,11 +486,12 @@ impl<'expr, 'stmt> PrettyPrinter {
             }
 
             Expression::Literal(lit) => match lit {
-                Literal::I32(i) => write!(f, "{}", i),
+                Literal::Integer(i) => write!(f, "{}", i),
                 Literal::Bool(b) => write!(f, "{}", b),
                 Literal::String(s) => write!(f, "\"{}\"", s),
+                Literal::Rune(r) => write!(f, "'{}'", r),
                 Literal::ByteVec(v) => write!(f, "{:?}", v),
-                Literal::F32(fl) => write!(f, "{}", fl),
+                Literal::Float(fl) => write!(f, "{}", fl),
             },
 
             Expression::Comparison(left, comp, right) => {
@@ -562,10 +563,19 @@ impl<'expr, 'stmt> PrettyPrinter {
         match ty {
             Type::Infer => write!(f, "infer"),
             Type::Builtin(b) => match b {
-                BuiltinType::Integer => write!(f, "int"),
-                BuiltinType::Float => write!(f, "float"),
+                BuiltinType::Integer { sign, width } => write!(
+                    f,
+                    "{}{}",
+                    match sign {
+                        Signedness::Signed => "i",
+                        Signedness::Unsigned => "u",
+                    },
+                    width
+                ),
+                BuiltinType::Float { width } => write!(f, "f{}", width),
                 BuiltinType::Boolean => write!(f, "bool"),
                 BuiltinType::String => write!(f, "str"),
+                BuiltinType::Rune => write!(f, "rune"),
                 BuiltinType::Unit => write!(f, "unit"),
                 BuiltinType::Vec(ty) => {
                     write!(f, "[")?;

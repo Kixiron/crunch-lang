@@ -3,7 +3,7 @@ import 'std.io' exposing Write, Read as StdRead
 import pkg 'rand'
 
 fn main()
-    let divisor = Divisior.new(2)
+    let divisor := Divisior.new(2)
 
     for i in 0..100
         if divisor.divides(i)
@@ -69,7 +69,7 @@ exposed type Divisior
     divider: int
 
     fn new(self, divider: int) -> Divisior
-        self.divider = divider
+        self.divider := divider
     end
     
     @inline

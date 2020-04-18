@@ -1,5 +1,5 @@
 use super::*;
-use crate::{files::FileId, pretty_printer::PrettyPrinter};
+use crate::{files::FileId, parser::ast::Signedness, pretty_printer::PrettyPrinter};
 
 use lasso::{Key, SmallSpur};
 
@@ -8,7 +8,7 @@ use alloc::{boxed::Box, string::String};
 
 fn format_expr(source: &str) -> String {
     let interner = Interner::default();
-    let mut parser = Parser::new(source, FileId::new(0), interner);
+    let mut parser = Parser::new(source, FileId::new(0), interner, SymbolTable::new());
     let expr = parser.expr().unwrap();
 
     let interner = core::mem::take(&mut parser.string_interner);
@@ -28,7 +28,7 @@ macro_rules! expr_eq {
 
 fn format_stmt(source: &str) -> String {
     let interner = Interner::default();
-    let mut parser = Parser::new(source, FileId::new(0), interner);
+    let mut parser = Parser::new(source, FileId::new(0), interner, SymbolTable::new());
     let stmt = parser.stmt().unwrap().unwrap();
 
     let interner = core::mem::take(&mut parser.string_interner);
@@ -48,7 +48,7 @@ macro_rules! stmt_eq {
 
 fn format_ast(source: &str) -> String {
     let interner = Interner::default();
-    let mut parser = Parser::new(source, FileId::new(0), interner);
+    let mut parser = Parser::new(source, FileId::new(0), interner, SymbolTable::new());
     let stmt = parser.ast().unwrap().unwrap();
 
     let interner = core::mem::take(&mut parser.string_interner);
@@ -353,12 +353,40 @@ fn types_ast() {
 
     let builtins = [
         (
-            Token::new(TokenType::Ident, "int", 0..2),
-            Type::Builtin(BuiltinType::Integer),
+            Token::new(TokenType::Ident, "i128", 0..2),
+            Type::Builtin(BuiltinType::Integer {
+                sign: Signedness::Signed,
+                width: 128,
+            }),
         ),
         (
-            Token::new(TokenType::Ident, "float", 0..4),
-            Type::Builtin(BuiltinType::Float),
+            Token::new(TokenType::Ident, "u128", 0..2),
+            Type::Builtin(BuiltinType::Integer {
+                sign: Signedness::Unsigned,
+                width: 128,
+            }),
+        ),
+        (
+            Token::new(TokenType::Ident, "u1", 0..2),
+            Type::Builtin(BuiltinType::Integer {
+                sign: Signedness::Unsigned,
+                width: 1,
+            }),
+        ),
+        (
+            Token::new(TokenType::Ident, "i7453", 0..2),
+            Type::Builtin(BuiltinType::Integer {
+                sign: Signedness::Signed,
+                width: 7453,
+            }),
+        ),
+        (
+            Token::new(TokenType::Ident, "f32", 0..4),
+            Type::Builtin(BuiltinType::Float { width: 32 }),
+        ),
+        (
+            Token::new(TokenType::Ident, "f1", 0..4),
+            Type::Builtin(BuiltinType::Float { width: 1 }),
         ),
         (
             Token::new(TokenType::Ident, "bool", 0..3),

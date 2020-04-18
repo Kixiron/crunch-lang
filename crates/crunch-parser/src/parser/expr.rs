@@ -8,12 +8,12 @@ use crate::{
 use lasso::SmallSpur;
 use stadium::Ticket;
 
-use alloc::{format, string::String, vec::Vec};
-use core::convert::TryFrom;
+use alloc::{format, rc::Rc, string::String, vec::Vec};
+use core::{convert::TryFrom, fmt, iter::FromIterator, ops::Deref};
 
 pub type Expr<'expr> = Ticket<'expr, Expression<'expr>>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum Expression<'expr> {
     Variable(SmallSpur),
     UnaryExpr(UnaryOperand, Expr<'expr>),
@@ -41,6 +41,83 @@ pub enum Expression<'expr> {
     Array(Vec<Expr<'expr>>),
     Assignment(Expr<'expr>, AssignmentType, Expr<'expr>),
     Range(Expr<'expr>, Expr<'expr>),
+}
+
+#[cfg(not(feature = "no-std"))]
+impl<'expr> fmt::Debug for Expression<'expr> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        thread_local! {
+            static STACK_GUARD: Rc<()> = Rc::new(());
+        }
+
+        STACK_GUARD.with(|guard| {
+            let guard = guard.clone();
+
+            if dbg!(Rc::strong_count(&guard)) > 100 {
+                return f.debug_struct("...More statements").finish();
+            }
+
+            match self {
+                Self::Variable(var) => f.debug_tuple("Variable").field(var).finish(),
+                Self::UnaryExpr(op, expr) => f
+                    .debug_tuple("UnaryExpr")
+                    .field(op)
+                    .field(expr.deref())
+                    .finish(),
+                Self::BinaryOp(lhs, op, rhs) => f
+                    .debug_tuple("BinaryOp")
+                    .field(lhs.deref())
+                    .field(op)
+                    .field(rhs.deref())
+                    .finish(),
+                Self::InlineConditional {
+                    true_arm,
+                    condition,
+                    false_arm,
+                } => f
+                    .debug_struct("BinaryOp")
+                    .field("true_arm", true_arm.deref())
+                    .field("condition", condition.deref())
+                    .field("false_arm", false_arm.deref())
+                    .finish(),
+                Self::Parenthesised(expr) => f.debug_tuple("Parenthesized").field(expr).finish(),
+                Self::FunctionCall { caller, arguments } => f
+                    .debug_struct("FunctionCall")
+                    .field("caller", caller.deref())
+                    .field("arguments", arguments)
+                    .finish(),
+                Self::MemberFunctionCall { member, function } => f
+                    .debug_struct("MemberFunctionCall")
+                    .field("member", member.deref())
+                    .field("function", function.deref())
+                    .finish(),
+                Self::Literal(lit) => f.debug_tuple("Literal").field(lit).finish(),
+                Self::Comparison(lhs, op, rhs) => f
+                    .debug_tuple("Comparison")
+                    .field(lhs.deref())
+                    .field(op)
+                    .field(rhs.deref())
+                    .finish(),
+                Self::IndexArray { array, index } => f
+                    .debug_struct("IndexArray")
+                    .field("array", array.deref())
+                    .field("index", index.deref())
+                    .finish(),
+                Self::Array(arr) => f.debug_tuple("Array").field(arr).finish(),
+                Self::Assignment(lhs, assign, rhs) => f
+                    .debug_tuple("Assignment")
+                    .field(lhs.deref())
+                    .field(assign)
+                    .field(rhs.deref())
+                    .finish(),
+                Self::Range(start, finish) => f
+                    .debug_tuple("Range")
+                    .field(start.deref())
+                    .field(finish.deref())
+                    .finish(),
+            }
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -152,11 +229,140 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for ComparisonOperand {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
-    I32(i32),
+    Integer(Integer),
     Bool(bool),
-    String(String),
+    String(Text),
+    Rune(Rune),
     ByteVec(Vec<u8>),
+    Float(Float),
+}
+
+/// A utf-32 string
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct Text(Vec<Rune>);
+
+impl Text {
+    pub fn new(runes: Vec<Rune>) -> Self {
+        Self(runes)
+    }
+
+    pub fn to_string(&self) -> String {
+        String::from_iter(
+            self.0
+                .iter()
+                .map(|r| core::char::from_u32(r.as_u32()).unwrap()),
+        )
+    }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.to_string().into_bytes()
+    }
+}
+
+impl fmt::Display for Text {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", &self.to_string())
+    }
+}
+
+impl From<&str> for Text {
+    fn from(string: &str) -> Self {
+        Self(string.chars().map(|c| Rune::from(c)).collect())
+    }
+}
+
+/// A unicode codepoint
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct Rune(u32);
+
+impl Rune {
+    pub fn as_u32(self) -> u32 {
+        self.0
+    }
+
+    pub fn from_u32(i: u32) -> Option<Self> {
+        core::char::from_u32(i).map(|i| Self(i as u32))
+    }
+
+    pub fn as_char(self) -> char {
+        core::char::from_u32(self.0).unwrap()
+    }
+
+    pub fn from_char(i: char) -> Self {
+        Self(i as u32)
+    }
+}
+
+impl PartialEq<char> for Rune {
+    fn eq(&self, other: &char) -> bool {
+        self.as_u32() == *other as u32
+    }
+}
+
+impl From<char> for Rune {
+    fn from(c: char) -> Self {
+        Self(c as u32)
+    }
+}
+
+impl From<u32> for Rune {
+    fn from(i: u32) -> Self {
+        Self(i)
+    }
+}
+
+impl fmt::Display for Rune {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", &self.as_char())
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct Integer {
+    sign: Sign,
+    bits: u128,
+}
+
+impl fmt::Display for Integer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}", &self.sign, &self.bits)
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Sign {
+    Positive,
+    Negative,
+}
+
+impl fmt::Display for Sign {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Positive => "",
+                Self::Negative => "-",
+            },
+        )
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum Float {
     F32(f32),
+    F64(f64),
+}
+
+impl fmt::Display for Float {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::F32(fl) => write!(f, "{}", fl),
+            Self::F64(fl) => write!(f, "{}", fl),
+        }
+    }
 }
 
 // TODO: Actually make this throw useful errors
@@ -171,9 +377,9 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for Literal {
                 let mut string = token.source();
 
                 if string == "inf" {
-                    return Ok(Literal::F32(core::f32::INFINITY));
+                    return Ok(Literal::Float(Float::F64(core::f64::INFINITY)));
                 } else if string == "NaN" {
-                    return Ok(Literal::F32(core::f32::NAN));
+                    return Ok(Literal::Float(Float::F64(core::f64::NAN)));
                 }
 
                 let negative = if &string[..1] == "-" {
@@ -196,9 +402,9 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for Literal {
                             Location::new(token, file),
                         )
                     })?;
-                    float.convert::<f32>().inner()
+                    float.convert::<f64>().inner()
                 } else {
-                    string.parse::<f32>().map_err(|_| {
+                    string.parse::<f64>().map_err(|_| {
                         Locatable::new(
                             Error::Syntax(SyntaxError::InvalidLiteral("float")),
                             Location::new(token, file),
@@ -210,7 +416,7 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for Literal {
                     float = -float;
                 }
 
-                Literal::F32(float)
+                Literal::Float(Float::F64(float))
             }
 
             TokenType::String => {
@@ -270,7 +476,7 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for Literal {
                 };
 
                 if byte_str {
-                    Literal::ByteVec(string.as_bytes().to_vec())
+                    Literal::ByteVec(string.to_bytes().to_vec())
                 } else {
                     Literal::String(string)
                 }
@@ -279,26 +485,25 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for Literal {
             TokenType::Int => {
                 let mut string = token.source();
 
-                let negative = if &string[..1] == "-" {
+                let sign = if &string[..1] == "-" {
                     string = &string[1..];
-                    true
+                    Sign::Negative
                 } else if &string[..1] == "+" {
                     string = &string[1..];
-                    false
+                    Sign::Positive
                 } else {
-                    false
+                    Sign::Positive
                 };
 
-                let mut int = if string.len() >= 2 && (&string[..2] == "0x" || &string[..2] == "0X")
-                {
-                    i32::from_str_radix(&string[2..], 16).map_err(|_| {
+                let int = if string.len() >= 2 && (&string[..2] == "0x" || &string[..2] == "0X") {
+                    u128::from_str_radix(&string[2..], 16).map_err(|_| {
                         Locatable::new(
                             Error::Syntax(SyntaxError::InvalidLiteral("int")),
                             Location::new(token, file),
                         )
                     })?
                 } else {
-                    i32::from_str_radix(string, 10).map_err(|_| {
+                    u128::from_str_radix(string, 10).map_err(|_| {
                         Locatable::new(
                             Error::Syntax(SyntaxError::InvalidLiteral("int")),
                             Location::new(token, file),
@@ -306,11 +511,7 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for Literal {
                     })?
                 };
 
-                if negative {
-                    int = -int;
-                }
-
-                Literal::I32(int)
+                Literal::Integer(Integer { sign, bits: int })
             }
 
             TokenType::Bool => Self::Bool(token.source().parse::<bool>().map_err(|_| {
@@ -413,7 +614,7 @@ type InfixParselet<'src, 'expr, 'stmt> =
 
 /// Expression Parsing
 impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
-    pub(super) fn expr(&mut self) -> ParseResult<Expr<'expr>> {
+    pub fn expr(&mut self) -> ParseResult<Expr<'expr>> {
         let _frame = self.add_stack_frame()?;
 
         self.parse_expression(0)

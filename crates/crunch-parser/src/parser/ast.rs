@@ -55,6 +55,34 @@ pub enum Ast<'expr, 'stmt> {
     },
 }
 
+impl<'expr, 'stmt> Ast<'expr, 'stmt> {
+    pub fn name(&self) -> SmallSpur {
+        match self {
+            Self::Function { name, .. } => *name,
+            Self::Type { name, .. } => *name,
+            Self::Enum { name, .. } => *name,
+            Self::Trait { name, .. } => *name,
+            Self::Import { file, .. } => *file,
+        }
+    }
+
+    pub fn is_import(&self) -> bool {
+        if let Self::Import { .. } = self {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn is_function(&self) -> bool {
+        if let Self::Function { .. } = self {
+            true
+        } else {
+            false
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Builtin(BuiltinType),
@@ -94,12 +122,19 @@ impl Default for Type {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BuiltinType {
-    Integer,
-    Float,
+    Integer { sign: Signedness, width: u16 },
+    Float { width: u8 },
     Boolean,
     String,
+    Rune,
     Unit,
     Vec(Box<Type>),
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Signedness {
+    Unsigned,
+    Signed,
 }
 
 impl<'a> BuiltinType {
@@ -108,10 +143,47 @@ impl<'a> BuiltinType {
     ) -> Result<(Self, &'intern mut Interner), (Locatable<Error>, &'intern mut Interner)> {
         match token.source() {
             "str" => Ok((Self::String, interner)),
-            "int" => Ok((Self::Integer, interner)),
-            "float" => Ok((Self::Float, interner)),
+
+            // FIXME: This is super sloppy
+            src if (src.starts_with("i") || src.starts_with("u"))
+                && src.chars().collect::<Vec<_>>()[1..]
+                    .iter()
+                    .all(|c| c.is_numeric()) =>
+            {
+                Ok((
+                    Self::Integer {
+                        sign: if src.starts_with("u") {
+                            Signedness::Unsigned
+                        } else {
+                            Signedness::Signed
+                        },
+                        width: src
+                            .trim_start_matches(['i', 'u'].as_ref())
+                            .parse::<u16>()
+                            .unwrap(),
+                    },
+                    interner,
+                ))
+            }
+
+            // FIXME: This is super sloppy
+            src if src.starts_with('f')
+                && src.chars().collect::<Vec<_>>()[1..]
+                    .iter()
+                    .all(|c| c.is_numeric()) =>
+            {
+                Ok((
+                    Self::Float {
+                        width: src.trim_start_matches('f').parse::<u8>().unwrap(),
+                    },
+                    interner,
+                ))
+            }
+
             "bool" => Ok((Self::Boolean, interner)),
+
             "unit" => Ok((Self::Unit, interner)),
+
             ty if ty.starts_with('[') && ty.ends_with(']') => {
                 token.source = &token.source()[1..ty.len() - 1];
 
@@ -167,6 +239,15 @@ pub enum EnumVariant<'expr> {
         elements: Vec<Type>,
         decorators: Vec<Decorator<'expr>>,
     },
+}
+
+impl<'expr> EnumVariant<'expr> {
+    pub fn name(&self) -> SmallSpur {
+        match self {
+            Self::Unit { name, .. } => *name,
+            Self::Tuple { name, .. } => *name,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -323,7 +404,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         let file = self.eat(TokenType::String)?;
         let literal = Literal::try_from((&file, self.current_file))?;
         let file = match literal {
-            Literal::String(string) => self.string_interner.intern(&string),
+            Literal::String(string) => self.string_interner.intern(&string.to_string()),
 
             lit => {
                 let err = if let Literal::ByteVec(_) = lit {

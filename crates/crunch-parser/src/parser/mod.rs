@@ -1,8 +1,9 @@
 use crate::{
     error::{Error, ErrorHandler, Locatable, Location, ParseResult, SyntaxError},
     files::FileId,
+    interner::Interner,
+    symbol_table::SymbolTable,
     token::{Token, TokenStream, TokenType},
-    Interner,
 };
 
 #[cfg(feature = "logging")]
@@ -20,11 +21,12 @@ mod string_escapes;
 mod tests;
 
 pub use ast::{
-    Ast, Attribute, BuiltinType, Decorator, EnumVariant, ImportDest, ImportExposure, Type,
-    TypeMember, Visibility,
+    Ast, Attribute, BuiltinType, Decorator, EnumVariant, ImportDest, ImportExposure, Signedness,
+    Type, TypeMember, Visibility,
 };
 pub use expr::{
-    AssignmentType, BinaryOperand, ComparisonOperand, Expr, Expression, Literal, UnaryOperand,
+    AssignmentType, BinaryOperand, ComparisonOperand, Expr, Expression, Float, Integer, Literal,
+    Rune, Sign, Text, UnaryOperand,
 };
 pub use stmt::{Statement, Stmt};
 
@@ -38,7 +40,7 @@ pub struct SyntaxTree<'expr, 'stmt> {
 
 impl<'expr, 'stmt> fmt::Debug for SyntaxTree<'expr, 'stmt> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", &self.ast)
+        f.debug_list().entries(&self.ast).finish()
     }
 }
 
@@ -63,11 +65,17 @@ pub struct Parser<'src, 'expr, 'stmt> {
     stmt_arena: Stadium<'stmt, Statement<'expr, 'stmt>>,
 
     string_interner: Interner,
+    symbol_table: SymbolTable,
 }
 
 /// Initialization and high-level usage
 impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
-    pub fn new(source: &'src str, current_file: FileId, string_interner: Interner) -> Self {
+    pub fn new(
+        source: &'src str,
+        current_file: FileId,
+        string_interner: Interner,
+        symbol_table: SymbolTable,
+    ) -> Self {
         let (token_stream, next, peek) = Self::lex(source);
 
         Self {
@@ -83,10 +91,13 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             stmt_arena: Stadium::with_capacity(NonZeroUsize::new(512).unwrap()),
 
             string_interner,
+            symbol_table,
         }
     }
 
-    pub fn parse(mut self) -> Result<(SyntaxTree<'expr, 'stmt>, ErrorHandler), ErrorHandler> {
+    pub fn parse(
+        mut self,
+    ) -> Result<(SyntaxTree<'expr, 'stmt>, Interner, ErrorHandler), ErrorHandler> {
         #[cfg(feature = "logging")]
         info!("Started parsing");
 
@@ -125,11 +136,9 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
         #[cfg(feature = "logging")]
         info!("Finished parsing successfully");
-        Ok((ast, self.error_handler))
+        Ok((ast, self.string_interner, self.error_handler))
     }
 
-    // TODO: Source own lexer, logos is slow on compile times, maybe something generator-based
-    //       whenever those stabilize?
     pub fn lex(source: &'src str) -> (TokenStream<'src>, Option<Token<'src>>, Option<Token<'src>>) {
         #[cfg(feature = "logging")]
         info!("Started lexing");
@@ -141,6 +150,10 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         #[cfg(feature = "logging")]
         info!("Finished lexing");
         (token_stream, next, peek)
+    }
+
+    pub fn error_handler(self) -> ErrorHandler {
+        self.error_handler
     }
 }
 

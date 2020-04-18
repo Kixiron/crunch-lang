@@ -7,14 +7,14 @@ use crate::{
 use lasso::SmallSpur;
 use stadium::Ticket;
 
+use alloc::rc::Rc;
 #[cfg(feature = "no-std")]
 use alloc::{format, vec::Vec};
-
-// TODO: Use arenas over Boxes
+use core::fmt;
 
 pub type Stmt<'expr, 'stmt> = Ticket<'stmt, Statement<'expr, 'stmt>>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum Statement<'expr, 'stmt> {
     If {
         condition: Expr<'expr>,
@@ -48,11 +48,83 @@ pub enum Statement<'expr, 'stmt> {
     Empty,
 }
 
+#[cfg(not(feature = "no-std"))]
+impl<'expr, 'stmt> fmt::Debug for Statement<'expr, 'stmt> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        thread_local! {
+            static STACK_GUARD: Rc<()> = Rc::new(());
+        }
+
+        STACK_GUARD.with(|guard| {
+            let guard = guard.clone();
+
+            if Rc::strong_count(&guard) > 100 {
+                return f.debug_struct("...More statements").finish();
+            }
+
+            match self {
+                Self::If {
+                    condition,
+                    body,
+                    arm,
+                } => f
+                    .debug_struct("If")
+                    .field("condition", condition)
+                    .field("body", body)
+                    .field("arm", arm)
+                    .finish(),
+                Self::Expression(expr) => f.debug_tuple("Expression").field(expr).finish(),
+                Self::VarDeclaration(name, expr) => f
+                    .debug_tuple("VarDeclaration")
+                    .field(name)
+                    .field(expr)
+                    .finish(),
+                Self::Return(val) => f.debug_tuple("Return").field(val).finish(),
+                Self::Break(val) => f.debug_tuple("Break").field(val).finish(),
+                Self::Continue => f.debug_struct("Continue").finish(),
+                Self::While {
+                    condition,
+                    body,
+                    then,
+                } => f
+                    .debug_struct("While")
+                    .field("condition", condition)
+                    .field("body", body)
+                    .field("then", then)
+                    .finish(),
+                Self::Loop { body, then } => f
+                    .debug_struct("Loop")
+                    .field("body", body)
+                    .field("then", then)
+                    .finish(),
+                Self::For {
+                    var,
+                    condition,
+                    body,
+                    then,
+                } => f
+                    .debug_struct("For")
+                    .field("var", var)
+                    .field("condition", condition)
+                    .field("body", body)
+                    .field("then", then)
+                    .finish(),
+                Self::Match { var, arms } => f
+                    .debug_struct("match")
+                    .field("var", var)
+                    .field("arms", arms)
+                    .finish(),
+                Self::Empty => f.debug_struct("Empty").finish(),
+            }
+        })
+    }
+}
+
 // TODO: Type ascription
 
 /// Statement parsing
 impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
-    pub(super) fn stmt(&mut self) -> ParseResult<Option<Stmt<'stmt, 'expr>>> {
+    pub fn stmt(&mut self) -> ParseResult<Option<Stmt<'stmt, 'expr>>> {
         let _frame = self.add_stack_frame()?;
 
         match self.peek()?.ty() {

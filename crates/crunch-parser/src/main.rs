@@ -1,4 +1,4 @@
-use crunch_parser::{files::Files, Interner};
+use crunch_parser::{files::Files, Interner, SymbolTable};
 use std::{fs::File, io::Read};
 
 fn main() {
@@ -11,8 +11,8 @@ fn main() {
     let mut files = Files::new();
     let id = files.add("<test file>", &buf).unwrap();
 
-    match crunch_parser::Parser::new(&buf, id, interner).parse() {
-        Ok((ast, warn)) => {
+    match crunch_parser::Parser::new(&buf, id, interner, SymbolTable::new()).parse() {
+        Ok((ast, _interner, warn)) => {
             warn.emit(&files);
             // let mut pp = PrettyPrinter::new(interner.clone());
             // let out = std::io::stdout();

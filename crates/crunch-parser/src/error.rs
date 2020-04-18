@@ -98,6 +98,14 @@ impl ErrorHandler {
     }
 }
 
+impl From<Locatable<Error>> for ErrorHandler {
+    fn from(err: Locatable<Error>) -> Self {
+        let mut handler = ErrorHandler::new();
+        handler.push_err(err);
+        handler
+    }
+}
+
 impl Default for ErrorHandler {
     fn default() -> Self {
         Self::new()
@@ -107,8 +115,11 @@ impl Default for ErrorHandler {
 // Waiting on thiserror/#64 for no_std with error derives
 #[derive(Clone, Debug, Display, PartialEq)]
 pub enum Error {
-    #[display("Invalid Syntax: {0}")]
+    #[display(fmt = "Invalid Syntax: {}", _0)]
     Syntax(SyntaxError),
+
+    #[display(fmt = "Type Error: {}", _0)]
+    Type(TypeError),
 
     #[display("Unexpected end of file")]
     EndOfFile,
@@ -116,34 +127,34 @@ pub enum Error {
 
 #[derive(Clone, Debug, Display, PartialEq)]
 pub enum SyntaxError {
-    #[display("{0}")]
+    #[display(fmt = "{}", _0)]
     Generic(String),
 
-    #[display("Unrecognized escape sequence: \\{0}")]
+    #[display(fmt = "Unrecognized escape sequence: \\{}", _0)]
     UnrecognizedEscapeSeq(char),
 
     #[display("String escapes are expected to begin with '{{' and end with '}}'")]
     MissingEscapeBraces,
 
-    #[display("String escapes may only have the characters {0}")]
+    #[display(fmt = "String escapes may only have the characters {}", _0)]
     InvalidEscapeCharacters(&'static str),
 
     #[display("Ran out of string escape specifiers")]
     MissingEscapeSpecifier,
 
-    #[display("Invalid escape sequence: {0}")]
+    #[display(fmt = "Invalid escape sequence: {}", _0)]
     InvalidEscapeSeq(String),
 
-    #[display("Invalid {0} literal")]
+    #[display(fmt = "Invalid {} literal", _0)]
     InvalidLiteral(&'static str),
 
-    #[display(fmt = "Recursion limit reached: {0} > {1}", _0, _1)]
+    #[display(fmt = "Recursion limit reached: {} > {}", _0, _1)]
     RecursionLimit(usize, usize),
 
-    #[display("Attributes are not allowed on an {0} declaration")]
+    #[display(fmt = "Attributes are not allowed on an {} declaration", _0)]
     NoAttributesAllowed(&'static str),
 
-    #[display("Invalid top-level token: {0}")]
+    #[display(fmt = "Invalid top-level token: {}", _0)]
     InvalidTopLevel(TokenType),
 
     #[display("You must give a file to import from in import declarations")]
@@ -154,6 +165,12 @@ pub enum SyntaxError {
 
     #[display("File imports must use a string literal, not a byte string literal")]
     ImportByteStringLiteral,
+}
+
+#[derive(Clone, Debug, Display, PartialEq)]
+pub enum TypeError {
+    #[display(fmt = "{} was previously defined at {:?}", _0, _1)]
+    Redefinition(String, Location),
 }
 
 #[derive(Clone, Debug, Display, PartialEq)]

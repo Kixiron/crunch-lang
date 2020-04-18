@@ -1,6 +1,7 @@
+use super::expr::{Rune, Text};
 use crate::error::{Error, SyntaxError};
 
-use alloc::{format, string::String, vec::IntoIter, vec::Vec};
+use alloc::{format, vec::IntoIter, vec::Vec};
 use core::{char, ops::Range};
 
 // TODO: Verify that these all work and are actually recognized by the parser/lexer and supported by
@@ -8,24 +9,24 @@ use core::{char, ops::Range};
 // TODO: Have this process inlined variables & formatting
 /// Turns all escape sequences in a string into their actual representation
 #[inline]
-pub(super) fn unescape_string(queue: Vec<char>) -> Result<String, (Error, Range<usize>)> {
-    let mut s = String::with_capacity(queue.len());
+pub(super) fn unescape_string(queue: Vec<char>) -> Result<Text, (Error, Range<usize>)> {
+    let mut s: Vec<Rune> = Vec::with_capacity(queue.len());
     let mut queue = CharStream::new(queue.into_iter());
     let mut index = 0;
 
     while let Ok(c) = queue.next(&mut index) {
         if c != '\\' {
-            s.push(c);
+            s.push(c.into());
             continue;
         }
 
         match queue.next(&mut index)? {
-            '\\' => s.push('\\'),
-            '"' => s.push('"'),
-            '\'' => s.push('\''),
-            'n' => s.push('\n'),
-            'r' => s.push('\r'),
-            't' => s.push('\t'),
+            '\\' => s.push('\\'.into()),
+            '"' => s.push('"'.into()),
+            '\'' => s.push('\''.into()),
+            'n' => s.push('\n'.into()),
+            'r' => s.push('\r'.into()),
+            't' => s.push('\t'.into()),
             'x' => s.push(byte(&mut queue, &mut index)?),
             'u' => s.push(unicode_16(&mut queue, index, &mut index)?),
             'U' => s.push(unicode_32(&mut queue, index, &mut index)?),
@@ -41,7 +42,7 @@ pub(super) fn unescape_string(queue: Vec<char>) -> Result<String, (Error, Range<
         };
     }
 
-    Ok(s)
+    Ok(Text::new(s))
 }
 
 macro_rules! missing_braces {
@@ -58,7 +59,7 @@ fn unicode_16(
     queue: &mut CharStream,
     start: usize,
     index: &mut usize,
-) -> Result<char, (Error, Range<usize>)> {
+) -> Result<Rune, (Error, Range<usize>)> {
     if queue.next(index)? != '{' {
         return missing_braces!(index);
     }
@@ -89,7 +90,7 @@ fn unicode_16(
         return missing_braces!(index);
     }
 
-    char::from_u32(number).ok_or((
+    Rune::from_u32(number).ok_or((
         Error::Syntax(SyntaxError::InvalidEscapeSeq(format!(
             "`\\u{{{:X}}}`",
             number
@@ -103,7 +104,7 @@ fn unicode_32(
     queue: &mut CharStream,
     start: usize,
     index: &mut usize,
-) -> Result<char, (Error, Range<usize>)> {
+) -> Result<Rune, (Error, Range<usize>)> {
     if queue.next(index)? != '{' {
         return missing_braces!(index);
     }
@@ -134,7 +135,7 @@ fn unicode_32(
         return missing_braces!(index);
     }
 
-    char::from_u32(number).ok_or((
+    Rune::from_u32(number).ok_or((
         Error::Syntax(SyntaxError::InvalidEscapeSeq(format!(
             "`\\U{{{:X}}}`",
             number
@@ -144,7 +145,7 @@ fn unicode_32(
 }
 
 #[inline]
-fn byte(queue: &mut CharStream, index: &mut usize) -> Result<char, (Error, Range<usize>)> {
+fn byte(queue: &mut CharStream, index: &mut usize) -> Result<Rune, (Error, Range<usize>)> {
     if queue.next(index)? != '{' {
         return missing_braces!(index);
     }
@@ -175,7 +176,7 @@ fn byte(queue: &mut CharStream, index: &mut usize) -> Result<char, (Error, Range
         return missing_braces!(index);
     }
 
-    Ok(number as char)
+    Ok(Rune::from_u32(number as u32).unwrap())
 }
 
 #[inline]
@@ -183,7 +184,7 @@ fn octal(
     queue: &mut CharStream,
     start: usize,
     index: &mut usize,
-) -> Result<char, (Error, Range<usize>)> {
+) -> Result<Rune, (Error, Range<usize>)> {
     if queue.next(index)? != '{' {
         return missing_braces!(index);
     }
@@ -208,7 +209,7 @@ fn octal(
         return missing_braces!(index);
     }
 
-    char::from_u32(number).ok_or((
+    Rune::from_u32(number).ok_or((
         Error::Syntax(SyntaxError::InvalidEscapeSeq(format!(
             "`\\o{{{:o}}}`",
             number
@@ -218,7 +219,7 @@ fn octal(
 }
 
 #[inline]
-fn binary(queue: &mut CharStream, index: &mut usize) -> Result<char, (Error, Range<usize>)> {
+fn binary(queue: &mut CharStream, index: &mut usize) -> Result<Rune, (Error, Range<usize>)> {
     if queue.next(index)? != '{' {
         return missing_braces!(index);
     }
@@ -243,7 +244,7 @@ fn binary(queue: &mut CharStream, index: &mut usize) -> Result<char, (Error, Ran
         return missing_braces!(index);
     }
 
-    Ok(number as char)
+    Ok(Rune::from_u32(number as u32).unwrap())
 }
 
 struct CharStream(IntoIter<char>);

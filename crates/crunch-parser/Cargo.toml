@@ -8,7 +8,7 @@ edition = "2018"
 name = "crunch-parser"
 
 [features]
-default = ["concurrent", "no-std"]
+default = ["concurrent"]
 no-std = ["hashbrown", "dashmap/no_std"]
 logging = ["log"]
 single-threaded = ["hashbrown"]
@@ -30,7 +30,7 @@ optional = true
 
 # Concurrent hashmap for symbol table
 [dependencies.dashmap]
-version = "3.10.0"
+version = "3.11.0"
 optional = true
 
 # Pretty error reporting

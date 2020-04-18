@@ -1,58 +1,63 @@
-use crate::{error::ParseResult, parser::SyntaxTree};
+use crate::{
+    error::{Error, Locatable, Location, ParseResult, TypeError},
+    FileId, Interner, SmallSpur,
+};
 
 use cfg_if::cfg_if;
-use dashmap::DashMap;
-use lasso::SmallSpur;
-
-use alloc::{sync::Arc, vec::Vec};
-use core::ops::Deref;
 
 cfg_if! {
-    if #[cfg(feature = "no-std")] {
-        use hashbrown::HashMap;
+    if #[cfg(feature = "concurrent")] {
+        use alloc::sync::Arc;
+        use dashmap::DashMap;
     } else {
+        use lasso::Rodeo;
         use std::collections::HashMap;
     }
 }
 
-#[cfg(not(feature = "concurrent"))]
-compile_error!("Make the single threaded one");
-
-#[derive(Debug)]
-pub struct SymbolTable<'expr, 'stmt> {
-    packages: Arc<DashMap<SmallSpur, Package<'expr, 'stmt>>>,
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub struct SymbolLocation {
+    file: FileId,
+    sym: SmallSpur,
 }
 
-#[derive(Debug)]
-struct Package<'expr, 'stmt> {
-    files: HashMap<SmallSpur, File<'expr, 'stmt>>,
+impl SymbolLocation {
+    pub fn new(file: FileId, sym: SmallSpur) -> Self {
+        Self { file, sym }
+    }
 }
 
-#[derive(Debug)]
-struct File<'expr, 'stmt> {
-    imports: Vec<SmallSpur>,
-    namespace: HashMap<SmallSpur, (Option<Scope>, NodeRef)>,
-    nodes: SyntaxTree<'expr, 'stmt>,
+#[derive(Debug, Clone)]
+pub struct SymbolTable {
+    #[cfg(feature = "concurrent")]
+    table: Arc<DashMap<SymbolLocation, ()>>,
+
+    #[cfg(not(feature = "concurrent"))]
+    table: HashMap<SymbolLocation, ()>,
 }
 
-#[derive(Debug)]
-struct Scope {}
-
-#[derive(Debug, Copy, Clone)]
-struct NodeRef(usize);
-
-impl<'expr, 'stmt> SymbolTable<'expr, 'stmt> {
+impl SymbolTable {
     pub fn new() -> Self {
-        todo!()
+        cfg_if! {
+            if #[cfg(feature = "concurrent")] {
+                Self { table: Arc::new(DashMap::new()) }
+            } else {
+                Self { table: HashMap::new() }
+            }
+        }
     }
 
-    pub fn with_capacity(capacity: usize) -> Self {
-        todo!()
-    }
-
-    pub fn build_table(&mut self, tree: &SyntaxTree) -> ParseResult<()> {
-        for node in tree.deref() {}
-
-        Ok(())
+    pub fn insert(&mut self, interner: &Interner, key: SymbolLocation, val: ()) -> ParseResult<()> {
+        if let Some(_prev) = self.table.insert(key, val) {
+            Err(Locatable::new(
+                Error::Type(TypeError::Redefinition(
+                    interner.resolve(&key.sym).to_owned(),
+                    Location::file(key.file),
+                )),
+                Location::file(key.file),
+            ))
+        } else {
+            Ok(())
+        }
     }
 }
