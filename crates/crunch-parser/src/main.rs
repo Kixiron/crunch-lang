@@ -12,7 +12,7 @@ fn main() {
     let id = files.add("<test file>", &buf).unwrap();
 
     match crunch_parser::Parser::new(&buf, id, interner, SymbolTable::new()).parse() {
-        Ok((ast, _interner, warn)) => {
+        Ok((ast, _interner, mut warn, _)) => {
             warn.emit(&files);
             // let mut pp = PrettyPrinter::new(interner.clone());
             // let out = std::io::stdout();
@@ -20,6 +20,6 @@ fn main() {
 
             let _ = ast;
         }
-        Err(err) => err.emit(&files),
+        Err(mut err) => err.emit(&files),
     }
 }

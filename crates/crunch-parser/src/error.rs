@@ -69,7 +69,7 @@ impl ErrorHandler {
         self.warnings.push_back(warn);
     }
 
-    pub fn emit(mut self, files: &crate::files::Files) {
+    pub fn emit(&mut self, files: &crate::files::Files) {
         use codespan_reporting::{
             diagnostic::{Diagnostic, Label},
             term::{

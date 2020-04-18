@@ -488,7 +488,7 @@ impl<'expr, 'stmt> PrettyPrinter {
             Expression::Literal(lit) => match lit {
                 Literal::Integer(i) => write!(f, "{}", i),
                 Literal::Bool(b) => write!(f, "{}", b),
-                Literal::String(s) => write!(f, "\"{}\"", s),
+                Literal::String(s) => write!(f, "{:?}", s),
                 Literal::Rune(r) => write!(f, "'{}'", r),
                 Literal::ByteVec(v) => write!(f, "{:?}", v),
                 Literal::Float(fl) => write!(f, "{}", fl),

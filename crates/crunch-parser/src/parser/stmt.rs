@@ -149,7 +149,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 let expr = self.expr()?;
                 self.eat(TokenType::Newline)?;
 
-                let stmt = self.stmt_arena.alloc(Statement::VarDeclaration(var, expr));
+                let stmt = self.stmt_arena.store(Statement::VarDeclaration(var, expr));
 
                 Ok(Some(stmt))
             }
@@ -180,13 +180,13 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
                 if self.peek()?.ty() == TokenType::Newline {
                     self.eat(TokenType::Newline)?;
-                    let stmt = self.stmt_arena.alloc(Statement::Return(None));
+                    let stmt = self.stmt_arena.store(Statement::Return(None));
 
                     Ok(Some(stmt))
                 } else {
                     let expr = self.expr()?;
                     self.eat(TokenType::Newline)?;
-                    let stmt = self.stmt_arena.alloc(Statement::Return(Some(expr)));
+                    let stmt = self.stmt_arena.store(Statement::Return(Some(expr)));
 
                     Ok(Some(stmt))
                 }
@@ -197,13 +197,13 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
                 if self.peek()?.ty() == TokenType::Newline {
                     self.eat(TokenType::Newline)?;
-                    let stmt = self.stmt_arena.alloc(Statement::Break(None));
+                    let stmt = self.stmt_arena.store(Statement::Break(None));
 
                     Ok(Some(stmt))
                 } else {
                     let expr = self.expr()?;
                     self.eat(TokenType::Newline)?;
-                    let stmt = self.stmt_arena.alloc(Statement::Break(Some(expr)));
+                    let stmt = self.stmt_arena.store(Statement::Break(Some(expr)));
 
                     Ok(Some(stmt))
                 }
@@ -213,7 +213,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 self.eat(TokenType::Continue)?;
                 self.eat(TokenType::Newline)?;
 
-                let stmt = self.stmt_arena.alloc(Statement::Continue);
+                let stmt = self.stmt_arena.store(Statement::Continue);
 
                 Ok(Some(stmt))
             }
@@ -222,7 +222,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 self.eat(TokenType::Empty)?;
                 self.eat(TokenType::Newline)?;
 
-                let stmt = self.stmt_arena.alloc(Statement::Empty);
+                let stmt = self.stmt_arena.store(Statement::Empty);
 
                 Ok(Some(stmt))
             }
@@ -239,7 +239,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             | TokenType::LeftBrace => {
                 let expr = self.expr()?;
                 self.eat(TokenType::Newline)?;
-                let stmt = self.stmt_arena.alloc(Statement::Expression(expr));
+                let stmt = self.stmt_arena.store(Statement::Expression(expr));
 
                 Ok(Some(stmt))
             }
@@ -304,8 +304,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 let body = self.statements(&[TokenType::End], 10)?;
                 let condition = self
                     .expr_arena
-                    .alloc(Expression::Literal(Literal::Bool(true)));
-                let stmt = self.stmt_arena.alloc(Statement::If {
+                    .store(Expression::Literal(Literal::Bool(true)));
+                let stmt = self.stmt_arena.store(Statement::If {
                     condition,
                     body,
                     arm: None,
@@ -319,7 +319,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             _ => unreachable!(),
         };
 
-        let stmt = self.stmt_arena.alloc(Statement::If {
+        let stmt = self.stmt_arena.store(Statement::If {
             condition,
             body,
             arm,
@@ -364,7 +364,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
         self.eat(TokenType::End)?;
 
-        let stmt = self.stmt_arena.alloc(Statement::Match { var, arms });
+        let stmt = self.stmt_arena.store(Statement::Match { var, arms });
 
         Ok(stmt)
     }
@@ -382,7 +382,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
         self.eat(TokenType::End)?;
 
-        let stmt = self.stmt_arena.alloc(Statement::While {
+        let stmt = self.stmt_arena.store(Statement::While {
             condition,
             body,
             then,
@@ -403,7 +403,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
         self.eat(TokenType::End)?;
 
-        let stmt = self.stmt_arena.alloc(Statement::Loop { body, then });
+        let stmt = self.stmt_arena.store(Statement::Loop { body, then });
 
         Ok(stmt)
     }
@@ -421,7 +421,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
         let then = self.then_stmt()?;
 
-        let stmt = self.stmt_arena.alloc(Statement::For {
+        let stmt = self.stmt_arena.store(Statement::For {
             var,
             condition,
             body,

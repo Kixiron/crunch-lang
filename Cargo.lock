@@ -1183,6 +1183,7 @@ dependencies = [
  "crunch-parser",
  "rustyline",
  "rustyline-derive",
+ "simple_logger",
 ]
 
 [[package]]
@@ -1344,7 +1345,7 @@ checksum = "05720e22615919e4734f6a99ceae50d00226c3c5aca406e102ebc33298214e0a"
 [[package]]
 name = "stadium"
 version = "0.1.0"
-source = "git+https://github.com/Kixiron/stadium.git#6ca54ae9d88b0399dae166e5dcb3bf9455e19fe5"
+source = "git+https://github.com/Kixiron/stadium.git#547e3f4644d99a189925bc1a65eb1a54d8867a95"
 
 [[package]]
 name = "syn"
@@ -1367,10 +1368,6 @@ dependencies = [
  "quote 1.0.3",
  "unicode-xid 0.2.0",
 ]
-
-[[package]]
-name = "tagged-box"
-version = "0.1.1"
 
 [[package]]
 name = "tempfile"

@@ -8,12 +8,12 @@ use crate::{
 use lasso::SmallSpur;
 use stadium::Ticket;
 
-use alloc::{format, rc::Rc, string::String, vec::Vec};
-use core::{convert::TryFrom, fmt, iter::FromIterator, ops::Deref};
+use alloc::{format, string::String, vec::Vec};
+use core::{convert::TryFrom, fmt, iter::FromIterator};
 
 pub type Expr<'expr> = Ticket<'expr, Expression<'expr>>;
 
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expression<'expr> {
     Variable(SmallSpur),
     UnaryExpr(UnaryOperand, Expr<'expr>),
@@ -43,82 +43,82 @@ pub enum Expression<'expr> {
     Range(Expr<'expr>, Expr<'expr>),
 }
 
-#[cfg(not(feature = "no-std"))]
-impl<'expr> fmt::Debug for Expression<'expr> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        thread_local! {
-            static STACK_GUARD: Rc<()> = Rc::new(());
-        }
-
-        STACK_GUARD.with(|guard| {
-            let guard = guard.clone();
-
-            if dbg!(Rc::strong_count(&guard)) > 100 {
-                return f.debug_struct("...More statements").finish();
-            }
-
-            match self {
-                Self::Variable(var) => f.debug_tuple("Variable").field(var).finish(),
-                Self::UnaryExpr(op, expr) => f
-                    .debug_tuple("UnaryExpr")
-                    .field(op)
-                    .field(expr.deref())
-                    .finish(),
-                Self::BinaryOp(lhs, op, rhs) => f
-                    .debug_tuple("BinaryOp")
-                    .field(lhs.deref())
-                    .field(op)
-                    .field(rhs.deref())
-                    .finish(),
-                Self::InlineConditional {
-                    true_arm,
-                    condition,
-                    false_arm,
-                } => f
-                    .debug_struct("BinaryOp")
-                    .field("true_arm", true_arm.deref())
-                    .field("condition", condition.deref())
-                    .field("false_arm", false_arm.deref())
-                    .finish(),
-                Self::Parenthesised(expr) => f.debug_tuple("Parenthesized").field(expr).finish(),
-                Self::FunctionCall { caller, arguments } => f
-                    .debug_struct("FunctionCall")
-                    .field("caller", caller.deref())
-                    .field("arguments", arguments)
-                    .finish(),
-                Self::MemberFunctionCall { member, function } => f
-                    .debug_struct("MemberFunctionCall")
-                    .field("member", member.deref())
-                    .field("function", function.deref())
-                    .finish(),
-                Self::Literal(lit) => f.debug_tuple("Literal").field(lit).finish(),
-                Self::Comparison(lhs, op, rhs) => f
-                    .debug_tuple("Comparison")
-                    .field(lhs.deref())
-                    .field(op)
-                    .field(rhs.deref())
-                    .finish(),
-                Self::IndexArray { array, index } => f
-                    .debug_struct("IndexArray")
-                    .field("array", array.deref())
-                    .field("index", index.deref())
-                    .finish(),
-                Self::Array(arr) => f.debug_tuple("Array").field(arr).finish(),
-                Self::Assignment(lhs, assign, rhs) => f
-                    .debug_tuple("Assignment")
-                    .field(lhs.deref())
-                    .field(assign)
-                    .field(rhs.deref())
-                    .finish(),
-                Self::Range(start, finish) => f
-                    .debug_tuple("Range")
-                    .field(start.deref())
-                    .field(finish.deref())
-                    .finish(),
-            }
-        })
-    }
-}
+// #[cfg(not(feature = "no-std"))]
+// impl<'expr> fmt::Debug for Expression<'expr> {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         thread_local! {
+//             static STACK_GUARD: Rc<()> = Rc::new(());
+//         }
+//
+//         STACK_GUARD.with(|guard| {
+//             let guard = guard.clone();
+//
+//             if Rc::strong_count(&guard) > 100 {
+//                 return f.debug_struct("...More statements").finish();
+//             }
+//
+//             match self {
+//                 Self::Variable(var) => f.debug_tuple("Variable").field(var).finish(),
+//                 Self::UnaryExpr(op, expr) => f
+//                     .debug_tuple("UnaryExpr")
+//                     .field(op)
+//                     .field(expr.deref())
+//                     .finish(),
+//                 Self::BinaryOp(lhs, op, rhs) => f
+//                     .debug_tuple("BinaryOp")
+//                     .field(lhs.deref())
+//                     .field(op)
+//                     .field(rhs.deref())
+//                     .finish(),
+//                 Self::InlineConditional {
+//                     true_arm,
+//                     condition,
+//                     false_arm,
+//                 } => f
+//                     .debug_struct("BinaryOp")
+//                     .field("true_arm", true_arm.deref())
+//                     .field("condition", condition.deref())
+//                     .field("false_arm", false_arm.deref())
+//                     .finish(),
+//                 Self::Parenthesised(expr) => f.debug_tuple("Parenthesized").field(expr).finish(),
+//                 Self::FunctionCall { caller, arguments } => f
+//                     .debug_struct("FunctionCall")
+//                     .field("caller", caller.deref())
+//                     .field("arguments", arguments)
+//                     .finish(),
+//                 Self::MemberFunctionCall { member, function } => f
+//                     .debug_struct("MemberFunctionCall")
+//                     .field("member", member.deref())
+//                     .field("function", function.deref())
+//                     .finish(),
+//                 Self::Literal(lit) => f.debug_tuple("Literal").field(lit).finish(),
+//                 Self::Comparison(lhs, op, rhs) => f
+//                     .debug_tuple("Comparison")
+//                     .field(lhs.deref())
+//                     .field(op)
+//                     .field(rhs.deref())
+//                     .finish(),
+//                 Self::IndexArray { array, index } => f
+//                     .debug_struct("IndexArray")
+//                     .field("array", array.deref())
+//                     .field("index", index.deref())
+//                     .finish(),
+//                 Self::Array(arr) => f.debug_tuple("Array").field(arr).finish(),
+//                 Self::Assignment(lhs, assign, rhs) => f
+//                     .debug_tuple("Assignment")
+//                     .field(lhs.deref())
+//                     .field(assign)
+//                     .field(rhs.deref())
+//                     .finish(),
+//                 Self::Range(start, finish) => f
+//                     .debug_tuple("Range")
+//                     .field(start.deref())
+//                     .field(finish.deref())
+//                     .finish(),
+//             }
+//         })
+//     }
+// }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AssignmentType {
@@ -238,7 +238,7 @@ pub enum Literal {
 }
 
 /// A utf-32 string
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Text(Vec<Rune>);
 
@@ -260,6 +260,12 @@ impl Text {
     }
 }
 
+impl fmt::Debug for Text {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", &self.to_string())
+    }
+}
+
 impl fmt::Display for Text {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", &self.to_string())
@@ -273,7 +279,7 @@ impl From<&str> for Text {
 }
 
 /// A unicode codepoint
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Rune(u32);
 
@@ -310,6 +316,12 @@ impl From<char> for Rune {
 impl From<u32> for Rune {
     fn from(i: u32) -> Self {
         Self(i)
+    }
+}
+
+impl fmt::Debug for Rune {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", &self.as_char())
     }
 }
 
@@ -666,7 +678,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 let _frame = parser.add_stack_frame()?;
 
                 let ident = parser.string_interner.intern(token.source());
-                let expr = parser.expr_arena.alloc(Expression::Variable(ident));
+                let expr = parser.expr_arena.store(Expression::Variable(ident));
 
                 Ok(expr)
             },
@@ -676,7 +688,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 |parser, lit| {
                     let expr = parser
                         .expr_arena
-                        .alloc(Expression::Literal(Literal::try_from((
+                        .store(Expression::Literal(Literal::try_from((
                             &lit,
                             parser.current_file,
                         ))?));
@@ -689,7 +701,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             TokenType::Minus | TokenType::Bang | TokenType::Plus => |parser, token| {
                 let _frame = parser.add_stack_frame()?;
                 let operand = parser.expr()?;
-                let expr = parser.expr_arena.alloc(Expression::UnaryExpr(
+                let expr = parser.expr_arena.store(Expression::UnaryExpr(
                     UnaryOperand::try_from((&token, parser.current_file))?,
                     operand,
                 ));
@@ -703,7 +715,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
                 let expr = parser.expr()?;
                 parser.eat(TokenType::RightParen)?;
-                let expr = parser.expr_arena.alloc(Expression::Parenthesised(expr));
+                let expr = parser.expr_arena.store(Expression::Parenthesised(expr));
 
                 Ok(expr)
             },
@@ -727,7 +739,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
                 elements.shrink_to_fit();
                 parser.eat(TokenType::RightBrace)?;
-                let expr = parser.expr_arena.alloc(Expression::Array(elements));
+                let expr = parser.expr_arena.store(Expression::Array(elements));
 
                 Ok(expr)
             },
@@ -759,7 +771,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 parser.eat(TokenType::RightParen)?;
                 let expr = parser
                     .expr_arena
-                    .alloc(Expression::FunctionCall { caller, arguments });
+                    .store(Expression::FunctionCall { caller, arguments });
 
                 Ok(expr)
             },
@@ -770,7 +782,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 let function = parser.expr()?;
                 let expr = parser
                     .expr_arena
-                    .alloc(Expression::MemberFunctionCall { member, function });
+                    .store(Expression::MemberFunctionCall { member, function });
 
                 Ok(expr)
             },
@@ -779,7 +791,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             TokenType::DoubleDot => |parser, _, start| {
                 let _frame = parser.add_stack_frame()?;
                 let end = parser.expr()?;
-                let expr = parser.expr_arena.alloc(Expression::Range(start, end));
+                let expr = parser.expr_arena.store(Expression::Range(start, end));
 
                 Ok(expr)
             },
@@ -805,7 +817,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 let right = parser.expr()?;
                 let expr = parser
                     .expr_arena
-                    .alloc(Expression::Assignment(left, assign, right));
+                    .store(Expression::Assignment(left, assign, right));
 
                 Ok(expr)
             },
@@ -818,7 +830,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 let right = parser.expr()?;
                 let expr = parser
                     .expr_arena
-                    .alloc(Expression::Assignment(left, assign, right));
+                    .store(Expression::Assignment(left, assign, right));
 
                 Ok(expr)
             },
@@ -843,7 +855,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             | TokenType::Shr => |parser, operand, left| {
                 let _frame = parser.add_stack_frame()?;
                 let right = parser.expr()?;
-                let expr = parser.expr_arena.alloc(Expression::BinaryOp(
+                let expr = parser.expr_arena.store(Expression::BinaryOp(
                     left,
                     BinaryOperand::try_from((&operand, parser.current_file))?,
                     right,
@@ -861,7 +873,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             | TokenType::IsNotEqual => |parser, comparison, left| {
                 let _frame = parser.add_stack_frame()?;
                 let right = parser.expr()?;
-                let expr = parser.expr_arena.alloc(Expression::Comparison(
+                let expr = parser.expr_arena.store(Expression::Comparison(
                     left,
                     ComparisonOperand::try_from((&comparison, parser.current_file))?,
                     right,
@@ -877,7 +889,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 let condition = parser.expr()?;
                 parser.eat(TokenType::Else)?;
                 let false_arm = parser.expr()?;
-                let expr = parser.expr_arena.alloc(Expression::InlineConditional {
+                let expr = parser.expr_arena.store(Expression::InlineConditional {
                     true_arm,
                     condition,
                     false_arm,
@@ -904,7 +916,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         self.eat(TokenType::RightBrace)?;
         let expr = self
             .expr_arena
-            .alloc(Expression::IndexArray { array, index });
+            .store(Expression::IndexArray { array, index });
 
         Ok(expr)
     }

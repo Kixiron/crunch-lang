@@ -66,3 +66,5 @@
   - [ ] Streams & Channels
   - [ ] Structured concurrency
   - [ ] Green threading
+- [ ] Flexible namespaces
+  - [ ] Types/enums/functions/traits within other types/enums/functions/traits

@@ -3,6 +3,7 @@ use crate::{
     files::FileId,
     interner::Interner,
     parser::{Expr, Literal, Parser, Stmt},
+    symbol_table::{Symbol, SymbolLocation},
     token::{Token, TokenType},
 };
 
@@ -332,7 +333,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         let _frame = self.add_stack_frame()?;
 
         let peek = self.peek()?;
-        match peek.ty() {
+        let node = match peek.ty() {
             TokenType::AtSign => {
                 self.decorator(decorators)?;
 
@@ -383,8 +384,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 Ok(Some(import))
             }
 
-            TokenType::Newline => {
-                self.eat(TokenType::Newline)?;
+            TokenType::Newline | TokenType::Space => {
+                self.next()?;
                 Ok(None)
             }
 
@@ -392,7 +393,17 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 Error::Syntax(SyntaxError::InvalidTopLevel(ty)),
                 Location::new(&self.peek()?, self.current_file),
             )),
+        };
+
+        if let Ok(Some(ref node)) = node {
+            self.symbol_table.insert(
+                &self.string_interner,
+                SymbolLocation::new(self.current_file, node.name()),
+                Symbol::from(node),
+            )?;
         }
+
+        node
     }
 
     fn import(&mut self, mut decorators: Vec<Decorator<'expr>>) -> ParseResult<Ast<'expr, 'stmt>> {
