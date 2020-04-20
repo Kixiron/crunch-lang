@@ -1,8 +1,6 @@
 use super::*;
 use crate::{files::FileId, parser::ast::Signedness, pretty_printer::PrettyPrinter};
 
-use lasso::{Key, SmallSpur};
-
 #[cfg(feature = "no-std")]
 use alloc::{boxed::Box, string::String};
 
@@ -205,12 +203,15 @@ fn function_call_stmt() {
 
 #[test]
 fn decl_var() {
-    stmt_eq!("let variable = true\n");
+    assert_eq!(
+        "let variable: infer := true\n",
+        format_stmt("let variable := true\n"),
+    );
 }
 
 #[test]
 fn long_func_decl_stmt() {
-    stmt_eq!("let jkpwn = vssekgmbxoxshmhinx(jnldfzbd, kcqpq, gbuaqbax, argro, xhmfc, bredcp, pwlfywfkb, vgsjjcy, exomcmbf, cjsjpvgcl, omtlfpw, ssdrm, kxrtaun, xexzz, ejvmxj, ssmqkbqqi)\n");
+    stmt_eq!("let jkpwn: infer := vssekgmbxoxshmhinx(jnldfzbd, kcqpq, gbuaqbax, argro, xhmfc, bredcp, pwlfywfkb, vgsjjcy, exomcmbf, cjsjpvgcl, omtlfpw, ssdrm, kxrtaun, xexzz, ejvmxj, ssmqkbqqi)\n");
 }
 
 #[test]
@@ -292,25 +293,13 @@ fn match_stmt() {
     );
 }
 
-// TODO: '''Test''' and """Test"""
-// TODO: Testing is real sketchy here
 #[test]
 fn strings() {
-    assert_eq!(r#""Test""#, format_expr("'Test'"));
     expr_eq!(r#""Test""#);
-
-    assert_eq!(format!("{:?}", b"Test"), format_expr("b'Test'"));
     assert_eq!(format!("{:?}", b"Test"), format_expr(r#"b"Test""#));
-
     assert_eq!(
-        "\" \\ \n \r \t \" \u{2764} \"",
-        format_expr(r#"' \\ \n \r \t \" \u{2764} '"#)
-    );
-    assert_eq!("\" \\ \n \r \t \" \"", format_expr(r#"" \\ \n \r \t \" ""#));
-
-    assert_eq!(
-        format!("{:?}", b" \\ \n \r \t \" "),
-        format_expr(r#"b' \\ \n \r \t \" '"#)
+        "\" \\\\ \\n \\r \\t \\\" \"",
+        format_expr(r#"" \\ \n \r \t \" ""#)
     );
 }
 
@@ -342,94 +331,149 @@ fn functions_ast() {
         format_ast("@inline\nfn test()\nend"),
     );
     assert_eq!(
-        "exposed fn test<T, E>(a: infer, a: b) -> bool\n    println(1)\nend\n",
-        format_ast("exposed fn test<T, E>(a, a: b) -> bool\n    println(1)\nend\n"),
+        "exposed fn test(a: infer, a: b) -> bool\n    println(1)\nend\n",
+        format_ast("exposed fn test(a, a: b) -> bool\n    println(1)\nend\n"),
+    );
+}
+
+#[test]
+fn generic_functions_ast() {
+    assert_eq!(
+        "@inline\nfn test(comptime T: type) -> infer\nend\n",
+        format_ast("@inline\nfn test(comptime T: type)\nend"),
+    );
+    assert_eq!(
+        "exposed fn test(comptime T: type[Clone, Debug], a: infer, a: b) -> bool\n    println(1)\nend\n",
+        format_ast(
+            "exposed fn test(comptime T: type[Clone, Debug], a, a: b) -> bool\n    println(1)\nend\n"
+        ),
+    );
+}
+
+#[test]
+fn lots_generic_functions_ast() {
+    assert_eq!(
+        "exposed fn test(comptime T: type[Clone, Debug], a: infer, comptime E: type[PartialEq, Eq, Ord], comptime F: type[Copy]) -> bool\n    println(1)\nend\n",
+        format_ast(
+            "exposed fn test(comptime T: type[Clone, Debug], a: infer, comptime E: type[PartialEq, Eq, Ord], comptime F: type[Copy]) -> bool\n    println(1)\nend\n"
+        ),
     );
 }
 
 #[test]
 fn types_ast() {
-    let mut interner = Interner::default();
+    use lasso::Key;
 
     let builtins = [
         (
-            Token::new(TokenType::Ident, "i128", 0..2),
+            "i128",
             Type::Builtin(BuiltinType::Integer {
                 sign: Signedness::Signed,
                 width: 128,
             }),
         ),
         (
-            Token::new(TokenType::Ident, "u128", 0..2),
+            "u128",
             Type::Builtin(BuiltinType::Integer {
                 sign: Signedness::Unsigned,
                 width: 128,
             }),
         ),
         (
-            Token::new(TokenType::Ident, "u1", 0..2),
+            "u1",
             Type::Builtin(BuiltinType::Integer {
                 sign: Signedness::Unsigned,
                 width: 1,
             }),
         ),
         (
-            Token::new(TokenType::Ident, "i7453", 0..2),
+            "i65535",
+            Type::Builtin(BuiltinType::Integer {
+                sign: Signedness::Signed,
+                width: u16::max_value(),
+            }),
+        ),
+        (
+            "u65535",
+            Type::Builtin(BuiltinType::Integer {
+                sign: Signedness::Unsigned,
+                width: u16::max_value(),
+            }),
+        ),
+        (
+            "f65535",
+            Type::Builtin(BuiltinType::Float {
+                width: u16::max_value(),
+            }),
+        ),
+        (
+            "i7453",
             Type::Builtin(BuiltinType::Integer {
                 sign: Signedness::Signed,
                 width: 7453,
             }),
         ),
+        ("f32", Type::Builtin(BuiltinType::Float { width: 32 })),
+        ("f1", Type::Builtin(BuiltinType::Float { width: 1 })),
+        ("bool", Type::Builtin(BuiltinType::Boolean)),
+        ("unit", Type::Builtin(BuiltinType::Unit)),
+        ("str", Type::Builtin(BuiltinType::String)),
+        ("absurd", Type::Builtin(BuiltinType::Absurd)),
         (
-            Token::new(TokenType::Ident, "f32", 0..4),
-            Type::Builtin(BuiltinType::Float { width: 32 }),
+            "uptr",
+            Type::Builtin(BuiltinType::IntPtr(Signedness::Unsigned)),
         ),
         (
-            Token::new(TokenType::Ident, "f1", 0..4),
-            Type::Builtin(BuiltinType::Float { width: 1 }),
+            "iptr",
+            Type::Builtin(BuiltinType::IntPtr(Signedness::Signed)),
         ),
         (
-            Token::new(TokenType::Ident, "bool", 0..3),
-            Type::Builtin(BuiltinType::Boolean),
+            "ureg",
+            Type::Builtin(BuiltinType::IntReg(Signedness::Unsigned)),
         ),
         (
-            Token::new(TokenType::Ident, "str", 0..2),
-            Type::Builtin(BuiltinType::String),
+            "ireg",
+            Type::Builtin(BuiltinType::IntReg(Signedness::Signed)),
         ),
         (
-            Token::new(TokenType::Ident, "[]", 0..1),
-            Type::Builtin(BuiltinType::Vec(Box::new(Type::Infer))),
+            "arr[]",
+            Type::Builtin(BuiltinType::Array(Box::new(Type::Infer))),
+        ),
+        (
+            "arr[str]",
+            Type::Builtin(BuiltinType::Array(Box::new(Type::Builtin(
+                BuiltinType::String,
+            )))),
+        ),
+        (
+            "tup[str, arr[i32]]",
+            Type::Builtin(BuiltinType::Tuple(vec![
+                Type::Builtin(BuiltinType::String),
+                Type::Builtin(BuiltinType::Array(Box::new(Type::Builtin(
+                    BuiltinType::Integer {
+                        sign: Signedness::Signed,
+                        width: 32,
+                    },
+                )))),
+            ])),
+        ),
+        (
+            "type[Trait1, Trait2]",
+            Type::TraitObj(vec![
+                Type::Custom(lasso::SmallSpur::try_from_usize(0).unwrap()),
+                Type::Custom(lasso::SmallSpur::try_from_usize(1).unwrap()),
+            ]),
+        ),
+        (
+            "CustomThingy",
+            Type::Custom(lasso::SmallSpur::try_from_usize(0).unwrap()),
         ),
     ];
 
-    // TODO: Use straight compares when Diagnostic is Debug
-    for (token, ty) in builtins.iter() {
+    for (src, ty) in builtins.iter() {
         assert_eq!(
-            Type::try_new((*token, FileId::new(0), &mut interner))
-                .ok()
-                .map(|(ty, _)| ty),
-            Some(ty.clone()),
-        );
-    }
-
-    let customs = [
-        Token::new(TokenType::Ident, "sdgsagasfg", 0..9),
-        Token::new(TokenType::Ident, "jkyu675", 0..6),
-        Token::new(TokenType::Ident, "iyhgnfgbsfg", 0..9),
-        Token::new(TokenType::Ident, "jdfsh75", 0..6),
-        Token::new(TokenType::Ident, "sfhfgdjntyyb", 0..11),
-        Token::new(TokenType::Ident, "randomletters", 0..12),
-    ];
-
-    // TODO: Use straight compares when Diagnostic is Debug
-    for (idx, token) in customs.iter().enumerate() {
-        interner.intern(token.source());
-
-        assert_eq!(
-            Type::try_new((*token, FileId::new(0), &mut interner))
-                .ok()
-                .map(|(ty, _)| ty),
-            Some(Type::Custom(SmallSpur::try_from_usize(idx).unwrap())),
+            Parser::new(src, FileId::new(0), Interner::new(), SymbolTable::new()).ascribed_type(),
+            Ok(ty.clone()),
         );
     }
 }
@@ -437,25 +481,25 @@ fn types_ast() {
 #[test]
 fn type_ast() {
     assert_eq!(
-        "@inline\n@builtin\nexposed type test<A, B, C, D>\n    member: infer\n    @builtin\n    exposed another_member: bool\n    fn test() -> infer\n    end\nend\n",
-        format_ast("@inline\n@builtin\nexposed type test<A, B, C, D>\nmember\n@builtin\nexposed another_member: bool\nfn test()\nend\nend"),
+        "@inline\n@builtin\nexposed type test[A, B, C, D]\n    member: infer\n    @builtin\n    exposed another_member: bool\n    fn test() -> infer\n    end\nend\n",
+        format_ast("@inline\n@builtin\nexposed type test[A, B, C, D]\nmember\n@builtin\nexposed another_member: bool\nfn test()\nend\nend"),
     );
 }
 
 #[test]
 fn enum_ast() {
     assert_eq!(
-        "@derive(Debug)\npkg enum testme<A>\n    @no_construct\n    UnitType\n    TupleType(bool, int, tuplething)\nend\n",
-        format_ast("@derive(Debug)\npkg enum testme<A>\n@no_construct\nUnitType\nTupleType(bool, int, tuplething)\nend"),
+        "@derive(Debug)\npkg enum testme[A]\n    @no_construct\n    UnitType\n    TupleType(bool, int, tuplething)\nend\n",
+        format_ast("@derive(Debug)\npkg enum testme[A]\n@no_construct\nUnitType\nTupleType(bool, int, tuplething)\nend"),
     );
 }
 
 #[test]
 fn trait_ast() {
     assert_eq!(
-        "@traits\npkg trait Test<Classy>\n    @something(10)\n    fn be_classy() -> bool\n    end\nend\n",
+        "@traits\npkg trait Test[Classy]\n    @something(10)\n    fn be_classy() -> bool\n    end\nend\n",
         format_ast(
-            "@traits pkg trait Test<Classy>\n@something(10)\nfn be_classy() -> bool\nend\nend"
+            "@traits pkg trait Test[Classy]\n@something(10)\nfn be_classy() -> bool\nend\nend"
         ),
     );
 }
@@ -464,26 +508,110 @@ fn trait_ast() {
 fn import_ast() {
     assert_eq!(
         "import \"std.tests\" as tests\n",
-        format_ast("import 'std.tests'\n")
+        format_ast("import \"std.tests\"\n")
     );
 
     assert_eq!(
         "import \"std.tests\" as tester\n",
-        format_ast("import 'std.tests' as tester\n"),
+        format_ast("import \"std.tests\" as tester\n"),
     );
 
     assert_eq!(
         "import \"std.tests\" exposing *\n",
-        format_ast("import 'std.tests' exposing *\n"),
+        format_ast("import \"std.tests\" exposing *\n"),
     );
 
     assert_eq!(
         "import \"std.tests\" exposing Okthing, OkthingElse\n",
-        format_ast("import 'std.tests' exposing Okthing, OkthingElse\n"),
+        format_ast("import \"std.tests\" exposing Okthing, OkthingElse\n"),
     );
 
     assert_eq!(
         "import \"std.tests\" exposing Okthing as Weird, OkthingElse as Weirder\n",
-        format_ast("import 'std.tests' exposing Okthing as Weird, OkthingElse as Weirder\n"),
+        format_ast("import \"std.tests\" exposing Okthing as Weird, OkthingElse as Weirder\n"),
     );
+}
+
+mod proptests {
+    use super::*;
+    use core::ops::Deref;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn strings(s in r#"b?"(\\.|[^\\"])*""#) {
+            let mut parser = Parser::new(&s, FileId::new(0), Interner::default(), SymbolTable::new());
+
+            let expr = parser.expr().map(|e| e.deref().clone());
+            match expr {
+                Ok(Expression::Literal(Literal::String(_))) | Ok(Expression::Literal(Literal::ByteVec(_))) => {},
+
+                Err(Locatable { data: _data @ Error::Syntax(SyntaxError::UnrecognizedEscapeSeq(_)), .. })
+                | Err(Locatable { data: _data @ Error::Syntax(SyntaxError::MissingEscapeBraces), .. })
+                | Err(Locatable { data: _data @ Error::Syntax(SyntaxError::MissingEscapeSpecifier), .. }) => {}
+
+                _ => prop_assert!(false),
+            }
+        }
+
+        #[test]
+        fn runes(s in "b?'[^']*'") {
+            let mut parser = Parser::new(&s, FileId::new(0), Interner::default(), SymbolTable::new());
+
+            let expr = parser.expr().map(|e| e.deref().clone());
+            match expr {
+                Ok(Expression::Literal(Literal::Rune(_))) | Ok(Expression::Literal(Literal::Integer(_))) => {},
+
+                Err(Locatable { data: _data @ Error::Syntax(SyntaxError::TooManyRunes), .. })
+                | Err(Locatable { data: _data @ Error::Syntax(SyntaxError::UnrecognizedEscapeSeq(_)), .. })
+                | Err(Locatable { data: _data @ Error::Syntax(SyntaxError::MissingEscapeBraces), .. })
+                | Err(Locatable { data: _data @ Error::Syntax(SyntaxError::MissingEscapeSpecifier), .. }) => {}
+
+                _ => prop_assert!(false),
+            }
+        }
+
+        #[test]
+        fn base10_int(s in "[+-]?[0-9][0-9_]*") {
+            let mut parser = Parser::new(&s, FileId::new(0), Interner::default(), SymbolTable::new());
+
+            let expr = parser.expr().map(|e| e.deref().clone());
+            let cond = matches!(expr, Ok(Expression::Literal(Literal::Integer { .. })));
+            prop_assert!(cond);
+        }
+
+        #[test]
+        fn base16_int(s in "[+-]?0x[0-9a-fA-F][0-9a-fA-F_]*") {
+            let mut parser = Parser::new(&s, FileId::new(0), Interner::default(), SymbolTable::new());
+
+            let expr = parser.expr().map(|e| e.deref().clone());
+            let cond = matches!(expr, Ok(Expression::Literal(Literal::Integer(Integer { .. }))));
+            prop_assert!(cond);
+        }
+
+        #[test]
+        fn base2_int(s in "[+-]?0b[0-1][0-1_]*") {
+            let mut parser = Parser::new(&s, FileId::new(0), Interner::default(), SymbolTable::new());
+
+            let expr = parser.expr().map(|e| e.deref().clone());
+            let cond = matches!(expr, Ok(Expression::Literal(Literal::Integer(Integer { .. }))));
+            prop_assert!(cond);
+        }
+
+        #[test]
+        fn base10_float(s in "[+-]?[0-9][0-9_]*\\.[0-9][0-9_]*([eE][+-]?[0-9][0-9_]*)?") {
+            let mut parser = Parser::new(&s, FileId::new(0), Interner::default(), SymbolTable::new());
+
+            let expr = parser.expr().map(|e| e.deref().clone());
+            prop_assert!(matches!(expr, Ok(Expression::Literal(Literal::Float(..)))));
+        }
+
+        #[test]
+        fn base16_float(s in "[+-]?0x[0-9a-fA-F][0-9a-fA-F_]*\\.[0-9a-fA-F][0-9a-fA-F_]*([pP][+-]?[0-9][0-9_]?)?") {
+            let mut parser = Parser::new(&s, FileId::new(0), Interner::default(), SymbolTable::new());
+
+            let expr = parser.expr().map(|e| e.deref().clone());
+            prop_assert!(matches!(expr, Ok(Expression::Literal(Literal::Float(..)))));
+        }
+    }
 }

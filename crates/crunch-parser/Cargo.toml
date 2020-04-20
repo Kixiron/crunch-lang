@@ -16,12 +16,15 @@ concurrent = ["dashmap", "lasso/multi-threaded"]
 
 # Lexing
 [dependencies.logos]
-version = "0.10.0"
+version = "0.11.0"
 
 # Hex float parsing
 [dependencies.hexponent]
 version = "0.2.3"
 default-features = false
+
+[dependencies.lexical-core]
+version = "0.7.4"
 
 # no_std hashmap
 [dependencies.hashbrown]
@@ -30,7 +33,7 @@ optional = true
 
 # Concurrent hashmap for symbol table
 [dependencies.dashmap]
-version = "3.11.0"
+version = "3.11.1"
 optional = true
 
 # Pretty error reporting
@@ -63,3 +66,6 @@ git = "https://github.com/Kixiron/lasso.git"
 [dev-dependencies.simple_logger]
 version = "1.6.0"
 default-features = false
+
+[dev-dependencies.proptest]
+version = "0.9.6"

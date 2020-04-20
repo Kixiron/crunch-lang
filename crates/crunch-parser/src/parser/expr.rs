@@ -147,7 +147,6 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for AssignmentType {
 
         Ok(match token.ty() {
             TokenType::Equal => Self::Normal,
-
             TokenType::AddAssign => Self::BinaryOp(BinaryOperand::Add),
             TokenType::SubAssign => Self::BinaryOp(BinaryOperand::Sub),
             TokenType::MultAssign => Self::BinaryOp(BinaryOperand::Mult),
@@ -384,43 +383,77 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for Literal {
     type Error = Locatable<Error>;
 
     fn try_from((token, file): (&Token<'src>, FileId)) -> Result<Self, Self::Error> {
+        let mut chars: Vec<char> = token.source().chars().filter(|c| *c != '_').collect();
+
         Ok(match token.ty() {
             TokenType::Float => {
-                let mut string = token.source();
-
-                if string == "inf" {
+                if token.source() == "inf" {
                     return Ok(Literal::Float(Float::F64(core::f64::INFINITY)));
-                } else if string == "NaN" {
+                } else if token.source() == "NaN" {
                     return Ok(Literal::Float(Float::F64(core::f64::NAN)));
                 }
 
-                let negative = if &string[..1] == "-" {
-                    string = &string[1..];
+                let negative = if chars.get(0).copied() == Some('-') {
+                    chars.remove(0);
                     true
-                } else if &string[..1] == "+" {
-                    string = &string[1..];
+                } else if chars.get(0).copied() == Some('+') {
+                    chars.remove(0);
                     false
                 } else {
                     false
                 };
 
-                let mut float = if string.len() >= 2 && &string[..2] == "0x" || &string[..2] == "0X"
-                {
+                let mut float = if chars.get(..2) == Some(&['0', 'x']) {
                     use hexponent::FloatLiteral;
 
-                    let float: FloatLiteral = string.parse().map_err(|_| {
-                        Locatable::new(
-                            Error::Syntax(SyntaxError::InvalidLiteral("float")),
-                            Location::new(token, file),
-                        )
-                    })?;
+                    let float: FloatLiteral = chars
+                        .into_iter()
+                        .collect::<String>()
+                        .parse()
+                        .map_err(|err| {
+                            use hexponent::ParseError;
+
+                            match err {
+                                ParseError::ExponentOverflow => Locatable::new(
+                                    Error::Syntax(SyntaxError::LiteralOverflow(
+                                        "float",
+                                        format!("'{}' is too large, only floats of up to 64 bits are supported", token.source()),
+                                    )),
+                                    Location::new(token, file),
+                                ),
+
+                                ParseError::MissingPrefix
+                                | ParseError::MissingDigits
+                                | ParseError::MissingExponent
+                                | ParseError::ExtraData => unreachable!(),
+                            }
+                        })?;
+
                     float.convert::<f64>().inner()
                 } else {
-                    string.parse::<f64>().map_err(|_| {
-                        Locatable::new(
-                            Error::Syntax(SyntaxError::InvalidLiteral("float")),
-                            Location::new(token, file),
-                        )
+                    let string = chars.into_iter().collect::<String>();
+
+                    lexical_core::parse(string.as_bytes()).map_err(|err| {
+                        use lexical_core::ErrorCode;
+
+                        match err.code {
+                            ErrorCode::Overflow => Locatable::new(
+                                Error::Syntax(SyntaxError::LiteralOverflow(
+                                    "float",
+                                    format!("'{}' is too large, only floats of up to 64 bits are supported", token.source()),
+                                )),
+                                Location::new(token, file),
+                            ),
+                            ErrorCode::Underflow => Locatable::new(
+                                Error::Syntax(SyntaxError::LiteralUnderflow(
+                                    "float",
+                                    format!("'{}' is too small, only floats of up to 64 bits are supported", token.source()),
+                                )),
+                                Location::new(token, file),
+                            ),
+
+                            err => unreachable!("Internal error: Failed to handle all float errors (Error: {:?})", err),
+                        }
                     })?
                 };
 
@@ -431,28 +464,59 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for Literal {
                 Literal::Float(Float::F64(float))
             }
 
-            TokenType::String => {
-                let mut string = token.source().chars().collect::<Vec<char>>();
-
-                let byte_str = if string[0] == 'b' {
-                    string.remove(0);
+            TokenType::Rune => {
+                let byte_rune = if chars.get(0).copied() == Some('b') {
+                    chars.remove(0);
                     true
                 } else {
                     false
                 };
 
-                let string = match string[0] {
-                    '\'' | '"'
-                        if string.len() >= 6
-                            && (string[..3] == ['\'', '\'', '\'']
-                                || string[..3] == ['"', '"', '"']) =>
-                    {
-                        string.drain(..3).for_each(drop);
-                        string.drain(string.len() - 3..).for_each(drop);
+                let rune = if let Some('\'') = chars.get(0) {
+                    chars.drain(..1).for_each(drop);
+                    chars.drain(chars.len() - 1..).for_each(drop);
 
-                        match string_escapes::unescape_string(string) {
-                            Ok(s) => Ok(s),
-                            Err((err, range)) => Err(Locatable::new(
+                    string_escapes::unescape_rune(chars).map_err(|(err, range)| {
+                        Locatable::new(
+                            err,
+                            Location::new(
+                                (
+                                    token.range().start + 3 + range.start,
+                                    token.range().start + 3 + range.end,
+                                ),
+                                file,
+                            ),
+                        )
+                    })?
+                } else {
+                    unreachable!()
+                };
+
+                if byte_rune {
+                    Literal::Integer(Integer {
+                        sign: Sign::Positive,
+                        bits: rune.as_u32() as u128,
+                    })
+                } else {
+                    Literal::Rune(rune)
+                }
+            }
+
+            TokenType::String => {
+                let byte_str = if chars.get(0).copied() == Some('b') {
+                    chars.remove(0);
+                    true
+                } else {
+                    false
+                };
+
+                let string = match chars.get(0) {
+                    Some('"') if chars.get(..3) == Some(&['"', '"', '"']) => {
+                        chars.drain(..3).for_each(drop);
+                        chars.drain(chars.len() - 3..).for_each(drop);
+
+                        string_escapes::unescape_string(chars).map_err(|(err, range)| {
+                            Locatable::new(
                                 err,
                                 Location::new(
                                     (
@@ -461,17 +525,16 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for Literal {
                                     ),
                                     file,
                                 ),
-                            )),
-                        }?
+                            )
+                        })?
                     }
 
-                    '\'' | '"' => {
-                        string.drain(..1).for_each(drop);
-                        string.drain(string.len() - 1..).for_each(drop);
+                    Some('"') => {
+                        chars.drain(..1).for_each(drop);
+                        chars.drain(chars.len() - 1..).for_each(drop);
 
-                        match string_escapes::unescape_string(string) {
-                            Ok(s) => Ok(s),
-                            Err((err, range)) => Err(Locatable::new(
+                        string_escapes::unescape_string(chars).map_err(|(err, range)| {
+                            Locatable::new(
                                 err,
                                 Location::new(
                                     (
@@ -480,8 +543,8 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for Literal {
                                     ),
                                     file,
                                 ),
-                            )),
-                        }?
+                            )
+                        })?
                     }
 
                     _ => unreachable!(),
@@ -495,27 +558,38 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for Literal {
             }
 
             TokenType::Int => {
-                let mut string = token.source();
-
-                let sign = if &string[..1] == "-" {
-                    string = &string[1..];
+                let sign = if chars.get(0).copied() == Some('-') {
+                    chars.remove(0);
                     Sign::Negative
-                } else if &string[..1] == "+" {
-                    string = &string[1..];
+                } else if chars.get(0).copied() == Some('+') {
+                    chars.remove(0);
                     Sign::Positive
                 } else {
                     Sign::Positive
                 };
 
-                let int = if string.len() >= 2 && (&string[..2] == "0x" || &string[..2] == "0X") {
-                    u128::from_str_radix(&string[2..], 16).map_err(|_| {
+                let int = if chars.get(..2) == Some(&['0', 'x']) {
+                    let string = chars[2..].into_iter().collect::<String>();
+
+                    u128::from_str_radix(&string, 16).map_err(|_| {
+                        Locatable::new(
+                            Error::Syntax(SyntaxError::InvalidLiteral("int")),
+                            Location::new(token, file),
+                        )
+                    })?
+                } else if chars.get(..2) == Some(&['0', 'b']) {
+                    let string = chars[2..].into_iter().collect::<String>();
+
+                    u128::from_str_radix(&string, 2).map_err(|_| {
                         Locatable::new(
                             Error::Syntax(SyntaxError::InvalidLiteral("int")),
                             Location::new(token, file),
                         )
                     })?
                 } else {
-                    u128::from_str_radix(string, 10).map_err(|_| {
+                    let string = chars.into_iter().collect::<String>();
+
+                    u128::from_str_radix(&string, 10).map_err(|_| {
                         Locatable::new(
                             Error::Syntax(SyntaxError::InvalidLiteral("int")),
                             Location::new(token, file),
@@ -684,18 +758,20 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             },
 
             // Literals
-            TokenType::Int | TokenType::Bool | TokenType::Float | TokenType::String => {
-                |parser, lit| {
-                    let expr = parser
-                        .expr_arena
-                        .store(Expression::Literal(Literal::try_from((
-                            &lit,
-                            parser.current_file,
-                        ))?));
+            TokenType::Int
+            | TokenType::Bool
+            | TokenType::Float
+            | TokenType::String
+            | TokenType::Rune => |parser, lit| {
+                let expr = parser
+                    .expr_arena
+                    .store(Expression::Literal(Literal::try_from((
+                        &lit,
+                        parser.current_file,
+                    ))?));
 
-                    Ok(expr)
-                }
-            }
+                Ok(expr)
+            },
 
             // Prefix Operators
             TokenType::Minus | TokenType::Bang | TokenType::Plus => |parser, token| {
@@ -714,7 +790,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 let _frame = parser.add_stack_frame()?;
 
                 let expr = parser.expr()?;
-                parser.eat(TokenType::RightParen)?;
+                parser.eat(TokenType::RightParen, [TokenType::Newline])?;
                 let expr = parser.expr_arena.store(Expression::Parenthesised(expr));
 
                 Ok(expr)
@@ -731,14 +807,14 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                     elements.push(elm);
 
                     if parser.peek()?.ty() == TokenType::Comma {
-                        parser.eat(TokenType::Comma)?;
+                        parser.eat(TokenType::Comma, [TokenType::Newline])?;
                     } else {
                         break;
                     }
                 }
 
                 elements.shrink_to_fit();
-                parser.eat(TokenType::RightBrace)?;
+                parser.eat(TokenType::RightBrace, [TokenType::Newline])?;
                 let expr = parser.expr_arena.store(Expression::Array(elements));
 
                 Ok(expr)
@@ -761,14 +837,14 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                     arguments.push(arg);
 
                     if parser.peek()?.ty() == TokenType::Comma {
-                        parser.eat(TokenType::Comma)?;
+                        parser.eat(TokenType::Comma, [TokenType::Newline])?;
                     } else {
                         break;
                     }
                 }
 
                 arguments.shrink_to_fit();
-                parser.eat(TokenType::RightParen)?;
+                parser.eat(TokenType::RightParen, [TokenType::Newline])?;
                 let expr = parser
                     .expr_arena
                     .store(Expression::FunctionCall { caller, arguments });
@@ -825,7 +901,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             TokenType::Colon => |parser, _colon, left| {
                 let _frame = parser.add_stack_frame()?;
 
-                let equal = parser.eat(TokenType::Equal)?;
+                let equal = parser.eat(TokenType::Equal, [TokenType::Newline])?;
                 let assign = AssignmentType::try_from((&equal, parser.current_file))?;
                 let right = parser.expr()?;
                 let expr = parser
@@ -887,7 +963,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 let _frame = parser.add_stack_frame()?;
 
                 let condition = parser.expr()?;
-                parser.eat(TokenType::Else)?;
+                parser.eat(TokenType::Else, [TokenType::Newline])?;
                 let false_arm = parser.expr()?;
                 let expr = parser.expr_arena.store(Expression::InlineConditional {
                     true_arm,
@@ -913,7 +989,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         let _frame = self.add_stack_frame()?;
 
         let index = self.expr()?;
-        self.eat(TokenType::RightBrace)?;
+        self.eat(TokenType::RightBrace, [TokenType::Newline])?;
         let expr = self
             .expr_arena
             .store(Expression::IndexArray { array, index });

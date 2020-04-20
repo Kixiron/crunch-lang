@@ -412,8 +412,10 @@ dependencies = [
  "hashbrown",
  "hexponent",
  "lasso",
+ "lexical-core",
  "log",
  "logos",
+ "proptest",
  "simple_logger",
  "stadium",
 ]
@@ -421,10 +423,6 @@ dependencies = [
 [[package]]
 name = "crunch-semantics"
 version = "0.1.0"
-dependencies = [
- "crunch-error",
- "crunch-parser",
-]
 
 [[package]]
 name = "crunch-typecheck"
@@ -458,9 +456,9 @@ dependencies = [
 
 [[package]]
 name = "dashmap"
-version = "3.11.0"
+version = "3.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "002042a65ff32569ea25dfe1deb5b82903b19ed7d9a621e45d0bf18d2daa947c"
+checksum = "0f87a04c37da1d3d27db1fb7f372802b72fb8c3ff3e9c0914530995127f4a6a1"
 dependencies = [
  "ahash",
  "cfg-if",
@@ -638,6 +636,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
+name = "lexical-core"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db65c6da02e61f55dae90a0ae427b2a5f6b3e8db09f58d10efab23af92592616"
+dependencies = [
+ "arrayvec",
+ "bitflags",
+ "cfg-if",
+ "ryu",
+ "static_assertions",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -663,18 +674,18 @@ dependencies = [
 
 [[package]]
 name = "logos"
-version = "0.10.0"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c0f838bae1fbf7e2ac1e8836858afe3b310c61bb357461c0a2cd7712272ef0a"
+checksum = "42718f9e929c97a875b305f7bd411f7dfc5777ee4a9904aa9c765f25701b7c4c"
 dependencies = [
  "logos-derive",
 ]
 
 [[package]]
 name = "logos-derive"
-version = "0.10.0"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b323d18b8440688b42dc34edc5a32b702891e412a30a9488057029b423842a6"
+checksum = "93ea1beb72d3e0928e729e8795186b9a4ed607a72765bcf8093800ef7c0d5fc0"
 dependencies = [
  "beef",
  "fnv",
@@ -1183,7 +1194,6 @@ dependencies = [
  "crunch-parser",
  "rustyline",
  "rustyline-derive",
- "simple_logger",
 ]
 
 [[package]]
@@ -1346,6 +1356,12 @@ checksum = "05720e22615919e4734f6a99ceae50d00226c3c5aca406e102ebc33298214e0a"
 name = "stadium"
 version = "0.1.0"
 source = "git+https://github.com/Kixiron/stadium.git#547e3f4644d99a189925bc1a65eb1a54d8867a95"
+
+[[package]]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "syn"

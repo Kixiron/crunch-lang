@@ -1,7 +1,6 @@
 use crate::{
     error::{Error, Locatable, Location, ParseResult, SyntaxError},
     files::FileId,
-    interner::Interner,
     parser::{Expr, Literal, Parser, Stmt},
     symbol_table::{Symbol, SymbolLocation},
     token::{Token, TokenType},
@@ -18,8 +17,7 @@ pub enum Ast<'expr, 'stmt> {
         decorators: Vec<Decorator<'expr>>,
         attributes: Vec<Attribute>,
         name: SmallSpur,
-        generics: Vec<SmallSpur>,
-        args: Vec<(SmallSpur, Type)>,
+        args: Vec<(SmallSpur, Type, bool)>,
         returns: Type,
         body: Vec<Stmt<'expr, 'stmt>>,
     },
@@ -28,7 +26,7 @@ pub enum Ast<'expr, 'stmt> {
         decorators: Vec<Decorator<'expr>>,
         attributes: Vec<Attribute>,
         name: SmallSpur,
-        generics: Vec<SmallSpur>,
+        generics: Vec<Type>,
         members: Vec<TypeMember<'expr>>,
         methods: Vec<Ast<'expr, 'stmt>>,
     },
@@ -37,7 +35,7 @@ pub enum Ast<'expr, 'stmt> {
         decorators: Vec<Decorator<'expr>>,
         attributes: Vec<Attribute>,
         name: SmallSpur,
-        generics: Vec<SmallSpur>,
+        generics: Vec<Type>,
         variants: Vec<EnumVariant<'expr>>,
     },
 
@@ -45,7 +43,7 @@ pub enum Ast<'expr, 'stmt> {
         decorators: Vec<Decorator<'expr>>,
         attributes: Vec<Attribute>,
         name: SmallSpur,
-        generics: Vec<SmallSpur>,
+        generics: Vec<Type>,
         methods: Vec<Ast<'expr, 'stmt>>,
     },
 
@@ -87,30 +85,21 @@ impl<'expr, 'stmt> Ast<'expr, 'stmt> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Builtin(BuiltinType),
+    TraitObj(Vec<Type>),
+    Bounded { ty: SmallSpur, bounds: Vec<Type> },
     Custom(SmallSpur),
     Infer,
 }
 
 impl<'a> Type {
-    pub(crate) fn try_new<'intern>(
-        (token, file, interner): (Token<'a>, FileId, &'intern mut Interner),
-    ) -> Result<(Self, &'intern mut Interner), (Locatable<Error>, &'intern mut Interner)> {
-        if token.ty() == TokenType::Ident {
-            let ty = BuiltinType::try_new((token, file, interner));
-            match ty {
-                Ok((ty, interner)) => Ok((Self::Builtin(ty), interner)),
-                Err((_, interner)) => Ok((Self::Custom(interner.intern(token.source())), interner)),
-            }
-        } else {
-            Err((
-                Locatable::new(
-                    Error::Syntax(SyntaxError::Generic(
-                        "Expected an ident as a type name".to_string(),
-                    )),
-                    Location::new(&token, file),
-                ),
-                interner,
-            ))
+    pub(crate) fn push(&mut self, ty: Type) {
+        match self {
+            Self::TraitObj(vec) => vec.push(ty),
+            Self::Bounded { bounds, .. } => bounds.push(ty),
+            Self::Builtin(BuiltinType::Array(val)) => **val = ty,
+            Self::Builtin(BuiltinType::Tuple(types)) => types.push(ty),
+
+            _ => unreachable!("Internal error, attempted to push to unpushable type"),
         }
     }
 }
@@ -124,89 +113,22 @@ impl Default for Type {
 #[derive(Debug, Clone, PartialEq)]
 pub enum BuiltinType {
     Integer { sign: Signedness, width: u16 },
-    Float { width: u8 },
+    IntReg(Signedness),
+    IntPtr(Signedness),
+    Float { width: u16 },
     Boolean,
     String,
     Rune,
     Unit,
-    Vec(Box<Type>),
+    Absurd,
+    Array(Box<Type>),
+    Tuple(Vec<Type>),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Signedness {
     Unsigned,
     Signed,
-}
-
-impl<'a> BuiltinType {
-    pub(crate) fn try_new<'intern>(
-        (mut token, file, interner): (Token<'a>, FileId, &'intern mut Interner),
-    ) -> Result<(Self, &'intern mut Interner), (Locatable<Error>, &'intern mut Interner)> {
-        match token.source() {
-            "str" => Ok((Self::String, interner)),
-
-            // FIXME: This is super sloppy
-            src if (src.starts_with("i") || src.starts_with("u"))
-                && src.chars().collect::<Vec<_>>()[1..]
-                    .iter()
-                    .all(|c| c.is_numeric()) =>
-            {
-                Ok((
-                    Self::Integer {
-                        sign: if src.starts_with("u") {
-                            Signedness::Unsigned
-                        } else {
-                            Signedness::Signed
-                        },
-                        width: src
-                            .trim_start_matches(['i', 'u'].as_ref())
-                            .parse::<u16>()
-                            .unwrap(),
-                    },
-                    interner,
-                ))
-            }
-
-            // FIXME: This is super sloppy
-            src if src.starts_with('f')
-                && src.chars().collect::<Vec<_>>()[1..]
-                    .iter()
-                    .all(|c| c.is_numeric()) =>
-            {
-                Ok((
-                    Self::Float {
-                        width: src.trim_start_matches('f').parse::<u8>().unwrap(),
-                    },
-                    interner,
-                ))
-            }
-
-            "bool" => Ok((Self::Boolean, interner)),
-
-            "unit" => Ok((Self::Unit, interner)),
-
-            ty if ty.starts_with('[') && ty.ends_with(']') => {
-                token.source = &token.source()[1..ty.len() - 1];
-
-                if token.source() == "" {
-                    Ok((Self::Vec(Box::new(Type::Infer)), interner))
-                } else {
-                    let (ty, interner) = Type::try_new((token, file, interner))?;
-                    Ok((Self::Vec(Box::new(ty)), interner))
-                }
-            }
-
-            _ => Err((
-                Locatable::new(
-                    Error::Syntax(SyntaxError::Generic(
-                        "Expected an ident as a type name".to_string(),
-                    )),
-                    Location::new(&token, file),
-                ),
-                interner,
-            )),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -268,10 +190,10 @@ pub struct Decorator<'expr> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Attribute {
     Visibility(Visibility),
+    Comptime,
 }
 
 impl Attribute {
-    #[allow(irrefutable_let_patterns)]
     pub fn is_visibility(&self) -> bool {
         if let Self::Visibility(_) = self {
             true
@@ -288,6 +210,7 @@ impl<'a> TryFrom<(&Token<'a>, FileId)> for Attribute {
         Ok(match token.ty() {
             TokenType::Exposed => Self::Visibility(Visibility::Exposed),
             TokenType::Package => Self::Visibility(Visibility::Package),
+            TokenType::Comptime => Self::Comptime,
 
             _ => {
                 return Err(Locatable::new(
@@ -340,7 +263,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 Ok(None)
             }
 
-            TokenType::Exposed | TokenType::Package => {
+            TokenType::Exposed | TokenType::Package | TokenType::Comptime => {
                 let attr = Attribute::try_from((&self.next()?, self.current_file))?;
                 attributes.push(attr);
 
@@ -410,9 +333,9 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         let _frame = self.add_stack_frame()?;
         decorators.shrink_to_fit();
 
-        self.eat(TokenType::Import)?;
+        self.eat(TokenType::Import, [TokenType::Newline])?;
 
-        let file = self.eat(TokenType::String)?;
+        let file = self.eat(TokenType::String, [TokenType::Newline])?;
         let literal = Literal::try_from((&file, self.current_file))?;
         let file = match literal {
             Literal::String(string) => self.string_interner.intern(&string.to_string()),
@@ -429,11 +352,11 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         };
 
         let dest = if self.peek()?.ty() == TokenType::Library {
-            self.eat(TokenType::Library)?;
+            self.eat(TokenType::Library, [TokenType::Newline])?;
 
             ImportDest::NativeLib
         } else if self.peek()?.ty() == TokenType::Package {
-            self.eat(TokenType::Package)?;
+            self.eat(TokenType::Package, [TokenType::Newline])?;
 
             ImportDest::Package
         } else {
@@ -441,23 +364,23 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         };
 
         let exposes = if self.peek()?.ty() == TokenType::Exposing {
-            self.eat(TokenType::Exposing)?;
+            self.eat(TokenType::Exposing, [TokenType::Newline])?;
 
             if self.peek()?.ty() == TokenType::Star {
-                self.eat(TokenType::Star)?;
+                self.eat(TokenType::Star, [TokenType::Newline])?;
 
                 ImportExposure::All
             } else {
                 let mut members = Vec::with_capacity(5);
                 while self.peek()?.ty() != TokenType::Newline {
                     let member = {
-                        let ident = self.eat(TokenType::Ident)?;
+                        let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
                         self.string_interner.intern(ident.source())
                     };
                     let alias = if self.peek()?.ty() == TokenType::As {
-                        self.eat(TokenType::As)?;
+                        self.eat(TokenType::As, [TokenType::Newline])?;
                         let alias = {
-                            let ident = self.eat(TokenType::Ident)?;
+                            let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
                             self.string_interner.intern(ident.source())
                         };
 
@@ -470,7 +393,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
                     // TODO: Helpful error if they terminated it too soon
                     if self.peek()?.ty() == TokenType::Comma {
-                        self.eat(TokenType::Comma)?;
+                        self.eat(TokenType::Comma, [TokenType::Newline])?;
                     } else {
                         break;
                     }
@@ -480,9 +403,9 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             }
         } else {
             let alias = if self.peek()?.ty() == TokenType::As {
-                self.eat(TokenType::As)?;
+                self.eat(TokenType::As, [TokenType::Newline])?;
 
-                let ident = self.eat(TokenType::Ident)?;
+                let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
                 self.string_interner.intern(ident.source())
             } else {
                 // Get the last segment of the path as the alias if none is supplied
@@ -503,7 +426,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             ImportExposure::None(alias)
         };
 
-        self.eat(TokenType::Newline)?;
+        self.eat(TokenType::Newline, [])?;
 
         Ok(Ast::Import {
             file,
@@ -526,13 +449,13 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             attributes.push(Attribute::Visibility(Visibility::FileLocal));
         }
 
-        self.eat(TokenType::Trait)?;
+        self.eat(TokenType::Trait, [TokenType::Newline])?;
         let name = {
-            let ident = self.eat(TokenType::Ident)?;
+            let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
             self.string_interner.intern(ident.source())
         };
         let generics = self.generics()?;
-        self.eat(TokenType::Newline)?;
+        self.eat(TokenType::Newline, [])?;
 
         let (mut method_decorators, mut method_attributes) =
             (Vec::with_capacity(3), Vec::with_capacity(3));
@@ -565,7 +488,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 }
 
                 TokenType::Newline => {
-                    self.eat(TokenType::Newline)?;
+                    self.eat(TokenType::Newline, [])?;
                 }
 
                 _ => {
@@ -578,7 +501,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         }
         methods.shrink_to_fit();
 
-        self.eat(TokenType::End)?;
+        self.eat(TokenType::End, [TokenType::Newline])?;
 
         Ok(Ast::Trait {
             decorators,
@@ -603,13 +526,13 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             attributes.push(Attribute::Visibility(Visibility::FileLocal));
         }
 
-        self.eat(TokenType::Enum)?;
+        self.eat(TokenType::Enum, [TokenType::Newline])?;
         let name = {
-            let ident = self.eat(TokenType::Ident)?;
+            let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
             self.string_interner.intern(ident.source())
         };
         let generics = self.generics()?;
-        self.eat(TokenType::Newline)?;
+        self.eat(TokenType::Newline, [])?;
 
         let mut variant_decorators = Vec::with_capacity(7);
         let mut variants = Vec::with_capacity(7);
@@ -621,26 +544,26 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
                 TokenType::Ident => {
                     let name = {
-                        let ident = self.eat(TokenType::Ident)?;
+                        let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
                         self.string_interner.intern(ident.source())
                     };
 
                     if self.peek()?.ty() == TokenType::LeftParen {
-                        self.eat(TokenType::LeftParen)?;
+                        self.eat(TokenType::LeftParen, [TokenType::Newline])?;
 
                         let mut elements = Vec::with_capacity(3);
                         while self.peek()?.ty() != TokenType::RightParen {
-                            let ty = self.eat_type()?;
+                            let ty = self.ascribed_type()?;
                             elements.push(ty);
 
                             // TODO: Nice error here
                             if self.peek()?.ty() == TokenType::Comma {
-                                self.eat(TokenType::Comma)?;
+                                self.eat(TokenType::Comma, [TokenType::Newline])?;
                             } else {
                                 break;
                             }
                         }
-                        self.eat(TokenType::RightParen)?;
+                        self.eat(TokenType::RightParen, [TokenType::Newline])?;
 
                         variants.push(EnumVariant::Tuple {
                             name,
@@ -654,11 +577,11 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                         });
                     }
 
-                    self.eat(TokenType::Newline)?;
+                    self.eat(TokenType::Newline, [])?;
                 }
 
                 TokenType::Newline => {
-                    self.eat(TokenType::Newline)?;
+                    self.eat(TokenType::Newline, [])?;
                 }
 
                 ty => {
@@ -673,7 +596,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             }
         }
         variants.shrink_to_fit();
-        self.eat(TokenType::End)?;
+        self.eat(TokenType::End, [TokenType::Newline])?;
 
         Ok(Ast::Enum {
             decorators,
@@ -687,14 +610,14 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     fn decorator(&mut self, decorators: &mut Vec<Decorator<'expr>>) -> ParseResult<()> {
         let _frame = self.add_stack_frame()?;
 
-        self.eat(TokenType::AtSign)?;
+        self.eat(TokenType::AtSign, [TokenType::Newline])?;
         let name = {
-            let ident = self.eat(TokenType::Ident)?;
+            let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
             self.string_interner.intern(ident.source())
         };
 
         let args = if self.peek()?.ty() == TokenType::LeftParen {
-            self.eat(TokenType::LeftParen)?;
+            self.eat(TokenType::LeftParen, [TokenType::Newline])?;
 
             let mut args = Vec::with_capacity(5);
             while self.peek()?.ty() != TokenType::RightParen {
@@ -703,7 +626,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
                 if let Ok(peek) = self.peek() {
                     if peek.ty() == TokenType::Comma {
-                        self.eat(TokenType::Comma)?;
+                        self.eat(TokenType::Comma, [TokenType::Newline])?;
                         continue;
                     }
                 }
@@ -711,7 +634,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 break;
             }
             args.shrink_to_fit();
-            self.eat(TokenType::RightParen)?;
+            self.eat(TokenType::RightParen, [TokenType::Newline])?;
 
             args
         } else {
@@ -737,13 +660,13 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             attributes.push(Attribute::Visibility(Visibility::FileLocal));
         }
 
-        self.eat(TokenType::Type)?;
+        self.eat(TokenType::Type, [TokenType::Newline])?;
         let name = {
-            let ident = self.eat(TokenType::Ident)?;
+            let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
             self.string_interner.intern(ident.source())
         };
         let generics = self.generics()?;
-        self.eat(TokenType::Newline)?;
+        self.eat(TokenType::Newline, [])?;
 
         let (mut member_decorators, mut member_attributes) =
             (Vec::with_capacity(3), Vec::with_capacity(3));
@@ -772,13 +695,13 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
                 TokenType::Ident => {
                     let name = {
-                        let ident = self.eat(TokenType::Ident)?;
+                        let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
                         self.string_interner.intern(ident.source())
                     };
 
                     let ty = if self.peek()?.ty() == TokenType::Colon {
-                        self.eat(TokenType::Colon)?;
-                        self.eat_type()?
+                        self.eat(TokenType::Colon, [TokenType::Newline])?;
+                        self.ascribed_type()?
                     } else {
                         Type::default()
                     };
@@ -795,13 +718,13 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                         name,
                         ty,
                     };
-                    self.eat(TokenType::Newline)?;
+                    self.eat(TokenType::Newline, [])?;
 
                     members.push(member);
                 }
 
                 TokenType::Newline => {
-                    self.eat(TokenType::Newline)?;
+                    self.eat(TokenType::Newline, [])?;
                 }
 
                 ty => {
@@ -812,7 +735,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 }
             }
         }
-        self.eat(TokenType::End)?;
+        self.eat(TokenType::End, [TokenType::Newline])?;
 
         if !member_attributes.is_empty() || !member_decorators.is_empty() {
             return Err(Locatable::new(
@@ -845,21 +768,23 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             attributes.push(Attribute::Visibility(Visibility::FileLocal));
         }
 
-        self.eat(TokenType::Function)?;
+        self.eat(TokenType::Function, [TokenType::Newline])?;
         let name = {
-            let ident = self.eat(TokenType::Ident)?;
+            let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
             self.string_interner.intern(ident.source())
         };
-        let generics = self.generics()?;
         let args = self.function_args()?;
 
         let returns = if self.peek()?.ty() == TokenType::RightArrow {
-            self.eat(TokenType::RightArrow)?;
-            self.eat_type()?
+            self.eat(TokenType::RightArrow, [])?;
+            self.ascribed_type()?
         } else {
             Type::default()
         };
-        self.eat(TokenType::Newline)?;
+        self.eat(TokenType::Newline, [])?;
+        while self.peek()?.ty() == TokenType::Newline {
+            self.eat(TokenType::Newline, [])?;
+        }
 
         let mut body = Vec::with_capacity(20);
         while self.peek()?.ty() != TokenType::End {
@@ -867,94 +792,206 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 body.push(stmt);
             }
         }
-        self.eat(TokenType::End)?;
+
+        self.eat(TokenType::End, [TokenType::Newline])?;
         body.shrink_to_fit();
 
         Ok(Ast::Function {
             decorators,
             attributes,
             name,
-            generics,
             args,
             returns,
             body,
         })
     }
 
-    fn function_args(&mut self) -> ParseResult<Vec<(SmallSpur, Type)>> {
+    fn function_args(&mut self) -> ParseResult<Vec<(SmallSpur, Type, bool)>> {
         let _frame = self.add_stack_frame()?;
-        self.eat(TokenType::LeftParen)?;
+        self.eat(TokenType::LeftParen, [TokenType::Newline])?;
 
         let mut args = Vec::with_capacity(7);
         while self.peek()?.ty() != TokenType::RightParen {
-            let ident = {
-                let ident = self.eat(TokenType::Ident)?;
-                self.string_interner.intern(ident.source())
+            let (comptime, ident) = match self.eat_of(
+                [TokenType::Ident, TokenType::Comptime],
+                [TokenType::Newline],
+            )? {
+                ident if ident.ty() == TokenType::Ident => {
+                    (false, self.string_interner.intern(ident.source()))
+                }
+                token if token.ty() == TokenType::Comptime => (true, {
+                    let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
+                    self.string_interner.intern(ident.source())
+                }),
+
+                _ => unreachable!(),
             };
 
+            if self.peek()?.ty() == TokenType::Newline {
+                self.eat(TokenType::Newline, [])?;
+                continue;
+            }
+
             let ty = if self.peek()?.ty() == TokenType::Colon {
-                self.eat(TokenType::Colon)?;
-                self.eat_type()?
+                self.eat(TokenType::Colon, [TokenType::Newline])?;
+                self.ascribed_type()?
             } else {
                 Type::default()
             };
-            args.push((ident, ty));
+            args.push((ident, ty, comptime));
 
             if self.peek()?.ty() == TokenType::Comma {
-                self.eat(TokenType::Comma)?;
+                self.eat(TokenType::Comma, [TokenType::Newline])?;
             } else {
-                // TODO: Check if next is a `>` and if so emit a helpful error
                 break;
             }
         }
-        self.eat(TokenType::RightParen)?;
+        self.eat(TokenType::RightParen, [TokenType::Newline])?;
         args.shrink_to_fit();
 
         Ok(args)
     }
 
-    fn eat_type(&mut self) -> ParseResult<Type> {
+    fn generics(&mut self) -> ParseResult<Vec<Type>> {
         let _frame = self.add_stack_frame()?;
 
-        let ty = match Type::try_new((
-            self.eat(TokenType::Ident)?,
-            self.current_file,
-            &mut self.string_interner,
-        )) {
-            Ok((ty, _)) => ty,
-            Err((err, _)) => return Err(err),
-        };
-
-        Ok(ty)
-    }
-
-    fn generics(&mut self) -> ParseResult<Vec<SmallSpur>> {
-        let _frame = self.add_stack_frame()?;
-
-        if self.peek()?.ty() == TokenType::LeftCaret {
-            self.eat(TokenType::LeftCaret)?;
+        if self.peek()?.ty() == TokenType::LeftBrace {
+            self.eat(TokenType::LeftBrace, [TokenType::Newline])?;
 
             let mut generics = Vec::with_capacity(5);
             while self.peek()?.ty() != TokenType::RightCaret {
-                let generic = {
-                    let ident = self.eat(TokenType::Ident)?;
-                    self.string_interner.intern(ident.source())
-                };
-                generics.push(generic);
+                generics.push(self.ascribed_type()?);
 
                 if self.peek()?.ty() == TokenType::Comma {
-                    self.eat(TokenType::Comma)?;
+                    self.eat(TokenType::Comma, [TokenType::Newline])?;
                 } else {
                     // TODO: Check if next is a `>` and if so emit a helpful error
                     break;
                 }
             }
-            self.eat(TokenType::RightCaret)?;
+            self.eat(TokenType::RightBrace, [TokenType::Newline])?;
             generics.shrink_to_fit();
 
             Ok(generics)
         } else {
             Ok(Vec::new())
+        }
+    }
+
+    pub(super) fn ascribed_type(&mut self) -> ParseResult<Type> {
+        let _frame = self.add_stack_frame()?;
+
+        let mut ty = match self.eat_of([TokenType::Type, TokenType::Ident], [TokenType::Newline])? {
+            Token { source, .. } if source == "str" => {
+                return Ok(Type::Builtin(BuiltinType::String));
+            }
+            Token { source, .. } if source == "rune" => {
+                return Ok(Type::Builtin(BuiltinType::Rune));
+            }
+            Token { source, .. } if source == "bool" => {
+                return Ok(Type::Builtin(BuiltinType::Boolean));
+            }
+            Token { source, .. } if source == "unit" => {
+                return Ok(Type::Builtin(BuiltinType::Unit));
+            }
+            Token { source, .. } if source == "absurd" => {
+                return Ok(Type::Builtin(BuiltinType::Absurd));
+            }
+            Token { source, .. } if source == "ureg" || source == "ireg" => {
+                return Ok(Type::Builtin(BuiltinType::IntReg(
+                    if source.chars().next().unwrap() == 'u' {
+                        Signedness::Unsigned
+                    } else {
+                        Signedness::Signed
+                    },
+                )));
+            }
+            Token { source, .. } if source == "uptr" || source == "iptr" => {
+                return Ok(Type::Builtin(BuiltinType::IntPtr(
+                    if source.chars().next().unwrap() == 'u' {
+                        Signedness::Unsigned
+                    } else {
+                        Signedness::Signed
+                    },
+                )));
+            }
+
+            Token { source, .. }
+                if source.starts_with('u') && source.chars().skip(1).all(|c| c.is_numeric()) =>
+            {
+                let width: u16 = source.chars().skip(1).collect::<String>().parse().unwrap();
+                return Ok(Type::Builtin(BuiltinType::Integer {
+                    sign: Signedness::Unsigned,
+                    width,
+                }));
+            }
+            Token { source, .. }
+                if source.starts_with('i') && source.chars().skip(1).all(|c| c.is_numeric()) =>
+            {
+                let width: u16 = source.chars().skip(1).collect::<String>().parse().unwrap();
+                return Ok(Type::Builtin(BuiltinType::Integer {
+                    sign: Signedness::Signed,
+                    width,
+                }));
+            }
+            Token { source, .. }
+                if source.starts_with('f') && source.chars().skip(1).all(|c| c.is_numeric()) =>
+            {
+                let width: u16 = source.chars().skip(1).collect::<String>().parse().unwrap();
+                return Ok(Type::Builtin(BuiltinType::Float { width }));
+            }
+
+            Token { source, .. } if source == "arr" => {
+                // TODO: Maybe parse this immediately?
+                Type::Builtin(BuiltinType::Array(Box::new(Type::Infer)))
+            }
+            Token { source, .. } if source == "tup" => {
+                Type::Builtin(BuiltinType::Tuple(Vec::new()))
+            }
+
+            Token { ty, .. } if ty == TokenType::Type => Type::TraitObj(Vec::new()),
+            Token { ty, source, .. }
+                if ty == TokenType::Ident
+                    && self.peek().map(|t| t.ty()) == Ok(TokenType::LeftBrace) =>
+            {
+                Type::Bounded {
+                    ty: self.string_interner.intern(source),
+                    bounds: Vec::new(),
+                }
+            }
+            Token { ty, source, .. } if ty == TokenType::Ident => {
+                return Ok(Type::Custom(self.string_interner.intern(source)));
+            }
+
+            _ => unreachable!(),
+        };
+
+        while self.peek()?.ty() == TokenType::Newline {
+            self.eat(TokenType::Newline, [])?;
+        }
+
+        if self.peek()?.ty() == TokenType::LeftBrace {
+            self.eat(TokenType::LeftBrace, [])?;
+            while self.peek()?.ty() != TokenType::RightBrace {
+                ty.push(self.ascribed_type()?);
+
+                if self.peek()?.ty() == TokenType::Comma {
+                    self.eat(TokenType::Comma, [TokenType::Newline])?;
+                } else {
+                    break;
+                }
+            }
+            self.eat(TokenType::RightBrace, [])?;
+        }
+
+        if let Type::Bounded { ty, bounds } = ty {
+            if bounds.is_empty() {
+                Ok(Type::Custom(ty))
+            } else {
+                Ok(Type::Bounded { ty, bounds })
+            }
+        } else {
+            Ok(ty)
         }
     }
 }

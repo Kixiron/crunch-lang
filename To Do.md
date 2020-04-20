@@ -47,7 +47,6 @@
   - [ ] Implement popular, easy or common problems
   - [ ] Create large 'examples' directory with lots of source code
   - [ ] Start writing std, even if it's not currently 100% usable
-- [ ] Ditch proptest dependency
 - [ ] Fix printing tests
 - [ ] Break CrashReport into own crate & implement features requested in #35
 - [ ] Work on parallel compilation
@@ -68,3 +67,4 @@
   - [ ] Green threading
 - [ ] Flexible namespaces
   - [ ] Types/enums/functions/traits within other types/enums/functions/traits
+- [ ] Pass types by value

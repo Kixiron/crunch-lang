@@ -95,6 +95,31 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         }
     }
 
+    pub fn from_tokens(
+        token_stream: TokenStream<'src>,
+        next: Option<Token<'src>>,
+        peek: Option<Token<'src>>,
+        current_file: FileId,
+        string_interner: Interner,
+        symbol_table: SymbolTable,
+    ) -> Self {
+        Self {
+            token_stream,
+            next,
+            peek,
+
+            error_handler: ErrorHandler::new(),
+            stack_frames: StackGuard::new(),
+            current_file,
+
+            expr_arena: Stadium::with_capacity(NonZeroUsize::new(512).unwrap()),
+            stmt_arena: Stadium::with_capacity(NonZeroUsize::new(512).unwrap()),
+
+            string_interner,
+            symbol_table,
+        }
+    }
+
     pub fn parse(
         mut self,
     ) -> Result<
@@ -156,7 +181,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         #[cfg(feature = "logging")]
         info!("Started lexing");
 
-        let mut token_stream = TokenStream::new(source, true);
+        let mut token_stream = TokenStream::new(source, true, true);
         let next = None;
         let peek = token_stream.next_token();
 
@@ -189,47 +214,79 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             .ok_or_else(|| Locatable::file(Error::EndOfFile, self.current_file))
     }
 
+    /// Eats one of the `expected` token, ignoring (and consuming) any tokens included in `ignoring`
     #[inline(always)]
-    fn eat(&mut self, expected: TokenType) -> ParseResult<Token<'src>> {
+    fn eat<T>(&mut self, expected: TokenType, ignoring: T) -> ParseResult<Token<'src>>
+    where
+        T: AsRef<[TokenType]>,
+    {
         let _frame = self.add_stack_frame()?;
-        let token = self.next()?;
 
-        if token.ty() == expected {
-            Ok(token)
-        } else {
-            Err(Locatable::new(
-                Error::Syntax(SyntaxError::Generic(format!(
-                    "Expected {}, got {}",
-                    expected,
-                    token.ty()
-                ))),
-                Location::new(&token, self.current_file),
-            ))
+        let ignoring = ignoring.as_ref();
+        let mut token = self.next()?;
+
+        // Assert that the expected token is not ignored, as that's likely a dev error
+        debug_assert!(!ignoring.contains(&expected));
+
+        loop {
+            match token.ty() {
+                ty if ty == expected => return Ok(token),
+                ignored if ignoring.contains(&ignored) => {}
+                _ => {
+                    return Err(Locatable::new(
+                        Error::Syntax(SyntaxError::Generic(format!(
+                            "Expected {}, got {}",
+                            expected,
+                            token.ty()
+                        ))),
+                        Location::new(&token, self.current_file),
+                    ));
+                }
+            }
+
+            token = self.next()?;
         }
     }
 
+    /// Eats one of the `expected` tokens, ignoring (and consuming) any tokens included in `ignoring`
     #[inline(always)]
-    fn eat_of(&mut self, expected: &[TokenType]) -> ParseResult<Token<'src>> {
+    fn eat_of<T, E>(&mut self, expected: T, ignoring: E) -> ParseResult<Token<'src>>
+    where
+        T: AsRef<[TokenType]>,
+        E: AsRef<[TokenType]>,
+    {
         let _frame = self.add_stack_frame()?;
-        let token = self.next()?;
 
-        if expected.contains(&token.ty()) {
-            Ok(token)
-        } else {
-            let expected = expected
-                .iter()
-                .map(|t| format!("'{}'", t))
-                .collect::<Vec<_>>()
-                .join(", ");
+        let expected = expected.as_ref();
+        let ignoring = ignoring.as_ref();
+        let mut token = self.next()?;
 
-            Err(Locatable::new(
-                Error::Syntax(SyntaxError::Generic(format!(
-                    "Expected one of {}, got {}",
-                    expected,
-                    token.ty()
-                ))),
-                Location::new(&token, self.current_file),
-            ))
+        // Assert that the two slices don't share any elements, as that's likely a dev error
+        debug_assert!(ignoring.iter().any(|i| !expected.contains(i)));
+
+        loop {
+            match token.ty() {
+                ty if expected.contains(&ty) => return Ok(token),
+                ignored if ignoring.contains(&ignored) => {}
+                _ => {
+                    let expected = expected
+                        .iter()
+                        .map(|t| format!("'{}'", t))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+
+                    return Err(Locatable::new(
+                        Error::Syntax(SyntaxError::Generic(format!(
+                            "Expected one of {}, got {}",
+                            expected,
+                            token.ty()
+                        ))),
+                        Location::new(&token, self.current_file),
+                    ));
+                }
+            }
+
+            token = self.next()?;
         }
     }
 
@@ -356,7 +413,7 @@ impl TryFrom<TokenType> for BinaryPrecedence {
             TokenType::Pipe => Self::BitOr,
             TokenType::And => Self::LogAnd,
             TokenType::Or => Self::LogOr,
-            TokenType::Equal
+            TokenType::Colon
             | TokenType::AddAssign
             | TokenType::SubAssign
             | TokenType::MultAssign

@@ -65,7 +65,7 @@ impl SymbolLocation {
 #[derive(Debug, Clone)]
 pub enum Symbol {
     Function {
-        params: Vec<Type>,
+        params: Vec<(Type, bool)>,
         returns: Type,
     },
 
@@ -98,7 +98,7 @@ impl From<&Ast<'_, '_>> for Symbol {
     fn from(node: &Ast<'_, '_>) -> Self {
         match node {
             Ast::Function { args, returns, .. } => Self::Function {
-                params: args.iter().map(|(_, ty)| ty.clone()).collect(),
+                params: args.iter().map(|(_, ty, c)| (ty.clone(), *c)).collect(),
                 returns: returns.clone(),
             },
 

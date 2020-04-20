@@ -45,6 +45,44 @@ pub(super) fn unescape_string(queue: Vec<char>) -> Result<Text, (Error, Range<us
     Ok(Text::new(s))
 }
 
+#[inline]
+pub(super) fn unescape_rune(queue: Vec<char>) -> Result<Rune, (Error, Range<usize>)> {
+    let mut queue = CharStream::new(queue.into_iter());
+    let mut index = 0;
+
+    let c = queue.next(&mut index)?;
+    if c != '\\' {
+        let rune = Ok(Rune::from_char(c));
+
+        if queue.is_empty() {
+            rune
+        } else {
+            Err((Error::Syntax(SyntaxError::TooManyRunes), index - 1..index))
+        }
+    } else {
+        match queue.next(&mut index)? {
+            '\\' => Ok(Rune::from_char('\\')),
+            '"' => Ok(Rune::from_char('"')),
+            '\'' => Ok(Rune::from_char('\'')),
+            'n' => Ok(Rune::from_char('\n')),
+            'r' => Ok(Rune::from_char('\r')),
+            't' => Ok(Rune::from_char('\t')),
+            'x' => Ok(byte(&mut queue, &mut index)?),
+            'u' => Ok(unicode_16(&mut queue, index, &mut index)?),
+            'U' => Ok(unicode_32(&mut queue, index, &mut index)?),
+            'o' => Ok(octal(&mut queue, index, &mut index)?),
+            'b' => Ok(binary(&mut queue, &mut index)?),
+
+            c => {
+                return Err((
+                    Error::Syntax(SyntaxError::UnrecognizedEscapeSeq(c)),
+                    index - 1..index,
+                ));
+            }
+        }
+    }
+}
+
 macro_rules! missing_braces {
     ($index:expr) => {
         Err((
@@ -265,6 +303,10 @@ impl CharStream {
                 *index..*index,
             ))
         }
+    }
+
+    pub fn is_empty(self) -> bool {
+        self.0.count() == 0
     }
 }
 

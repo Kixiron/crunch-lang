@@ -5,221 +5,217 @@ use core::{fmt, ops};
 
 #[derive(Logos, Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum TokenType {
-    #[end]
-    EOF,
     #[error]
+    #[regex(r"[ \t\f]+", logos::skip)]
     Error,
 
-    #[regex = "[a-zA-Z_][a-zA-Z0-9_]*"]
+    #[regex("[a-zA-Z_][a-zA-Z0-9_]*")]
     Ident,
 
-    #[regex = "::[^\r\n]*"]
-    #[regex = "::[^\n]*"]
+    #[regex("::[^\r\n]*")]
+    #[regex("::[^\n]*")]
     Comment,
-    #[token = "\n"]
-    #[token = "\r\n"]
+    #[regex(":::[^\r\n]*")]
+    #[regex(":::[^\n]*")]
+    DocComment,
+    #[token("\n")]
+    #[token("\r\n")]
     Newline,
-    #[token = " "]
+    #[token(" ")]
     Space,
 
-    // TODO: Fix
-    // #[regex = "b?\"\"\"[^\"\"\"]*\"\"\""]
-    // #[regex = "b?'''[^''']*'''"]
-    #[regex = r###"b?"(\\.|[^\\"])*""###] // " <- This is here to restore syntax highlighting
-    #[regex = r#"b?'(\\.|[^\\'])*'"#]
+    #[regex("b?'[^']*'")]
+    Rune,
+    #[regex(r#"b?"(\\.|[^\\"])*""#)] // " <- This is here to restore syntax highlighting
     String,
-    #[regex = r#"[+-]?0[xX][0-9a-fA-F][0-9a-fA-F_]*"#]
-    #[regex = r#"[+-]?[0-9][0-9_]*"#]
-    Int,
-
-    // #[regex = r#"(?x:       0b      [0-1_]*      )"#] UIntBin,
-    // #[regex = r#"(?x: [+-]  0b      [0-1_]*      )"#] SIntBin,
-    // #[regex = r#"(?x:      (0d)?    [0-9_]*      )"#] UIntDec,
-    // #[regex = r#"(?x: [+-] (0d)?    [0-9_]*      )"#] SIntDec,
-    // #[regex = r#"(?x:       0[xX]   [0-9a-fA-F_]*)"#] UIntHex,
-    // #[regex = r#"(?x: [+-]  0[xX]   [0-9a-fA-F_]*)"#] SIntHex,
-
-    // This is a crime
-    // TODO: Fix these regexes, they capture integers
-    #[token = "inf"]
-    #[token = "NaN"]
-    #[regex = r#"[+-]?[0-9][0-9_]*\.[0-9][0-9_]*([eE][+-]?[0-9][0-9_]*)?"#]
-    #[regex = r#"[+-]?0[xX][0-9a-fA-F]+\.[0-9a-fA-F]+([pP][+-]?[0-9]+)?"#]
+    #[token("inf")]
+    #[token("NaN")]
+    #[regex(r#"[+-]?[0-9][0-9_]*\.[0-9][0-9_]*([eE][+-]?[0-9][0-9_]*)?"#)]
+    #[regex(
+        r#"[+-]?0x[0-9a-fA-F][0-9a-fA-F_]*\.[0-9a-fA-F][0-9a-fA-F_]*([pP][+-]?[0-9][0-9_]?)?"#
+    )]
     Float,
-    #[token = "true"]
-    #[token = "false"]
+    #[regex("[+-]?[0-9][0-9_]*")]
+    #[regex("[+-]?0b[0-1][0-1_]*")]
+    #[regex("[+-]?0x[0-9a-fA-F][0-9a-fA-F_]*")]
+    Int,
+    #[token("true")]
+    #[token("false")]
     Bool,
 
-    #[token = "fn"]
+    #[token("fn")]
     Function,
-    #[token = "import"]
+    #[token("import")]
     Import,
-    #[token = "let"]
+    #[token("let")]
     Let,
-    #[token = "type"]
+    #[token("type")]
     Type,
-    #[token = "enum"]
+    #[token("enum")]
     Enum,
-    #[token = "trait"]
+    #[token("trait")]
     Trait,
+    #[token("comptime")]
+    Comptime,
 
-    #[token = "in"]
+    #[token("in")]
     In,
-    #[token = "loop"]
+    #[token("loop")]
     Loop,
-    #[token = "while"]
+    #[token("while")]
     While,
-    #[token = "if"]
+    #[token("if")]
     If,
-    #[token = "else"]
+    #[token("else")]
     Else,
-    #[token = "then"]
+    #[token("then")]
     Then,
-    #[token = "for"]
+    #[token("for")]
     For,
-    #[token = "return"]
+    #[token("return")]
     Return,
-    #[token = "continue"]
+    #[token("continue")]
     Continue,
-    #[token = "break"]
+    #[token("break")]
     Break,
-    #[token = "match"]
+    #[token("match")]
     Match,
 
-    #[token = "exposing"]
+    #[token("exposing")]
     Exposing,
-    #[token = "export"]
+    #[token("export")]
     Export,
-    #[token = "as"]
+    #[token("as")]
     As,
-    #[token = "lib"]
+    #[token("lib")]
     Library,
-    #[token = "end"]
+    #[token("end")]
     End,
-    #[token = "pkg"]
+    #[token("pkg")]
     Package,
-    #[token = "exposed"]
+    #[token("exposed")]
     Exposed,
-    #[token = "empty"]
+    #[token("empty")]
     Empty,
 
-    #[token = "or"]
+    #[token("or")]
     Or,
-    #[token = "and"]
+    #[token("and")]
     And,
-    #[token = "where"]
+    #[token("where")]
     Where,
 
-    #[token = "="]
+    #[token("=")]
     Equal,
-    #[token = "+="]
+    #[token("+=")]
     AddAssign,
-    #[token = "-="]
+    #[token("-=")]
     SubAssign,
-    #[token = "*="]
+    #[token("*=")]
     MultAssign,
-    #[token = "/="]
+    #[token("/=")]
     DivAssign,
-    #[token = "%="]
+    #[token("%=")]
     ModAssign,
-    #[token = "**="]
+    #[token("**=")]
     PowAssign,
-    #[token = "<<="]
+    #[token("<<=")]
     ShlAssign,
-    #[token = ">>="]
+    #[token(">>=")]
     ShrAssign,
-    #[token = "|="]
+    #[token("|=")]
     OrAssign,
-    #[token = "&="]
+    #[token("&=")]
     AndAssign,
-    #[token = "^="]
+    #[token("^=")]
     XorAssign,
 
-    #[token = "=="]
+    #[token("==")]
     IsEqual,
-    #[token = "!="]
+    #[token("!=")]
     IsNotEqual,
-    #[token = ">="]
+    #[token(">=")]
     GreaterThanEqual,
-    #[token = "<="]
+    #[token("<=")]
     LessThanEqual,
-    #[token = "<"]
+    #[token("<")]
     LeftCaret,
-    #[token = ">"]
+    #[token(">")]
     RightCaret,
 
-    #[token = "!"]
+    #[token("!")]
     Bang,
 
-    #[token = "+"]
+    #[token("+")]
     Plus,
-    #[token = "-"]
+    #[token("-")]
     Minus,
-    #[token = "/"]
+    #[token("/")]
     Divide,
-    #[token = "*"]
+    #[token("*")]
     Star,
-    #[token = "%"]
+    #[token("%")]
     Modulo,
-    #[token = "**"]
+    #[token("**")]
     DoubleStar,
-    #[token = "<<"]
+    #[token("<<")]
     Shl,
-    #[token = ">>"]
+    #[token(">>")]
     Shr,
-    #[token = "|"]
+    #[token("|")]
     Pipe,
-    #[token = "&"]
+    #[token("&")]
     Ampersand,
-    #[token = "^"]
+    #[token("^")]
     Caret,
 
-    #[token = "["]
+    #[token("[")]
     LeftBrace,
-    #[token = "]"]
+    #[token("]")]
     RightBrace,
-    #[token = "("]
+    #[token("(")]
     LeftParen,
-    #[token = ")"]
+    #[token(")")]
     RightParen,
-    #[token = "{"]
+    #[token("{")]
     LeftBracket,
-    #[token = "}"]
+    #[token("}")]
     RightBracket,
-    #[token = "->"]
+    #[token("->")]
     RightArrow,
-    #[token = "<-"]
+    #[token("<-")]
     LeftArrow,
-    #[token = "=>"]
+    #[token("=>")]
     RightRocket,
 
-    #[token = "@"]
+    #[token("@")]
     AtSign,
-    #[token = ","]
+    #[token(",")]
     Comma,
-    #[token = ";"]
+    #[token(";")]
     Semicolon,
-    #[token = ":"]
+    #[token(":")]
     Colon,
-    #[token = "."]
+    #[token(".")]
     Dot,
-    #[token = ".."]
+    #[token("..")]
     DoubleDot,
 }
 
 impl TokenType {
     pub fn to_str(self) -> &'static str {
         match self {
-            Self::EOF => "EOF",
             Self::Error => "Error",
 
             Self::Ident => "Ident",
 
             Self::Comment => "Comment",
+            Self::DocComment => "DocComment",
             Self::Newline => "Newline",
             Self::Space => " ",
 
             Self::String => "str",
+            Self::Rune => "rune",
             Self::Int => "int",
             Self::Float => "float",
             Self::Bool => "bool",
@@ -252,6 +248,7 @@ impl TokenType {
             Self::In => "in",
             Self::Match => "match",
             Self::Where => "where",
+            Self::Comptime => "comptime",
 
             Self::Equal => "=",
             Self::AddAssign => "+=",
@@ -317,26 +314,28 @@ impl fmt::Display for TokenType {
 
 #[derive(Clone)]
 pub struct TokenIter<'a> {
-    lexer: Lexer<TokenType, &'a str>,
-    current: Token<'a>,
+    lexer: Lexer<'a, TokenType>,
+    current: Option<Token<'a>>,
 }
 
 impl<'a> TokenIter<'a> {
     pub fn new(input: &'a str) -> Self {
-        let lexer = TokenType::lexer(input);
-        let current = Token::new(lexer.token, lexer.slice(), lexer.range());
+        let mut lexer = TokenType::lexer(input);
+
+        let current = lexer
+            .next()
+            .map(|current| Token::new(current, lexer.slice(), lexer.span()));
 
         Self { lexer, current }
     }
 
     pub fn get_next(&mut self) -> Option<Token<'a>> {
-        self.current = Token::new(self.lexer.token, self.lexer.slice(), self.lexer.range());
-        self.lexer.advance();
+        let next = self
+            .lexer
+            .next()
+            .map(|current| Token::new(current, self.lexer.slice(), self.lexer.span()));
 
-        match self.current.ty {
-            TokenType::EOF => None,
-            _ => Some(self.current),
-        }
+        core::mem::replace(&mut self.current, next)
     }
 }
 
@@ -352,9 +351,12 @@ impl<'a> fmt::Debug for TokenIter<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let lexer = {
             let lexer = self.lexer.clone();
-            let current = Token::new(lexer.token, lexer.slice(), lexer.range());
 
-            TokenIter { lexer, current }.collect::<Vec<Token<'a>>>()
+            TokenIter {
+                lexer,
+                current: self.current.clone(),
+            }
+            .collect::<Vec<Token<'a>>>()
         };
 
         f.debug_struct("TokenIter")
@@ -371,17 +373,19 @@ pub struct TokenStream<'a> {
     line_indent_level: u32,
     line_start: bool,
     skip_comments: bool,
+    skip_doc_comments: bool,
     current: Option<Token<'a>>,
 }
 
 impl<'a> TokenStream<'a> {
-    pub fn new(input: &'a str, skip_comments: bool) -> Self {
+    pub fn new(input: &'a str, skip_comments: bool, skip_doc_comments: bool) -> Self {
         Self {
             token_stream: TokenIter::new(input),
             indent_level: 0,
             line_indent_level: 0,
             line_start: false,
             skip_comments,
+            skip_doc_comments,
             current: None,
         }
     }
@@ -391,7 +395,7 @@ impl<'a> TokenStream<'a> {
             match token.ty {
                 TokenType::Space => self.next_token(),
                 TokenType::Comment if self.skip_comments => self.next_token(),
-                TokenType::EOF => None,
+                TokenType::DocComment if self.skip_doc_comments => self.next_token(),
                 _ => Some(token),
             }
         } else {
@@ -410,7 +414,7 @@ impl<'a> Iterator for TokenStream<'a> {
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub struct Token<'a> {
-    ty: TokenType,
+    pub(crate) ty: TokenType,
     pub(crate) source: &'a str,
     range: (usize, usize),
 }
@@ -460,7 +464,7 @@ mod tests {
     // Waiting on logos/#94 to fix this
     #[test]
     fn break_up_weird_stuff() {
-        let mut stream = TokenStream::new("bredcp", true).into_iter();
+        let mut stream = TokenStream::new("bredcp", true, true).into_iter();
 
         assert_eq!(
             stream.next(),
@@ -472,7 +476,7 @@ mod tests {
         );
         assert_eq!(stream.next(), None);
 
-        let mut stream = TokenStream::new("breuyue", true).into_iter();
+        let mut stream = TokenStream::new("breuyue", true, true).into_iter();
 
         assert_eq!(
             stream.next(),
@@ -487,7 +491,7 @@ mod tests {
 
     #[test]
     fn keyword_led_ident() {
-        let mut exposed_function = TokenStream::new("exposed_function", true).into_iter();
+        let mut exposed_function = TokenStream::new("exposed_function", true, true).into_iter();
 
         assert_eq!(
             exposed_function.next(),
@@ -502,30 +506,124 @@ mod tests {
 
     #[test]
     fn dont_capture_comments() {
-        let mut exposed_function =
-            TokenStream::new(":: fn something(int: str) -> bool {}\n", true).into_iter();
+        let mut stream =
+            TokenStream::new(":: fn something(int: str) -> bool {}\n", true, true).into_iter();
 
         assert_eq!(
-            exposed_function.next(),
+            stream.next(),
             Some(Token {
                 ty: TokenType::Newline,
                 source: "\n",
                 range: (36, 37)
             })
         );
-        assert_eq!(exposed_function.next(), None);
+        assert_eq!(stream.next(), None);
 
-        let mut exposed_function =
-            TokenStream::new(":: test<int, bool>(test2)\n", true).into_iter();
+        let mut stream = TokenStream::new(":: test<int, bool>(test2)\n", true, true).into_iter();
 
         assert_eq!(
-            exposed_function.next(),
+            stream.next(),
             Some(Token {
                 ty: TokenType::Newline,
                 source: "\n",
                 range: (25, 26)
             })
         );
-        assert_eq!(exposed_function.next(), None);
+        assert_eq!(stream.next(), None);
+
+        let mut stream =
+            TokenStream::new("::: fn something(int: str) -> bool {}\n", true, true).into_iter();
+
+        assert_eq!(
+            stream.next(),
+            Some(Token {
+                ty: TokenType::Newline,
+                source: "\n",
+                range: (37, 38)
+            })
+        );
+        assert_eq!(stream.next(), None);
+
+        let mut stream = TokenStream::new("::: test<int, bool>(test2)\n", true, true).into_iter();
+
+        assert_eq!(
+            stream.next(),
+            Some(Token {
+                ty: TokenType::Newline,
+                source: "\n",
+                range: (26, 27)
+            })
+        );
+        assert_eq!(stream.next(), None);
+    }
+
+    mod proptests {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn strings(s in r#"b?"(\\.|[^\\"])*""#) {
+                let mut stream = TokenStream::new(&s, true, true).into_iter();
+
+                let cond = matches!(stream.next(), Some(Token { ty: _ty @ TokenType::String, .. }));
+                prop_assert!(cond);
+                prop_assert_eq!(stream.count(), 0);
+            }
+
+            #[test]
+            fn runes(s in "b?'[^']*'") {
+                let mut stream = TokenStream::new(&s, true, true).into_iter();
+
+                let cond = matches!(stream.next(), Some(Token { ty: _ty @ TokenType::Rune, .. }));
+                prop_assert!(cond);
+                prop_assert_eq!(stream.count(), 0);
+            }
+
+            #[test]
+            fn base10_int(s in "[+-]?[0-9][0-9_]*") {
+                let mut stream = TokenStream::new(&s, true, true).into_iter();
+
+                let cond = matches!(stream.next(), Some(Token { ty: _ty @ TokenType::Int, .. }));
+                prop_assert!(cond);
+                prop_assert_eq!(stream.count(), 0);
+            }
+
+            #[test]
+            fn base16_int(s in "[+-]?0x[0-9a-fA-F][0-9a-fA-F_]*") {
+                let mut stream = TokenStream::new(&s, true, true).into_iter();
+
+                let cond = matches!(stream.next(), Some(Token { ty: _ty @ TokenType::Int, .. }));
+                prop_assert!(cond);
+                prop_assert_eq!(stream.count(), 0);
+            }
+
+            #[test]
+            fn base2_int(s in "[+-]?0b[0-1][0-1_]*") {
+                let mut stream = TokenStream::new(&s, true, true).into_iter();
+
+                let cond = matches!(stream.next(), Some(Token { ty: _ty @ TokenType::Int, .. }));
+                prop_assert!(cond);
+                prop_assert_eq!(stream.count(), 0);
+            }
+
+            #[test]
+            fn base10_float(s in "[+-]?[0-9][0-9_]*\\.[0-9][0-9_]*([eE][+-]?[0-9][0-9_]*)?") {
+                let mut stream = TokenStream::new(&s, true, true).into_iter();
+
+                let cond = matches!(stream.next(), Some(Token { ty: _ty @ TokenType::Float, .. }));
+                prop_assert!(cond);
+                prop_assert_eq!(stream.count(), 0);
+            }
+
+            #[test]
+            fn base16_float(s in "[+-]?0x[0-9a-fA-F][0-9a-fA-F_]*\\.[0-9a-fA-F][0-9a-fA-F_]*([pP][+-]?[0-9][0-9_]?)?") {
+                let mut stream = TokenStream::new(&s, true, true).into_iter();
+
+                let cond = matches!(dbg!(stream.next()), Some(Token { ty: _ty @ TokenType::Float, .. }));
+                prop_assert!(cond);
+                prop_assert_eq!(stream.count(), 0);
+            }
+        }
     }
 }

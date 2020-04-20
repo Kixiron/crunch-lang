@@ -148,6 +148,15 @@ pub enum SyntaxError {
     #[display(fmt = "Invalid {} literal", _0)]
     InvalidLiteral(&'static str),
 
+    #[display(fmt = "{} literal overflowed: {}", _0, _1)]
+    LiteralOverflow(&'static str, String),
+
+    #[display(fmt = "{} literal underflowed: {}", _0, _1)]
+    LiteralUnderflow(&'static str, String),
+
+    #[display(fmt = "Rune literals may only contain one rune")]
+    TooManyRunes,
+
     #[display(fmt = "Recursion limit reached: {} > {}", _0, _1)]
     RecursionLimit(usize, usize),
 

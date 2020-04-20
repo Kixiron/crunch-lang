@@ -1,6 +1,6 @@
 use crate::{
     error::{Error, Locatable, Location, ParseResult, SyntaxError},
-    parser::{Expr, Expression, Literal, Parser},
+    parser::{Expr, Expression, Literal, Parser, Type},
     token::TokenType,
 };
 
@@ -22,7 +22,7 @@ pub enum Statement<'expr, 'stmt> {
         arm: Option<Stmt<'stmt, 'expr>>,
     },
     Expression(Expr<'expr>),
-    VarDeclaration(SmallSpur, Expr<'expr>),
+    VarDeclaration(SmallSpur, Type, Expr<'expr>),
     Return(Option<Expr<'expr>>),
     Break(Option<Expr<'expr>>),
     Continue,
@@ -74,9 +74,10 @@ impl<'expr, 'stmt> fmt::Debug for Statement<'expr, 'stmt> {
                     .field("arm", arm)
                     .finish(),
                 Self::Expression(expr) => f.debug_tuple("Expression").field(expr).finish(),
-                Self::VarDeclaration(name, expr) => f
+                Self::VarDeclaration(name, ty, expr) => f
                     .debug_tuple("VarDeclaration")
                     .field(name)
+                    .field(ty)
                     .field(expr)
                     .finish(),
                 Self::Return(val) => f.debug_tuple("Return").field(val).finish(),
@@ -134,22 +135,39 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             }
 
             TokenType::Newline => {
-                self.eat(TokenType::Newline)?;
+                self.eat(TokenType::Newline, [])?;
                 Ok(None)
             }
 
             TokenType::Let => {
-                self.eat(TokenType::Let)?;
+                self.eat(TokenType::Let, [TokenType::Newline])?;
 
                 let var = {
-                    let ident = self.eat(TokenType::Ident)?;
+                    let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
                     self.string_interner.intern(ident.source())
                 };
-                self.eat(TokenType::Equal)?;
-                let expr = self.expr()?;
-                self.eat(TokenType::Newline)?;
 
-                let stmt = self.stmt_arena.store(Statement::VarDeclaration(var, expr));
+                self.eat(TokenType::Colon, [TokenType::Newline])?;
+                if self.peek()?.ty() == TokenType::Newline {
+                    self.eat(TokenType::Newline, [])?;
+                }
+
+                let ty = if self.peek()?.ty() == TokenType::Equal {
+                    self.eat(TokenType::Equal, [])?;
+                    Type::default()
+                } else {
+                    let ty = self.ascribed_type()?;
+                    self.eat(TokenType::Colon, [TokenType::Newline])?;
+                    self.eat(TokenType::Equal, [])?;
+                    ty
+                };
+
+                let expr = self.expr()?;
+                self.eat(TokenType::Newline, [])?;
+
+                let stmt = self
+                    .stmt_arena
+                    .store(Statement::VarDeclaration(var, ty, expr));
 
                 Ok(Some(stmt))
             }
@@ -176,16 +194,16 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             }
 
             TokenType::Return => {
-                self.eat(TokenType::Return)?;
+                self.eat(TokenType::Return, [TokenType::Newline])?;
 
                 if self.peek()?.ty() == TokenType::Newline {
-                    self.eat(TokenType::Newline)?;
+                    self.eat(TokenType::Newline, [])?;
                     let stmt = self.stmt_arena.store(Statement::Return(None));
 
                     Ok(Some(stmt))
                 } else {
                     let expr = self.expr()?;
-                    self.eat(TokenType::Newline)?;
+                    self.eat(TokenType::Newline, [])?;
                     let stmt = self.stmt_arena.store(Statement::Return(Some(expr)));
 
                     Ok(Some(stmt))
@@ -193,16 +211,16 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             }
 
             TokenType::Break => {
-                self.eat(TokenType::Break)?;
+                self.eat(TokenType::Break, [TokenType::Newline])?;
 
                 if self.peek()?.ty() == TokenType::Newline {
-                    self.eat(TokenType::Newline)?;
+                    self.eat(TokenType::Newline, [])?;
                     let stmt = self.stmt_arena.store(Statement::Break(None));
 
                     Ok(Some(stmt))
                 } else {
                     let expr = self.expr()?;
-                    self.eat(TokenType::Newline)?;
+                    self.eat(TokenType::Newline, [])?;
                     let stmt = self.stmt_arena.store(Statement::Break(Some(expr)));
 
                     Ok(Some(stmt))
@@ -210,8 +228,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             }
 
             TokenType::Continue => {
-                self.eat(TokenType::Continue)?;
-                self.eat(TokenType::Newline)?;
+                self.eat(TokenType::Continue, [TokenType::Newline])?;
+                self.eat(TokenType::Newline, [])?;
 
                 let stmt = self.stmt_arena.store(Statement::Continue);
 
@@ -219,8 +237,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             }
 
             TokenType::Empty => {
-                self.eat(TokenType::Empty)?;
-                self.eat(TokenType::Newline)?;
+                self.eat(TokenType::Empty, [TokenType::Newline])?;
+                self.eat(TokenType::Newline, [])?;
 
                 let stmt = self.stmt_arena.store(Statement::Empty);
 
@@ -238,7 +256,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             | TokenType::Plus
             | TokenType::LeftBrace => {
                 let expr = self.expr()?;
-                self.eat(TokenType::Newline)?;
+                self.eat(TokenType::Newline, [])?;
                 let stmt = self.stmt_arena.store(Statement::Expression(expr));
 
                 Ok(Some(stmt))
@@ -284,13 +302,13 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     fn if_stmt(&mut self) -> ParseResult<Stmt<'stmt, 'expr>> {
         let _frame = self.add_stack_frame()?;
 
-        self.eat(TokenType::If)?;
+        self.eat(TokenType::If, [TokenType::Newline])?;
         let condition = self.expr()?;
-        self.eat(TokenType::Newline)?;
+        self.eat(TokenType::Newline, [])?;
 
         let body = self.statements(&[TokenType::End, TokenType::Else], 10)?;
 
-        let delimiter = self.eat_of(&[TokenType::Else, TokenType::End])?;
+        let delimiter = self.eat_of([TokenType::Else, TokenType::End], [TokenType::Newline])?;
         let arm = match delimiter.ty() {
             TokenType::Else if self.peek()?.ty() == TokenType::If => {
                 let stmt = self.if_stmt()?;
@@ -299,7 +317,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             }
 
             TokenType::Else => {
-                self.eat(TokenType::Newline)?;
+                self.eat(TokenType::Newline, [])?;
 
                 let body = self.statements(&[TokenType::End], 10)?;
                 let condition = self
@@ -331,38 +349,38 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     fn match_stmt(&mut self) -> ParseResult<Stmt<'stmt, 'expr>> {
         let _frame = self.add_stack_frame()?;
 
-        self.eat(TokenType::Match)?;
+        self.eat(TokenType::Match, [TokenType::Newline])?;
         let var = self.expr()?;
-        self.eat(TokenType::Newline)?;
+        self.eat(TokenType::Newline, [])?;
 
         let mut arms = Vec::with_capacity(3);
         while self.peek()?.ty() != TokenType::End {
             let capture = {
-                let ident = self.eat(TokenType::Ident)?;
+                let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
                 self.string_interner.intern(ident.source())
             };
 
             let guard = if self.peek()?.ty() == TokenType::Where {
-                self.eat(TokenType::Where)?;
+                self.eat(TokenType::Where, [TokenType::Newline])?;
                 let expr = self.expr()?;
 
                 Some(expr)
             } else {
                 None
             };
-            self.eat(TokenType::RightRocket)?;
-            self.eat(TokenType::Newline)?;
+            self.eat(TokenType::RightRocket, [TokenType::Newline])?;
+            self.eat(TokenType::Newline, [])?;
 
             let body = self.statements(&[TokenType::End], 5)?;
 
-            self.eat(TokenType::End)?;
-            self.eat(TokenType::Newline)?;
+            self.eat(TokenType::End, [TokenType::Newline])?;
+            self.eat(TokenType::Newline, [])?;
 
             arms.push((capture, guard, body));
         }
         arms.shrink_to_fit();
 
-        self.eat(TokenType::End)?;
+        self.eat(TokenType::End, [TokenType::Newline])?;
 
         let stmt = self.stmt_arena.store(Statement::Match { var, arms });
 
@@ -372,15 +390,15 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     fn while_stmt(&mut self) -> ParseResult<Stmt<'stmt, 'expr>> {
         let _frame = self.add_stack_frame()?;
 
-        self.eat(TokenType::While)?;
+        self.eat(TokenType::While, [TokenType::Newline])?;
         let condition = self.expr()?;
-        self.eat(TokenType::Newline)?;
+        self.eat(TokenType::Newline, [])?;
 
         let body = self.statements(&[TokenType::End, TokenType::Then], 10)?;
 
         let then = self.then_stmt()?;
 
-        self.eat(TokenType::End)?;
+        self.eat(TokenType::End, [TokenType::Newline])?;
 
         let stmt = self.stmt_arena.store(Statement::While {
             condition,
@@ -394,14 +412,14 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     fn loop_stmt(&mut self) -> ParseResult<Stmt<'stmt, 'expr>> {
         let _frame = self.add_stack_frame()?;
 
-        self.eat(TokenType::Loop)?;
-        self.eat(TokenType::Newline)?;
+        self.eat(TokenType::Loop, [TokenType::Newline])?;
+        self.eat(TokenType::Newline, [])?;
 
         let body = self.statements(&[TokenType::End, TokenType::Then], 10)?;
 
         let then = self.then_stmt()?;
 
-        self.eat(TokenType::End)?;
+        self.eat(TokenType::End, [TokenType::Newline])?;
 
         let stmt = self.stmt_arena.store(Statement::Loop { body, then });
 
@@ -411,16 +429,14 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     fn for_stmt(&mut self) -> ParseResult<Stmt<'stmt, 'expr>> {
         let _frame = self.add_stack_frame()?;
 
-        self.eat(TokenType::For)?;
+        self.eat(TokenType::For, [TokenType::Newline])?;
         let var = self.expr()?;
-        self.eat(TokenType::In)?;
+        self.eat(TokenType::In, [TokenType::Newline])?;
         let condition = self.expr()?;
-        self.eat(TokenType::Newline)?;
+        self.eat(TokenType::Newline, [])?;
 
         let body = self.statements(&[TokenType::End, TokenType::Then], 10)?;
-
         let then = self.then_stmt()?;
-
         let stmt = self.stmt_arena.store(Statement::For {
             var,
             condition,
@@ -435,8 +451,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         let _frame = self.add_stack_frame()?;
 
         Ok(if self.peek()?.ty() == TokenType::Then {
-            self.eat(TokenType::Then)?;
-            self.eat(TokenType::Newline)?;
+            self.eat(TokenType::Then, [TokenType::Newline])?;
+            self.eat(TokenType::Newline, [])?;
 
             let then = self.statements(&[TokenType::End, TokenType::Then], 3)?;
 
