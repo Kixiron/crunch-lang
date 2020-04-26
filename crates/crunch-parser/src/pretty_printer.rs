@@ -1,7 +1,5 @@
 use crate::{parser::*, Interner};
 
-use lasso::SmallSpur;
-
 #[cfg(feature = "no-std")]
 use alloc::{format, vec::Vec};
 use core::fmt::{Result, Write};
@@ -33,50 +31,22 @@ impl<'expr, 'stmt> PrettyPrinter {
 
     pub(crate) fn print_ast(&mut self, f: &mut dyn Write, node: &Ast<'expr, 'stmt>) -> Result {
         match node {
-            Ast::Function {
-                decorators,
-                attributes,
-                name,
-                args,
-                returns,
-                body,
-            } => self.print_func(f, decorators, attributes, name, args, returns, body),
-            Ast::Type {
-                decorators,
-                attributes,
-                name,
-                generics,
-                members,
-                methods,
-            } => self.print_type(f, decorators, attributes, name, generics, members, methods),
-            Ast::Enum {
-                decorators,
-                attributes,
-                name,
-                generics,
-                variants,
-            } => self.print_enum(f, decorators, attributes, name, generics, variants),
-            Ast::Trait {
-                decorators,
-                attributes,
-                name,
-                generics,
-                methods,
-            } => self.print_trait(f, decorators, attributes, name, generics, methods),
-            Ast::Import {
-                file,
-                dest,
-                exposes,
-            } => self.print_import(f, file, dest, exposes),
+            Ast::Function(func) => self.print_func(f, func.data()),
+            Ast::Type(ty) => self.print_type(f, ty.data()),
+            Ast::Enum(enum_decl) => self.print_enum(f, enum_decl.data()),
+            Ast::Trait(trait_decl) => self.print_trait(f, trait_decl.data()),
+            Ast::Import(import) => self.print_import(f, import.data()),
         }
     }
 
     fn print_import(
         &mut self,
         f: &mut dyn Write,
-        file: &SmallSpur,
-        dest: &ImportDest,
-        exposes: &ImportExposure,
+        Import {
+            file,
+            dest,
+            exposes,
+        }: &Import,
     ) -> Result {
         write!(
             f,
@@ -86,7 +56,7 @@ impl<'expr, 'stmt> PrettyPrinter {
                 ImportDest::Package => " pkg",
                 ImportDest::Relative => "",
             },
-            self.interner.resolve(file)
+            self.interner.resolve(file.data())
         )?;
 
         match exposes {
@@ -95,11 +65,11 @@ impl<'expr, 'stmt> PrettyPrinter {
             ImportExposure::Members(members) => {
                 write!(f, " exposing ")?;
 
-                for (i, (member, alias)) in members.iter().enumerate() {
-                    write!(f, "{}", self.interner.resolve(member))?;
+                for (i, member) in members.iter().enumerate() {
+                    write!(f, "{}", self.interner.resolve(&member.data().0))?;
 
-                    if let Some(alias) = alias {
-                        write!(f, " as {}", self.interner.resolve(alias))?;
+                    if let Some(alias) = member.data().1 {
+                        write!(f, " as {}", self.interner.resolve(&alias))?;
                     }
 
                     if i != members.len() - 1 {
@@ -115,11 +85,13 @@ impl<'expr, 'stmt> PrettyPrinter {
     fn print_trait(
         &mut self,
         f: &mut dyn Write,
-        decorators: &Vec<Decorator<'expr>>,
-        attributes: &Vec<Attribute>,
-        name: &SmallSpur,
-        generics: &Vec<Type>,
-        methods: &Vec<Ast<'expr, 'stmt>>,
+        Trait {
+            decorators,
+            attrs,
+            name,
+            generics,
+            methods,
+        }: &Trait,
     ) -> Result {
         for dec in decorators {
             self.print_decorator(f, dec)?;
@@ -127,8 +99,8 @@ impl<'expr, 'stmt> PrettyPrinter {
         }
 
         self.print_indent(f)?;
-        for attr in attributes {
-            self.print_attr(f, attr)?;
+        for attr in attrs {
+            self.print_attr(f, attr.data())?;
         }
 
         write!(f, "trait {}", self.interner.resolve(name))?;
@@ -136,7 +108,7 @@ impl<'expr, 'stmt> PrettyPrinter {
         if !generics.is_empty() {
             write!(f, "[")?;
             for (i, gen) in generics.iter().enumerate() {
-                self.print_ty(f, gen)?;
+                self.print_ty(f, gen.data())?;
 
                 if i != generics.len() - 1 {
                     write!(f, ", ")?;
@@ -148,19 +120,7 @@ impl<'expr, 'stmt> PrettyPrinter {
 
         self.indent_level += 1;
         for method in methods {
-            if let Ast::Function {
-                decorators,
-                attributes,
-                name,
-                args,
-                returns,
-                body,
-            } = method
-            {
-                self.print_func(f, decorators, attributes, name, args, returns, body)?;
-            } else {
-                panic!();
-            }
+            self.print_func(f, method.data())?;
         }
         self.indent_level -= 1;
 
@@ -170,11 +130,13 @@ impl<'expr, 'stmt> PrettyPrinter {
     fn print_enum(
         &mut self,
         f: &mut dyn Write,
-        decorators: &Vec<Decorator<'expr>>,
-        attributes: &Vec<Attribute>,
-        name: &SmallSpur,
-        generics: &Vec<Type>,
-        variants: &Vec<EnumVariant<'expr>>,
+        Enum {
+            decorators,
+            attrs,
+            name,
+            generics,
+            variants,
+        }: &Enum,
     ) -> Result {
         for dec in decorators {
             self.print_decorator(f, dec)?;
@@ -182,8 +144,8 @@ impl<'expr, 'stmt> PrettyPrinter {
         }
 
         self.print_indent(f)?;
-        for attr in attributes {
-            self.print_attr(f, attr)?;
+        for attr in attrs {
+            self.print_attr(f, attr.data())?;
         }
 
         write!(f, "enum {}", self.interner.resolve(name))?;
@@ -191,7 +153,7 @@ impl<'expr, 'stmt> PrettyPrinter {
         if !generics.is_empty() {
             write!(f, "[")?;
             for (i, gen) in generics.iter().enumerate() {
-                self.print_ty(f, gen)?;
+                self.print_ty(f, gen.data())?;
                 if i != generics.len() - 1 {
                     write!(f, ", ")?;
                 }
@@ -224,7 +186,7 @@ impl<'expr, 'stmt> PrettyPrinter {
                     self.print_indent(f)?;
                     write!(f, "{}(", self.interner.resolve(name))?;
                     for (i, ty) in elements.iter().enumerate() {
-                        self.print_ty(f, ty)?;
+                        self.print_ty(f, ty.data())?;
 
                         if i != elements.len() - 1 {
                             write!(f, ", ")?;
@@ -242,12 +204,14 @@ impl<'expr, 'stmt> PrettyPrinter {
     fn print_type(
         &mut self,
         f: &mut dyn Write,
-        decorators: &Vec<Decorator<'expr>>,
-        attributes: &Vec<Attribute>,
-        name: &SmallSpur,
-        generics: &Vec<Type>,
-        members: &Vec<TypeMember<'expr>>,
-        methods: &Vec<Ast<'expr, 'stmt>>,
+        TypeDecl {
+            decorators,
+            attrs,
+            name,
+            generics,
+            members,
+            methods,
+        }: &TypeDecl,
     ) -> Result {
         for dec in decorators {
             self.print_decorator(f, dec)?;
@@ -255,8 +219,8 @@ impl<'expr, 'stmt> PrettyPrinter {
         }
 
         self.print_indent(f)?;
-        for attr in attributes {
-            self.print_attr(f, attr)?;
+        for attr in attrs {
+            self.print_attr(f, attr.data())?;
         }
 
         write!(f, "type {}", self.interner.resolve(name))?;
@@ -264,7 +228,7 @@ impl<'expr, 'stmt> PrettyPrinter {
         if !generics.is_empty() {
             write!(f, "[")?;
             for (i, gen) in generics.iter().enumerate() {
-                self.print_ty(f, gen)?;
+                self.print_ty(f, gen.data())?;
 
                 if i != generics.len() - 1 {
                     write!(f, ", ")?;
@@ -275,42 +239,31 @@ impl<'expr, 'stmt> PrettyPrinter {
         writeln!(f)?;
 
         self.indent_level += 1;
-        for TypeMember {
-            decorators,
-            attributes,
-            name,
-            ty,
-        } in members
-        {
+        for member in members {
+            let TypeMember {
+                decorators,
+                attrs,
+                name,
+                ty,
+            } = member.data();
+
             for dec in decorators {
                 self.print_decorator(f, dec)?;
                 writeln!(f)?;
             }
 
             self.print_indent(f)?;
-            for attr in attributes {
-                self.print_attr(f, attr)?;
+            for attr in attrs {
+                self.print_attr(f, attr.data())?;
             }
 
             write!(f, "{}: ", self.interner.resolve(name))?;
-            self.print_ty(f, ty)?;
+            self.print_ty(f, ty.data())?;
             writeln!(f)?;
         }
 
-        for node in methods {
-            if let Ast::Function {
-                decorators,
-                attributes,
-                name,
-                args,
-                returns,
-                body,
-            } = node
-            {
-                self.print_func(f, decorators, attributes, name, args, returns, body)?;
-            } else {
-                panic!();
-            }
+        for func in methods {
+            self.print_func(f, func.data())?;
         }
         self.indent_level -= 1;
 
@@ -320,12 +273,15 @@ impl<'expr, 'stmt> PrettyPrinter {
     fn print_func(
         &mut self,
         f: &mut dyn Write,
-        decorators: &Vec<Decorator<'expr>>,
-        attributes: &Vec<Attribute>,
-        name: &SmallSpur,
-        args: &Vec<(SmallSpur, Type, bool)>,
-        returns: &Type,
-        body: &Vec<Stmt<'expr, 'stmt>>,
+        Function {
+            decorators,
+            attrs,
+            name,
+            args,
+            returns,
+            body,
+            ..
+        }: &Function,
     ) -> Result {
         for dec in decorators {
             self.print_decorator(f, dec)?;
@@ -333,8 +289,8 @@ impl<'expr, 'stmt> PrettyPrinter {
         }
 
         self.print_indent(f)?;
-        for attr in attributes {
-            self.print_attr(f, attr)?;
+        for attr in attrs {
+            self.print_attr(f, attr.data())?;
         }
 
         write!(f, "fn {}", self.interner.resolve(name))?;
@@ -344,13 +300,13 @@ impl<'expr, 'stmt> PrettyPrinter {
 
             let args = args
                 .iter()
-                .map(|(name, arg, comptime)| {
+                .map(|arg| {
                     let mut param = format!(
                         "{}{}: ",
-                        if *comptime { "comptime " } else { "" },
-                        self.interner.resolve(name)
+                        if arg.data().comptime { "comptime " } else { "" },
+                        self.interner.resolve(arg.data().name.data())
                     );
-                    self.print_ty(&mut param, arg).unwrap();
+                    self.print_ty(&mut param, arg.data().ty.data()).unwrap();
 
                     param
                 })
@@ -362,7 +318,7 @@ impl<'expr, 'stmt> PrettyPrinter {
         }
 
         write!(f, " -> ")?;
-        self.print_ty(f, returns)?;
+        self.print_ty(f, returns.data())?;
         writeln!(f)?;
 
         self.indent_level += 1;
@@ -466,14 +422,7 @@ impl<'expr, 'stmt> PrettyPrinter {
                 self.print_expr(f, function)
             }
 
-            Expression::Literal(lit) => match lit {
-                Literal::Integer(i) => write!(f, "{}", i),
-                Literal::Bool(b) => write!(f, "{}", b),
-                Literal::String(s) => write!(f, "{:?}", s),
-                Literal::Rune(r) => write!(f, "'{}'", r),
-                Literal::ByteVec(v) => write!(f, "{:?}", v),
-                Literal::Float(fl) => write!(f, "{}", fl),
-            },
+            Expression::Literal(lit) => self.print_literal(f, lit),
 
             Expression::Comparison(left, comp, right) => {
                 self.print_expr(f, left)?;
@@ -540,6 +489,27 @@ impl<'expr, 'stmt> PrettyPrinter {
         }
     }
 
+    fn print_literal(&mut self, f: &mut dyn Write, literal: &Literal) -> Result {
+        match literal {
+            Literal::Integer(i) => write!(f, "{}", i),
+            Literal::Bool(b) => write!(f, "{}", b),
+            Literal::String(s) => write!(f, "{:?}", s),
+            Literal::Rune(r) => write!(f, "'{}'", r),
+            Literal::Array(arr) => {
+                write!(f, "[")?;
+                for (i, elm) in arr.iter().enumerate() {
+                    self.print_literal(f, elm)?;
+
+                    if i != arr.len() - 1 {
+                        write!(f, ", ")?;
+                    }
+                }
+                write!(f, "]")
+            }
+            Literal::Float(fl) => write!(f, "{}", fl),
+        }
+    }
+
     fn print_ty(&mut self, f: &mut dyn Write, ty: &Type) -> Result {
         match ty {
             Type::Infer => write!(f, "infer"),
@@ -549,7 +519,7 @@ impl<'expr, 'stmt> PrettyPrinter {
                 } else {
                     write!(f, "type[")?;
                     for (i, ty) in traits.iter().enumerate() {
-                        self.print_ty(f, ty)?;
+                        self.print_ty(f, ty.data())?;
                         if i != traits.len() - 1 {
                             write!(f, ", ")?;
                         }
@@ -560,7 +530,7 @@ impl<'expr, 'stmt> PrettyPrinter {
             Type::Bounded { ty, bounds } => {
                 write!(f, "{}[", self.interner.resolve(ty))?;
                 for (i, ty) in bounds.iter().enumerate() {
-                    self.print_ty(f, ty)?;
+                    self.print_ty(f, ty.data())?;
 
                     if i != bounds.len() - 1 {
                         write!(f, ", ")?;
@@ -602,13 +572,13 @@ impl<'expr, 'stmt> PrettyPrinter {
                 BuiltinType::Absurd => write!(f, "absurd"),
                 BuiltinType::Array(ty) => {
                     write!(f, "arr[")?;
-                    self.print_ty(f, ty)?;
+                    self.print_ty(f, ty.data())?;
                     write!(f, "]")
                 }
                 BuiltinType::Tuple(types) => {
                     write!(f, "tup[")?;
                     for (i, ty) in types.iter().enumerate() {
-                        self.print_ty(f, ty)?;
+                        self.print_ty(f, ty.data())?;
 
                         if i != types.len() - 1 {
                             write!(f, ", ")?;
@@ -754,7 +724,7 @@ impl<'expr, 'stmt> PrettyPrinter {
 
             Statement::VarDeclaration(name, ty, expr) => {
                 write!(f, "let {}: ", self.interner.resolve(name))?;
-                self.print_ty(f, ty)?;
+                self.print_ty(f, ty.data())?;
                 write!(f, " := ")?;
                 self.print_expr(f, expr)?;
                 writeln!(f)

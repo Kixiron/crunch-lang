@@ -6,7 +6,12 @@ use alloc::{boxed::Box, string::String};
 
 fn format_expr(source: &str) -> String {
     let interner = Interner::default();
-    let mut parser = Parser::new(source, FileId::new(0), interner, SymbolTable::new());
+    let mut parser = Parser::new(
+        source,
+        CurrentFile::new(FileId::new(0), source.len()),
+        interner,
+        SymbolTable::new(),
+    );
     let expr = parser.expr().unwrap();
 
     let interner = core::mem::take(&mut parser.string_interner);
@@ -26,7 +31,12 @@ macro_rules! expr_eq {
 
 fn format_stmt(source: &str) -> String {
     let interner = Interner::default();
-    let mut parser = Parser::new(source, FileId::new(0), interner, SymbolTable::new());
+    let mut parser = Parser::new(
+        source,
+        CurrentFile::new(FileId::new(0), source.len()),
+        interner,
+        SymbolTable::new(),
+    );
     let stmt = parser.stmt().unwrap().unwrap();
 
     let interner = core::mem::take(&mut parser.string_interner);
@@ -46,7 +56,12 @@ macro_rules! stmt_eq {
 
 fn format_ast(source: &str) -> String {
     let interner = Interner::default();
-    let mut parser = Parser::new(source, FileId::new(0), interner, SymbolTable::new());
+    let mut parser = Parser::new(
+        source,
+        CurrentFile::new(FileId::new(0), source.len()),
+        interner,
+        SymbolTable::new(),
+    );
     let stmt = parser.ast().unwrap().unwrap();
 
     let interner = core::mem::take(&mut parser.string_interner);
@@ -56,6 +71,12 @@ fn format_ast(source: &str) -> String {
         .unwrap();
 
     string
+}
+
+macro_rules! ast_eq {
+    ($src:literal) => {
+        assert_eq!($src, format_ast($src));
+    };
 }
 
 #[test]
@@ -437,31 +458,48 @@ fn types_ast() {
         ),
         (
             "arr[]",
-            Type::Builtin(BuiltinType::Array(Box::new(Type::Infer))),
+            Type::Builtin(BuiltinType::Array(Box::new(Locatable::new(
+                Type::Infer,
+                Location::implicit(0..3, FileId(0)),
+            )))),
         ),
         (
             "arr[str]",
-            Type::Builtin(BuiltinType::Array(Box::new(Type::Builtin(
-                BuiltinType::String,
+            Type::Builtin(BuiltinType::Array(Box::new(Locatable::new(
+                Type::Builtin(BuiltinType::String),
+                Location::concrete(4..7, FileId(0)),
             )))),
         ),
         (
             "tup[str, arr[i32]]",
             Type::Builtin(BuiltinType::Tuple(vec![
-                Type::Builtin(BuiltinType::String),
-                Type::Builtin(BuiltinType::Array(Box::new(Type::Builtin(
-                    BuiltinType::Integer {
-                        sign: Signedness::Signed,
-                        width: 32,
-                    },
-                )))),
+                Locatable::new(
+                    Type::Builtin(BuiltinType::String),
+                    Location::concrete(4..7, FileId(0)),
+                ),
+                Locatable::new(
+                    Type::Builtin(BuiltinType::Array(Box::new(Locatable::new(
+                        Type::Builtin(BuiltinType::Integer {
+                            sign: Signedness::Signed,
+                            width: 32,
+                        }),
+                        Location::concrete(13..16, FileId(0)),
+                    )))),
+                    Location::concrete(9..17, FileId(0)),
+                ),
             ])),
         ),
         (
             "type[Trait1, Trait2]",
             Type::TraitObj(vec![
-                Type::Custom(lasso::SmallSpur::try_from_usize(0).unwrap()),
-                Type::Custom(lasso::SmallSpur::try_from_usize(1).unwrap()),
+                Locatable::new(
+                    Type::Custom(lasso::SmallSpur::try_from_usize(0).unwrap()),
+                    Location::concrete(5..11, FileId(0)),
+                ),
+                Locatable::new(
+                    Type::Custom(lasso::SmallSpur::try_from_usize(1).unwrap()),
+                    Location::concrete(13..19, FileId(0)),
+                ),
             ]),
         ),
         (
@@ -472,8 +510,16 @@ fn types_ast() {
 
     for (src, ty) in builtins.iter() {
         assert_eq!(
-            Parser::new(src, FileId::new(0), Interner::new(), SymbolTable::new()).ascribed_type(),
-            Ok(ty.clone()),
+            Parser::new(
+                src,
+                CurrentFile::new(FileId(0), src.len()),
+                Interner::new(),
+                SymbolTable::new()
+            )
+            .ascribed_type()
+            .unwrap()
+            .data(),
+            &ty.clone(),
         );
     }
 }
@@ -532,6 +578,11 @@ fn import_ast() {
     );
 }
 
+#[test]
+fn non_ascii_idents() {
+    ast_eq!("fn ȨʩӺޗઈဪ⏫㡘㢡䔹❉✅✨❗❓()\nend");
+}
+
 mod proptests {
     use super::*;
     use core::ops::Deref;
@@ -540,11 +591,11 @@ mod proptests {
     proptest! {
         #[test]
         fn strings(s in r#"b?"(\\.|[^\\"])*""#) {
-            let mut parser = Parser::new(&s, FileId::new(0), Interner::default(), SymbolTable::new());
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), Interner::default(), SymbolTable::new());
 
             let expr = parser.expr().map(|e| e.deref().clone());
             match expr {
-                Ok(Expression::Literal(Literal::String(_))) | Ok(Expression::Literal(Literal::ByteVec(_))) => {},
+                Ok(Expression::Literal(Literal::String(_))) | Ok(Expression::Literal(Literal::Array(_))) => {},
 
                 Err(Locatable { data: _data @ Error::Syntax(SyntaxError::UnrecognizedEscapeSeq(_)), .. })
                 | Err(Locatable { data: _data @ Error::Syntax(SyntaxError::MissingEscapeBraces), .. })
@@ -556,7 +607,7 @@ mod proptests {
 
         #[test]
         fn runes(s in "b?'[^']*'") {
-            let mut parser = Parser::new(&s, FileId::new(0), Interner::default(), SymbolTable::new());
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), Interner::default(), SymbolTable::new());
 
             let expr = parser.expr().map(|e| e.deref().clone());
             match expr {
@@ -573,7 +624,7 @@ mod proptests {
 
         #[test]
         fn base10_int(s in "[+-]?[0-9][0-9_]*") {
-            let mut parser = Parser::new(&s, FileId::new(0), Interner::default(), SymbolTable::new());
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), Interner::default(), SymbolTable::new());
 
             let expr = parser.expr().map(|e| e.deref().clone());
             let cond = matches!(expr, Ok(Expression::Literal(Literal::Integer { .. })));
@@ -582,7 +633,7 @@ mod proptests {
 
         #[test]
         fn base16_int(s in "[+-]?0x[0-9a-fA-F][0-9a-fA-F_]*") {
-            let mut parser = Parser::new(&s, FileId::new(0), Interner::default(), SymbolTable::new());
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), Interner::default(), SymbolTable::new());
 
             let expr = parser.expr().map(|e| e.deref().clone());
             let cond = matches!(expr, Ok(Expression::Literal(Literal::Integer(Integer { .. }))));
@@ -591,7 +642,7 @@ mod proptests {
 
         #[test]
         fn base2_int(s in "[+-]?0b[0-1][0-1_]*") {
-            let mut parser = Parser::new(&s, FileId::new(0), Interner::default(), SymbolTable::new());
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), Interner::default(), SymbolTable::new());
 
             let expr = parser.expr().map(|e| e.deref().clone());
             let cond = matches!(expr, Ok(Expression::Literal(Literal::Integer(Integer { .. }))));
@@ -600,7 +651,7 @@ mod proptests {
 
         #[test]
         fn base10_float(s in "[+-]?[0-9][0-9_]*\\.[0-9][0-9_]*([eE][+-]?[0-9][0-9_]*)?") {
-            let mut parser = Parser::new(&s, FileId::new(0), Interner::default(), SymbolTable::new());
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), Interner::default(), SymbolTable::new());
 
             let expr = parser.expr().map(|e| e.deref().clone());
             prop_assert!(matches!(expr, Ok(Expression::Literal(Literal::Float(..)))));
@@ -608,7 +659,7 @@ mod proptests {
 
         #[test]
         fn base16_float(s in "[+-]?0x[0-9a-fA-F][0-9a-fA-F_]*\\.[0-9a-fA-F][0-9a-fA-F_]*([pP][+-]?[0-9][0-9_]?)?") {
-            let mut parser = Parser::new(&s, FileId::new(0), Interner::default(), SymbolTable::new());
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), Interner::default(), SymbolTable::new());
 
             let expr = parser.expr().map(|e| e.deref().clone());
             prop_assert!(matches!(expr, Ok(Expression::Literal(Literal::Float(..)))));

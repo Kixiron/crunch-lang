@@ -3,3 +3,16 @@ name = "crunch-semantics"
 version = "0.1.0"
 authors = ["Chase Wilson <contact@chasewilson.dev>"]
 edition = "2018"
+
+[features]
+no-std = ["hashbrown"]
+
+[dependencies.crunch-parser]
+path = "../crunch-parser"
+
+[dependencies.hashbrown]
+version = "0.7.1"
+optional = true
+
+[dependencies.cfg-if]
+version = "0.1.10"

@@ -1,5 +1,6 @@
 use logos::{Lexer, Logos};
 
+use crate::error::Span;
 use alloc::vec::Vec;
 use core::{fmt, ops};
 
@@ -412,19 +413,19 @@ impl<'a> Iterator for TokenStream<'a> {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Token<'a> {
     pub(crate) ty: TokenType,
     pub(crate) source: &'a str,
-    range: (usize, usize),
+    pub(crate) span: Span,
 }
 
 impl<'a> Token<'a> {
-    pub const fn new(ty: TokenType, source: &'a str, range: ops::Range<usize>) -> Self {
+    pub fn new(ty: TokenType, source: &'a str, range: ops::Range<usize>) -> Self {
         Self {
             ty,
             source,
-            range: (range.start, range.end),
+            span: Span::from(range),
         }
     }
 
@@ -432,8 +433,12 @@ impl<'a> Token<'a> {
         self.ty
     }
 
-    pub const fn range(&self) -> ops::Range<usize> {
-        self.range.0..self.range.1
+    pub const fn span(&self) -> Span {
+        self.span
+    }
+
+    pub fn range(&self) -> ops::Range<usize> {
+        self.span.into()
     }
 
     pub const fn source(&self) -> &'a str {
@@ -441,19 +446,39 @@ impl<'a> Token<'a> {
     }
 }
 
-impl<'a> Into<(usize, usize)> for &Token<'a> {
-    fn into(self) -> (usize, usize) {
-        self.range
+impl<'a> Into<ops::Range<usize>> for Token<'a> {
+    fn into(self) -> ops::Range<usize> {
+        self.span.into()
     }
 }
 
-impl<'a> fmt::Debug for Token<'a> {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.debug_struct("Token")
-            .field("ty", &self.ty)
-            .field("source", &self.source)
-            .field("range", &(self.range.0..self.range.1))
-            .finish()
+impl<'a> Into<ops::Range<usize>> for &Token<'a> {
+    fn into(self) -> ops::Range<usize> {
+        self.span.into()
+    }
+}
+
+impl<'a> Into<(usize, usize)> for Token<'a> {
+    fn into(self) -> (usize, usize) {
+        self.span.into()
+    }
+}
+
+impl<'a> Into<(usize, usize)> for &Token<'a> {
+    fn into(self) -> (usize, usize) {
+        self.span.into()
+    }
+}
+
+impl<'a> Into<[usize; 2]> for Token<'a> {
+    fn into(self) -> [usize; 2] {
+        self.span.into()
+    }
+}
+
+impl<'a> Into<[usize; 2]> for &Token<'a> {
+    fn into(self) -> [usize; 2] {
+        self.span.into()
     }
 }
 
@@ -471,7 +496,7 @@ mod tests {
             Some(Token {
                 ty: TokenType::Ident,
                 source: "bredcp",
-                range: (0, 6)
+                span: Span::new(0, 6)
             })
         );
         assert_eq!(stream.next(), None);
@@ -483,7 +508,7 @@ mod tests {
             Some(Token {
                 ty: TokenType::Ident,
                 source: "breuyue",
-                range: (0, 7)
+                span: Span::new(0, 7)
             })
         );
         assert_eq!(stream.next(), None);
@@ -498,7 +523,7 @@ mod tests {
             Some(Token {
                 ty: TokenType::Ident,
                 source: "exposed_function",
-                range: (0, 16)
+                span: Span::new(0, 16)
             })
         );
         assert_eq!(exposed_function.next(), None);
@@ -514,7 +539,7 @@ mod tests {
             Some(Token {
                 ty: TokenType::Newline,
                 source: "\n",
-                range: (36, 37)
+                span: Span::new(36, 37)
             })
         );
         assert_eq!(stream.next(), None);
@@ -526,7 +551,7 @@ mod tests {
             Some(Token {
                 ty: TokenType::Newline,
                 source: "\n",
-                range: (25, 26)
+                span: Span::new(25, 26)
             })
         );
         assert_eq!(stream.next(), None);
@@ -539,7 +564,7 @@ mod tests {
             Some(Token {
                 ty: TokenType::Newline,
                 source: "\n",
-                range: (37, 38)
+                span: Span::new(37, 38)
             })
         );
         assert_eq!(stream.next(), None);
@@ -551,7 +576,7 @@ mod tests {
             Some(Token {
                 ty: TokenType::Newline,
                 source: "\n",
-                range: (26, 27)
+                span: Span::new(26, 27)
             })
         );
         assert_eq!(stream.next(), None);

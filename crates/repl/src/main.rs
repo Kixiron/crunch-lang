@@ -30,6 +30,21 @@ fn main() -> rustyline::Result<()> {
 
     let _ = rl.load_history("history.txt");
 
+    println!(
+        r"  ________  ________  ___  ___  ________   ________  ___  ___     
+ |\   ____\|\   __  \|\  \|\  \|\   ___  \|\   ____\|\  \|\  \    
+ \ \  \___|\ \  \|\  \ \  \\\  \ \  \\ \  \ \  \___|\ \  \\\  \     {} v{}
+  \ \  \    \ \   _  _\ \  \\\  \ \  \\ \  \ \  \    \ \   __  \    {}
+   \ \  \____\ \  \\  \\ \  \\\  \ \  \\ \  \ \  \____\ \  \ \  \   {}
+    \ \_______\ \__\\ _\\ \_______\ \__\\ \__\ \_______\ \__\ \__\  .help for help
+     \|_______|\|__|\|__|\|_______|\|__| \|__|\|_______|\|__|\|__|",
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+        env!("CARGO_PKG_AUTHORS"),
+        env!("CARGO_PKG_REPOSITORY"),
+    );
+    println!();
+
     let (mut new, mut code, mut eval_ty, mut last_was_newline) =
         (true, String::new(), EvalType::None, false);
     loop {
@@ -41,39 +56,55 @@ fn main() -> rustyline::Result<()> {
         match readline {
             Ok(line) if last_was_newline && line.trim().is_empty() => {
                 let mut files = crunch_parser::Files::new();
-                files.add("<repl>", line.clone());
+                files.add("<repl>", code.clone());
 
                 let parser = crunch_parser::Parser::new(
                     &code,
-                    crunch_parser::FileId::new(0),
+                    crunch_parser::CurrentFile::new(crunch_parser::FileId::new(0), code.len()),
                     crunch_parser::Interner::new(),
                     crunch_parser::SymbolTable::new(),
                 );
 
                 match eval_ty {
                     EvalType::None | EvalType::Ast => match parser.parse() {
-                        Ok((tree, _, mut warns, _)) => {
+                        Ok((tree, interner, mut warns, symbols)) => {
+                            crunch_semantics::SemanticAnalyzer::default()
+                                .analyze_all(&*tree, &symbols, &interner, &mut warns);
+
                             warns.emit(&files);
-                            println!("{:#?}", tree);
+
+                            if !warns.is_fatal() {
+                                println!("{:#?}", tree);
+                            }
                         }
                         Err(err) => crunch_parser::ErrorHandler::from(err).emit(&files),
                     },
                     EvalType::Symbol => match parser.parse() {
-                        Ok((_, _, mut warns, symbols)) => {
+                        Ok((tree, interner, mut warns, symbols)) => {
+                            crunch_semantics::SemanticAnalyzer::default()
+                                .analyze_all(&*tree, &symbols, &interner, &mut warns);
                             warns.emit(&files);
-                            println!("{:#?}", symbols);
+
+                            if !warns.is_fatal() {
+                                println!("{:#?}", symbols);
+                            }
                         }
                         Err(err) => crunch_parser::ErrorHandler::from(err).emit(&files),
                     },
                     EvalType::Pretty => match parser.parse() {
-                        Ok((ast, interner, mut warns, _)) => {
+                        Ok((ast, interner, mut warns, symbols)) => {
+                            crunch_semantics::SemanticAnalyzer::default()
+                                .analyze_all(&*ast, &symbols, &interner, &mut warns);
                             warns.emit(&files);
 
                             let mut pretty = String::new();
                             crunch_parser::PrettyPrinter::new(interner)
                                 .pretty_print(&mut pretty, &ast)
                                 .unwrap();
-                            println!("{}", pretty);
+
+                            if !warns.is_fatal() {
+                                println!("{}", pretty);
+                            }
                         }
                         Err(err) => crunch_parser::ErrorHandler::from(err).emit(&files),
                     },
@@ -88,6 +119,7 @@ fn main() -> rustyline::Result<()> {
             Ok(line) if line.trim().is_empty() => {
                 code.push_str(&line);
                 last_was_newline = true;
+                new = false;
             }
 
             Ok(line) if line.starts_with(".ast") => {
@@ -95,6 +127,7 @@ fn main() -> rustyline::Result<()> {
                 code.push_str(&line.trim_start_matches(".ast"));
                 code.push('\n');
                 eval_ty = EvalType::Ast;
+                new = false;
             }
 
             Ok(line) if line.starts_with(".symbol") => {
@@ -102,6 +135,7 @@ fn main() -> rustyline::Result<()> {
                 code.push_str(&line.trim_start_matches(".symbol"));
                 code.push('\n');
                 eval_ty = EvalType::Symbol;
+                new = false;
             }
 
             Ok(line) if line.starts_with(".pretty") => {
@@ -109,6 +143,7 @@ fn main() -> rustyline::Result<()> {
                 code.push_str(&line.trim_start_matches(".pretty"));
                 code.push('\n');
                 eval_ty = EvalType::Pretty;
+                new = false;
             }
 
             Ok(line) if line.starts_with(".stmt") => {
@@ -120,7 +155,7 @@ fn main() -> rustyline::Result<()> {
                 line.push('\n');
                 let mut parser = crunch_parser::Parser::new(
                     &line,
-                    crunch_parser::FileId::new(0),
+                    crunch_parser::CurrentFile::new(crunch_parser::FileId::new(0), line.len()),
                     crunch_parser::Interner::new(),
                     crunch_parser::SymbolTable::new(),
                 );
@@ -142,7 +177,7 @@ fn main() -> rustyline::Result<()> {
                 let line = line.trim_start_matches(".expr");
                 let mut parser = crunch_parser::Parser::new(
                     &line,
-                    crunch_parser::FileId::new(0),
+                    crunch_parser::CurrentFile::new(crunch_parser::FileId::new(0), line.len()),
                     crunch_parser::Interner::new(),
                     crunch_parser::SymbolTable::new(),
                 );
@@ -157,6 +192,7 @@ fn main() -> rustyline::Result<()> {
             }
 
             Ok(line) if line.starts_with(".help") => {
+                rl.add_history_entry(line.as_str());
                 println!(
                     "Crunch Repl v{}\n  \
                       .help   See this message\n  \
@@ -169,14 +205,23 @@ fn main() -> rustyline::Result<()> {
                     env!("CARGO_PKG_VERSION")
                 );
             }
-            Ok(line) if line.starts_with(".exit") => break,
-            Ok(line) if line.starts_with(".clear") => println!("\x1B[2J\x1B[H"),
+
+            Ok(line) if line.starts_with(".exit") => {
+                rl.add_history_entry(line.as_str());
+                break;
+            }
+
+            Ok(line) if line.starts_with(".clear") => {
+                rl.add_history_entry(line.as_str());
+                println!("\x1B[2J\x1B[H");
+            }
 
             Ok(line) => {
                 rl.add_history_entry(line.as_str());
                 code.push_str(&line);
                 code.push('\n');
                 last_was_newline = false;
+                new = false;
             }
 
             Err(rustyline::error::ReadlineError::Interrupted) => {

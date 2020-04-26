@@ -1,7 +1,7 @@
 use crate::{
-    error::{Error, Locatable, Location, ParseResult, SyntaxError},
-    files::FileId,
-    parser::{Expr, Literal, Parser, Stmt},
+    error::{Error, Locatable, Location, ParseResult, Span, SyntaxError},
+    interner::Interner,
+    parser::{CurrentFile, Expr, Literal, Parser, Stmt},
     symbol_table::{Symbol, SymbolLocation},
     token::{Token, TokenType},
 };
@@ -9,59 +9,121 @@ use crate::{
 use lasso::SmallSpur;
 
 use alloc::{boxed::Box, format, string::ToString, vec::Vec};
-use core::{convert::TryFrom, mem};
+use core::{convert::TryFrom, fmt, mem};
+
+// TODO: Rename `comptime` const
+// TODO: Const blocks
+// TODO: Remove types-by-value, add back generics to funcs
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Function<'expr, 'stmt> {
+    pub decorators: Vec<Decorator<'expr>>,
+    pub attrs: Vec<Locatable<Attribute>>,
+    pub name: SmallSpur,
+    pub args: Vec<Locatable<FuncArg>>,
+    pub returns: Locatable<Type>,
+    pub body: Vec<Stmt<'expr, 'stmt>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FuncArg {
+    pub name: Locatable<SmallSpur>,
+    pub ty: Locatable<Type>,
+    pub comptime: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeDecl<'expr, 'stmt> {
+    pub decorators: Vec<Decorator<'expr>>,
+    pub attrs: Vec<Locatable<Attribute>>,
+    pub name: SmallSpur,
+    pub generics: Vec<Locatable<Type>>,
+    pub members: Vec<Locatable<TypeMember<'expr>>>,
+    pub methods: Vec<Locatable<Function<'expr, 'stmt>>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeMember<'expr> {
+    pub decorators: Vec<Decorator<'expr>>,
+    pub attrs: Vec<Locatable<Attribute>>,
+    pub name: SmallSpur,
+    pub ty: Locatable<Type>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Enum<'expr> {
+    pub decorators: Vec<Decorator<'expr>>,
+    pub attrs: Vec<Locatable<Attribute>>,
+    pub name: SmallSpur,
+    pub generics: Vec<Locatable<Type>>,
+    pub variants: Vec<EnumVariant<'expr>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum EnumVariant<'expr> {
+    Unit {
+        name: SmallSpur,
+        decorators: Vec<Decorator<'expr>>,
+    },
+    Tuple {
+        name: SmallSpur,
+        elements: Vec<Locatable<Type>>,
+        decorators: Vec<Decorator<'expr>>,
+    },
+}
+
+impl<'expr> EnumVariant<'expr> {
+    pub fn name(&self) -> SmallSpur {
+        match self {
+            Self::Unit { name, .. } => *name,
+            Self::Tuple { name, .. } => *name,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Trait<'expr, 'stmt> {
+    pub decorators: Vec<Decorator<'expr>>,
+    pub attrs: Vec<Locatable<Attribute>>,
+    pub name: SmallSpur,
+    pub generics: Vec<Locatable<Type>>,
+    pub methods: Vec<Locatable<Function<'expr, 'stmt>>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Import {
+    pub file: Locatable<SmallSpur>,
+    pub dest: ImportDest,
+    pub exposes: ImportExposure,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Ast<'expr, 'stmt> {
-    Function {
-        decorators: Vec<Decorator<'expr>>,
-        attributes: Vec<Attribute>,
-        name: SmallSpur,
-        args: Vec<(SmallSpur, Type, bool)>,
-        returns: Type,
-        body: Vec<Stmt<'expr, 'stmt>>,
-    },
-
-    Type {
-        decorators: Vec<Decorator<'expr>>,
-        attributes: Vec<Attribute>,
-        name: SmallSpur,
-        generics: Vec<Type>,
-        members: Vec<TypeMember<'expr>>,
-        methods: Vec<Ast<'expr, 'stmt>>,
-    },
-
-    Enum {
-        decorators: Vec<Decorator<'expr>>,
-        attributes: Vec<Attribute>,
-        name: SmallSpur,
-        generics: Vec<Type>,
-        variants: Vec<EnumVariant<'expr>>,
-    },
-
-    Trait {
-        decorators: Vec<Decorator<'expr>>,
-        attributes: Vec<Attribute>,
-        name: SmallSpur,
-        generics: Vec<Type>,
-        methods: Vec<Ast<'expr, 'stmt>>,
-    },
-
-    Import {
-        file: SmallSpur,
-        dest: ImportDest,
-        exposes: ImportExposure,
-    },
+    Function(Locatable<Function<'expr, 'stmt>>),
+    Type(Locatable<TypeDecl<'expr, 'stmt>>),
+    Enum(Locatable<Enum<'expr>>),
+    Trait(Locatable<Trait<'expr, 'stmt>>),
+    Import(Locatable<Import>),
 }
 
 impl<'expr, 'stmt> Ast<'expr, 'stmt> {
     pub fn name(&self) -> SmallSpur {
         match self {
-            Self::Function { name, .. } => *name,
-            Self::Type { name, .. } => *name,
-            Self::Enum { name, .. } => *name,
-            Self::Trait { name, .. } => *name,
-            Self::Import { file, .. } => *file,
+            Self::Function(func) => func.data().name,
+            Self::Type(ty) => ty.data().name,
+            Self::Enum(e) => e.data().name,
+            Self::Trait(tr) => tr.data().name,
+            Self::Import(import) => *import.data().file.data(),
+        }
+    }
+
+    pub fn type_of(node: &Self) -> AstType {
+        match node {
+            Self::Function { .. } => AstType::Function,
+            Self::Type { .. } => AstType::Type,
+            Self::Enum { .. } => AstType::Enum,
+            Self::Trait { .. } => AstType::Trait,
+            Self::Import { .. } => AstType::Import,
         }
     }
 
@@ -80,19 +142,40 @@ impl<'expr, 'stmt> Ast<'expr, 'stmt> {
             false
         }
     }
+
+    pub fn location(&self) -> Location {
+        match self {
+            Self::Function(func) => func.loc(),
+            Self::Type(ty) => ty.loc(),
+            Self::Enum(en) => en.loc(),
+            Self::Trait(tr) => tr.loc(),
+            Self::Import(import) => import.loc(),
+        }
+    }
+}
+
+pub enum AstType {
+    Function,
+    Type,
+    Enum,
+    Trait,
+    Import,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Builtin(BuiltinType),
-    TraitObj(Vec<Type>),
-    Bounded { ty: SmallSpur, bounds: Vec<Type> },
+    TraitObj(Vec<Locatable<Type>>),
+    Bounded {
+        ty: SmallSpur,
+        bounds: Vec<Locatable<Type>>,
+    },
     Custom(SmallSpur),
     Infer,
 }
 
 impl<'a> Type {
-    pub(crate) fn push(&mut self, ty: Type) {
+    pub(crate) fn push(&mut self, ty: Locatable<Type>) {
         match self {
             Self::TraitObj(vec) => vec.push(ty),
             Self::Bounded { bounds, .. } => bounds.push(ty),
@@ -100,6 +183,31 @@ impl<'a> Type {
             Self::Builtin(BuiltinType::Tuple(types)) => types.push(ty),
 
             _ => unreachable!("Internal error, attempted to push to unpushable type"),
+        }
+    }
+
+    pub fn to_string(&self, interner: &Interner) -> String {
+        match self {
+            Self::Builtin(builtin) => builtin.to_string(interner),
+            Self::TraitObj(types) => format!(
+                "type[{}]",
+                types
+                    .iter()
+                    .map(|ty| ty.data().to_string(interner))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            ),
+            Self::Bounded { ty, bounds } => format!(
+                "{}[{}]",
+                interner.resolve(ty),
+                bounds
+                    .iter()
+                    .map(|ty| ty.data().to_string(interner))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            ),
+            Self::Custom(ty) => interner.resolve(ty).to_owned(),
+            Self::Infer => "infer".to_string(),
         }
     }
 }
@@ -121,8 +229,33 @@ pub enum BuiltinType {
     Rune,
     Unit,
     Absurd,
-    Array(Box<Type>),
-    Tuple(Vec<Type>),
+    Array(Box<Locatable<Type>>),
+    Tuple(Vec<Locatable<Type>>),
+}
+
+impl BuiltinType {
+    pub fn to_string(&self, interner: &Interner) -> String {
+        match self {
+            Self::Integer { sign, width } => format!("{}{}", sign, width),
+            Self::IntReg(sign) => format!("{}reg", sign),
+            Self::IntPtr(sign) => format!("{}ptr", sign),
+            Self::Float { width } => format!("f{}", width),
+            Self::Boolean => "bool".to_string(),
+            Self::String => "str".to_string(),
+            Self::Rune => "rune".to_string(),
+            Self::Unit => "unit".to_string(),
+            Self::Absurd => "absurd".to_string(),
+            Self::Array(arr) => format!("[{}]", arr.data().to_string(interner)),
+            Self::Tuple(types) => format!(
+                "({})",
+                types
+                    .iter()
+                    .map(|ty| ty.data().to_string(interner))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -131,11 +264,20 @@ pub enum Signedness {
     Signed,
 }
 
+impl fmt::Display for Signedness {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unsigned => write!(f, "u"),
+            Self::Signed => write!(f, "i"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ImportExposure {
     None(SmallSpur),
     All,
-    Members(Vec<(SmallSpur, Option<SmallSpur>)>),
+    Members(Vec<Locatable<(SmallSpur, Option<SmallSpur>)>>),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -152,42 +294,12 @@ impl Default for ImportDest {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum EnumVariant<'expr> {
-    Unit {
-        name: SmallSpur,
-        decorators: Vec<Decorator<'expr>>,
-    },
-    Tuple {
-        name: SmallSpur,
-        elements: Vec<Type>,
-        decorators: Vec<Decorator<'expr>>,
-    },
-}
-
-impl<'expr> EnumVariant<'expr> {
-    pub fn name(&self) -> SmallSpur {
-        match self {
-            Self::Unit { name, .. } => *name,
-            Self::Tuple { name, .. } => *name,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct TypeMember<'expr> {
-    pub decorators: Vec<Decorator<'expr>>,
-    pub attributes: Vec<Attribute>,
-    pub name: SmallSpur,
-    pub ty: Type,
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct Decorator<'expr> {
     pub name: SmallSpur,
     pub args: Vec<Expr<'expr>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Attribute {
     Visibility(Visibility),
     Comptime,
@@ -201,12 +313,19 @@ impl Attribute {
             false
         }
     }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Visibility(vis) => vis.as_str(),
+            Self::Comptime => "comptime",
+        }
+    }
 }
 
-impl<'a> TryFrom<(&Token<'a>, FileId)> for Attribute {
+impl<'a> TryFrom<(&Token<'a>, CurrentFile)> for Attribute {
     type Error = Locatable<Error>;
 
-    fn try_from((token, file): (&Token<'a>, FileId)) -> Result<Self, Self::Error> {
+    fn try_from((token, file): (&Token<'a>, CurrentFile)) -> Result<Self, Self::Error> {
         Ok(match token.ty() {
             TokenType::Exposed => Self::Visibility(Visibility::Exposed),
             TokenType::Package => Self::Visibility(Visibility::Package),
@@ -218,18 +337,28 @@ impl<'a> TryFrom<(&Token<'a>, FileId)> for Attribute {
                         "Expected an attribute, got `{}`",
                         token.ty()
                     ))),
-                    Location::new(token, file),
+                    Location::concrete(token, file),
                 ));
             }
         })
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Visibility {
     FileLocal,
     Package,
     Exposed,
+}
+
+impl Visibility {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::FileLocal => "file",
+            Self::Package => "pkg",
+            Self::Exposed => "exposed",
+        }
+    }
 }
 
 impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
@@ -251,7 +380,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     fn ast_impl(
         &mut self,
         decorators: &mut Vec<Decorator<'expr>>,
-        attributes: &mut Vec<Attribute>,
+        attributes: &mut Vec<Locatable<Attribute>>,
     ) -> ParseResult<Option<Ast<'expr, 'stmt>>> {
         let _frame = self.add_stack_frame()?;
 
@@ -264,8 +393,12 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             }
 
             TokenType::Exposed | TokenType::Package | TokenType::Comptime => {
-                let attr = Attribute::try_from((&self.next()?, self.current_file))?;
-                attributes.push(attr);
+                let token = self.next()?;
+                let attr = Attribute::try_from((&token, self.current_file))?;
+                attributes.push(Locatable::new(
+                    attr,
+                    Location::concrete(&token, self.current_file),
+                ));
 
                 Ok(None)
             }
@@ -298,7 +431,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 if !attributes.is_empty() {
                     return Err(Locatable::new(
                         Error::Syntax(SyntaxError::NoAttributesAllowed("import")),
-                        Location::new(&self.peek()?, self.current_file),
+                        Location::concrete(&self.peek()?, self.current_file),
                     ));
                 }
 
@@ -314,14 +447,14 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
             ty => Err(Locatable::new(
                 Error::Syntax(SyntaxError::InvalidTopLevel(ty)),
-                Location::new(&self.peek()?, self.current_file),
+                Location::concrete(&self.peek()?, self.current_file),
             )),
         };
 
         if let Ok(Some(ref node)) = node {
             self.symbol_table.insert(
                 &self.string_interner,
-                SymbolLocation::new(self.current_file, node.name()),
+                SymbolLocation::new(node.location(), node.name()),
                 Symbol::from(node),
             )?;
         }
@@ -333,21 +466,27 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         let _frame = self.add_stack_frame()?;
         decorators.shrink_to_fit();
 
-        self.eat(TokenType::Import, [TokenType::Newline])?;
+        let start_span = self.eat(TokenType::Import, [TokenType::Newline])?.span();
 
         let file = self.eat(TokenType::String, [TokenType::Newline])?;
         let literal = Literal::try_from((&file, self.current_file))?;
         let file = match literal {
-            Literal::String(string) => self.string_interner.intern(&string.to_string()),
+            Literal::String(string) => Locatable::new(
+                self.string_interner.intern(&string.to_string()),
+                Location::concrete(file.span(), self.current_file),
+            ),
 
             lit => {
-                let err = if let Literal::ByteVec(_) = lit {
+                let err = if let Literal::Array(_) = lit {
                     Error::Syntax(SyntaxError::ImportByteStringLiteral)
                 } else {
                     Error::Syntax(SyntaxError::ImportStringLiteral)
                 };
 
-                return Err(Locatable::new(err, Location::new(&file, self.current_file)));
+                return Err(Locatable::new(
+                    err,
+                    Location::concrete(file.span(), self.current_file),
+                ));
             }
         };
 
@@ -373,10 +512,11 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             } else {
                 let mut members = Vec::with_capacity(5);
                 while self.peek()?.ty() != TokenType::Newline {
-                    let member = {
+                    let (span, member) = {
                         let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
-                        self.string_interner.intern(ident.source())
+                        (ident.span(), self.string_interner.intern(ident.source()))
                     };
+
                     let alias = if self.peek()?.ty() == TokenType::As {
                         self.eat(TokenType::As, [TokenType::Newline])?;
                         let alias = {
@@ -389,7 +529,10 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                         None
                     };
 
-                    members.push((member, alias));
+                    members.push(Locatable::new(
+                        (member, alias),
+                        Location::concrete(span, self.current_file),
+                    ));
 
                     // TODO: Helpful error if they terminated it too soon
                     if self.peek()?.ty() == TokenType::Comma {
@@ -411,12 +554,12 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 // Get the last segment of the path as the alias if none is supplied
                 let last_segment = self
                     .string_interner
-                    .resolve(&file)
+                    .resolve(file.data())
                     .split('.')
                     .last()
                     .ok_or(Locatable::new(
                         Error::Syntax(SyntaxError::MissingImport),
-                        Location::new(&self.peek()?, self.current_file),
+                        Location::concrete(&self.peek()?, self.current_file),
                     ))?
                     .to_string();
 
@@ -426,36 +569,36 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             ImportExposure::None(alias)
         };
 
-        self.eat(TokenType::Newline, [])?;
-
-        Ok(Ast::Import {
+        let end_span = self.eat(TokenType::Newline, [])?.span();
+        let import = Import {
             file,
             dest,
             exposes,
-        })
+        };
+
+        Ok(Ast::Import(Locatable::new(
+            import,
+            Location::concrete(Span::merge(start_span, end_span), self.current_file),
+        )))
     }
 
     fn trait_decl(
         &mut self,
         mut decorators: Vec<Decorator<'expr>>,
-        mut attributes: Vec<Attribute>,
+        mut attrs: Vec<Locatable<Attribute>>,
     ) -> ParseResult<Ast<'expr, 'stmt>> {
         let _frame = self.add_stack_frame()?;
         decorators.shrink_to_fit();
-        attributes.shrink_to_fit();
+        attrs.shrink_to_fit();
 
-        if !attributes.iter().any(Attribute::is_visibility) {
-            attributes.reserve(1);
-            attributes.push(Attribute::Visibility(Visibility::FileLocal));
-        }
-
-        self.eat(TokenType::Trait, [TokenType::Newline])?;
+        let start_span = self.eat(TokenType::Trait, [TokenType::Newline])?.span();
         let name = {
             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
             self.string_interner.intern(ident.source())
         };
         let generics = self.generics()?;
-        self.eat(TokenType::Newline, [])?;
+        let sig_span_end = self.eat(TokenType::Newline, [])?.span();
+        let signature_span = Span::merge(start_span, sig_span_end);
 
         let (mut method_decorators, mut method_attributes) =
             (Vec::with_capacity(3), Vec::with_capacity(3));
@@ -468,13 +611,23 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 }
 
                 TokenType::Exposed | TokenType::Package => {
-                    method_attributes
-                        .push(Attribute::try_from((&self.next()?, self.current_file))?);
+                    let token = self.next()?;
+                    let attr = Attribute::try_from((&token, self.current_file))?;
+                    method_attributes.push(Locatable::new(
+                        attr,
+                        Location::concrete(token, self.current_file),
+                    ));
                 }
 
                 TokenType::Function => {
-                    if !method_attributes.iter().any(Attribute::is_visibility) {
-                        method_attributes.push(Attribute::Visibility(Visibility::FileLocal));
+                    if !method_attributes
+                        .iter()
+                        .any(|attr| attr.data().is_visibility())
+                    {
+                        method_attributes.push(Locatable::new(
+                            Attribute::Visibility(Visibility::FileLocal),
+                            Location::implicit(self.current_file.index_span(), self.current_file),
+                        ));
                     }
                     method_attributes.shrink_to_fit();
                     method_decorators.shrink_to_fit();
@@ -484,7 +637,11 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                         mem::take(&mut method_attributes),
                     )?;
 
-                    methods.push(method);
+                    if let Ast::Function(method) = method {
+                        methods.push(method);
+                    } else {
+                        unreachable!("Something really weird happened")
+                    }
                 }
 
                 TokenType::Newline => {
@@ -494,45 +651,53 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 _ => {
                     return Err(Locatable::new(
                         Error::Syntax(SyntaxError::Generic("Only methods, attributes and decorators are allowed inside trait bodies".to_string())),
-                        Location::new(&self.peek()?, self.current_file),
+                        Location::concrete(&self.peek()?, self.current_file),
                     ));
                 }
             }
         }
         methods.shrink_to_fit();
+        let end_span = self.eat(TokenType::End, [TokenType::Newline])?.span();
 
-        self.eat(TokenType::End, [TokenType::Newline])?;
+        if !attrs.iter().any(|attr| attr.data().is_visibility()) {
+            attrs.reserve(1);
+            attrs.push(Locatable::new(
+                Attribute::Visibility(Visibility::FileLocal),
+                Location::concrete(signature_span, self.current_file),
+            ));
+        }
 
-        Ok(Ast::Trait {
+        let trait_decl = Trait {
             decorators,
-            attributes,
+            attrs,
             name,
             generics,
             methods,
-        })
+        };
+
+        Ok(Ast::Trait(Locatable::new(
+            trait_decl,
+            Location::concrete(Span::merge(start_span, end_span), self.current_file),
+        )))
     }
 
     fn enum_decl(
         &mut self,
         mut decorators: Vec<Decorator<'expr>>,
-        mut attributes: Vec<Attribute>,
+        mut attrs: Vec<Locatable<Attribute>>,
     ) -> ParseResult<Ast<'expr, 'stmt>> {
         let _frame = self.add_stack_frame()?;
         decorators.shrink_to_fit();
-        attributes.shrink_to_fit();
+        attrs.shrink_to_fit();
 
-        if !attributes.iter().any(Attribute::is_visibility) {
-            attributes.reserve(1);
-            attributes.push(Attribute::Visibility(Visibility::FileLocal));
-        }
-
-        self.eat(TokenType::Enum, [TokenType::Newline])?;
+        let start_span = self.eat(TokenType::Enum, [TokenType::Newline])?.span();
         let name = {
             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
             self.string_interner.intern(ident.source())
         };
         let generics = self.generics()?;
-        self.eat(TokenType::Newline, [])?;
+        let sig_span_end = self.eat(TokenType::Newline, [])?.span();
+        let signature_span = Span::merge(start_span, sig_span_end);
 
         let mut variant_decorators = Vec::with_capacity(7);
         let mut variants = Vec::with_capacity(7);
@@ -590,21 +755,34 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                             "Only decorators and enum variants are allowed inside enum declarations, got a `{}`", 
                             ty,
                         ))),
-                        Location::new(&self.peek()?, self.current_file),
+                        Location::concrete(&self.peek()?, self.current_file),
                     ));
                 }
             }
         }
         variants.shrink_to_fit();
-        self.eat(TokenType::End, [TokenType::Newline])?;
+        let end_span = self.eat(TokenType::End, [TokenType::Newline])?.span();
 
-        Ok(Ast::Enum {
+        if !attrs.iter().any(|attr| attr.data().is_visibility()) {
+            attrs.reserve(1);
+            attrs.push(Locatable::new(
+                Attribute::Visibility(Visibility::FileLocal),
+                Location::concrete(signature_span, self.current_file),
+            ));
+        }
+
+        let enum_decl = Enum {
             decorators,
-            attributes,
+            attrs,
             name,
             generics,
             variants,
-        })
+        };
+
+        Ok(Ast::Enum(Locatable::new(
+            enum_decl,
+            Location::concrete(Span::merge(start_span, end_span), self.current_file),
+        )))
     }
 
     fn decorator(&mut self, decorators: &mut Vec<Decorator<'expr>>) -> ParseResult<()> {
@@ -649,26 +827,23 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     fn type_decl(
         &mut self,
         mut decorators: Vec<Decorator<'expr>>,
-        mut attributes: Vec<Attribute>,
+        mut attrs: Vec<Locatable<Attribute>>,
     ) -> ParseResult<Ast<'expr, 'stmt>> {
         let _frame = self.add_stack_frame()?;
         decorators.shrink_to_fit();
-        attributes.shrink_to_fit();
+        attrs.shrink_to_fit();
 
-        if !attributes.iter().any(Attribute::is_visibility) {
-            attributes.reserve(1);
-            attributes.push(Attribute::Visibility(Visibility::FileLocal));
-        }
-
-        self.eat(TokenType::Type, [TokenType::Newline])?;
+        let start_span = self.eat(TokenType::Type, [TokenType::Newline])?.span();
         let name = {
             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
             self.string_interner.intern(ident.source())
         };
         let generics = self.generics()?;
-        self.eat(TokenType::Newline, [])?;
+        let sig_span_end = self.eat(TokenType::Newline, [])?.span();
 
-        let (mut member_decorators, mut member_attributes) =
+        let signature_span = Span::merge(start_span, sig_span_end);
+
+        let (mut member_decorators, mut member_attrs) =
             (Vec::with_capacity(3), Vec::with_capacity(3));
 
         let mut members = Vec::with_capacity(5);
@@ -681,46 +856,64 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 }
 
                 TokenType::Exposed | TokenType::Package => {
-                    member_attributes
-                        .push(Attribute::try_from((&self.next()?, self.current_file))?);
+                    let token = self.next()?;
+                    let attr = Attribute::try_from((&token, self.current_file))?;
+                    member_attrs.push(Locatable::new(
+                        attr,
+                        Location::concrete(&token, self.current_file),
+                    ));
                 }
 
                 TokenType::Function => {
                     let method = self.function(
                         mem::take(&mut member_decorators),
-                        mem::take(&mut member_attributes),
+                        mem::take(&mut member_attrs),
                     )?;
-                    methods.push(method);
+
+                    if let Ast::Function(method) = method {
+                        methods.push(method);
+                    } else {
+                        unreachable!("Something really weird happened")
+                    }
                 }
 
                 TokenType::Ident => {
-                    let name = {
+                    let (name, name_span) = {
                         let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
-                        self.string_interner.intern(ident.source())
+                        (self.string_interner.intern(ident.source()), ident.span())
                     };
 
                     let ty = if self.peek()?.ty() == TokenType::Colon {
                         self.eat(TokenType::Colon, [TokenType::Newline])?;
                         self.ascribed_type()?
                     } else {
-                        Type::default()
+                        Locatable::new(
+                            Type::default(),
+                            Location::implicit(name_span, self.current_file),
+                        )
                     };
 
-                    if !member_attributes.iter().any(Attribute::is_visibility) {
-                        member_attributes.push(Attribute::Visibility(Visibility::FileLocal));
+                    if !member_attrs.iter().any(|attr| attr.data().is_visibility()) {
+                        member_attrs.push(Locatable::new(
+                            Attribute::Visibility(Visibility::FileLocal),
+                            Location::implicit(signature_span, self.current_file),
+                        ));
                     }
-                    member_attributes.shrink_to_fit();
+                    member_attrs.shrink_to_fit();
                     member_decorators.shrink_to_fit();
 
                     let member = TypeMember {
                         decorators: mem::take(&mut member_decorators),
-                        attributes: mem::take(&mut member_attributes),
+                        attrs: mem::take(&mut member_attrs),
                         name,
                         ty,
                     };
-                    self.eat(TokenType::Newline, [])?;
+                    let end_span = self.eat(TokenType::Newline, [])?.span();
 
-                    members.push(member);
+                    members.push(Locatable::new(
+                        member,
+                        Location::concrete(Span::merge(name_span, end_span), self.current_file),
+                    ));
                 }
 
                 TokenType::Newline => {
@@ -730,45 +923,53 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 ty => {
                     return Err(Locatable::new(
                         Error::Syntax(SyntaxError::InvalidTopLevel(ty)),
-                        Location::new(&self.peek()?, self.current_file),
+                        Location::concrete(&self.peek()?, self.current_file),
                     ));
                 }
             }
         }
-        self.eat(TokenType::End, [TokenType::Newline])?;
+        let end_span = self.eat(TokenType::End, [TokenType::Newline])?.span();
 
-        if !member_attributes.is_empty() || !member_decorators.is_empty() {
+        if !member_attrs.is_empty() || !member_decorators.is_empty() {
             return Err(Locatable::new(
                 Error::Syntax(SyntaxError::Generic("Attributes and functions must be before members or methods in type declarations".to_string())),
-                Location::new(&self.peek()?, self.current_file),
+                Location::concrete(&self.peek()?, self.current_file),
             ));
         }
 
-        Ok(Ast::Type {
+        if !attrs.iter().any(|attr| attr.data().is_visibility()) {
+            attrs.reserve(1);
+            attrs.push(Locatable::new(
+                Attribute::Visibility(Visibility::FileLocal),
+                Location::concrete(signature_span, self.current_file),
+            ));
+        }
+
+        let type_decl = TypeDecl {
             decorators,
-            attributes,
+            attrs,
             name,
             generics,
             members,
             methods,
-        })
+        };
+
+        Ok(Ast::Type(Locatable::new(
+            type_decl,
+            Location::concrete(Span::merge(start_span, end_span), self.current_file),
+        )))
     }
 
     fn function(
         &mut self,
         mut decorators: Vec<Decorator<'expr>>,
-        mut attributes: Vec<Attribute>,
+        mut attrs: Vec<Locatable<Attribute>>,
     ) -> ParseResult<Ast<'expr, 'stmt>> {
         let _frame = self.add_stack_frame()?;
         decorators.shrink_to_fit();
-        attributes.shrink_to_fit();
+        attrs.shrink_to_fit();
 
-        if !attributes.iter().any(Attribute::is_visibility) {
-            attributes.reserve(1);
-            attributes.push(Attribute::Visibility(Visibility::FileLocal));
-        }
-
-        self.eat(TokenType::Function, [TokenType::Newline])?;
+        let start_span = self.eat(TokenType::Function, [TokenType::Newline])?.span();
         let name = {
             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
             self.string_interner.intern(ident.source())
@@ -777,11 +978,20 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
         let returns = if self.peek()?.ty() == TokenType::RightArrow {
             self.eat(TokenType::RightArrow, [])?;
-            self.ascribed_type()?
+            Some(self.ascribed_type()?)
         } else {
-            Type::default()
+            None
         };
-        self.eat(TokenType::Newline, [])?;
+        let sig_end_span = self.eat(TokenType::Newline, [])?.span();
+        let signature_span = Span::merge(start_span, sig_end_span);
+
+        let returns = returns.unwrap_or_else(|| {
+            Locatable::new(
+                Type::default(),
+                Location::implicit(signature_span, self.current_file),
+            )
+        });
+
         while self.peek()?.ty() == TokenType::Newline {
             self.eat(TokenType::Newline, [])?;
         }
@@ -793,36 +1003,60 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             }
         }
 
-        self.eat(TokenType::End, [TokenType::Newline])?;
+        let end_span = self.eat(TokenType::End, [TokenType::Newline])?.span();
         body.shrink_to_fit();
 
-        Ok(Ast::Function {
+        if !attrs.iter().any(|attr| attr.data().is_visibility()) {
+            attrs.reserve(1);
+            attrs.push(Locatable::new(
+                Attribute::Visibility(Visibility::FileLocal),
+                Location::implicit(signature_span, self.current_file),
+            ));
+        }
+
+        let func = Function {
             decorators,
-            attributes,
+            attrs,
             name,
             args,
             returns,
             body,
-        })
+        };
+
+        Ok(Ast::Function(Locatable::new(
+            func,
+            Location::concrete(Span::merge(start_span, end_span), self.current_file),
+        )))
     }
 
-    fn function_args(&mut self) -> ParseResult<Vec<(SmallSpur, Type, bool)>> {
+    fn function_args(&mut self) -> ParseResult<Vec<Locatable<FuncArg>>> {
         let _frame = self.add_stack_frame()?;
         self.eat(TokenType::LeftParen, [TokenType::Newline])?;
 
         let mut args = Vec::with_capacity(7);
         while self.peek()?.ty() != TokenType::RightParen {
-            let (comptime, ident) = match self.eat_of(
+            let (comptime, name, name_span) = match self.eat_of(
                 [TokenType::Ident, TokenType::Comptime],
                 [TokenType::Newline],
             )? {
-                ident if ident.ty() == TokenType::Ident => {
-                    (false, self.string_interner.intern(ident.source()))
-                }
-                token if token.ty() == TokenType::Comptime => (true, {
+                ident if ident.ty() == TokenType::Ident => (
+                    false,
+                    Locatable::new(
+                        self.string_interner.intern(ident.source()),
+                        Location::concrete(ident.span(), self.current_file),
+                    ),
+                    ident.span(),
+                ),
+
+                token if token.ty() == TokenType::Comptime => {
                     let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
-                    self.string_interner.intern(ident.source())
-                }),
+                    let name = Locatable::new(
+                        self.string_interner.intern(ident.source()),
+                        Location::concrete(ident.span(), self.current_file),
+                    );
+
+                    (true, name, token.span())
+                }
 
                 _ => unreachable!(),
             };
@@ -832,13 +1066,33 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 continue;
             }
 
-            let ty = if self.peek()?.ty() == TokenType::Colon {
+            let (ty, ty_span) = if self.peek()?.ty() == TokenType::Colon {
                 self.eat(TokenType::Colon, [TokenType::Newline])?;
-                self.ascribed_type()?
+                let ty = self.ascribed_type()?;
+                let span = Some(ty.span());
+
+                (ty, span)
             } else {
-                Type::default()
+                (
+                    Locatable::new(
+                        Type::default(),
+                        Location::implicit(name_span, self.current_file),
+                    ),
+                    None,
+                )
             };
-            args.push((ident, ty, comptime));
+
+            let arg = FuncArg { name, ty, comptime };
+            let arg_span = if let Some(end) = ty_span {
+                Span::merge(name_span, end)
+            } else {
+                name_span
+            };
+
+            args.push(Locatable::new(
+                arg,
+                Location::concrete(arg_span, self.current_file),
+            ));
 
             if self.peek()?.ty() == TokenType::Comma {
                 self.eat(TokenType::Comma, [TokenType::Newline])?;
@@ -852,7 +1106,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         Ok(args)
     }
 
-    fn generics(&mut self) -> ParseResult<Vec<Type>> {
+    fn generics(&mut self) -> ParseResult<Vec<Locatable<Type>>> {
         let _frame = self.add_stack_frame()?;
 
         if self.peek()?.ty() == TokenType::LeftBrace {
@@ -878,89 +1132,149 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         }
     }
 
-    pub(super) fn ascribed_type(&mut self) -> ParseResult<Type> {
+    pub(super) fn ascribed_type(&mut self) -> ParseResult<Locatable<Type>> {
         let _frame = self.add_stack_frame()?;
 
-        let mut ty = match self.eat_of([TokenType::Type, TokenType::Ident], [TokenType::Newline])? {
+        let token = self.eat_of([TokenType::Type, TokenType::Ident], [TokenType::Newline])?;
+        let start_span = token.span();
+
+        let (mut ty, mut end_span) = match token {
             Token { source, .. } if source == "str" => {
-                return Ok(Type::Builtin(BuiltinType::String));
+                return Ok(Locatable::new(
+                    Type::Builtin(BuiltinType::String),
+                    Location::concrete(start_span, self.current_file),
+                ));
             }
+
             Token { source, .. } if source == "rune" => {
-                return Ok(Type::Builtin(BuiltinType::Rune));
+                return Ok(Locatable::new(
+                    Type::Builtin(BuiltinType::Rune),
+                    Location::concrete(start_span, self.current_file),
+                ));
             }
+
             Token { source, .. } if source == "bool" => {
-                return Ok(Type::Builtin(BuiltinType::Boolean));
+                return Ok(Locatable::new(
+                    Type::Builtin(BuiltinType::Boolean),
+                    Location::concrete(start_span, self.current_file),
+                ));
             }
+
             Token { source, .. } if source == "unit" => {
-                return Ok(Type::Builtin(BuiltinType::Unit));
+                return Ok(Locatable::new(
+                    Type::Builtin(BuiltinType::Unit),
+                    Location::concrete(start_span, self.current_file),
+                ));
             }
+
             Token { source, .. } if source == "absurd" => {
-                return Ok(Type::Builtin(BuiltinType::Absurd));
+                return Ok(Locatable::new(
+                    Type::Builtin(BuiltinType::Absurd),
+                    Location::concrete(start_span, self.current_file),
+                ));
             }
+
             Token { source, .. } if source == "ureg" || source == "ireg" => {
-                return Ok(Type::Builtin(BuiltinType::IntReg(
-                    if source.chars().next().unwrap() == 'u' {
-                        Signedness::Unsigned
-                    } else {
-                        Signedness::Signed
-                    },
-                )));
+                let sign = if source.chars().next().unwrap() == 'u' {
+                    Signedness::Unsigned
+                } else {
+                    Signedness::Signed
+                };
+
+                return Ok(Locatable::new(
+                    Type::Builtin(BuiltinType::IntReg(sign)),
+                    Location::concrete(start_span, self.current_file),
+                ));
             }
+
             Token { source, .. } if source == "uptr" || source == "iptr" => {
-                return Ok(Type::Builtin(BuiltinType::IntPtr(
-                    if source.chars().next().unwrap() == 'u' {
-                        Signedness::Unsigned
-                    } else {
-                        Signedness::Signed
-                    },
-                )));
+                let sign = if source.chars().next().unwrap() == 'u' {
+                    Signedness::Unsigned
+                } else {
+                    Signedness::Signed
+                };
+
+                return Ok(Locatable::new(
+                    Type::Builtin(BuiltinType::IntPtr(sign)),
+                    Location::concrete(start_span, self.current_file),
+                ));
             }
 
             Token { source, .. }
                 if source.starts_with('u') && source.chars().skip(1).all(|c| c.is_numeric()) =>
             {
                 let width: u16 = source.chars().skip(1).collect::<String>().parse().unwrap();
-                return Ok(Type::Builtin(BuiltinType::Integer {
+                let int = Type::Builtin(BuiltinType::Integer {
                     sign: Signedness::Unsigned,
                     width,
-                }));
+                });
+
+                return Ok(Locatable::new(
+                    int,
+                    Location::concrete(start_span, self.current_file),
+                ));
             }
+
             Token { source, .. }
                 if source.starts_with('i') && source.chars().skip(1).all(|c| c.is_numeric()) =>
             {
                 let width: u16 = source.chars().skip(1).collect::<String>().parse().unwrap();
-                return Ok(Type::Builtin(BuiltinType::Integer {
-                    sign: Signedness::Signed,
-                    width,
-                }));
+
+                return Ok(Locatable::new(
+                    Type::Builtin(BuiltinType::Integer {
+                        sign: Signedness::Signed,
+                        width,
+                    }),
+                    Location::concrete(start_span, self.current_file),
+                ));
             }
+
             Token { source, .. }
                 if source.starts_with('f') && source.chars().skip(1).all(|c| c.is_numeric()) =>
             {
                 let width: u16 = source.chars().skip(1).collect::<String>().parse().unwrap();
-                return Ok(Type::Builtin(BuiltinType::Float { width }));
+
+                return Ok(Locatable::new(
+                    Type::Builtin(BuiltinType::Float { width }),
+                    Location::concrete(start_span, self.current_file),
+                ));
             }
 
-            Token { source, .. } if source == "arr" => {
+            Token { source, span, .. } if source == "arr" => {
                 // TODO: Maybe parse this immediately?
-                Type::Builtin(BuiltinType::Array(Box::new(Type::Infer)))
-            }
-            Token { source, .. } if source == "tup" => {
-                Type::Builtin(BuiltinType::Tuple(Vec::new()))
+                (
+                    Type::Builtin(BuiltinType::Array(Box::new(Locatable::new(
+                        Type::Infer,
+                        Location::implicit(span, self.current_file),
+                    )))),
+                    span,
+                )
             }
 
-            Token { ty, .. } if ty == TokenType::Type => Type::TraitObj(Vec::new()),
-            Token { ty, source, .. }
+            Token { source, span, .. } if source == "tup" => {
+                (Type::Builtin(BuiltinType::Tuple(Vec::new())), span)
+            }
+
+            Token { ty, span, .. } if ty == TokenType::Type => (Type::TraitObj(Vec::new()), span),
+
+            Token { ty, source, span }
                 if ty == TokenType::Ident
                     && self.peek().map(|t| t.ty()) == Ok(TokenType::LeftBrace) =>
             {
-                Type::Bounded {
-                    ty: self.string_interner.intern(source),
-                    bounds: Vec::new(),
-                }
+                (
+                    Type::Bounded {
+                        ty: self.string_interner.intern(source),
+                        bounds: Vec::new(),
+                    },
+                    span,
+                )
             }
-            Token { ty, source, .. } if ty == TokenType::Ident => {
-                return Ok(Type::Custom(self.string_interner.intern(source)));
+
+            Token { ty, source, span } if ty == TokenType::Ident => {
+                return Ok(Locatable::new(
+                    Type::Custom(self.string_interner.intern(source)),
+                    Location::concrete(span, self.current_file),
+                ));
             }
 
             _ => unreachable!(),
@@ -981,17 +1295,26 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                     break;
                 }
             }
-            self.eat(TokenType::RightBrace, [])?;
+
+            end_span = self.eat(TokenType::RightBrace, [])?.span();
         }
 
         if let Type::Bounded { ty, bounds } = ty {
-            if bounds.is_empty() {
-                Ok(Type::Custom(ty))
+            let ty = if bounds.is_empty() {
+                Type::Custom(ty)
             } else {
-                Ok(Type::Bounded { ty, bounds })
-            }
+                Type::Bounded { ty, bounds }
+            };
+
+            Ok(Locatable::new(
+                ty,
+                Location::concrete(Span::merge(start_span, end_span), self.current_file),
+            ))
         } else {
-            Ok(ty)
+            Ok(Locatable::new(
+                ty,
+                Location::concrete(Span::merge(start_span, end_span), self.current_file),
+            ))
         }
     }
 }

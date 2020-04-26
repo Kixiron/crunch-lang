@@ -2,13 +2,17 @@
 name = "repl"
 version = "0.1.0"
 authors = ["Chase Wilson <me@chasewilson.dev>"]
+repository = "https://github.com/Kixiron/crunch-lang"
 edition = "2018"
 
 [dependencies.crunch-parser]
 path = "../crunch-parser"
 
+[dependencies.crunch-semantics]
+path = "../crunch-semantics"
+
 [dependencies.rustyline]
-version = "6.1.1"
+version = "6.1.2"
 
 [dependencies.rustyline-derive]
 version = "0.3.1"

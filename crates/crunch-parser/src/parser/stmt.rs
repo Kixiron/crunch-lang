@@ -7,14 +7,12 @@ use crate::{
 use lasso::SmallSpur;
 use stadium::Ticket;
 
-use alloc::rc::Rc;
 #[cfg(feature = "no-std")]
 use alloc::{format, vec::Vec};
-use core::fmt;
 
 pub type Stmt<'expr, 'stmt> = Ticket<'stmt, Statement<'expr, 'stmt>>;
 
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Statement<'expr, 'stmt> {
     If {
         condition: Expr<'expr>,
@@ -22,7 +20,7 @@ pub enum Statement<'expr, 'stmt> {
         arm: Option<Stmt<'stmt, 'expr>>,
     },
     Expression(Expr<'expr>),
-    VarDeclaration(SmallSpur, Type, Expr<'expr>),
+    VarDeclaration(SmallSpur, Locatable<Type>, Expr<'expr>),
     Return(Option<Expr<'expr>>),
     Break(Option<Expr<'expr>>),
     Continue,
@@ -48,79 +46,6 @@ pub enum Statement<'expr, 'stmt> {
     Empty,
 }
 
-#[cfg(not(feature = "no-std"))]
-impl<'expr, 'stmt> fmt::Debug for Statement<'expr, 'stmt> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        thread_local! {
-            static STACK_GUARD: Rc<()> = Rc::new(());
-        }
-
-        STACK_GUARD.with(|guard| {
-            let guard = guard.clone();
-
-            if Rc::strong_count(&guard) > 100 {
-                return f.debug_struct("...More statements").finish();
-            }
-
-            match self {
-                Self::If {
-                    condition,
-                    body,
-                    arm,
-                } => f
-                    .debug_struct("If")
-                    .field("condition", condition)
-                    .field("body", body)
-                    .field("arm", arm)
-                    .finish(),
-                Self::Expression(expr) => f.debug_tuple("Expression").field(expr).finish(),
-                Self::VarDeclaration(name, ty, expr) => f
-                    .debug_tuple("VarDeclaration")
-                    .field(name)
-                    .field(ty)
-                    .field(expr)
-                    .finish(),
-                Self::Return(val) => f.debug_tuple("Return").field(val).finish(),
-                Self::Break(val) => f.debug_tuple("Break").field(val).finish(),
-                Self::Continue => f.debug_struct("Continue").finish(),
-                Self::While {
-                    condition,
-                    body,
-                    then,
-                } => f
-                    .debug_struct("While")
-                    .field("condition", condition)
-                    .field("body", body)
-                    .field("then", then)
-                    .finish(),
-                Self::Loop { body, then } => f
-                    .debug_struct("Loop")
-                    .field("body", body)
-                    .field("then", then)
-                    .finish(),
-                Self::For {
-                    var,
-                    condition,
-                    body,
-                    then,
-                } => f
-                    .debug_struct("For")
-                    .field("var", var)
-                    .field("condition", condition)
-                    .field("body", body)
-                    .field("then", then)
-                    .finish(),
-                Self::Match { var, arms } => f
-                    .debug_struct("match")
-                    .field("var", var)
-                    .field("arms", arms)
-                    .finish(),
-                Self::Empty => f.debug_struct("Empty").finish(),
-            }
-        })
-    }
-}
-
 // TODO: Type ascription
 
 /// Statement parsing
@@ -142,9 +67,9 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             TokenType::Let => {
                 self.eat(TokenType::Let, [TokenType::Newline])?;
 
-                let var = {
+                let (var, span) = {
                     let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
-                    self.string_interner.intern(ident.source())
+                    (self.string_interner.intern(ident.source()), ident.span())
                 };
 
                 self.eat(TokenType::Colon, [TokenType::Newline])?;
@@ -154,7 +79,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
                 let ty = if self.peek()?.ty() == TokenType::Equal {
                     self.eat(TokenType::Equal, [])?;
-                    Type::default()
+                    Locatable::new(Type::default(), Location::implicit(span, self.current_file))
                 } else {
                     let ty = self.ascribed_type()?;
                     self.eat(TokenType::Colon, [TokenType::Newline])?;
@@ -270,7 +195,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                         "Expected a statement, got a `{}`",
                         token.ty(),
                     ))),
-                    Location::new(&self.peek()?, self.current_file),
+                    Location::concrete(&self.peek()?, self.current_file),
                 ))
             }
         }

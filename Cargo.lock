@@ -423,6 +423,11 @@ dependencies = [
 [[package]]
 name = "crunch-semantics"
 version = "0.1.0"
+dependencies = [
+ "cfg-if",
+ "crunch-parser",
+ "hashbrown",
+]
 
 [[package]]
 name = "crunch-typecheck"
@@ -1192,6 +1197,7 @@ name = "repl"
 version = "0.1.0"
 dependencies = [
  "crunch-parser",
+ "crunch-semantics",
  "rustyline",
  "rustyline-derive",
 ]
@@ -1237,9 +1243,9 @@ dependencies = [
 
 [[package]]
 name = "rustyline"
-version = "6.1.1"
+version = "6.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61a7384a84da856bd163ef2c22982c816b0bcedaf17978ec13d8e0e277ddc332"
+checksum = "1cd20b28d972040c627e209eb29f19c24a71a19d661cc5a220089176e20ee202"
 dependencies = [
  "cfg-if",
  "dirs",
@@ -1247,6 +1253,7 @@ dependencies = [
  "log",
  "memchr",
  "nix",
+ "scopeguard",
  "unicode-segmentation",
  "unicode-width",
  "utf8parse",

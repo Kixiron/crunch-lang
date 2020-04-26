@@ -1,8 +1,14 @@
-use super::{ErrorHandler, FileId, Interner, Parser, SymbolTable, SyntaxTree};
+use super::{CurrentFile, ErrorHandler, FileId, Interner, Parser, SymbolTable, SyntaxTree};
 
 fn run(src: &str) -> Result<(SyntaxTree, Interner, ErrorHandler, SymbolTable), ErrorHandler> {
     // let _ = simple_logger::init();
-    Parser::new(src, FileId::new(0), Interner::new(), SymbolTable::new()).parse()
+    Parser::new(
+        src,
+        CurrentFile::new(FileId::new(0), 0),
+        Interner::new(),
+        SymbolTable::new(),
+    )
+    .parse()
 }
 
 #[test]

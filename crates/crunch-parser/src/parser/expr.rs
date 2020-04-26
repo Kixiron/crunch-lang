@@ -1,7 +1,6 @@
 use crate::{
     error::{Error, Locatable, Location, ParseResult, SyntaxError},
-    files::FileId,
-    parser::{string_escapes, Parser},
+    parser::{string_escapes, CurrentFile, Parser},
     token::{Token, TokenType},
 };
 
@@ -43,93 +42,16 @@ pub enum Expression<'expr> {
     Range(Expr<'expr>, Expr<'expr>),
 }
 
-// #[cfg(not(feature = "no-std"))]
-// impl<'expr> fmt::Debug for Expression<'expr> {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         thread_local! {
-//             static STACK_GUARD: Rc<()> = Rc::new(());
-//         }
-//
-//         STACK_GUARD.with(|guard| {
-//             let guard = guard.clone();
-//
-//             if Rc::strong_count(&guard) > 100 {
-//                 return f.debug_struct("...More statements").finish();
-//             }
-//
-//             match self {
-//                 Self::Variable(var) => f.debug_tuple("Variable").field(var).finish(),
-//                 Self::UnaryExpr(op, expr) => f
-//                     .debug_tuple("UnaryExpr")
-//                     .field(op)
-//                     .field(expr.deref())
-//                     .finish(),
-//                 Self::BinaryOp(lhs, op, rhs) => f
-//                     .debug_tuple("BinaryOp")
-//                     .field(lhs.deref())
-//                     .field(op)
-//                     .field(rhs.deref())
-//                     .finish(),
-//                 Self::InlineConditional {
-//                     true_arm,
-//                     condition,
-//                     false_arm,
-//                 } => f
-//                     .debug_struct("BinaryOp")
-//                     .field("true_arm", true_arm.deref())
-//                     .field("condition", condition.deref())
-//                     .field("false_arm", false_arm.deref())
-//                     .finish(),
-//                 Self::Parenthesised(expr) => f.debug_tuple("Parenthesized").field(expr).finish(),
-//                 Self::FunctionCall { caller, arguments } => f
-//                     .debug_struct("FunctionCall")
-//                     .field("caller", caller.deref())
-//                     .field("arguments", arguments)
-//                     .finish(),
-//                 Self::MemberFunctionCall { member, function } => f
-//                     .debug_struct("MemberFunctionCall")
-//                     .field("member", member.deref())
-//                     .field("function", function.deref())
-//                     .finish(),
-//                 Self::Literal(lit) => f.debug_tuple("Literal").field(lit).finish(),
-//                 Self::Comparison(lhs, op, rhs) => f
-//                     .debug_tuple("Comparison")
-//                     .field(lhs.deref())
-//                     .field(op)
-//                     .field(rhs.deref())
-//                     .finish(),
-//                 Self::IndexArray { array, index } => f
-//                     .debug_struct("IndexArray")
-//                     .field("array", array.deref())
-//                     .field("index", index.deref())
-//                     .finish(),
-//                 Self::Array(arr) => f.debug_tuple("Array").field(arr).finish(),
-//                 Self::Assignment(lhs, assign, rhs) => f
-//                     .debug_tuple("Assignment")
-//                     .field(lhs.deref())
-//                     .field(assign)
-//                     .field(rhs.deref())
-//                     .finish(),
-//                 Self::Range(start, finish) => f
-//                     .debug_tuple("Range")
-//                     .field(start.deref())
-//                     .field(finish.deref())
-//                     .finish(),
-//             }
-//         })
-//     }
-// }
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum AssignmentType {
     Normal,
     BinaryOp(BinaryOperand),
 }
 
-impl<'src> TryFrom<(&Token<'src>, FileId)> for AssignmentType {
+impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for AssignmentType {
     type Error = Locatable<Error>;
 
-    fn try_from((token, file): (&Token<'src>, FileId)) -> Result<Self, Self::Error> {
+    fn try_from((token, file): (&Token<'src>, CurrentFile)) -> Result<Self, Self::Error> {
         const ASSIGN_TOKENS: &[TokenType] = &[
             TokenType::Equal,
             TokenType::AddAssign,
@@ -170,7 +92,7 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for AssignmentType {
                             .join(", "),
                         ty,
                     ))),
-                    Location::new(token, file),
+                    Location::concrete(token, file),
                 ));
             }
         })
@@ -187,10 +109,10 @@ pub enum ComparisonOperand {
     NotEqual,
 }
 
-impl<'src> TryFrom<(&Token<'src>, FileId)> for ComparisonOperand {
+impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for ComparisonOperand {
     type Error = Locatable<Error>;
 
-    fn try_from((token, file): (&Token<'src>, FileId)) -> Result<Self, Self::Error> {
+    fn try_from((token, file): (&Token<'src>, CurrentFile)) -> Result<Self, Self::Error> {
         const COMPARE_TOKENS: &[TokenType] = &[
             TokenType::RightCaret,
             TokenType::LeftCaret,
@@ -219,7 +141,7 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for ComparisonOperand {
                             .join(", "),
                         ty,
                     ))),
-                    Location::new(token, file),
+                    Location::concrete(token, file),
                 ));
             }
         })
@@ -232,11 +154,10 @@ pub enum Literal {
     Bool(bool),
     String(Text),
     Rune(Rune),
-    ByteVec(Vec<u8>),
     Float(Float),
+    Array(Vec<Literal>),
 }
 
-/// A utf-32 string
 #[derive(Clone, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Text(Vec<Rune>);
@@ -277,7 +198,6 @@ impl From<&str> for Text {
     }
 }
 
-/// A unicode codepoint
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Rune(u32);
@@ -379,10 +299,10 @@ impl fmt::Display for Float {
 // TODO: Actually make this throw useful errors
 // FIXME: Not unicode-aware, will panic on unicode boundaries
 // TODO: Make these errors actually helpful, and verify that the parsing matches with what is lexed
-impl<'src> TryFrom<(&Token<'src>, FileId)> for Literal {
+impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for Literal {
     type Error = Locatable<Error>;
 
-    fn try_from((token, file): (&Token<'src>, FileId)) -> Result<Self, Self::Error> {
+    fn try_from((token, file): (&Token<'src>, CurrentFile)) -> Result<Self, Self::Error> {
         let mut chars: Vec<char> = token.source().chars().filter(|c| *c != '_').collect();
 
         Ok(match token.ty() {
@@ -419,7 +339,7 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for Literal {
                                         "float",
                                         format!("'{}' is too large, only floats of up to 64 bits are supported", token.source()),
                                     )),
-                                    Location::new(token, file),
+                                    Location::concrete(token, file),
                                 ),
 
                                 ParseError::MissingPrefix
@@ -442,14 +362,14 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for Literal {
                                     "float",
                                     format!("'{}' is too large, only floats of up to 64 bits are supported", token.source()),
                                 )),
-                                Location::new(token, file),
+                                Location::concrete(token, file),
                             ),
                             ErrorCode::Underflow => Locatable::new(
                                 Error::Syntax(SyntaxError::LiteralUnderflow(
                                     "float",
                                     format!("'{}' is too small, only floats of up to 64 bits are supported", token.source()),
                                 )),
-                                Location::new(token, file),
+                                Location::concrete(token, file),
                             ),
 
                             err => unreachable!("Internal error: Failed to handle all float errors (Error: {:?})", err),
@@ -479,7 +399,7 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for Literal {
                     string_escapes::unescape_rune(chars).map_err(|(err, range)| {
                         Locatable::new(
                             err,
-                            Location::new(
+                            Location::concrete(
                                 (
                                     token.range().start + 3 + range.start,
                                     token.range().start + 3 + range.end,
@@ -518,7 +438,7 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for Literal {
                         string_escapes::unescape_string(chars).map_err(|(err, range)| {
                             Locatable::new(
                                 err,
-                                Location::new(
+                                Location::concrete(
                                     (
                                         token.range().start + 3 + range.start,
                                         token.range().start + 3 + range.end,
@@ -536,7 +456,7 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for Literal {
                         string_escapes::unescape_string(chars).map_err(|(err, range)| {
                             Locatable::new(
                                 err,
-                                Location::new(
+                                Location::concrete(
                                     (
                                         token.range().start + 1 + range.start,
                                         token.range().start + 1 + range.end,
@@ -551,7 +471,18 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for Literal {
                 };
 
                 if byte_str {
-                    Literal::ByteVec(string.to_bytes().to_vec())
+                    Literal::Array(
+                        string
+                            .to_bytes()
+                            .into_iter()
+                            .map(|b| {
+                                Literal::Integer(Integer {
+                                    sign: Sign::Positive,
+                                    bits: b as u128,
+                                })
+                            })
+                            .collect(),
+                    )
                 } else {
                     Literal::String(string)
                 }
@@ -574,7 +505,7 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for Literal {
                     u128::from_str_radix(&string, 16).map_err(|_| {
                         Locatable::new(
                             Error::Syntax(SyntaxError::InvalidLiteral("int")),
-                            Location::new(token, file),
+                            Location::concrete(token, file),
                         )
                     })?
                 } else if chars.get(..2) == Some(&['0', 'b']) {
@@ -583,7 +514,7 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for Literal {
                     u128::from_str_radix(&string, 2).map_err(|_| {
                         Locatable::new(
                             Error::Syntax(SyntaxError::InvalidLiteral("int")),
-                            Location::new(token, file),
+                            Location::concrete(token, file),
                         )
                     })?
                 } else {
@@ -592,7 +523,7 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for Literal {
                     u128::from_str_radix(&string, 10).map_err(|_| {
                         Locatable::new(
                             Error::Syntax(SyntaxError::InvalidLiteral("int")),
-                            Location::new(token, file),
+                            Location::concrete(token, file),
                         )
                     })?
                 };
@@ -603,14 +534,14 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for Literal {
             TokenType::Bool => Self::Bool(token.source().parse::<bool>().map_err(|_| {
                 Locatable::new(
                     Error::Syntax(SyntaxError::InvalidLiteral("bool")),
-                    Location::new(token, file),
+                    Location::concrete(token, file),
                 )
             })?),
 
             ty => {
                 return Err(Locatable::new(
                     Error::Syntax(SyntaxError::Generic(format!("Invalid Literal: '{}'", ty))),
-                    Location::new(token, file),
+                    Location::concrete(token, file),
                 ))
             }
         })
@@ -632,10 +563,10 @@ pub enum BinaryOperand {
     Shr,
 }
 
-impl<'src> TryFrom<(&Token<'src>, FileId)> for BinaryOperand {
+impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for BinaryOperand {
     type Error = Locatable<Error>;
 
-    fn try_from((token, file): (&Token<'src>, FileId)) -> Result<Self, Self::Error> {
+    fn try_from((token, file): (&Token<'src>, CurrentFile)) -> Result<Self, Self::Error> {
         Ok(match token.ty() {
             TokenType::Plus => Self::Add,
             TokenType::Minus => Self::Sub,
@@ -655,7 +586,7 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for BinaryOperand {
                         "Expected a binary operand, got `{}`",
                         ty
                     ))),
-                    Location::new(token, file),
+                    Location::concrete(token, file),
                 ));
             }
         })
@@ -669,10 +600,10 @@ pub enum UnaryOperand {
     Not,
 }
 
-impl<'src> TryFrom<(&Token<'src>, FileId)> for UnaryOperand {
+impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for UnaryOperand {
     type Error = Locatable<Error>;
 
-    fn try_from((token, file): (&Token<'src>, FileId)) -> Result<Self, Self::Error> {
+    fn try_from((token, file): (&Token<'src>, CurrentFile)) -> Result<Self, Self::Error> {
         Ok(match token.ty() {
             TokenType::Plus => Self::Positive,
             TokenType::Minus => Self::Negative,
@@ -684,7 +615,7 @@ impl<'src> TryFrom<(&Token<'src>, FileId)> for UnaryOperand {
                         "Expected a unary operand, got `{}`",
                         ty
                     ))),
-                    Location::new(token, file),
+                    Location::concrete(token, file),
                 ));
             }
         })
@@ -740,7 +671,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                     "Could not parse `{}`",
                     token.ty()
                 ))),
-                Location::new(&token, self.current_file),
+                Location::concrete(&token, self.current_file),
             ))
         }
     }

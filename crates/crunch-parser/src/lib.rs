@@ -15,6 +15,6 @@ mod token;
 pub use error::ErrorHandler;
 pub use files::{FileId, Files};
 pub use interner::{Interner, SmallSpur};
-pub use parser::{Parser, SyntaxTree};
+pub use parser::{CurrentFile, Parser, SyntaxTree};
 pub use pretty_printer::PrettyPrinter;
 pub use symbol_table::SymbolTable;

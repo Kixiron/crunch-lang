@@ -1,4 +1,4 @@
-use crunch_parser::{files::Files, Interner, SymbolTable};
+use crunch_parser::{files::Files, CurrentFile, Interner, SymbolTable};
 use std::{fs::File, io::Read};
 
 fn main() {
@@ -9,7 +9,14 @@ fn main() {
     let mut files = Files::new();
     let id = files.add("<test file>", &buf).unwrap();
 
-    match crunch_parser::Parser::new(&buf, id, Interner::new(), SymbolTable::new()).parse() {
+    match crunch_parser::Parser::new(
+        &buf,
+        CurrentFile::new(id, buf.len()),
+        Interner::new(),
+        SymbolTable::new(),
+    )
+    .parse()
+    {
         Ok((ast, _interner, mut warn, _)) => {
             warn.emit(&files);
             println!("{:#?}", ast);

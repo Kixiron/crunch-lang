@@ -1,5 +1,5 @@
 use crate::{
-    error::{Error, ErrorHandler, Locatable, Location, ParseResult, SyntaxError},
+    error::{Error, ErrorHandler, Locatable, Location, ParseResult, Span, SyntaxError},
     files::FileId,
     interner::Interner,
     symbol_table::SymbolTable,
@@ -21,8 +21,8 @@ mod string_escapes;
 mod tests;
 
 pub use ast::{
-    Ast, Attribute, BuiltinType, Decorator, EnumVariant, ImportDest, ImportExposure, Signedness,
-    Type, TypeMember, Visibility,
+    Ast, AstType, Attribute, BuiltinType, Decorator, Enum, EnumVariant, FuncArg, Function, Import,
+    ImportDest, ImportExposure, Signedness, Trait, Type, TypeDecl, TypeMember, Visibility,
 };
 pub use expr::{
     AssignmentType, BinaryOperand, ComparisonOperand, Expr, Expression, Float, Integer, Literal,
@@ -52,6 +52,57 @@ impl<'expr, 'stmt> ops::Deref for SyntaxTree<'expr, 'stmt> {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct CurrentFile {
+    file: FileId,
+    length: usize,
+    index: usize,
+}
+
+impl CurrentFile {
+    pub const fn new(file: FileId, length: usize) -> Self {
+        Self {
+            file,
+            length,
+            index: 0,
+        }
+    }
+
+    pub const fn file(&self) -> FileId {
+        self.file
+    }
+
+    pub const fn length(&self) -> usize {
+        self.length
+    }
+
+    pub const fn index(&self) -> usize {
+        self.index
+    }
+
+    pub fn eof(&self) -> Location {
+        Location::concrete(Span::new(self.length, self.length), self.file)
+    }
+
+    pub fn advance(&mut self, dist: usize) {
+        self.index += dist;
+    }
+
+    pub const fn index_span(&self) -> Span {
+        Span::new(self.index, self.index)
+    }
+
+    pub fn recursion(&self) -> Location {
+        Location::concrete(self.index_span(), self.file)
+    }
+}
+
+impl Into<FileId> for CurrentFile {
+    fn into(self) -> FileId {
+        self.file
+    }
+}
+
 pub struct Parser<'src, 'expr, 'stmt> {
     token_stream: TokenStream<'src>,
     next: Option<Token<'src>>,
@@ -59,7 +110,7 @@ pub struct Parser<'src, 'expr, 'stmt> {
 
     error_handler: ErrorHandler,
     stack_frames: StackGuard,
-    current_file: FileId,
+    current_file: CurrentFile,
 
     expr_arena: Stadium<'expr, Expression<'expr>>,
     stmt_arena: Stadium<'stmt, Statement<'expr, 'stmt>>,
@@ -72,7 +123,7 @@ pub struct Parser<'src, 'expr, 'stmt> {
 impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     pub fn new(
         source: &'src str,
-        current_file: FileId,
+        current_file: CurrentFile,
         string_interner: Interner,
         symbol_table: SymbolTable,
     ) -> Self {
@@ -99,7 +150,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         token_stream: TokenStream<'src>,
         next: Option<Token<'src>>,
         peek: Option<Token<'src>>,
-        current_file: FileId,
+        current_file: CurrentFile,
         string_interner: Interner,
         symbol_table: SymbolTable,
     ) -> Self {
@@ -204,14 +255,18 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         mem::swap(&mut next, &mut self.peek);
         self.next = next;
 
-        next.ok_or_else(|| Locatable::file(Error::EndOfFile, self.current_file))
+        if let Some(next) = self.next {
+            self.current_file.advance(next.span().width());
+        }
+
+        next.ok_or_else(|| Locatable::new(Error::EndOfFile, self.current_file.eof()))
     }
 
     #[inline(always)]
     fn peek(&self) -> ParseResult<Token<'src>> {
         let _frame = self.add_stack_frame()?;
         self.peek
-            .ok_or_else(|| Locatable::file(Error::EndOfFile, self.current_file))
+            .ok_or_else(|| Locatable::new(Error::EndOfFile, self.current_file.eof()))
     }
 
     /// Eats one of the `expected` token, ignoring (and consuming) any tokens included in `ignoring`
@@ -239,7 +294,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                             expected,
                             token.ty()
                         ))),
-                        Location::new(&token, self.current_file),
+                        Location::concrete(&token, self.current_file.file()),
                     ));
                 }
             }
@@ -281,7 +336,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                             expected,
                             token.ty()
                         ))),
-                        Location::new(&token, self.current_file),
+                        Location::concrete(&token, self.current_file.file()),
                     ));
                 }
             }
@@ -329,14 +384,15 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
         let guard = self.stack_frames.clone();
         let depth = guard.frames();
-        if depth > MAX_DEPTH {
-            return Err(Locatable::file(
-                Error::Syntax(SyntaxError::RecursionLimit(depth, MAX_DEPTH)),
-                self.current_file,
-            ));
-        }
 
-        Ok(guard)
+        if depth > MAX_DEPTH {
+            Err(Locatable::new(
+                Error::Syntax(SyntaxError::RecursionLimit(depth, MAX_DEPTH)),
+                self.current_file.recursion(),
+            ))
+        } else {
+            Ok(guard)
+        }
     }
 }
 
