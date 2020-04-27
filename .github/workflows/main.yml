@@ -27,30 +27,6 @@ jobs:
           rust-version: stable
           components: rustfmt,clippy
 
-      - name: Set rustc version
-        run: echo "::set-env name=CURRENT_RUSTC_VERSION::$(rustc -V)"
-
-      - name: Cache Cargo Registry
-        uses: actions/cache@v1
-        with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-      - name: Cache Cargo Bin
-        uses: actions/cache@v1
-        with:
-          path: ~/.cargo/bin
-          key: ${{ runner.os }}-cargo-bin-${{ hashFiles('**/Cargo.lock') }}
-      - name: Cache Cargo Git
-        uses: actions/cache@v1
-        with:
-          path: ~/.cargo/git
-          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-      - name: Cache Cargo Build
-        uses: actions/cache@v1
-        with:
-          path: target
-          key: ${{ runner.os }}-cargo-build-target-${{ env.CURRENT_RUSTC_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
-
       - name: Cargo Check
         run: cargo check --workspace
 
@@ -61,7 +37,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Check Documentation
-        run: cargo doc --no-deps
+        run: cargo doc --no-deps --document-private-items
 
   Tests:
     name: ${{ matrix.name }}
@@ -108,6 +84,11 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - uses: hecrj/setup-rust-action@v1
+        with:
+          rust-version: ${{ matrix.rust_version }}${{ matrix.platform.host }}
+          targets: ${{ matrix.target }}
+
       - name: Set rustc version
         run: echo "::set-env name=CURRENT_RUSTC_VERSION::$(rustc -V)"
 
@@ -131,11 +112,6 @@ jobs:
         with:
           path: target
           key: ${{ runner.os }}-cargo-build-target-${{ env.CURRENT_RUSTC_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
-
-      - uses: hecrj/setup-rust-action@v1
-        with:
-          rust-version: ${{ matrix.rust_version }}${{ matrix.platform.host }}
-          targets: ${{ matrix.target }}
 
       - name: Run Tests
         run: cargo test --target ${{ matrix.target }} --workspace

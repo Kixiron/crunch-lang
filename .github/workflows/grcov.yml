@@ -1,76 +1,35 @@
-name: Code Coverage
+name: Coverage
 
-on:
-  push:
-    branches: [master, dev]
-  pull_request:
-    branches: [master, dev]
+on: [push]
 
 jobs:
-  grcov:
+  check:
+    name: Crunch
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout repository
+        uses: actions/checkout@v2
 
-      - name: Set rustc version
-        run: echo "::set-env name=CURRENT_RUSTC_VERSION::$(rustc -V)"
-
-      - name: Cache Cargo Registry
-        uses: actions/cache@v1
-        with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-      - name: Cache Cargo Bin
-        uses: actions/cache@v1
-        with:
-          path: ~/.cargo/bin
-          key: ${{ runner.os }}-cargo-bin-${{ hashFiles('**/Cargo.lock') }}
-      - name: Cache Cargo Git
-        uses: actions/cache@v1
-        with:
-          path: ~/.cargo/git
-          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-      - name: Cache Cargo Build
-        uses: actions/cache@v1
-        with:
-          path: target
-          key: ${{ runner.os }}-cargo-build-target-${{ env.CURRENT_RUSTC_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Install toolchain
+      - name: Install stable toolchain
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           override: true
 
-      - name: Execute tests
-        uses: actions-rs/cargo@v1
+      - name: Run cargo-tarpaulin
+        uses: actions-rs/tarpaulin@v0.1
         with:
-          command: test
-          args: --all
-        env:
-          CARGO_INCREMENTAL: 0
-          RUSTFLAGS: "-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Zno-landing-pads"
+          args: "--exclude-files examples/* --exclude-files crates/repl/* --exclude-files crates/crunch-fuzzing/* --out Lcov --coveralls ${{ secrets.COVERALLS_TOKEN }}"
 
-      - name: Gather Coverage Data
-        id: coverage
-        uses: actions-rs/grcov@v0.1
-        with:
-          coveralls-token: ${{ secrets.COVERALLS_TOKEN }}
-
-      - name: Coveralls Upload
+      - name: Upload to Coveralls
         uses: coverallsapp/github-action@master
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           parallel: true
-          path-to-lcov: ${{ steps.coverage.outputs.report }}
+          path-to-lcov: ./lcov.info
 
-  grcov_finalize:
-    runs-on: ubuntu-latest
-    needs: grcov
-    steps:
-      - name: Coveralls Finalization
-        uses: coverallsapp/github-action@master
+      - name: Archive code coverage results
+        uses: actions/upload-artifact@v1
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          parallel-finished: true
+          name: code-coverage-report
+          path: cobertura.xml
