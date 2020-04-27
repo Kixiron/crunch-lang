@@ -1,8 +1,0 @@
-[package]
-name = "pipeline-job"
-version = "0.1.0"
-authors = ["Chase Wilson <contact@chasewilson.dev>"]
-edition = "2018"
-
-[features]
-no_std = []

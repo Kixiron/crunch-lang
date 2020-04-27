@@ -4,8 +4,5 @@ version = "0.1.0"
 authors = ["Chase Wilson <contact@chasewilson.dev>"]
 edition = "2018"
 
-[dependencies.crunch-error]
-path = "../crunch-error"
-
 [dependencies.crunch-parser]
 path = "../crunch-parser"

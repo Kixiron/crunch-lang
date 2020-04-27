@@ -1198,7 +1198,9 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             }
 
             Token { source, .. }
-                if source.starts_with('u') && source.len() > 1  && source.chars().skip(1).all(|c| c.is_numeric()) =>
+                if source.starts_with('u')
+                    && source.len() > 1
+                    && source.chars().skip(1).all(|c| c.is_numeric()) =>
             {
                 let width: u16 = source.chars().skip(1).collect::<String>().parse().unwrap();
                 let int = Type::Builtin(BuiltinType::Integer {
@@ -1213,7 +1215,9 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             }
 
             Token { source, .. }
-                if source.starts_with('i') && source.len() > 1 && source.chars().skip(1).all(|c| c.is_numeric()) =>
+                if source.starts_with('i')
+                    && source.len() > 1
+                    && source.chars().skip(1).all(|c| c.is_numeric()) =>
             {
                 let width: u16 = source.chars().skip(1).collect::<String>().parse().unwrap();
 
@@ -1227,7 +1231,9 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             }
 
             Token { source, .. }
-                if source.starts_with('f') && source.len() > 1  && source.chars().skip(1).all(|c| c.is_numeric()) =>
+                if source.starts_with('f')
+                    && source.len() > 1
+                    && source.chars().skip(1).all(|c| c.is_numeric()) =>
             {
                 let width: u16 = source.chars().skip(1).collect::<String>().parse().unwrap();
 

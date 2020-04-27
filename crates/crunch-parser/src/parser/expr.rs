@@ -681,15 +681,16 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             // Variables
             TokenType::Ident => |parser, token| {
                 use alloc::borrow::Cow;
-                use unicode_normalization::{UnicodeNormalization, IsNormalized};
+                use unicode_normalization::{IsNormalized, UnicodeNormalization};
 
                 let _frame = parser.add_stack_frame()?;
 
                 // Performs zero temp allocations if it's already NFKC-normalised.
-                let normalized = match unicode_normalization::is_nfkc_quick(token.source().chars()) {
+                let normalized = match unicode_normalization::is_nfkc_quick(token.source().chars())
+                {
                     IsNormalized::Yes => Cow::Borrowed(token.source()),
-                    _   => Cow::Owned(token.source().nfkc().collect()),
-                };  
+                    _ => Cow::Owned(token.source().nfkc().collect()),
+                };
 
                 let ident = parser.string_interner.intern(&normalized);
                 let expr = parser.expr_arena.store(Expression::Variable(ident));

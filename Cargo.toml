@@ -14,10 +14,6 @@ edition = "2018"
 build = "build.rs"
 default-run = "crunch"
 
-[features]
-default = ["std"]
-std = ["compactor/runtime"]
-
 [[bin]]
 name = "crunch"
 path = "src/bin.rs"
@@ -55,24 +51,6 @@ version = "2.33.0"
 default-features = false
 version = "1.6.0"
 
-# [dependencies.ballast]
-# path = "crates/ballast"
-
-[dependencies.crunch-error]
-path = "crates/crunch-error"
-
-[dependencies.crunch-parser]
-path = "crates/crunch-parser"
-
-[dependencies.vice]
-path = "crates/vice"
-
-[dependencies.compactor]
-path = "crates/compactor"
-
-[dependencies.crunch-bytecode]
-path = "crates/crunch-bytecode"
-
 [dev-dependencies]
 criterion = "0.3.1"
 proptest = "0.9.5"
@@ -82,10 +60,7 @@ cc = "1.0.50"
 
 [workspace]
 members = ["crates/*"]
-exclude= ["crates/crunch-fuzzing"]
-
-# [target.'cfg(windows)'.workspace]
-# exclude= ["crates/crunch-fuzzing"]
+exclude = ["crates/crunch-fuzzing"]
 
 [profile.release]
 opt-level = 3
