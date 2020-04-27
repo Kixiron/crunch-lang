@@ -134,7 +134,7 @@ jobs:
 
       - name: Install Dependences
         if: matrix.target == 'i686-unknown-linux-gnu'
-        run: sudo apt install g++-multilib gcc-multilib
+        run: sudo apt install g++-multilib gcc-multilib --fix-missing
 
       # Run tests in debug mode
       - name: Run Tests Debug
