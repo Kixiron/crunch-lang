@@ -3,7 +3,7 @@ use crate::{
     token::{Token, TokenType},
 };
 
-use alloc::{collections::VecDeque, format, string::String, vec};
+use alloc::{collections::VecDeque, string::String, vec};
 use codespan_reporting::{
     diagnostic::{Diagnostic, Label},
     term::{
@@ -224,27 +224,23 @@ impl ErrorHandler {
     /// Drain all errors and warnings from the current handler, emitting them
     pub fn emit(&mut self, files: &crate::files::Files) {
         let writer = StandardStream::stderr(ColorChoice::Auto);
-
         let config = Config::default();
+        let mut diag = Vec::with_capacity(5);
 
-        let mut diag = Diagnostic::warning();
         while let Some(err) = self.warnings.pop_front() {
-            diag.message = format!("{}", err.data);
+            err.data().emit(err.file(), err.span(), &mut diag);
 
-            diag.labels = vec![Label::primary(err.file(), err.range())];
-            diag.labels.extend(err.data().extra_labels(err.file()));
-
-            term::emit(&mut writer.lock(), &config, files, &diag).unwrap();
+            for diag in diag.drain(..) {
+                term::emit(&mut writer.lock(), &config, files, &diag).unwrap();
+            }
         }
 
-        let mut diag = Diagnostic::error();
         while let Some(err) = self.errors.pop_front() {
-            diag.message = format!("{}", err.data);
+            err.data().emit(err.file(), err.span(), &mut diag);
 
-            diag.labels = vec![Label::primary(err.file(), err.range())];
-            diag.labels.extend(err.data().extra_labels(err.file()));
-
-            term::emit(&mut writer.lock(), &config, files, &diag).unwrap();
+            for diag in diag.drain(..) {
+                term::emit(&mut writer.lock(), &config, files, &diag).unwrap();
+            }
         }
     }
 }
@@ -279,12 +275,16 @@ pub enum Error {
 }
 
 impl Error {
-    fn extra_labels(&self, file: FileId) -> Vec<Label<FileId>> {
+    fn emit(&self, file: FileId, span: Span, diag: &mut Vec<Diagnostic<FileId>>) {
         match self {
-            Self::Syntax(err) => err.extra_labels(file),
-            Self::Semantic(err) => err.extra_labels(file),
-            Self::Type(err) => err.extra_labels(file),
-            Self::EndOfFile => Vec::new(),
+            Self::Syntax(err) => err.emit(file, span, diag),
+            Self::Semantic(err) => err.emit(file, span, diag),
+            Self::Type(err) => err.emit(file, span, diag),
+            Self::EndOfFile => diag.push(
+                Diagnostic::error()
+                    .with_message(self.to_string())
+                    .with_labels(vec![Label::primary(file, span)]),
+            ),
         }
     }
 }
@@ -341,10 +341,12 @@ pub enum SyntaxError {
 }
 
 impl SyntaxError {
-    fn extra_labels(&self, _file: FileId) -> Vec<Label<FileId>> {
-        match self {
-            _ => Vec::new(),
-        }
+    fn emit(&self, file: FileId, span: Span, diag: &mut Vec<Diagnostic<FileId>>) {
+        diag.push(
+            Diagnostic::error()
+                .with_message(self.to_string())
+                .with_labels(vec![Label::primary(file, span)]),
+        )
     }
 }
 
@@ -387,21 +389,46 @@ pub enum SemanticError {
 }
 
 impl SemanticError {
-    fn extra_labels(&self, file: FileId) -> Vec<Label<FileId>> {
+    fn emit(&self, file: FileId, span: Span, diag: &mut Vec<Diagnostic<FileId>>) {
         match self {
-            Self::Redefinition { first, second, .. } => vec![
-                Label::primary(file, first.range()).with_message("Defined here"),
-                Label::secondary(file, second.range()).with_message("Redefined here"),
-            ],
-            Self::DuplicatedAttributes { first, second, .. } => vec![
-                Label::primary(file, first.range()).with_message("Fist given here"),
-                Label::secondary(file, second.range()).with_message("Given here"),
-            ],
-            Self::ConflictingAttributes { first, second, .. } => vec![
-                Label::primary(file, first.range()),
-                Label::secondary(file, second.range()),
-            ],
-            _ => Vec::new(),
+            Self::Redefinition { first, second, .. } => {
+                diag.push(
+                    Diagnostic::error()
+                        .with_message(self.to_string())
+                        .with_labels(vec![
+                            Label::primary(file, first.range()).with_message("Defined here"),
+                            Label::secondary(file, second.range()).with_message("Redefined here"),
+                        ]),
+                );
+            }
+
+            Self::DuplicatedAttributes { first, second, .. } => {
+                diag.push(
+                    Diagnostic::error()
+                        .with_message(self.to_string())
+                        .with_labels(vec![
+                            Label::primary(file, first.range()).with_message("Fist given here"),
+                            Label::secondary(file, second.range()).with_message("Given here"),
+                        ]),
+                );
+            }
+
+            Self::ConflictingAttributes { first, second, .. } => {
+                diag.push(
+                    Diagnostic::error()
+                        .with_message(self.to_string())
+                        .with_labels(vec![
+                            Label::primary(file, first.range()),
+                            Label::secondary(file, second.range()),
+                        ]),
+                );
+            }
+
+            _ => diag.push(
+                Diagnostic::error()
+                    .with_message(self.to_string())
+                    .with_labels(vec![Label::primary(file, span)]),
+            ),
         }
     }
 }
@@ -410,10 +437,12 @@ impl SemanticError {
 pub enum TypeError {}
 
 impl TypeError {
-    fn extra_labels(&self, _file: FileId) -> Vec<Label<FileId>> {
-        match self {
-            _ => Vec::new(),
-        }
+    fn emit(&self, file: FileId, span: Span, diag: &mut Vec<Diagnostic<FileId>>) {
+        diag.push(
+            Diagnostic::error()
+                .with_message(self.to_string())
+                .with_labels(vec![Label::primary(file, span)]),
+        )
     }
 }
 
@@ -424,9 +453,11 @@ pub enum Warning {
 }
 
 impl Warning {
-    fn extra_labels(&self, _file: FileId) -> Vec<Label<FileId>> {
-        match self {
-            _ => Vec::new(),
-        }
+    fn emit(&self, file: FileId, span: Span, diag: &mut Vec<Diagnostic<FileId>>) {
+        diag.push(
+            Diagnostic::error()
+                .with_message(self.to_string())
+                .with_labels(vec![Label::primary(file, span)]),
+        )
     }
 }

@@ -1,4 +1,9 @@
 #![cfg_attr(all(feature = "no-std", not(test)), no_std)]
+#![warn(
+    clippy::missing_safety_doc,
+    clippy::wildcard_imports,
+    clippy::shadow_unrelated
+)]
 
 extern crate alloc;
 

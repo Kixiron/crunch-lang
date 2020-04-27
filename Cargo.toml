@@ -1,63 +1,3 @@
-[package]
-name = "crunch"
-version = "0.0.0"
-authors = ["Chase Wilson <contact@chasewilson.dev>"]
-publish = false
-description = "An esoteric language written in Rust"
-homepage = "https://github.com/Kixiron/crunch-lang"
-repository = "https://github.com/Kixiron/crunch-lang"
-readme = "README.md"
-keywords = ["crunch", "language"]
-categories = ["language"]
-license = "Zlib"
-edition = "2018"
-build = "build.rs"
-default-run = "crunch"
-
-[[bin]]
-name = "crunch"
-path = "src/bin.rs"
-
-[[bench]]
-name = "compactor"
-harness = false
-
-[[bench]]
-name = "examples"
-harness = false
-
-[[bench]]
-name = "compilation"
-harness = false
-
-[dependencies.uuid]
-default-features = false
-features = ["v3"]
-version = "0.8.1"
-
-[dependencies.backtrace]
-default-features = false
-version = "0.3.45"
-
-[dependencies.color-backtrace]
-default-features = false
-version = "0.3.0"
-
-[dependencies.clap]
-default-features = false
-version = "2.33.0"
-
-[dependencies.simple_logger]
-default-features = false
-version = "1.6.0"
-
-[dev-dependencies]
-criterion = "0.3.1"
-proptest = "0.9.5"
-
-[build-dependencies]
-cc = "1.0.50"
-
 [workspace]
 members = ["crates/*"]
 exclude = ["crates/crunch-fuzzing"]
@@ -66,10 +6,3 @@ exclude = ["crates/crunch-fuzzing"]
 opt-level = 3
 lto = "fat"
 debug = true
-
-[badges]
-is-it-maintained-issue-resolution = { repository = "https://github.com/Kixiron/crunch-lang" }
-is-it-maintained-open-issues = { repository = "https://github.com/Kixiron/crunch-lang" }
-maintenance = { status = "experimental" }
-coveralls = { repository = "https://github.com/Kixiron/crunch-lang", branch = "master", service = "github" }
-# TOOD: Set up codecov

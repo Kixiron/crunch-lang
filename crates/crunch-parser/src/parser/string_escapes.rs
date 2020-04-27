@@ -73,12 +73,10 @@ pub(super) fn unescape_rune(queue: Vec<char>) -> Result<Rune, (Error, Range<usiz
             'o' => Ok(octal(&mut queue, index, &mut index)?),
             'b' => Ok(binary(&mut queue, &mut index)?),
 
-            c => {
-                return Err((
-                    Error::Syntax(SyntaxError::UnrecognizedEscapeSeq(c)),
-                    index - 1..index,
-                ));
-            }
+            err => Err((
+                Error::Syntax(SyntaxError::UnrecognizedEscapeSeq(err)),
+                index - 1..index,
+            )),
         }
     }
 }
@@ -305,8 +303,8 @@ impl CharStream {
         }
     }
 
-    pub fn is_empty(self) -> bool {
-        self.0.count() == 0
+    pub fn is_empty(&self) -> bool {
+        self.0.clone().count() == 0
     }
 }
 

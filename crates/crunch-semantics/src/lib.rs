@@ -1,4 +1,9 @@
 #![cfg_attr(feature = "no-std", no_std)]
+#![warn(
+    clippy::missing_safety_doc,
+    clippy::wildcard_imports,
+    clippy::shadow_unrelated
+)]
 
 extern crate alloc;
 
@@ -263,6 +268,8 @@ impl Correctness {
         // Emit errors for conflicting attributes
         if vis.len() > 1 {
             let mut windows = vis.windows(2);
+
+            #[allow(clippy::while_let_on_iterator)]
             while let Some([first, second]) = windows.next() {
                 error_handler.push_err(Locatable::new(
                     Error::Semantic(SemanticError::ConflictingAttributes {
@@ -518,24 +525,17 @@ impl SemanticPass for Correctness {
         interner: &Interner,
         error_handler: &mut ErrorHandler,
     ) {
-        match stmt {
-            Statement::Expression(expr) => {
-                self.analyze_expr(&*expr, local_symbol_table, interner, error_handler);
-            }
-
-            _ => {}
+        if let Statement::Expression(expr) = stmt {
+            self.analyze_expr(&*expr, local_symbol_table, interner, error_handler);
         }
     }
 
     fn analyze_expr<'expr>(
         &mut self,
-        expr: &Expression<'expr>,
+        _expr: &Expression<'expr>,
         _local_symbol_table: &GlobalSymbolTable,
         _interner: &Interner,
         _error_handler: &mut ErrorHandler,
     ) {
-        match expr {
-            _ => {}
-        }
     }
 }

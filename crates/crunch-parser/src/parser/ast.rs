@@ -385,7 +385,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         let _frame = self.add_stack_frame()?;
 
         let peek = self.peek()?;
-        let node = match peek.ty() {
+        match peek.ty() {
             TokenType::AtSign => {
                 self.decorator(decorators)?;
 
@@ -429,15 +429,15 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
             TokenType::Import => {
                 if !attributes.is_empty() {
-                    return Err(Locatable::new(
+                    Err(Locatable::new(
                         Error::Syntax(SyntaxError::NoAttributesAllowed("import")),
                         Location::concrete(&self.peek()?, self.current_file),
-                    ));
+                    ))
+                } else {
+                    let import = self.import(mem::take(decorators))?;
+
+                    Ok(Some(import))
                 }
-
-                let import = self.import(mem::take(decorators))?;
-
-                Ok(Some(import))
             }
 
             TokenType::Newline | TokenType::Space => {
@@ -449,9 +449,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 Error::Syntax(SyntaxError::InvalidTopLevel(ty)),
                 Location::concrete(&self.peek()?, self.current_file),
             )),
-        };
-
-        node
+        }
     }
 
     fn import(&mut self, mut decorators: Vec<Decorator<'expr>>) -> ParseResult<Ast<'expr, 'stmt>> {
@@ -1172,7 +1170,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             }
 
             Token { source, .. } if source == "ureg" || source == "ireg" => {
-                let sign = if source.chars().next().unwrap() == 'u' {
+                let sign = if source.starts_with('u') {
                     Signedness::Unsigned
                 } else {
                     Signedness::Signed
@@ -1185,7 +1183,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             }
 
             Token { source, .. } if source == "uptr" || source == "iptr" => {
-                let sign = if source.chars().next().unwrap() == 'u' {
+                let sign = if source.starts_with('u') {
                     Signedness::Unsigned
                 } else {
                     Signedness::Signed

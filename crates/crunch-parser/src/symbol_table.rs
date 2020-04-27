@@ -53,6 +53,12 @@ impl<'stmt, 'expr> GlobalSymbolTable<'stmt, 'expr> {
     }
 }
 
+impl<'stmt, 'expr> Default for GlobalSymbolTable<'stmt, 'expr> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug)]
 pub struct Package<'stmt, 'expr> {
     dependencies: Vec<()>,
@@ -79,6 +85,12 @@ impl<'stmt, 'expr> Package<'stmt, 'expr> {
         module: &FileLoc,
     ) -> Option<dashmap::mapref::one::Ref<'a, FileLoc, Module<'stmt, 'expr>>> {
         self.modules.get(module)
+    }
+}
+
+impl<'stmt, 'expr> Default for Package<'stmt, 'expr> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

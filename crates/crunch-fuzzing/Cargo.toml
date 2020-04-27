@@ -2,6 +2,7 @@
 name = "crunch-fuzzing"
 version = "0.0.0"
 authors = ["Chase Wilson <contact@chasewilson.dev>"]
+license = "Zlib"
 edition = "2018"
 
 [[bin]]
@@ -12,4 +13,4 @@ path = "src/parse.rs"
 path = "../crunch-parser"
 
 [dependencies.honggfuzz]
-version = "0.5.47"
+version = "0.5.48"

@@ -2,6 +2,7 @@
 name = "crunch-semantics"
 version = "0.1.0"
 authors = ["Chase Wilson <contact@chasewilson.dev>"]
+license = "Zlib"
 edition = "2018"
 
 [features]
@@ -11,7 +12,7 @@ no-std = ["hashbrown"]
 path = "../crunch-parser"
 
 [dependencies.hashbrown]
-version = "0.7.1"
+version = "0.7.2"
 optional = true
 
 [dependencies.cfg-if]

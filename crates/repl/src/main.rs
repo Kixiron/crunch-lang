@@ -1,3 +1,9 @@
+#![warn(
+    clippy::missing_safety_doc,
+    clippy::wildcard_imports,
+    clippy::shadow_unrelated
+)]
+
 use std::borrow::Cow;
 
 fn main() -> rustyline::Result<()> {
@@ -113,7 +119,8 @@ fn main() -> rustyline::Result<()> {
                                 );
                             }
                         }
-                        Err(err) => crunch_parser::ErrorHandler::from(err).emit(&files),
+
+                        Err(mut err) => err.emit(&files),
                     },
 
                     EvalType::Symbol => match parser.parse() {
@@ -153,7 +160,8 @@ fn main() -> rustyline::Result<()> {
                                 println!("{:#?}", symbols);
                             }
                         }
-                        Err(err) => crunch_parser::ErrorHandler::from(err).emit(&files),
+
+                        Err(mut err) => err.emit(&files),
                     },
 
                     EvalType::Pretty => match parser.parse() {
@@ -201,7 +209,8 @@ fn main() -> rustyline::Result<()> {
                             */
                             todo!()
                         }
-                        Err(err) => crunch_parser::ErrorHandler::from(err).emit(&files),
+
+                        Err(mut err) => err.emit(&files),
                     },
                 }
 

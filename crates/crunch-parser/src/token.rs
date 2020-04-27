@@ -355,7 +355,7 @@ impl<'a> fmt::Debug for TokenIter<'a> {
 
             TokenIter {
                 lexer,
-                current: self.current.clone(),
+                current: self.current,
             }
             .collect::<Vec<Token<'a>>>()
         };

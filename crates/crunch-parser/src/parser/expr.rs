@@ -167,14 +167,6 @@ impl Text {
         Self(runes)
     }
 
-    pub fn to_string(&self) -> String {
-        String::from_iter(
-            self.0
-                .iter()
-                .map(|r| core::char::from_u32(r.as_u32()).unwrap()),
-        )
-    }
-
     pub fn to_bytes(&self) -> Vec<u8> {
         self.to_string().into_bytes()
     }
@@ -182,7 +174,15 @@ impl Text {
 
 impl fmt::Debug for Text {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", &self.to_string())
+        write!(
+            f,
+            "{:?}",
+            &String::from_iter(
+                self.0
+                    .iter()
+                    .map(|r| core::char::from_u32(r.as_u32()).unwrap()),
+            )
+        )
     }
 }
 
@@ -194,7 +194,7 @@ impl fmt::Display for Text {
 
 impl From<&str> for Text {
     fn from(string: &str) -> Self {
-        Self(string.chars().map(|c| Rune::from(c)).collect())
+        Self(string.chars().map(Rune::from).collect())
     }
 }
 
@@ -500,7 +500,7 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for Literal {
                 };
 
                 let int = if chars.get(..2) == Some(&['0', 'x']) {
-                    let string = chars[2..].into_iter().collect::<String>();
+                    let string = chars[2..].iter().collect::<String>();
 
                     u128::from_str_radix(&string, 16).map_err(|_| {
                         Locatable::new(
@@ -509,7 +509,7 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for Literal {
                         )
                     })?
                 } else if chars.get(..2) == Some(&['0', 'b']) {
-                    let string = chars[2..].into_iter().collect::<String>();
+                    let string = chars[2..].iter().collect::<String>();
 
                     u128::from_str_radix(&string, 2).map_err(|_| {
                         Locatable::new(
