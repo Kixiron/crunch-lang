@@ -1,0 +1,17 @@
+import 'std.prelude' exposing *
+impor  end
+
+        Kinds.One =>
+            println("One!")
+        end
+
+        kind =>
+            println("Other kind: {kind}")
+        end
+    end
+end
+
+exposed type Divisior
+    divider: int
+
+    fn new(self, divider: i

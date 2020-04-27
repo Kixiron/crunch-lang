@@ -267,9 +267,9 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 _ => {
                     return Err(Locatable::new(
                         Error::Syntax(SyntaxError::Generic(format!(
-                            "Expected {}, got {}",
-                            expected,
-                            token.ty()
+                            "Expected {:?}, got {:?}",
+                            expected.to_str(),
+                            token.source()
                         ))),
                         Location::concrete(&token, self.current_file.file()),
                     ));
@@ -303,15 +303,15 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 _ => {
                     let expected = expected
                         .iter()
-                        .map(|t| format!("'{}'", t))
+                        .map(|t| format!("{:?}", t.to_str()))
                         .collect::<Vec<_>>()
                         .join(", ");
 
                     return Err(Locatable::new(
                         Error::Syntax(SyntaxError::Generic(format!(
-                            "Expected one of {}, got {}",
+                            "Expected one of {:?}, got {:?}",
                             expected,
-                            token.ty()
+                            token.source()
                         ))),
                         Location::concrete(&token, self.current_file.file()),
                     ));

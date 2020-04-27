@@ -572,7 +572,7 @@ fn import_ast() {
 
 #[test]
 fn non_ascii_idents() {
-    ast_eq!("fn ȨʩӺޗઈဪ⏫㡘㢡䔹❉✅✨❗❓()\nend");
+    ast_eq!("fn ȨʩӺޗઈဪ⏫㡘㢡䔹✅✨❗❓() -> infer\n    empty\nend\n");
 }
 
 mod proptests {
@@ -586,10 +586,11 @@ mod proptests {
             let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), Interner::default());
 
             let expr = parser.expr().map(|e| e.deref().clone());
-            match expr {
-                Ok(Expression::Literal(Literal::String(_))) | Ok(Expression::Literal(Literal::Array(_))) => {},
+            match dbg!(expr) {
+                Ok(Expression::Literal(Literal::String(..))) | Ok(Expression::Literal(Literal::Array(..))) => {},
 
-                Err(Locatable { data: _data @ Error::Syntax(SyntaxError::UnrecognizedEscapeSeq(_)), .. })
+                Err(Locatable { data: _data @ Error::Syntax(SyntaxError::InvalidEscapeCharacters(..)), .. })
+                | Err(Locatable { data: _data @ Error::Syntax(SyntaxError::UnrecognizedEscapeSeq(..)), .. })
                 | Err(Locatable { data: _data @ Error::Syntax(SyntaxError::MissingEscapeBraces), .. })
                 | Err(Locatable { data: _data @ Error::Syntax(SyntaxError::MissingEscapeSpecifier), .. }) => {}
 
@@ -603,10 +604,10 @@ mod proptests {
 
             let expr = parser.expr().map(|e| e.deref().clone());
             match expr {
-                Ok(Expression::Literal(Literal::Rune(_))) | Ok(Expression::Literal(Literal::Integer(_))) => {},
+                Ok(Expression::Literal(Literal::Rune(..))) | Ok(Expression::Literal(Literal::Integer(..))) => {},
 
                 Err(Locatable { data: _data @ Error::Syntax(SyntaxError::TooManyRunes), .. })
-                | Err(Locatable { data: _data @ Error::Syntax(SyntaxError::UnrecognizedEscapeSeq(_)), .. })
+                | Err(Locatable { data: _data @ Error::Syntax(SyntaxError::UnrecognizedEscapeSeq(..)), .. })
                 | Err(Locatable { data: _data @ Error::Syntax(SyntaxError::MissingEscapeBraces), .. })
                 | Err(Locatable { data: _data @ Error::Syntax(SyntaxError::MissingEscapeSpecifier), .. }) => {}
 

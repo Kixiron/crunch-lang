@@ -10,14 +10,14 @@ pub enum TokenType {
     #[regex(r"[ \t\f]+", logos::skip)]
     Error,
 
-    #[regex("[a-zA-Z_][a-zA-Z0-9_]*")]
+    #[regex(r"[\p{XID_Start}\p{Emoji_Presentation}][\p{XID_Continue}\p{Emoji_Presentation}]*")]
     Ident,
 
-    #[regex("::[^\r\n]*", priority = 4)]
-    #[regex("::[^\n]*", priority = 3)]
+    #[regex("::[^\r\n]*", priority = 2)]
+    #[regex("::[^\n]*", priority = 1)]
     Comment,
-    #[regex(":::[^\r\n]*", priority = 6)]
-    #[regex(":::[^\n]*", priority = 5)]
+    #[regex(":::[^\r\n]*", priority = 4)]
+    #[regex(":::[^\n]*", priority = 3)]
     DocComment,
     #[token("\n")]
     #[token("\r\n")]
@@ -204,7 +204,7 @@ pub enum TokenType {
 }
 
 impl TokenType {
-    pub fn to_str(self) -> &'static str {
+    pub fn to_str(&self) -> &'static str {
         match self {
             Self::Error => "Error",
 

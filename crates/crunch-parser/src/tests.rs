@@ -1,3 +1,5 @@
+//! Regression tests for found crashes
+
 use super::{CurrentFile, ErrorHandler, FileId, Interner, Parser, SyntaxTree};
 
 fn run(src: &str) -> Result<(SyntaxTree, Interner, ErrorHandler), ErrorHandler> {
@@ -93,5 +95,11 @@ fn floatnnnnnn() {
 #[test]
 fn qic_fatish() {
     let src = include_str!("../crashes/qic_fatish.fuzz");
+    let _ = run(src);
+}
+
+#[test]
+fn matchend() {
+    let src = include_str!("../crashes/matchend.fuzz");
     let _ = run(src);
 }
