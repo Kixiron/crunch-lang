@@ -645,7 +645,7 @@ mod tests {
             fn base16_float(s in "[+-]?0x[0-9a-fA-F][0-9a-fA-F_]*\\.[0-9a-fA-F][0-9a-fA-F_]*([pP][+-]?[0-9][0-9_]?)?") {
                 let mut stream = TokenStream::new(&s, true, true).into_iter();
 
-                let cond = matches!(dbg!(stream.next()), Some(Token { ty: _ty @ TokenType::Float, .. }));
+                let cond = matches!(stream.next(), Some(Token { ty: _ty @ TokenType::Float, .. }));
                 prop_assert!(cond);
                 prop_assert_eq!(stream.count(), 0);
             }
