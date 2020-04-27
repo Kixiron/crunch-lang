@@ -132,10 +132,6 @@ jobs:
           rust-version: ${{ matrix.rust_version }}${{ matrix.platform.host }}
           targets: ${{ matrix.target }}
 
-      - name: Install Dependences
-        if: matrix.target == 'i686-unknown-linux-gnu'
-        run: sudo apt install g++-multilib gcc-multilib --fix-missing
-
       # Run tests in debug mode
       - name: Run Tests Debug
         run: cargo test --target ${{ matrix.target }} --workspace
