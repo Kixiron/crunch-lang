@@ -22,7 +22,14 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      # Caching
+      - uses: hecrj/setup-rust-action@v1
+        with:
+          rust-version: stable
+          components: rustfmt,clippy
+
+      - name: Set rustc version
+        run: echo "::set-env name=CURRENT_RUSTC_VERSION::$(rustc -V)"
+
       - name: Cache Cargo Registry
         uses: actions/cache@v1
         with:
@@ -42,21 +49,17 @@ jobs:
         uses: actions/cache@v1
         with:
           path: target
-          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
-
-      - uses: hecrj/setup-rust-action@v1
-        with:
-          rust-version: nightly
-          components: rustfmt
+          key: ${{ runner.os }}-cargo-build-target-${{ env.CURRENT_RUSTC_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cargo Check
         run: cargo check --workspace
 
-      # Check that formatting is valid
+      - name: Cargo Clippy
+        run: cargo clippy --workspace
+
       - name: Check Formatting
         run: cargo fmt --all -- --check
 
-      # Check that documentation is valid
       - name: Check Documentation
         run: cargo doc --no-deps
 
@@ -72,27 +75,27 @@ jobs:
           # Windows MSVC 32 and 64bit
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            rust_version: nightly
-            name: x86_64-pc-windows-msvc-nightly
+            rust_version: stable
+            name: x86_64-pc-windows-msvc
           - os: windows-latest
             target: i686-pc-windows-msvc
-            rust_version: nightly
-            name: i686-pc-windows-msvc-nightly
+            rust_version: stable
+            name: i686-pc-windows-msvc
 
           # Linux 32 and 64bit
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            rust_version: nightly
+            rust_version: stable
             name: x86_64-unknown-linux-gnu
           - os: ubuntu-latest
             target: i686-unknown-linux-gnu
-            rust_version: nightly
+            rust_version: stable
             name: i686-unknown-linux-gnu
 
           # OSX 64bit
           - os: macos-latest
             target: x86_64-apple-darwin
-            rust_version: nightly
+            rust_version: stable
             name: x86_64-apple-darwin
 
           # TODO: once WASM is possible, test it
@@ -105,7 +108,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      # Caching
+      - name: Set rustc version
+        run: echo "::set-env name=CURRENT_RUSTC_VERSION::$(rustc -V)"
+
       - name: Cache Cargo Registry
         uses: actions/cache@v1
         with:
@@ -125,14 +130,12 @@ jobs:
         uses: actions/cache@v1
         with:
           path: target
-          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-build-target-${{ env.CURRENT_RUSTC_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
 
       - uses: hecrj/setup-rust-action@v1
         with:
           rust-version: ${{ matrix.rust_version }}${{ matrix.platform.host }}
           targets: ${{ matrix.target }}
 
-      # Run tests in debug mode
-      - name: Run Tests Debug
+      - name: Run Tests
         run: cargo test --target ${{ matrix.target }} --workspace
-      # TODO: Test in release mode

@@ -13,7 +13,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      # Caching
+      - name: Set rustc version
+        run: echo "::set-env name=CURRENT_RUSTC_VERSION::$(rustc -V)"
+
       - name: Cache Cargo Registry
         uses: actions/cache@v1
         with:
@@ -33,12 +35,12 @@ jobs:
         uses: actions/cache@v1
         with:
           path: target
-          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-build-target-${{ env.CURRENT_RUSTC_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly
+          toolchain: stable
           override: true
 
       - name: Execute tests
