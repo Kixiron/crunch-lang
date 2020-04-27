@@ -4,13 +4,13 @@ on:
   schedule:
     - cron: "0 22 * * *"
   push:
-    branches: [master]
+    branches: [master, dev]
     paths:
       - "**/Cargo.toml"
       - "**/Cargo.lock"
       - ".github/workflows/audit.yml"
   pull_request:
-    branches: [master]
+    branches: [master, dev]
 
 jobs:
   Audit:

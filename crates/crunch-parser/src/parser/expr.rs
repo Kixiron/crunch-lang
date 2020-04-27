@@ -188,7 +188,15 @@ impl fmt::Debug for Text {
 
 impl fmt::Display for Text {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", &self.to_string())
+        write!(
+            f,
+            "{}",
+            String::from_iter(
+                self.0
+                    .iter()
+                    .map(|r| core::char::from_u32(r.as_u32()).unwrap())
+            )
+        )
     }
 }
 
