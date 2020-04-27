@@ -326,15 +326,15 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for Literal {
                 let mut float = if chars.get(..2) == Some(&['0', 'x']) {
                     use hexponent::FloatLiteral;
 
-                    let float: FloatLiteral = chars
+                    let float = chars
                         .into_iter()
                         .collect::<String>()
-                        .parse()
+                        .parse::<FloatLiteral>()
                         .map_err(|err| {
-                            use hexponent::ParseError;
+                            use hexponent::ParseErrorKind;
 
-                            match err {
-                                ParseError::ExponentOverflow => Locatable::new(
+                            match err.kind {
+                                ParseErrorKind::ExponentOverflow => Locatable::new(
                                     Error::Syntax(SyntaxError::LiteralOverflow(
                                         "float",
                                         format!("'{}' is too large, only floats of up to 64 bits are supported", token.source()),
@@ -342,10 +342,10 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for Literal {
                                     Location::concrete(token, file),
                                 ),
 
-                                ParseError::MissingPrefix
-                                | ParseError::MissingDigits
-                                | ParseError::MissingExponent
-                                | ParseError::ExtraData => unreachable!(),
+                                ParseErrorKind::MissingPrefix
+                                | ParseErrorKind::MissingDigits
+                                | ParseErrorKind::MissingExponent
+                                | ParseErrorKind::MissingEnd => unreachable!(),
                             }
                         })?;
 

@@ -6,8 +6,12 @@ use alloc::{boxed::Box, vec::Vec};
 use core::fmt;
 use crunch_parser::{
     error::{Error, ErrorHandler, Locatable, Location, SemanticError, Warning},
-    parser::{Ast, Attribute, Enum, FuncArg, Function, Import, Trait, TypeDecl, TypeMember},
-    Interner, SymbolTable,
+    parser::{
+        Ast, Attribute, Enum, EnumVariant, Expression, FuncArg, Function, Import, Statement, Trait,
+        TypeDecl, TypeMember,
+    },
+    symbol_table::{Module, Symbol},
+    GlobalSymbolTable, Interner,
 };
 
 cfg_if::cfg_if! {
@@ -49,7 +53,7 @@ impl SemanticAnalyzer {
     pub fn analyze<'stmt, 'expr>(
         &mut self,
         node: &Ast<'stmt, 'expr>,
-        symbol_table: &SymbolTable,
+        symbol_table: &GlobalSymbolTable,
         interner: &Interner,
         error_handler: &mut ErrorHandler,
     ) {
@@ -88,12 +92,18 @@ impl SemanticAnalyzer {
 
     pub fn analyze_all<'stmt, 'expr>(
         &mut self,
-        nodes: &[Ast<'stmt, 'expr>],
-        symbol_table: &SymbolTable,
+        module: &Module<'stmt, 'expr>,
+        symbol_table: &GlobalSymbolTable,
         interner: &Interner,
         error_handler: &mut ErrorHandler,
     ) {
-        for node in nodes {
+        for node in module.symbols.values().map(|s| {
+            if let Symbol::Unresolved(_, node) = s {
+                node
+            } else {
+                panic!()
+            }
+        }) {
             self.analyze(node, symbol_table, interner, error_handler);
         }
     }
@@ -128,7 +138,7 @@ pub trait SemanticPass {
         &mut self,
         _func: &Function<'stmt, 'expr>,
         _loc: Location,
-        _local_symbol_table: &SymbolTable,
+        _local_symbol_table: &GlobalSymbolTable,
         _interner: &Interner,
         _error_handler: &mut ErrorHandler,
     ) {
@@ -138,7 +148,7 @@ pub trait SemanticPass {
         &mut self,
         _type: &TypeDecl<'stmt, 'expr>,
         _loc: Location,
-        _local_symbol_table: &SymbolTable,
+        _local_symbol_table: &GlobalSymbolTable,
         _interner: &Interner,
         _error_handler: &mut ErrorHandler,
     ) {
@@ -148,7 +158,7 @@ pub trait SemanticPass {
         &mut self,
         _enum: &Enum<'stmt>,
         _loc: Location,
-        _local_symbol_table: &SymbolTable,
+        _local_symbol_table: &GlobalSymbolTable,
         _interner: &Interner,
         _error_handler: &mut ErrorHandler,
     ) {
@@ -158,7 +168,7 @@ pub trait SemanticPass {
         &mut self,
         _trait: &Trait<'stmt, 'expr>,
         _loc: Location,
-        _local_symbol_table: &SymbolTable,
+        _local_symbol_table: &GlobalSymbolTable,
         _interner: &Interner,
         _error_handler: &mut ErrorHandler,
     ) {
@@ -168,7 +178,25 @@ pub trait SemanticPass {
         &mut self,
         _import: &Import,
         _loc: Location,
-        _local_symbol_table: &SymbolTable,
+        _local_symbol_table: &GlobalSymbolTable,
+        _interner: &Interner,
+        _error_handler: &mut ErrorHandler,
+    ) {
+    }
+
+    fn analyze_stmt<'stmt, 'expr>(
+        &mut self,
+        _stmt: &Statement<'stmt, 'expr>,
+        _local_symbol_table: &GlobalSymbolTable,
+        _interner: &Interner,
+        _error_handler: &mut ErrorHandler,
+    ) {
+    }
+
+    fn analyze_expr<'expr>(
+        &mut self,
+        _expr: &Expression<'expr>,
+        _local_symbol_table: &GlobalSymbolTable,
         _interner: &Interner,
         _error_handler: &mut ErrorHandler,
     ) {
@@ -182,22 +210,68 @@ impl Correctness {
         Self {}
     }
 
+    // TODO: Contradictory attributes
     /// Check for duplicate attributes
     fn duplicated_attrs(
         &mut self,
         error_handler: &mut ErrorHandler,
         attrs: &[Locatable<Attribute>],
     ) {
-        let mut seen = HashMap::with_capacity(attrs.len());
+        #[derive(PartialEq, Eq, PartialOrd, Ord)]
+        enum Attr {
+            Vis = 0,
+            Misc = 1,
+        }
+
+        let (mut seen, mut stage, mut vis) = (
+            HashMap::with_capacity(attrs.len()),
+            Attr::Vis,
+            Vec::with_capacity(1),
+        );
         for attr in attrs.iter() {
+            let curr = match attr.data() {
+                Attribute::Visibility(_) => {
+                    vis.push(attr);
+                    Attr::Vis
+                }
+                Attribute::Comptime => Attr::Misc,
+            };
+
+            // If the attributes are incorrectly ordered, emit an error
+            if curr < stage {
+                error_handler.push_err(Locatable::new(
+                    Error::Semantic(SemanticError::UnorderedAttrs),
+                    attr.loc(),
+                ));
+            } else {
+                stage = curr;
+            }
+
+            // If the attribute has already been seen, emit an error
             if let Some(loc) = seen.insert(attr.data(), attr.loc()) {
                 error_handler.push_err(Locatable::new(
-                    Error::Semantic(SemanticError::Redefinition {
-                        name: attr.data().as_str().to_owned(),
+                    Error::Semantic(SemanticError::DuplicatedAttributes {
+                        attr: attr.data().as_str().to_owned(),
                         first: loc,
                         second: attr.loc(),
                     }),
                     attr.loc(),
+                ));
+            }
+        }
+
+        // Emit errors for conflicting attributes
+        if vis.len() > 1 {
+            let mut windows = vis.windows(2);
+            while let Some([first, second]) = windows.next() {
+                error_handler.push_err(Locatable::new(
+                    Error::Semantic(SemanticError::ConflictingAttributes {
+                        attr1: first.data().as_str().to_owned(),
+                        attr2: second.data().as_str().to_owned(),
+                        first: first.loc(),
+                        second: second.loc(),
+                    }),
+                    second.loc(),
                 ));
             }
         }
@@ -213,7 +287,7 @@ impl SemanticPass for Correctness {
         &mut self,
         func: &Function<'stmt, 'expr>,
         func_loc: Location,
-        _local_symbol_table: &SymbolTable,
+        local_symbol_table: &GlobalSymbolTable,
         interner: &Interner,
         error_handler: &mut ErrorHandler,
     ) {
@@ -241,13 +315,17 @@ impl SemanticPass for Correctness {
                 ));
             }
         }
+
+        for stmt in func.body.iter() {
+            self.analyze_stmt(&*stmt, local_symbol_table, interner, error_handler);
+        }
     }
 
     fn analyze_type<'stmt, 'expr>(
         &mut self,
         ty: &TypeDecl<'stmt, 'expr>,
         ty_loc: Location,
-        local_symbol_table: &SymbolTable,
+        local_symbol_table: &GlobalSymbolTable,
         interner: &Interner,
         error_handler: &mut ErrorHandler,
     ) {
@@ -341,6 +419,123 @@ impl SemanticPass for Correctness {
                 interner,
                 error_handler,
             );
+        }
+    }
+
+    fn analyze_enum<'stmt>(
+        &mut self,
+        en: &Enum<'stmt>,
+        _loc: Location,
+        _local_symbol_table: &GlobalSymbolTable,
+        interner: &Interner,
+        error_handler: &mut ErrorHandler,
+    ) {
+        self.duplicated_attrs(error_handler, &en.attrs);
+
+        // Check for duplicated variants and unused generics
+        let mut variants = HashMap::with_capacity(en.variants.len());
+        let mut generics: Vec<_> = en.generics.iter().map(|g| (g, false)).collect();
+        for variant in en.variants.iter() {
+            let (name, elements) = match variant.data() {
+                EnumVariant::Unit { name, .. } => (*name, None),
+                EnumVariant::Tuple { name, elements, .. } => (*name, Some(elements)),
+            };
+
+            // If there's already a variant by the same name, emit an error
+            if let Some(loc) = variants.insert(name, variant.loc()) {
+                error_handler.push_err(Locatable::new(
+                    Error::Semantic(SemanticError::Redefinition {
+                        name: interner.resolve(&name).to_owned(),
+                        first: loc,
+                        second: variant.loc(),
+                    }),
+                    variant.loc(),
+                ));
+            }
+
+            // Mark all used generics as used
+            if let Some(elements) = elements {
+                for elm in elements {
+                    if let Some((_, used)) =
+                        generics.iter_mut().find(|(g, _)| g.data() == elm.data())
+                    {
+                        *used = true;
+                    }
+                }
+            }
+        }
+
+        // Do the actual check that all generics are used
+        for generic in generics
+            .into_iter()
+            .filter_map(|(g, used)| if used { Some(g) } else { None })
+        {
+            error_handler.push_warning(Locatable::new(
+                Warning::UnusedGeneric(generic.data().to_string(&interner)),
+                generic.loc(),
+            ));
+        }
+    }
+
+    // TODO: How do generics work here?
+    fn analyze_trait<'stmt, 'expr>(
+        &mut self,
+        tr: &Trait<'stmt, 'expr>,
+        _loc: Location,
+        local_symbol_table: &GlobalSymbolTable,
+        interner: &Interner,
+        error_handler: &mut ErrorHandler,
+    ) {
+        self.duplicated_attrs(error_handler, &tr.attrs);
+
+        // Analyze all the methods
+        for method in tr.methods.iter() {
+            self.analyze_function(
+                method.data(),
+                method.loc(),
+                local_symbol_table,
+                interner,
+                error_handler,
+            );
+        }
+    }
+
+    fn analyze_import(
+        &mut self,
+        _import: &Import,
+        _loc: Location,
+        _local_symbol_table: &GlobalSymbolTable,
+        _interner: &Interner,
+        _error_handler: &mut ErrorHandler,
+    ) {
+        // ???
+    }
+
+    fn analyze_stmt<'stmt, 'expr>(
+        &mut self,
+        stmt: &Statement<'stmt, 'expr>,
+        local_symbol_table: &GlobalSymbolTable,
+        interner: &Interner,
+        error_handler: &mut ErrorHandler,
+    ) {
+        match stmt {
+            Statement::Expression(expr) => {
+                self.analyze_expr(&*expr, local_symbol_table, interner, error_handler);
+            }
+
+            _ => {}
+        }
+    }
+
+    fn analyze_expr<'expr>(
+        &mut self,
+        expr: &Expression<'expr>,
+        _local_symbol_table: &GlobalSymbolTable,
+        _interner: &Interner,
+        _error_handler: &mut ErrorHandler,
+    ) {
+        match expr {
+            _ => {}
         }
     }
 }

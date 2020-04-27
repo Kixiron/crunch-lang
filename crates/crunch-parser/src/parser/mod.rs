@@ -2,7 +2,6 @@ use crate::{
     error::{Error, ErrorHandler, Locatable, Location, ParseResult, Span, SyntaxError},
     files::FileId,
     interner::Interner,
-    symbol_table::SymbolTable,
     token::{Token, TokenStream, TokenType},
 };
 
@@ -33,9 +32,9 @@ pub use stmt::{Statement, Stmt};
 // TODO: Make the parser a little more lax, it's kinda strict about whitespace
 
 pub struct SyntaxTree<'expr, 'stmt> {
-    ast: Vec<Ast<'expr, 'stmt>>,
-    _exprs: Stadium<'expr, Expression<'expr>>,
-    _stmts: Stadium<'stmt, Statement<'expr, 'stmt>>,
+    pub(crate) ast: Vec<Ast<'expr, 'stmt>>,
+    pub(crate) __exprs: Stadium<'expr, Expression<'expr>>,
+    pub(crate) __stmts: Stadium<'stmt, Statement<'expr, 'stmt>>,
 }
 
 impl<'expr, 'stmt> fmt::Debug for SyntaxTree<'expr, 'stmt> {
@@ -116,17 +115,11 @@ pub struct Parser<'src, 'expr, 'stmt> {
     stmt_arena: Stadium<'stmt, Statement<'expr, 'stmt>>,
 
     string_interner: Interner,
-    symbol_table: SymbolTable,
 }
 
 /// Initialization and high-level usage
 impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
-    pub fn new(
-        source: &'src str,
-        current_file: CurrentFile,
-        string_interner: Interner,
-        symbol_table: SymbolTable,
-    ) -> Self {
+    pub fn new(source: &'src str, current_file: CurrentFile, string_interner: Interner) -> Self {
         let (token_stream, next, peek) = Self::lex(source);
 
         Self {
@@ -142,7 +135,6 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             stmt_arena: Stadium::with_capacity(NonZeroUsize::new(512).unwrap()),
 
             string_interner,
-            symbol_table,
         }
     }
 
@@ -152,7 +144,6 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         peek: Option<Token<'src>>,
         current_file: CurrentFile,
         string_interner: Interner,
-        symbol_table: SymbolTable,
     ) -> Self {
         Self {
             token_stream,
@@ -167,21 +158,12 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             stmt_arena: Stadium::with_capacity(NonZeroUsize::new(512).unwrap()),
 
             string_interner,
-            symbol_table,
         }
     }
 
     pub fn parse(
         mut self,
-    ) -> Result<
-        (
-            SyntaxTree<'expr, 'stmt>,
-            Interner,
-            ErrorHandler,
-            SymbolTable,
-        ),
-        ErrorHandler,
-    > {
+    ) -> Result<(SyntaxTree<'expr, 'stmt>, Interner, ErrorHandler), ErrorHandler> {
         #[cfg(feature = "logging")]
         info!("Started parsing");
 
@@ -214,18 +196,13 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
         let ast = SyntaxTree {
             ast,
-            _exprs: self.expr_arena,
-            _stmts: self.stmt_arena,
+            __exprs: self.expr_arena,
+            __stmts: self.stmt_arena,
         };
 
         #[cfg(feature = "logging")]
         info!("Finished parsing successfully");
-        Ok((
-            ast,
-            self.string_interner,
-            self.error_handler,
-            self.symbol_table,
-        ))
+        Ok((ast, self.string_interner, self.error_handler))
     }
 
     pub fn lex(source: &'src str) -> (TokenStream<'src>, Option<Token<'src>>, Option<Token<'src>>) {

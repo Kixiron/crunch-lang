@@ -62,27 +62,91 @@ fn main() -> rustyline::Result<()> {
                     &code,
                     crunch_parser::CurrentFile::new(crunch_parser::FileId::new(0), code.len()),
                     crunch_parser::Interner::new(),
-                    crunch_parser::SymbolTable::new(),
                 );
 
                 match eval_ty {
                     EvalType::None | EvalType::Ast => match parser.parse() {
-                        Ok((tree, interner, mut warns, symbols)) => {
-                            crunch_semantics::SemanticAnalyzer::default()
-                                .analyze_all(&*tree, &symbols, &interner, &mut warns);
+                        Ok((tree, mut interner, mut warns)) => {
+                            let repl = interner.intern("<repl>");
+
+                            let symbols = crunch_parser::GlobalSymbolTable::from(
+                                repl,
+                                crunch_parser::symbol_table::Package::from(
+                                    crunch_parser::symbol_table::FileLoc::new(
+                                        crunch_parser::files::FileId::new(0),
+                                        repl,
+                                    ),
+                                    crunch_parser::symbol_table::Module::new(
+                                        tree, &mut warns, &interner,
+                                    ),
+                                ),
+                            );
+
+                            let file = crunch_parser::symbol_table::FileLoc::new(
+                                crunch_parser::files::FileId::new(0),
+                                repl,
+                            );
+                            crunch_semantics::SemanticAnalyzer::default().analyze_all(
+                                &*symbols
+                                    .package(&repl)
+                                    .map(|p| p.module(&file))
+                                    .flatten()
+                                    .unwrap(),
+                                &symbols,
+                                &interner,
+                                &mut warns,
+                            );
 
                             warns.emit(&files);
 
                             if !warns.is_fatal() {
-                                println!("{:#?}", tree);
+                                println!(
+                                    "{:#?}",
+                                    symbols
+                                        .package(&repl)
+                                        .map(|p| p.module(&file))
+                                        .flatten()
+                                        .unwrap()
+                                        .symbols
+                                        .values()
+                                        .collect::<Vec<_>>()
+                                );
                             }
                         }
                         Err(err) => crunch_parser::ErrorHandler::from(err).emit(&files),
                     },
+
                     EvalType::Symbol => match parser.parse() {
-                        Ok((tree, interner, mut warns, symbols)) => {
-                            crunch_semantics::SemanticAnalyzer::default()
-                                .analyze_all(&*tree, &symbols, &interner, &mut warns);
+                        Ok((tree, mut interner, mut warns)) => {
+                            let repl = interner.intern("<repl>");
+
+                            let symbols = crunch_parser::GlobalSymbolTable::from(
+                                interner.intern("<repl>"),
+                                crunch_parser::symbol_table::Package::from(
+                                    crunch_parser::symbol_table::FileLoc::new(
+                                        crunch_parser::files::FileId::new(0),
+                                        interner.intern("<repl>"),
+                                    ),
+                                    crunch_parser::symbol_table::Module::new(
+                                        tree, &mut warns, &interner,
+                                    ),
+                                ),
+                            );
+
+                            let file = crunch_parser::symbol_table::FileLoc::new(
+                                crunch_parser::files::FileId::new(0),
+                                repl,
+                            );
+                            crunch_semantics::SemanticAnalyzer::default().analyze_all(
+                                &*symbols
+                                    .package(&repl)
+                                    .map(|p| p.module(&file))
+                                    .flatten()
+                                    .unwrap(),
+                                &symbols,
+                                &interner,
+                                &mut warns,
+                            );
                             warns.emit(&files);
 
                             if !warns.is_fatal() {
@@ -91,12 +155,41 @@ fn main() -> rustyline::Result<()> {
                         }
                         Err(err) => crunch_parser::ErrorHandler::from(err).emit(&files),
                     },
+
                     EvalType::Pretty => match parser.parse() {
-                        Ok((ast, interner, mut warns, symbols)) => {
-                            crunch_semantics::SemanticAnalyzer::default()
-                                .analyze_all(&*ast, &symbols, &interner, &mut warns);
+                        Ok((ast, mut interner, mut warns)) => {
+                            let repl = interner.intern("<repl>");
+
+                            let symbols = crunch_parser::GlobalSymbolTable::from(
+                                interner.intern("<repl>"),
+                                crunch_parser::symbol_table::Package::from(
+                                    crunch_parser::symbol_table::FileLoc::new(
+                                        crunch_parser::files::FileId::new(0),
+                                        interner.intern("<repl>"),
+                                    ),
+                                    crunch_parser::symbol_table::Module::new(
+                                        ast, &mut warns, &interner,
+                                    ),
+                                ),
+                            );
+
+                            let file = crunch_parser::symbol_table::FileLoc::new(
+                                crunch_parser::files::FileId::new(0),
+                                repl,
+                            );
+                            crunch_semantics::SemanticAnalyzer::default().analyze_all(
+                                &*symbols
+                                    .package(&repl)
+                                    .map(|p| p.module(&file))
+                                    .flatten()
+                                    .unwrap(),
+                                &symbols,
+                                &interner,
+                                &mut warns,
+                            );
                             warns.emit(&files);
 
+                            /*
                             let mut pretty = String::new();
                             crunch_parser::PrettyPrinter::new(interner)
                                 .pretty_print(&mut pretty, &ast)
@@ -105,6 +198,8 @@ fn main() -> rustyline::Result<()> {
                             if !warns.is_fatal() {
                                 println!("{}", pretty);
                             }
+                            */
+                            todo!()
                         }
                         Err(err) => crunch_parser::ErrorHandler::from(err).emit(&files),
                     },
@@ -157,7 +252,6 @@ fn main() -> rustyline::Result<()> {
                     &line,
                     crunch_parser::CurrentFile::new(crunch_parser::FileId::new(0), line.len()),
                     crunch_parser::Interner::new(),
-                    crunch_parser::SymbolTable::new(),
                 );
 
                 match parser.stmt() {
@@ -179,7 +273,6 @@ fn main() -> rustyline::Result<()> {
                     &line,
                     crunch_parser::CurrentFile::new(crunch_parser::FileId::new(0), line.len()),
                     crunch_parser::Interner::new(),
-                    crunch_parser::SymbolTable::new(),
                 );
 
                 match parser.expr() {

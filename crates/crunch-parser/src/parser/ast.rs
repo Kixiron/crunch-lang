@@ -2,7 +2,6 @@ use crate::{
     error::{Error, Locatable, Location, ParseResult, Span, SyntaxError},
     interner::Interner,
     parser::{CurrentFile, Expr, Literal, Parser, Stmt},
-    symbol_table::{Symbol, SymbolLocation},
     token::{Token, TokenType},
 };
 
@@ -56,7 +55,7 @@ pub struct Enum<'expr> {
     pub attrs: Vec<Locatable<Attribute>>,
     pub name: SmallSpur,
     pub generics: Vec<Locatable<Type>>,
-    pub variants: Vec<EnumVariant<'expr>>,
+    pub variants: Vec<Locatable<EnumVariant<'expr>>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -65,6 +64,7 @@ pub enum EnumVariant<'expr> {
         name: SmallSpur,
         decorators: Vec<Decorator<'expr>>,
     },
+
     Tuple {
         name: SmallSpur,
         elements: Vec<Locatable<Type>>,
@@ -451,14 +451,6 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             )),
         };
 
-        if let Ok(Some(ref node)) = node {
-            self.symbol_table.insert(
-                &self.string_interner,
-                SymbolLocation::new(node.location(), node.name()),
-                Symbol::from(node),
-            )?;
-        }
-
         node
     }
 
@@ -708,12 +700,12 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 }
 
                 TokenType::Ident => {
-                    let name = {
+                    let (name, start_span) = {
                         let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
-                        self.string_interner.intern(ident.source())
+                        (self.string_interner.intern(ident.source()), ident.span())
                     };
 
-                    if self.peek()?.ty() == TokenType::LeftParen {
+                    let variant = if self.peek()?.ty() == TokenType::LeftParen {
                         self.eat(TokenType::LeftParen, [TokenType::Newline])?;
 
                         let mut elements = Vec::with_capacity(3);
@@ -730,19 +722,24 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                         }
                         self.eat(TokenType::RightParen, [TokenType::Newline])?;
 
-                        variants.push(EnumVariant::Tuple {
+                        EnumVariant::Tuple {
                             name,
                             elements,
                             decorators: mem::take(&mut variant_decorators),
-                        })
+                        }
                     } else {
-                        variants.push(EnumVariant::Unit {
+                        EnumVariant::Unit {
                             name,
                             decorators: mem::take(&mut variant_decorators),
-                        });
-                    }
+                        }
+                    };
 
-                    self.eat(TokenType::Newline, [])?;
+                    let end_span = self.eat(TokenType::Newline, [])?.span();
+
+                    variants.push(Locatable::new(
+                        variant,
+                        Location::concrete(Span::merge(start_span, end_span), self.current_file),
+                    ));
                 }
 
                 TokenType::Newline => {

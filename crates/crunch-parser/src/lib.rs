@@ -7,7 +7,7 @@ pub mod files;
 mod interner;
 pub mod parser;
 mod pretty_printer;
-mod symbol_table;
+pub mod symbol_table;
 #[cfg(test)]
 mod tests;
 mod token;
@@ -17,4 +17,4 @@ pub use files::{FileId, Files};
 pub use interner::{Interner, SmallSpur};
 pub use parser::{CurrentFile, Parser, SyntaxTree};
 pub use pretty_printer::PrettyPrinter;
-pub use symbol_table::SymbolTable;
+pub use symbol_table::GlobalSymbolTable;

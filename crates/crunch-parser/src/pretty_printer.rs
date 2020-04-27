@@ -164,7 +164,7 @@ impl<'expr, 'stmt> PrettyPrinter {
 
         self.indent_level += 1;
         for variant in variants {
-            match variant {
+            match variant.data() {
                 EnumVariant::Unit { name, decorators } => {
                     for dec in decorators {
                         self.print_decorator(f, dec)?;

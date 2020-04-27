@@ -13,11 +13,11 @@ pub enum TokenType {
     #[regex("[a-zA-Z_][a-zA-Z0-9_]*")]
     Ident,
 
-    #[regex("::[^\r\n]*")]
-    #[regex("::[^\n]*")]
+    #[regex("::[^\r\n]*", priority = 4)]
+    #[regex("::[^\n]*", priority = 3)]
     Comment,
-    #[regex(":::[^\r\n]*")]
-    #[regex(":::[^\n]*")]
+    #[regex(":::[^\r\n]*", priority = 6)]
+    #[regex(":::[^\n]*", priority = 5)]
     DocComment,
     #[token("\n")]
     #[token("\r\n")]

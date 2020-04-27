@@ -156,7 +156,7 @@ impl Into<[usize; 2]> for Span {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Locatable<T> {
     pub data: T,
     pub loc: Location,
@@ -169,6 +169,10 @@ impl<T> Locatable<T> {
 
     pub fn data(&self) -> &T {
         &self.data
+    }
+
+    pub fn into_data(self) -> T {
+        self.data
     }
 
     pub fn loc(&self) -> Location {
@@ -362,6 +366,24 @@ pub enum SemanticError {
         fmt = "Type bodies cannot be empty, use the `empty` keyword to create an empty type"
     )]
     EmptyTypeBody,
+
+    #[display(fmt = "Attributes should be ordered by visibility and then misc")]
+    UnorderedAttrs,
+
+    #[display(fmt = "The attribute `{}` was given multiple times", attr)]
+    DuplicatedAttributes {
+        attr: String,
+        first: Location,
+        second: Location,
+    },
+
+    #[display(fmt = "The attributes `{}` and `{}` conflict", attr1, attr2)]
+    ConflictingAttributes {
+        attr1: String,
+        attr2: String,
+        first: Location,
+        second: Location,
+    },
 }
 
 impl SemanticError {
@@ -370,6 +392,14 @@ impl SemanticError {
             Self::Redefinition { first, second, .. } => vec![
                 Label::primary(file, first.range()).with_message("Defined here"),
                 Label::secondary(file, second.range()).with_message("Redefined here"),
+            ],
+            Self::DuplicatedAttributes { first, second, .. } => vec![
+                Label::primary(file, first.range()).with_message("Fist given here"),
+                Label::secondary(file, second.range()).with_message("Given here"),
+            ],
+            Self::ConflictingAttributes { first, second, .. } => vec![
+                Label::primary(file, first.range()),
+                Label::secondary(file, second.range()),
             ],
             _ => Vec::new(),
         }
