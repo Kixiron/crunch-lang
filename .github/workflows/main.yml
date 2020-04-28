@@ -113,5 +113,9 @@ jobs:
           path: target
           key: ${{ runner.os }}-cargo-build-target-${{ env.CURRENT_RUSTC_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Install Dependences
+        if: matrix.target == 'i686-unknown-linux-gnu'
+        run: sudo apt install build-essential
+
       - name: Run Tests
         run: cargo test --target ${{ matrix.target }} --workspace --locked
