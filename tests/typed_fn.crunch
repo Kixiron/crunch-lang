@@ -1,7 +1,0 @@
-fn main() -> unit
-    empty
-end
-
-fn tdgs(i: int) -> str
-    empty
-end

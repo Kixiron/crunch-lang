@@ -1,3 +1,0 @@
-exposed fn exposed_generic_function<T, E>(i: T) -> E
-    empty
-end

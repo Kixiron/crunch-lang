@@ -1,3 +1,0 @@
-fn exposed test()
-    empty
-end

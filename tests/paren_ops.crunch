@@ -1,4 +1,0 @@
-fn main()
-    let i = (1 + (100 / (1 * 10)))
-    println(i)
-end

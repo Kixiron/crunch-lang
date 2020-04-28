@@ -15,19 +15,7 @@ First, have the nightly toolchains of [`rustup`] and `cargo` installed, then run
 ```text
 git clone https://github.com/Kixiron/crunch-lang
 cd crunch-lang
-git submodule update --init --recursive
 cargo build
 ```
 
-## Building Documentation
-
-First, install [zola] and then run the following commands
-
-```text
-git clone https://github.com/Kixiron/crunch-lang
-cd crunch-lang/docs
-zola serve
-```
-
 [`rustup`]: https://rustup.rs/
-[zola]: https://www.getzola.org/documentation/getting-started/installation/

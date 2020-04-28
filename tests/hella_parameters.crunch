@@ -1,3 +1,0 @@
-fn lots_of_params<T, E, Something, IdkMan, Test>(i: int, gsfgdfgd: str, gdsgsdgsa: bool, something_else: Test, why_would_this_be_here: unit, something: Something, im_running_out_of_parameters: IdkMan) -> unit
-    println("Not actually doing anything with them tbh")
-end

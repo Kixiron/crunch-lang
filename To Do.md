@@ -7,14 +7,14 @@
   - [ ] Parse into AST
     - [ ] Uncoil the beast that is the parser
       - [x] Pratt Parsing
-      - [ ] Decide about decorator declarations, should they be a separate type of declaration?
+      - [x] Decide about decorator declarations, should they be a separate type of declaration?
         - [ ] Allows declaration-only namespacing
         - [ ] Allows greater freedom with system to allow codegen/macro type utilities
       - [x] Unit type
       - [x] Syntax highlighting
-      - [ ] Throwing errors
-      - [ ] Floats
-      - [ ] Escape sequences
+      - [x] Throwing errors
+      - [x] Floats
+      - [x] Escape sequences
       - [ ] String Formatting
         - [ ] Use interleaved arrays
         - [ ] Inlined string variables e.g. `"{var}"`
@@ -57,10 +57,9 @@
   - [ ] Workers Parse files and push the finished to somewhere
   - [x] Concurrent String interner
     - [x] Dashmap-based
-  - [ ] Single-threaded string interner
+  - [x] Single-threaded string interner
 - [ ] `no_std` RwLock and Mutex implementations
 - [ ] Fast concurrent queue
-- [ ] Get rid of phf
 - [ ] Async
   - [ ] Streams & Channels
   - [ ] Structured concurrency

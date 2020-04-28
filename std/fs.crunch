@@ -1,3 +1,0 @@
-fn open(file: str)
-    empty
-end
