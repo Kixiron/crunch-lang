@@ -1195,29 +1195,46 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 ));
             }
 
-            Token { source, .. }
+            Token { source, span, .. }
                 if source.starts_with('u')
                     && source.len() > 1
                     && source.chars().skip(1).all(|c| c.is_numeric()) =>
             {
-                let width: u16 = source.chars().skip(1).collect::<String>().parse().unwrap();
-                let int = Type::Builtin(BuiltinType::Integer {
-                    sign: Signedness::Unsigned,
-                    width,
-                });
+                let int = source.chars().skip(1).collect::<String>();
+                let width: u16 = lexical_core::parse(int.as_bytes()).map_err(|_| {
+                    Locatable::new(
+                        Error::Syntax(SyntaxError::Generic(format!(
+                            "Integer types must be between `u1` and `u65536`, `{}` is out of range",
+                            source,
+                        ))),
+                        Location::concrete(span, self.current_file),
+                    )
+                })?;
 
                 return Ok(Locatable::new(
-                    int,
+                    Type::Builtin(BuiltinType::Integer {
+                        sign: Signedness::Unsigned,
+                        width,
+                    }),
                     Location::concrete(start_span, self.current_file),
                 ));
             }
 
-            Token { source, .. }
+            Token { source, span, .. }
                 if source.starts_with('i')
                     && source.len() > 1
                     && source.chars().skip(1).all(|c| c.is_numeric()) =>
             {
-                let width: u16 = source.chars().skip(1).collect::<String>().parse().unwrap();
+                let int = source.chars().skip(1).collect::<String>();
+                let width: u16 = lexical_core::parse(int.as_bytes()).map_err(|_| {
+                    Locatable::new(
+                        Error::Syntax(SyntaxError::Generic(format!(
+                            "Integer types must be between `i1` and `i65536`, `{}` is out of range",
+                            source,
+                        ))),
+                        Location::concrete(span, self.current_file),
+                    )
+                })?;
 
                 return Ok(Locatable::new(
                     Type::Builtin(BuiltinType::Integer {
@@ -1228,12 +1245,21 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 ));
             }
 
-            Token { source, .. }
+            Token { source, span, .. }
                 if source.starts_with('f')
                     && source.len() > 1
                     && source.chars().skip(1).all(|c| c.is_numeric()) =>
             {
-                let width: u16 = source.chars().skip(1).collect::<String>().parse().unwrap();
+                let float = source.chars().skip(1).collect::<String>();
+                let width: u16 = lexical_core::parse(float.as_bytes()).map_err(|_| {
+                    Locatable::new(
+                        Error::Syntax(SyntaxError::Generic(format!(
+                            "Float types must be between `f1` and `f65536`, `{}` is out of range",
+                            source,
+                        ))),
+                        Location::concrete(span, self.current_file),
+                    )
+                })?;
 
                 return Ok(Locatable::new(
                     Type::Builtin(BuiltinType::Float { width }),

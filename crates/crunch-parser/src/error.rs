@@ -336,7 +336,7 @@ pub enum SyntaxError {
     #[display(fmt = "File imports must use a string literal")]
     ImportStringLiteral,
 
-    #[display("File imports must use a string literal, not a byte string literal")]
+    #[display(fmt = "File imports must use a string literal, not a byte string literal")]
     ImportByteStringLiteral,
 }
 

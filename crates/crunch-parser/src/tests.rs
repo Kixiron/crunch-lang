@@ -103,3 +103,9 @@ fn matchend() {
     let src = include_str!("../crashes/matchend.fuzz");
     let _ = run(src);
 }
+
+#[test]
+fn enbum() {
+    let src = include_str!("../crashes/enbum.fuzz");
+    let _ = run(src);
+}

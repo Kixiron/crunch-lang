@@ -31,7 +31,7 @@ jobs:
         run: cargo check --workspace
 
       - name: Cargo Clippy
-        run: cargo clippy --workspace
+        run: cargo clippy --workspace --locked -- -D warnings
 
       - name: Check Formatting
         run: cargo fmt --all -- --check
@@ -114,4 +114,4 @@ jobs:
           key: ${{ runner.os }}-cargo-build-target-${{ env.CURRENT_RUSTC_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run Tests
-        run: cargo test --target ${{ matrix.target }} --workspace
+        run: cargo test --target ${{ matrix.target }} --workspace --locked
