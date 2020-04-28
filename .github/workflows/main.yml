@@ -115,7 +115,7 @@ jobs:
 
       - name: Install Dependences
         if: matrix.target == 'i686-unknown-linux-gnu'
-        run: sudo apt install build-essential
+        run: sudo apt install build-essential g++-multilib gcc-multilib libc6-dev
 
       - name: Run Tests
         run: cargo test --target ${{ matrix.target }} --workspace --locked
