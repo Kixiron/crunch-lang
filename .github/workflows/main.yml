@@ -115,7 +115,7 @@ jobs:
 
       - name: Install Dependences
         if: matrix.target == 'i686-unknown-linux-gnu'
-        run: sudo apt install clang musl-dev
+        run: sudo apt install gcc-multilib
 
       - name: Run Tests
         run: cargo test --target ${{ matrix.target }} --workspace --locked
