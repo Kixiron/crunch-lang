@@ -46,7 +46,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [x86_64-pc-windows-msvc, i686-pc-windows-msvc, x86_64-unknown-linux-gnu, i686-unknown-linux-gnu, x86_64-apple-darwin]
+        target:
+          [
+            x86_64-pc-windows-msvc,
+            i686-pc-windows-msvc,
+            x86_64-unknown-linux-gnu,
+            i686-unknown-linux-gnu,
+            x86_64-apple-darwin,
+          ]
         include:
           # Windows MSVC 32 and 64bit
           - os: windows-latest
@@ -84,6 +91,10 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - name: Install Dependences
+        if: matrix.target == 'i686-unknown-linux-gnu'
+        run: sudo apt install clang libc6-dev
+
       - uses: hecrj/setup-rust-action@v1
         with:
           rust-version: ${{ matrix.rust_version }}${{ matrix.platform.host }}
@@ -112,10 +123,6 @@ jobs:
         with:
           path: target
           key: ${{ runner.os }}-cargo-build-target-${{ env.CURRENT_RUSTC_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Install Dependences
-        if: matrix.target == 'i686-unknown-linux-gnu'
-        run: sudo apt install gcc-multilib
 
       - name: Run Tests
         run: cargo test --target ${{ matrix.target }} --workspace --locked
