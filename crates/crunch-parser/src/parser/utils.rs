@@ -5,8 +5,6 @@ use crate::{
     token::TokenType,
 };
 
-#[cfg(feature = "logging")]
-use log::{info, trace};
 use stadium::Stadium;
 
 use alloc::{rc::Rc, vec::Vec};

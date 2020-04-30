@@ -150,6 +150,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         (token_stream, next, peek)
     }
 
+    #[inline(always)]
     pub fn error_handler_mut(&mut self) -> &mut ErrorHandler {
         &mut self.error_handler
     }
@@ -254,6 +255,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         }
     }
 
+    #[inline(always)]
     fn stress_eat(&mut self) -> ParseResult<()> {
         const TOP_TOKENS: &[TokenType] = &[
             TokenType::Function,
