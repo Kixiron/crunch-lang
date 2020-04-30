@@ -434,6 +434,7 @@ impl SemanticError {
 }
 
 #[derive(Clone, Debug, Display, PartialEq)]
+#[allow(missing_copy_implementations)]
 pub enum TypeError {}
 
 impl TypeError {

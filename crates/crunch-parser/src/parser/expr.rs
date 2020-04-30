@@ -42,7 +42,7 @@ pub enum Expression<'expr> {
     Range(Expr<'expr>, Expr<'expr>),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum AssignmentType {
     Normal,
     BinaryOp(BinaryOperand),
@@ -99,7 +99,7 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for AssignmentType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum ComparisonOperand {
     Greater,
     Less,
@@ -556,7 +556,7 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for Literal {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum BinaryOperand {
     Add,
     Sub,
@@ -601,7 +601,7 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for BinaryOperand {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum UnaryOperand {
     Positive,
     Negative,

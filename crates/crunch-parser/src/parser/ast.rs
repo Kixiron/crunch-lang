@@ -117,16 +117,6 @@ impl<'expr, 'stmt> Ast<'expr, 'stmt> {
         }
     }
 
-    pub fn type_of(node: &Self) -> AstType {
-        match node {
-            Self::Function { .. } => AstType::Function,
-            Self::Type { .. } => AstType::Type,
-            Self::Enum { .. } => AstType::Enum,
-            Self::Trait { .. } => AstType::Trait,
-            Self::Import { .. } => AstType::Import,
-        }
-    }
-
     pub fn is_import(&self) -> bool {
         if let Self::Import { .. } = self {
             true
@@ -152,14 +142,6 @@ impl<'expr, 'stmt> Ast<'expr, 'stmt> {
             Self::Import(import) => import.loc(),
         }
     }
-}
-
-pub enum AstType {
-    Function,
-    Type,
-    Enum,
-    Trait,
-    Import,
 }
 
 #[derive(Debug, Clone, PartialEq)]

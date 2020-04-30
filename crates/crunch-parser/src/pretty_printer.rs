@@ -11,6 +11,7 @@ use crate::{
 use alloc::{format, vec::Vec};
 use core::fmt::{Result, Write};
 
+#[derive(Debug, Clone)]
 pub struct PrettyPrinter {
     indent_level: usize,
     interner: Interner,
