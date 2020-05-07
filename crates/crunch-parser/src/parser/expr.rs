@@ -158,6 +158,16 @@ pub enum Literal {
     Array(Vec<Literal>),
 }
 
+impl Literal {
+    pub fn into_integer(self) -> Option<Integer> {
+        if let Self::Integer(int) = self {
+            Some(int)
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Text(Vec<Rune>);
@@ -260,8 +270,8 @@ impl fmt::Display for Rune {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Integer {
-    sign: Sign,
-    bits: u128,
+    pub sign: Sign,
+    pub bits: u128,
 }
 
 impl fmt::Display for Integer {
@@ -274,6 +284,12 @@ impl fmt::Display for Integer {
 pub enum Sign {
     Positive,
     Negative,
+}
+
+impl Sign {
+    pub fn is_negative(self) -> bool {
+        self == Self::Negative
+    }
 }
 
 impl fmt::Display for Sign {
@@ -649,12 +665,12 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         let _frame = self.add_stack_frame()?;
         let mut token = self.next()?;
 
-        let prefix = Self::prefix(token.ty());
+        let prefix = Self::expr_prefix(token.ty());
         if let Some(prefix) = prefix {
             let mut left = prefix(self, token)?;
 
             if let Ok(peek) = self.peek() {
-                let postfix = Self::postfix(peek.ty());
+                let postfix = Self::expr_postfix(peek.ty());
                 if let Some(postfix) = postfix {
                     token = self.next()?;
                     left = postfix(self, token, left)?;
@@ -664,7 +680,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             while precedence < self.current_precedence() {
                 token = self.next()?;
 
-                let infix = Self::infix(token.ty());
+                let infix = Self::expr_infix(token.ty());
                 if let Some(infix) = infix {
                     left = infix(self, token, left)?;
                 } else {
@@ -684,8 +700,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         }
     }
 
-    fn prefix(ty: TokenType) -> Option<PrefixParselet<'src, 'expr, 'stmt>> {
-        Some(match ty {
+    fn expr_prefix(ty: TokenType) -> Option<PrefixParselet<'src, 'expr, 'stmt>> {
+        let prefix: PrefixParselet = match ty {
             // Variables
             TokenType::Ident => |parser, token| {
                 use alloc::borrow::Cow;
@@ -735,7 +751,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             },
 
             // Grouping via parentheses
-            TokenType::LeftParen => |parser, _| {
+            TokenType::LeftParen => |parser, _paren| {
                 let _frame = parser.add_stack_frame()?;
 
                 let expr = parser.expr()?;
@@ -770,11 +786,13 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             },
 
             _ => return None,
-        })
+        };
+
+        Some(prefix)
     }
 
-    fn postfix(ty: TokenType) -> Option<PostfixParselet<'src, 'expr, 'stmt>> {
-        Some(match ty {
+    fn expr_postfix(ty: TokenType) -> Option<PostfixParselet<'src, 'expr, 'stmt>> {
+        let postfix: PostfixParselet = match ty {
             // Function calls
             TokenType::LeftParen => |parser, _left_paren, caller| {
                 let _frame = parser.add_stack_frame()?;
@@ -861,11 +879,13 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             },
 
             _ => return None,
-        })
+        };
+
+        Some(postfix)
     }
 
-    fn infix(ty: TokenType) -> Option<InfixParselet<'src, 'expr, 'stmt>> {
-        Some(match ty {
+    fn expr_infix(ty: TokenType) -> Option<InfixParselet<'src, 'expr, 'stmt>> {
+        let infix: InfixParselet = match ty {
             // Binary Operations
             TokenType::Plus
             | TokenType::Minus
@@ -927,7 +947,9 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             TokenType::LeftBrace => Self::index_array,
 
             _ => return None,
-        })
+        };
+
+        Some(infix)
     }
 
     fn index_array(

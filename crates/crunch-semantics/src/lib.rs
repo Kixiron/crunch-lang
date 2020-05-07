@@ -154,7 +154,7 @@ pub trait SemanticPass {
 
     fn analyze_type<'stmt, 'expr>(
         &mut self,
-        _type: &TypeDecl<'stmt, 'expr>,
+        _type: &TypeDecl<'stmt>,
         _loc: Location,
         _local_symbol_table: &GlobalSymbolTable,
         _interner: &Interner,
@@ -242,7 +242,7 @@ impl Correctness {
                     vis.push(attr);
                     Attr::Vis
                 }
-                Attribute::Comptime => Attr::Misc,
+                Attribute::Const => Attr::Misc,
             };
 
             // If the attributes are incorrectly ordered, emit an error
@@ -333,14 +333,14 @@ impl SemanticPass for Correctness {
 
     fn analyze_type<'stmt, 'expr>(
         &mut self,
-        ty: &TypeDecl<'stmt, 'expr>,
+        ty: &TypeDecl<'stmt>,
         ty_loc: Location,
-        local_symbol_table: &GlobalSymbolTable,
+        _local_symbol_table: &GlobalSymbolTable,
         interner: &Interner,
         error_handler: &mut ErrorHandler,
     ) {
         // Errors for empty type bodies
-        if ty.members.is_empty() && ty.methods.is_empty() {
+        if ty.members.is_empty() {
             error_handler.push_err(Locatable::new(
                 Error::Semantic(SemanticError::EmptyTypeBody),
                 ty_loc,
@@ -392,44 +392,45 @@ impl SemanticPass for Correctness {
             ));
         }
 
-        // Check for duplicated methods, member/method overlap and analyze methods
-        let mut methods = HashMap::with_capacity(ty.methods.len());
-        for method in ty.methods.iter() {
-            let Function { name, .. } = method.data();
-
-            // If there's already a method by the same name, emit an error
-            if let Some(loc) = methods.insert(*name, method.loc()) {
-                error_handler.push_err(Locatable::new(
-                    Error::Semantic(SemanticError::Redefinition {
-                        name: interner.resolve(name).to_owned(),
-                        first: loc,
-                        second: method.loc(),
-                    }),
-                    method.loc(),
-                ));
-            }
-
-            // If there's a member name that overlaps, emit an error
-            if let Some(member) = members.get(name) {
-                error_handler.push_err(Locatable::new(
-                    Error::Semantic(SemanticError::Redefinition {
-                        name: interner.resolve(name).to_owned(),
-                        first: *member,
-                        second: method.loc(),
-                    }),
-                    method.loc(),
-                ));
-            }
-
-            // Analyze the function while we're here
-            self.analyze_function(
-                method.data(),
-                method.loc(),
-                local_symbol_table,
-                interner,
-                error_handler,
-            );
-        }
+        // TODO: Re-add this once methods are resolved
+        // // Check for duplicated methods, member/method overlap and analyze methods
+        // let mut methods = HashMap::with_capacity(ty.methods.len());
+        // for method in ty.methods.iter() {
+        //     let Function { name, .. } = method.data();
+        //
+        //     // If there's already a method by the same name, emit an error
+        //     if let Some(loc) = methods.insert(*name, method.loc()) {
+        //         error_handler.push_err(Locatable::new(
+        //             Error::Semantic(SemanticError::Redefinition {
+        //                 name: interner.resolve(name).to_owned(),
+        //                 first: loc,
+        //                 second: method.loc(),
+        //             }),
+        //             method.loc(),
+        //         ));
+        //     }
+        //
+        //     // If there's a member name that overlaps, emit an error
+        //     if let Some(member) = members.get(name) {
+        //         error_handler.push_err(Locatable::new(
+        //             Error::Semantic(SemanticError::Redefinition {
+        //                 name: interner.resolve(name).to_owned(),
+        //                 first: *member,
+        //                 second: method.loc(),
+        //             }),
+        //             method.loc(),
+        //         ));
+        //     }
+        //
+        //     // Analyze the function while we're here
+        //     self.analyze_function(
+        //         method.data(),
+        //         method.loc(),
+        //         local_symbol_table,
+        //         interner,
+        //         error_handler,
+        //     );
+        // }
     }
 
     fn analyze_enum<'stmt>(

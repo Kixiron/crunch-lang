@@ -327,6 +327,9 @@ pub enum SyntaxError {
     #[display(fmt = "Attributes are not allowed on an {} declaration", _0)]
     NoAttributesAllowed(&'static str),
 
+    #[display(fmt = "Decorators are not allowed on an {} declaration", _0)]
+    NoDecoratorsAllowed(&'static str),
+
     #[display(fmt = "Invalid top-level token: {}", _0)]
     InvalidTopLevel(TokenType),
 
@@ -338,6 +341,9 @@ pub enum SyntaxError {
 
     #[display(fmt = "File imports must use a string literal, not a byte string literal")]
     ImportByteStringLiteral,
+
+    #[display(fmt = "Array lengths cannot be negative")]
+    NegativeArrayLen,
 }
 
 impl SyntaxError {

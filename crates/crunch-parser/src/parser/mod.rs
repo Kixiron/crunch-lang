@@ -17,17 +17,19 @@ mod stmt;
 mod string_escapes;
 #[cfg(test)]
 mod tests;
+mod types;
 mod utils;
 
 pub use ast::{
-    Ast, Attribute, BuiltinType, Decorator, Enum, EnumVariant, FuncArg, Function, Import,
-    ImportDest, ImportExposure, Signedness, Trait, Type, TypeDecl, TypeMember, Visibility,
+    Ast, Attribute, Decorator, Enum, EnumVariant, FuncArg, Function, Import, ImportDest,
+    ImportExposure, Trait, TypeDecl, TypeMember, Visibility,
 };
 pub use expr::{
     AssignmentType, BinaryOperand, ComparisonOperand, Expr, Expression, Float, Integer, Literal,
     Rune, Sign, Text, UnaryOperand,
 };
 pub use stmt::{Statement, Stmt};
+pub use types::{BuiltinType, Signedness, Type};
 pub use utils::{CurrentFile, SyntaxTree};
 
 use utils::{BinaryPrecedence, StackGuard};

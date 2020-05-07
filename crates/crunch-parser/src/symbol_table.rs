@@ -187,7 +187,6 @@ impl<'stmt, 'expr> TryFrom<Ast<'stmt, 'expr>> for Symbol<'stmt, 'expr> {
                     .iter()
                     .map(|m| Locatable::new((m.data().name, m.data().ty.data().clone()), m.loc()))
                     .collect(),
-                methods: HashSet::from_iter(ty.data().methods.iter().map(|m| m.data().name)),
             },
 
             Ast::Enum(en) => Signature::Enum {
@@ -241,7 +240,8 @@ pub enum Signature {
         loc: Location,
         generics: Vec<Locatable<Type>>,
         members: Vec<Locatable<(SmallSpur, Type)>>,
-        methods: HashSet<SmallSpur>,
+        // TODO: This is a doozy, need to resolve all blocks to find type methods
+        // methods: HashSet<SmallSpur>,
     },
 
     Enum {

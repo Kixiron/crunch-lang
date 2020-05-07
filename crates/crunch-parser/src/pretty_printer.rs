@@ -69,7 +69,7 @@ impl<'expr, 'stmt> PrettyPrinter {
 
         match exposes {
             ImportExposure::All => write!(f, " exposing *")?,
-            ImportExposure::None(name) => write!(f, " as {}", self.interner.resolve(name))?,
+            ImportExposure::None(name) => write!(f, " as {}", self.interner.resolve(name.data()))?,
             ImportExposure::Members(members) => {
                 write!(f, " exposing ")?;
 
@@ -102,7 +102,7 @@ impl<'expr, 'stmt> PrettyPrinter {
         }: &Trait,
     ) -> Result {
         for dec in decorators {
-            self.print_decorator(f, dec)?;
+            self.print_decorator(f, dec.data())?;
             writeln!(f)?;
         }
 
@@ -147,7 +147,7 @@ impl<'expr, 'stmt> PrettyPrinter {
         }: &Enum,
     ) -> Result {
         for dec in decorators {
-            self.print_decorator(f, dec)?;
+            self.print_decorator(f, dec.data())?;
             writeln!(f)?;
         }
 
@@ -175,7 +175,7 @@ impl<'expr, 'stmt> PrettyPrinter {
             match variant.data() {
                 EnumVariant::Unit { name, decorators } => {
                     for dec in decorators {
-                        self.print_decorator(f, dec)?;
+                        self.print_decorator(f, dec.data())?;
                         writeln!(f)?;
                     }
                     self.print_indent(f)?;
@@ -188,7 +188,7 @@ impl<'expr, 'stmt> PrettyPrinter {
                     decorators,
                 } => {
                     for dec in decorators {
-                        self.print_decorator(f, dec)?;
+                        self.print_decorator(f, dec.data())?;
                         writeln!(f)?;
                     }
                     self.print_indent(f)?;
@@ -218,11 +218,10 @@ impl<'expr, 'stmt> PrettyPrinter {
             name,
             generics,
             members,
-            methods,
         }: &TypeDecl,
     ) -> Result {
         for dec in decorators {
-            self.print_decorator(f, dec)?;
+            self.print_decorator(f, dec.data())?;
             writeln!(f)?;
         }
 
@@ -256,7 +255,7 @@ impl<'expr, 'stmt> PrettyPrinter {
             } = member.data();
 
             for dec in decorators {
-                self.print_decorator(f, dec)?;
+                self.print_decorator(f, dec.data())?;
                 writeln!(f)?;
             }
 
@@ -268,10 +267,6 @@ impl<'expr, 'stmt> PrettyPrinter {
             write!(f, "{}: ", self.interner.resolve(name))?;
             self.print_ty(f, ty.data())?;
             writeln!(f)?;
-        }
-
-        for func in methods {
-            self.print_func(f, func.data())?;
         }
         self.indent_level -= 1;
 
@@ -292,7 +287,7 @@ impl<'expr, 'stmt> PrettyPrinter {
         }: &Function,
     ) -> Result {
         for dec in decorators {
-            self.print_decorator(f, dec)?;
+            self.print_decorator(f, dec.data())?;
             writeln!(f)?;
         }
 
@@ -343,7 +338,7 @@ impl<'expr, 'stmt> PrettyPrinter {
         self.print_indent(f)?;
 
         if !dec.args.is_empty() {
-            write!(f, "@{}(", self.interner.resolve(&dec.name))?;
+            write!(f, "@{}(", self.interner.resolve(&dec.name.data()))?;
             for (i, arg) in dec.args.iter().enumerate() {
                 self.print_expr(f, arg)?;
 
@@ -353,7 +348,7 @@ impl<'expr, 'stmt> PrettyPrinter {
             }
             write!(f, ")")
         } else {
-            write!(f, "@{}", self.interner.resolve(&dec.name))
+            write!(f, "@{}", self.interner.resolve(&dec.name.data()))
         }
     }
 
@@ -521,6 +516,33 @@ impl<'expr, 'stmt> PrettyPrinter {
     fn print_ty(&mut self, f: &mut dyn Write, ty: &Type) -> Result {
         match ty {
             Type::Infer => write!(f, "infer"),
+            Type::Not(ty) => self.print_ty(f, ty.data()),
+            Type::Parenthesised(ty) => {
+                write!(f, "(")?;
+                self.print_ty(f, ty.data())?;
+                write!(f, ")")
+            }
+            Type::Const(ident, ty) => {
+                write!(f, "const {}: ", self.interner.resolve(ident))?;
+                self.print_ty(f, ty.data())
+            }
+            Type::Operand(left, op, right) => {
+                self.print_ty(f, left.data())?;
+                write!(f, "{}", op)?;
+                self.print_ty(f, right.data())
+            }
+            Type::Function { params, returns } => {
+                write!(f, "fn(")?;
+                for (i, param) in params.iter().enumerate() {
+                    self.print_ty(f, param.data())?;
+
+                    if i != params.len() - 1 {
+                        write!(f, ", ")?;
+                    }
+                }
+                write!(f, ") -> ")?;
+                self.print_ty(f, returns.data())
+            }
             Type::TraitObj(traits) => {
                 if traits.is_empty() {
                     write!(f, "type")
@@ -578,7 +600,12 @@ impl<'expr, 'stmt> PrettyPrinter {
                 BuiltinType::Rune => write!(f, "rune"),
                 BuiltinType::Unit => write!(f, "unit"),
                 BuiltinType::Absurd => write!(f, "absurd"),
-                BuiltinType::Array(ty) => {
+                BuiltinType::Array(len, ty) => {
+                    write!(f, "arr[{}, ", len)?;
+                    self.print_ty(f, ty.data())?;
+                    write!(f, "]")
+                }
+                BuiltinType::Slice(ty) => {
                     write!(f, "arr[")?;
                     self.print_ty(f, ty.data())?;
                     write!(f, "]")
@@ -606,7 +633,7 @@ impl<'expr, 'stmt> PrettyPrinter {
                 Visibility::Package => write!(f, "pkg "),
                 Visibility::FileLocal => write!(f, ""),
             },
-            Attribute::Comptime => write!(f, "comptime "),
+            Attribute::Const => write!(f, "const "),
         }
     }
 

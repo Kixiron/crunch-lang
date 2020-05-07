@@ -56,8 +56,12 @@ pub enum TokenType {
     Enum,
     #[token("trait")]
     Trait,
-    #[token("comptime")]
-    Comptime,
+    #[token("const")]
+    Const,
+    #[token("extend")]
+    Extend,
+    #[token("with")]
+    With,
 
     #[token("in")]
     In,
@@ -249,7 +253,9 @@ impl TokenType {
             Self::In => "in",
             Self::Match => "match",
             Self::Where => "where",
-            Self::Comptime => "comptime",
+            Self::Const => "comptime",
+            Self::Extend => "extend",
+            Self::With => "with",
 
             Self::Equal => "=",
             Self::AddAssign => "+=",

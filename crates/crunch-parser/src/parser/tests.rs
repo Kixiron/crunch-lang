@@ -1,5 +1,5 @@
 use super::*;
-use crate::{files::FileId, parser::ast::Signedness, pretty_printer::PrettyPrinter};
+use crate::{files::FileId, parser::types::Signedness, pretty_printer::PrettyPrinter};
 
 #[cfg(feature = "no-std")]
 use alloc::{boxed::Box, string::String};
@@ -354,29 +354,7 @@ fn functions_ast() {
     );
 }
 
-#[test]
-fn generic_functions_ast() {
-    assert_eq!(
-        "@inline\nfn test(comptime T: type) -> infer\nend\n",
-        format_ast("@inline\nfn test(comptime T: type)\nend"),
-    );
-    assert_eq!(
-        "exposed fn test(comptime T: type[Clone, Debug], a: infer, a: b) -> bool\n    println(1)\nend\n",
-        format_ast(
-            "exposed fn test(comptime T: type[Clone, Debug], a, a: b) -> bool\n    println(1)\nend\n"
-        ),
-    );
-}
-
-#[test]
-fn lots_generic_functions_ast() {
-    assert_eq!(
-        "exposed fn test(comptime T: type[Clone, Debug], a: infer, comptime E: type[PartialEq, Eq, Ord], comptime F: type[Copy]) -> bool\n    println(1)\nend\n",
-        format_ast(
-            "exposed fn test(comptime T: type[Clone, Debug], a: infer, comptime E: type[PartialEq, Eq, Ord], comptime F: type[Copy]) -> bool\n    println(1)\nend\n"
-        ),
-    );
-}
+// TODO: Test generic functions
 
 #[test]
 fn types_ast() {
@@ -454,35 +432,44 @@ fn types_ast() {
             Type::Builtin(BuiltinType::IntReg(Signedness::Signed)),
         ),
         (
-            "arr[]",
-            Type::Builtin(BuiltinType::Array(Box::new(Locatable::new(
-                Type::Infer,
-                Location::implicit(0..3, FileId(0)),
-            )))),
+            "arr[100, infer]",
+            Type::Builtin(BuiltinType::Array(
+                100,
+                Box::new(Locatable::new(
+                    Type::Infer,
+                    Location::implicit(9..14, FileId(0)),
+                )),
+            )),
         ),
         (
-            "arr[str]",
-            Type::Builtin(BuiltinType::Array(Box::new(Locatable::new(
-                Type::Builtin(BuiltinType::String),
-                Location::concrete(4..7, FileId(0)),
-            )))),
+            "arr[1, str]",
+            Type::Builtin(BuiltinType::Array(
+                1,
+                Box::new(Locatable::new(
+                    Type::Builtin(BuiltinType::String),
+                    Location::concrete(7..10, FileId(0)),
+                )),
+            )),
         ),
         (
-            "tup[str, arr[i32]]",
+            "tup[str, arr[5, i32]]",
             Type::Builtin(BuiltinType::Tuple(vec![
                 Locatable::new(
                     Type::Builtin(BuiltinType::String),
                     Location::concrete(4..7, FileId(0)),
                 ),
                 Locatable::new(
-                    Type::Builtin(BuiltinType::Array(Box::new(Locatable::new(
-                        Type::Builtin(BuiltinType::Integer {
-                            sign: Signedness::Signed,
-                            width: 32,
-                        }),
-                        Location::concrete(13..16, FileId(0)),
-                    )))),
-                    Location::concrete(9..17, FileId(0)),
+                    Type::Builtin(BuiltinType::Array(
+                        5,
+                        Box::new(Locatable::new(
+                            Type::Builtin(BuiltinType::Integer {
+                                sign: Signedness::Signed,
+                                width: 32,
+                            }),
+                            Location::concrete(16..19, FileId(0)),
+                        )),
+                    )),
+                    Location::concrete(9..20, FileId(0)),
                 ),
             ])),
         ),
@@ -506,6 +493,7 @@ fn types_ast() {
     ];
 
     for (src, ty) in builtins.iter() {
+        dbg!(src);
         assert_eq!(
             Parser::new(src, CurrentFile::new(FileId(0), src.len()), Interner::new(),)
                 .ascribed_type()
@@ -519,8 +507,8 @@ fn types_ast() {
 #[test]
 fn type_ast() {
     assert_eq!(
-        "@inline\n@builtin\nexposed type test[A, B, C, D]\n    member: infer\n    @builtin\n    exposed another_member: bool\n    fn test() -> infer\n    end\nend\n",
-        format_ast("@inline\n@builtin\nexposed type test[A, B, C, D]\nmember\n@builtin\nexposed another_member: bool\nfn test()\nend\nend"),
+        "@inline\n@builtin\nexposed type test[A, B, C, D]\n    member: infer\n    @builtin\n    exposed another_member: bool\nend\n",
+        format_ast("@inline\n@builtin\nexposed type test[A, B, C, D]\nmember\n@builtin\nexposed another_member: bool\nend"),
     );
 }
 
@@ -586,7 +574,7 @@ mod proptests {
             let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), Interner::default());
 
             let expr = parser.expr().map(|e| e.deref().clone());
-            match dbg!(expr) {
+            match expr {
                 Ok(Expression::Literal(Literal::String(..))) | Ok(Expression::Literal(Literal::Array(..))) => {},
 
                 Err(Locatable { data: _data @ Error::Syntax(SyntaxError::InvalidEscapeCharacters(..)), .. })
