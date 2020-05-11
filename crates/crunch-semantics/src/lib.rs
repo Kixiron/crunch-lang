@@ -152,7 +152,7 @@ pub trait SemanticPass {
     ) {
     }
 
-    fn analyze_type<'stmt, 'expr>(
+    fn analyze_type<'stmt>(
         &mut self,
         _type: &TypeDecl<'stmt>,
         _loc: Location,
