@@ -108,7 +108,7 @@ impl<'expr, 'stmt> PrettyPrinter {
 
         self.print_indent(f)?;
         for attr in attrs {
-            self.print_attr(f, attr.data())?;
+            self.print_attr(f, *attr.data())?;
         }
 
         write!(f, "trait {}", self.interner.resolve(name))?;
@@ -153,7 +153,7 @@ impl<'expr, 'stmt> PrettyPrinter {
 
         self.print_indent(f)?;
         for attr in attrs {
-            self.print_attr(f, attr.data())?;
+            self.print_attr(f, *attr.data())?;
         }
 
         write!(f, "enum {}", self.interner.resolve(name))?;
@@ -227,7 +227,7 @@ impl<'expr, 'stmt> PrettyPrinter {
 
         self.print_indent(f)?;
         for attr in attrs {
-            self.print_attr(f, attr.data())?;
+            self.print_attr(f, *attr.data())?;
         }
 
         write!(f, "type {}", self.interner.resolve(name))?;
@@ -261,7 +261,7 @@ impl<'expr, 'stmt> PrettyPrinter {
 
             self.print_indent(f)?;
             for attr in attrs {
-                self.print_attr(f, attr.data())?;
+                self.print_attr(f, *attr.data())?;
             }
 
             write!(f, "{}: ", self.interner.resolve(name))?;
@@ -293,7 +293,7 @@ impl<'expr, 'stmt> PrettyPrinter {
 
         self.print_indent(f)?;
         for attr in attrs {
-            self.print_attr(f, attr.data())?;
+            self.print_attr(f, *attr.data())?;
         }
 
         write!(f, "fn {}", self.interner.resolve(name))?;
@@ -626,7 +626,7 @@ impl<'expr, 'stmt> PrettyPrinter {
         }
     }
 
-    fn print_attr(&mut self, f: &mut dyn Write, attr: &Attribute) -> Result {
+    fn print_attr(&mut self, f: &mut dyn Write, attr: Attribute) -> Result {
         match attr {
             Attribute::Visibility(vis) => match vis {
                 Visibility::Exposed => write!(f, "exposed "),

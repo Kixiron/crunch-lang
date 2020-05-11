@@ -294,7 +294,7 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
                 Ok(Locatable::new(
                     ty,
                     Location::concrete(
-                        Span::merge(token.span(), end.unwrap_or(token.span())),
+                        Span::merge(token.span(), end.unwrap_or_else(|| token.span())),
                         parser.current_file,
                     ),
                 ))

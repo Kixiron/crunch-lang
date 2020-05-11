@@ -175,7 +175,7 @@ pub enum Attribute {
 }
 
 impl Attribute {
-    pub fn is_visibility(&self) -> bool {
+    pub fn is_visibility(self) -> bool {
         if let Self::Visibility(_) = self {
             true
         } else {
@@ -183,7 +183,7 @@ impl Attribute {
         }
     }
 
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Visibility(vis) => vis.as_str(),
             Self::Const => "const",
@@ -221,7 +221,7 @@ pub enum Visibility {
 }
 
 impl Visibility {
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::FileLocal => "file",
             Self::Package => "pkg",

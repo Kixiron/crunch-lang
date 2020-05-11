@@ -208,7 +208,7 @@ pub enum TokenType {
 }
 
 impl TokenType {
-    pub fn to_str(&self) -> &'static str {
+    pub fn to_str(self) -> &'static str {
         match self {
             Self::Error => "Error",
 

@@ -21,11 +21,13 @@ jobs:
           override: true
       - uses: actions-rs/cargo@v1
         with:
-          command: install cargo-hack
+          command: install
+          args: cargo-hack
 
       - uses: actions-rs/cargo@v1
         with:
-          command: hack check --each-feature --no-dev-deps
+          command: hack
+          args: check --each-feature --no-dev-deps
       - uses: actions-rs/cargo@v1
         with:
           command: hack
@@ -44,7 +46,7 @@ jobs:
           profile: minimal
           toolchain: ${{ matrix.rust }}
           override: true
-      - run: rustup component add rustfmt
+          components: rustfmt
       - uses: actions-rs/cargo@v1
         with:
           command: fmt
@@ -81,14 +83,14 @@ jobs:
           profile: minimal
           toolchain: ${{ matrix.rust }}
           override: true
-      - run: rustup component add clippy
+          components: clippy
       - uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: -- -D warnings --locked
+          args: --locked --all -- -D warnings
 
   test:
-    name: Test ${{ matrix.name }}
+    name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.experimental }}
 
@@ -148,7 +150,8 @@ jobs:
           override: true
       - uses: actions-rs/cargo@v1
         with:
-          command: install cargo-hack
+          command: install
+          args: cargo-hack
       - name: Set rustc version
         run: echo "::set-env name=CURRENT_RUSTC_VERSION::$(rustc -V)"
 
@@ -188,7 +191,7 @@ jobs:
           args: test --target ${{ matrix.target }} --workspace --locked --feature-powerset
 
   miri:
-    name: Miri ${{ matrix.name }}
+    name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -232,11 +235,13 @@ jobs:
         with:
           profile: minimal
           toolchain: ${{ matrix.rust }}
+          target: ${{ matrix.target }}
           override: true
-      - run: rustup component add miri
+          components: miri
       - uses: actions-rs/cargo@v1
         with:
-          command: install cargo-hack
+          command: install
+          args: cargo-hack
       - name: Set rustc version
         run: echo "::set-env name=CURRENT_RUSTC_VERSION::$(rustc -V)"
 
@@ -275,15 +280,12 @@ jobs:
   fuzzing:
     name: Check Fuzzing
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        rust: [stable]
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: ${{ matrix.rust }}
+          toolchain: stable
           override: true
       - shell: bash
         run: cd crates/crunch-fuzzing
@@ -295,15 +297,13 @@ jobs:
     name: WASM
     runs-on: ubuntu-latest
     continue-on-error: true
-    strategy:
-      matrix:
-        rust: [stable]
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: wasm32-unknown-unknown
+          toolchain: stable
+          target: wasm32-unknown-unknown
           override: true
       - uses: actions-rs/cargo@v1
         with:

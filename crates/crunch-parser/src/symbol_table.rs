@@ -63,8 +63,8 @@ impl<'stmt, 'expr> GlobalSymbolTable<'stmt, 'expr> {
         }
     }
 
-    pub fn package(&self, pkg: &SmallSpur) -> Option<&Package<'stmt, 'expr>> {
-        self.packages.get(pkg)
+    pub fn package(&self, pkg: SmallSpur) -> Option<&Package<'stmt, 'expr>> {
+        self.packages.get(&pkg)
     }
 }
 
@@ -95,8 +95,8 @@ impl<'stmt, 'expr> Package<'stmt, 'expr> {
         }
     }
 
-    pub fn module<'a>(&'a self, module: &FileLoc) -> Option<MapRef<'a, 'stmt, 'expr>> {
-        self.modules.get(module)
+    pub fn module<'a>(&'a self, module: FileLoc) -> Option<MapRef<'a, 'stmt, 'expr>> {
+        self.modules.get(&module)
     }
 }
 
@@ -167,6 +167,7 @@ impl fmt::Debug for Module<'_, '_> {
 
 #[derive(Debug, Clone, PartialEq)]
 #[repr(u8)]
+#[allow(clippy::large_enum_variant)]
 pub enum Symbol<'stmt, 'expr> {
     Unresolved(Signature, Ast<'stmt, 'expr>),
     Resolving,
