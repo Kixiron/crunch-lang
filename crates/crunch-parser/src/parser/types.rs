@@ -7,6 +7,13 @@ use crate::{
 
 use lasso::SmallSpur;
 
+use alloc::{
+    borrow::ToOwned,
+    boxed::Box,
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
 use core::{convert::TryFrom, fmt};
 
 type PrefixParselet<'src, 'expr, 'stmt> =

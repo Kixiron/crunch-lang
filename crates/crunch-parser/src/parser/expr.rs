@@ -7,7 +7,11 @@ use crate::{
 use lasso::SmallSpur;
 use stadium::Ticket;
 
-use alloc::{format, string::String, vec::Vec};
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
 use core::{convert::TryFrom, fmt, iter::FromIterator};
 
 pub type Expr<'expr> = Ticket<'expr, Expression<'expr>>;

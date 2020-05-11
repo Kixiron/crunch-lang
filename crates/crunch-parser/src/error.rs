@@ -3,7 +3,12 @@ use crate::{
     token::{Token, TokenType},
 };
 
-use alloc::{collections::VecDeque, string::String, vec};
+use alloc::{
+    collections::VecDeque,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 use codespan_reporting::{
     diagnostic::{Diagnostic, Label},
     term::{

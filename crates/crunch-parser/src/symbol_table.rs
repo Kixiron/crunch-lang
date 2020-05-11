@@ -5,16 +5,31 @@ use crate::{
     parser::{Ast, EnumVariant, Expression, Import, Statement, SyntaxTree, Type},
 };
 
+use alloc::{borrow::ToOwned, vec, vec::Vec};
 use cfg_if::cfg_if;
 use core::{convert::TryFrom, fmt, iter::FromIterator};
-use dashmap::DashMap;
 use stadium::Stadium;
 
 cfg_if! {
     if #[cfg(feature = "no-std")] {
         use hashbrown::{HashMap, HashSet};
+        use hashbrown::HashMap as ConMap;
+        type MapRef<'a, 'stmt, 'expr> = &'a Module<'stmt, 'expr>;
+    } else if #[cfg(feature = "concurrent")] {
+        use dashmap::DashMap as ConMap;
+        type MapRef<'a, 'stmt, 'expr> = dashmap::mapref::one::Ref<'a, FileLoc, Module<'stmt, 'expr>>;
+
+        cfg_if! {
+            if #[cfg(feature = "no-std")] {
+                use hashbrown::{HashMap, HashSet};
+            }  else {
+                use std::collections::{HashMap, HashSet};
+            }
+        }
     } else {
         use std::collections::{HashMap, HashSet};
+        use std::collections::HashMap as ConMap;
+        type MapRef<'a, 'stmt, 'expr> = &'a Module<'stmt, 'expr>;
     }
 }
 
@@ -62,28 +77,25 @@ impl<'stmt, 'expr> Default for GlobalSymbolTable<'stmt, 'expr> {
 #[derive(Debug)]
 pub struct Package<'stmt, 'expr> {
     dependencies: Vec<()>,
-    modules: DashMap<FileLoc, Module<'stmt, 'expr>>,
+    modules: ConMap<FileLoc, Module<'stmt, 'expr>>,
 }
 
 impl<'stmt, 'expr> Package<'stmt, 'expr> {
     pub fn new() -> Self {
         Self {
             dependencies: Vec::new(),
-            modules: DashMap::new(),
+            modules: ConMap::new(),
         }
     }
 
     pub fn from(file: FileLoc, module: Module<'stmt, 'expr>) -> Self {
         Self {
             dependencies: Vec::new(),
-            modules: DashMap::from_iter(vec![(file, module)].into_iter()),
+            modules: ConMap::from_iter(vec![(file, module)].into_iter()),
         }
     }
 
-    pub fn module<'a>(
-        &'a self,
-        module: &FileLoc,
-    ) -> Option<dashmap::mapref::one::Ref<'a, FileLoc, Module<'stmt, 'expr>>> {
+    pub fn module<'a>(&'a self, module: &FileLoc) -> Option<MapRef<'a, 'stmt, 'expr>> {
         self.modules.get(module)
     }
 }

@@ -1,98 +1,181 @@
 name: CI
 
-on:
-  pull_request:
-    paths:
-      - "**.rs"
-      - "**.toml"
-      - ".github/workflows/main.yml"
-  push:
-    branches: [master, dev]
-    paths:
-      - "**.rs"
-      - "**.toml"
-      - ".github/workflows/main.yml"
+on: [pull_request, push]
 
 jobs:
-  Checks:
+  check:
+    name: Check
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false
-
+      matrix:
+        rust:
+          - stable
+          - beta
+          - nightly
     steps:
       - uses: actions/checkout@v2
-
-      - uses: hecrj/setup-rust-action@v1
+      - uses: actions-rs/toolchain@v1
         with:
-          rust-version: stable
-          components: rustfmt,clippy
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+      - uses: actions-rs/cargo@v1
+        with:
+          command: install cargo-hack
 
-      - name: Cargo Check
-        run: cargo check --workspace
+      - uses: actions-rs/cargo@v1
+        with:
+          command: hack check --each-feature --no-dev-deps
+      - uses: actions-rs/cargo@v1
+        with:
+          command: hack
+          args: check --feature-powerset --no-dev-deps
 
-      - name: Cargo Clippy
-        run: cargo clippy --workspace --locked -- -D warnings
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [stable]
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+      - run: rustup component add rustfmt
+      - uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check --locked
 
-      - name: Check Formatting
-        run: cargo fmt --all -- --check
+  doc:
+    name: Docs
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [stable]
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+      - uses: actions-rs/cargo@v1
+        with:
+          command: doc
+          args: --all --document-private-items --no-deps --locked
 
-      - name: Check Documentation
-        run: cargo doc --no-deps --document-private-items
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [stable]
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+      - run: rustup component add clippy
+      - uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: -- -D warnings --locked
 
-  Tests:
-    name: ${{ matrix.name }}
+  fuzzing:
+    name: Check Fuzzing
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [stable]
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+      - shell: bash
+        run: cd crates/crunch-fuzzing
+      - uses: actions-rs/cargo@v1
+        with:
+          command: check
+
+  test:
+    name: Test ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
 
     strategy:
       fail-fast: false
       matrix:
-        target: [x86_64-pc-windows-msvc, i686-pc-windows-msvc, x86_64-unknown-linux-gnu, x86_64-apple-darwin] # i686-unknown-linux-gnu
+        rust:
+          - stable
+        os:
+          - windows-latest
+          - ubuntu-latest
+          - macos-latest
+        target:
+          - x86_64-pc-windows-msvc
+          - i686-pc-windows-msvc
+          - x86_64-unknown-linux-gnu
+          - i686-unknown-linux-gnu
+          - x86_64-apple-darwin
+          - wasm32-unknown-unknown
+        experimental: [false]
+        custom-features: [false]
+        features: []
+
         include:
-          # Windows MSVC 32 and 64bit
-          - os: windows-latest
+          # Windows
+          - name: x86_64-pc-windows-msvc
+            os: windows-latest
             target: x86_64-pc-windows-msvc
-            rust_version: stable
-            name: x86_64-pc-windows-msvc
-          - os: windows-latest
+          - name: i686-pc-windows-msvc
+            os: windows-latest
             target: i686-pc-windows-msvc
-            rust_version: stable
-            name: i686-pc-windows-msvc
 
-          # Linux 32 and 64bit
-          - os: ubuntu-latest
+          # Linux
+          - name: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            rust_version: stable
-            name: x86_64-unknown-linux-gnu
-          # - os: ubuntu-latest
-          #   target: i686-unknown-linux-gnu
-          #   rust_version: stable
-          #   name: i686-unknown-linux-gnu
+          - name: i686-unknown-linux-gnu
+            os: ubuntu-latest
+            target: i686-unknown-linux-gnu
 
-          # OSX 64bit
-          - os: macos-latest
+          # OSX
+          - name: x86_64-apple-darwin
+            os: macos-latest
             target: x86_64-apple-darwin
-            rust_version: stable
-            name: x86_64-apple-darwin
+            experimental: true
 
-          # TODO: once WASM is possible, test it
+          # WASM
+          - name: wasm32-unknown-unknown
+            os: ubuntu-latest
+            target: wasm32-unknown-unknown
+            experimental: true
+            custom-features: true
+            features: ["no-std"]
 
     env:
       RUST_BACKTRACE: 1
       CARGO_INCREMENTAL: 0
-      RUSTFLAGS: "-C debuginfo=0"
 
     steps:
       - uses: actions/checkout@v2
-
-      - name: Install Dependences
-        if: matrix.target == 'i686-unknown-linux-gnu'
-        run: sudo apt install clang libc6-dev
-
-      - uses: hecrj/setup-rust-action@v1
+      - uses: actions-rs/toolchain@v1
         with:
-          rust-version: ${{ matrix.rust_version }}${{ matrix.platform.host }}
-          targets: ${{ matrix.target }}
-
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+      - uses: actions-rs/cargo@v1
+        with:
+          command: install cargo-hack
       - name: Set rustc version
         run: echo "::set-env name=CURRENT_RUSTC_VERSION::$(rustc -V)"
 
@@ -100,22 +183,125 @@ jobs:
         uses: actions/cache@v1
         with:
           path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ matrix.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
       - name: Cache Cargo Bin
         uses: actions/cache@v1
         with:
           path: ~/.cargo/bin
-          key: ${{ runner.os }}-cargo-bin-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ matrix.os }}-cargo-bin-${{ hashFiles('**/Cargo.lock') }}
       - name: Cache Cargo Git
         uses: actions/cache@v1
         with:
           path: ~/.cargo/git
-          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ matrix.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
       - name: Cache Cargo Build
         uses: actions/cache@v1
         with:
           path: target
-          key: ${{ runner.os }}-cargo-build-target-${{ env.CURRENT_RUSTC_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ matrix.os }}-cargo-build-target-${{ env.CURRENT_RUSTC_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Run Tests
-        run: cargo test --target ${{ matrix.target }} --workspace --locked
+      - name: Test each feature
+        if: ${{ !matrix.custom-features }}
+        uses: actions-rs/cargo@v1
+        with:
+          command: hack
+          args: test --target ${{ matrix.target }} --workspace --locked --each-feature
+
+      - name: Test all powersets
+        if: ${{ !matrix.custom-features }}
+        uses: actions-rs/cargo@v1
+        with:
+          command: hack
+          args: test --target ${{ matrix.target }} --workspace --locked --feature-powerset
+
+      - name: Test with features
+        if: ${{ matrix.custom-features }}
+        uses: actions-rs/cargo@v1
+        with:
+          command: hack
+          args: test --target ${{ matrix.target }} --workspace --locked --features ${{ join(matrix.features, " ") }}
+
+  miri:
+    name: Miri ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        rust:
+          - nightly
+        os:
+          - windows-latest
+          - ubuntu-latest
+        target:
+          - x86_64-pc-windows-msvc
+          - i686-pc-windows-msvc
+          - x86_64-unknown-linux-gnu
+          - i686-unknown-linux-gnu
+
+        include:
+          # Windows
+          - name: x86_64-pc-windows-msvc
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - name: i686-pc-windows-msvc
+            os: windows-latest
+            target: i686-pc-windows-msvc
+
+          # Linux
+          - name: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - name: i686-unknown-linux-gnu
+            os: ubuntu-latest
+            target: i686-unknown-linux-gnu
+
+    env:
+      RUST_BACKTRACE: 1
+      CARGO_INCREMENTAL: 0
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+      - run: rustup component add miri
+      - uses: actions-rs/cargo@v1
+        with:
+          command: install cargo-hack
+      - name: Set rustc version
+        run: echo "::set-env name=CURRENT_RUSTC_VERSION::$(rustc -V)"
+
+      - name: Cache Cargo Registry
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/registry
+          key: ${{ matrix.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache Cargo Bin
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/bin
+          key: ${{ matrix.os }}-cargo-bin-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache Cargo Git
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/git
+          key: ${{ matrix.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache Cargo Build
+        uses: actions/cache@v1
+        with:
+          path: target
+          key: ${{ matrix.os }}-cargo-build-target-${{ env.CURRENT_RUSTC_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Miri
+        shell: bash
+        run: |
+          for crate in crates/*; do
+              if [ "$crate" != "crates/crunch-fuzzing" ]; then
+                  cd $crate
+                  cargo +nightly miri test
+                  cd ../..
+              fi
+          done

@@ -10,7 +10,7 @@
 
 extern crate alloc;
 
-use alloc::{boxed::Box, vec::Vec};
+use alloc::{borrow::ToOwned, boxed::Box, vec::Vec};
 use core::fmt;
 use crunch_parser::{
     error::{Error, ErrorHandler, Locatable, Location, SemanticError, Warning},

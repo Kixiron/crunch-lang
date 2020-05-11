@@ -12,7 +12,6 @@ name = "crunch-parser"
 default = ["concurrent"]
 no-std = ["hashbrown", "dashmap/no_std"]
 logging = ["log"]
-single-threaded = ["hashbrown"]
 concurrent = ["dashmap", "lasso/multi-threaded"]
 
 # Lexing
@@ -39,7 +38,7 @@ optional = true
 
 # Pretty error reporting
 [dependencies.codespan-reporting]
-version = "0.9.2"
+version = "0.9.3"
 
 # NFKC Normalization
 [dependencies.unicode-normalization]
