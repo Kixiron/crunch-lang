@@ -113,7 +113,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - shell: bash
-        if: ${{ matrix.target == "i686-pc-windows-msvc" }}
+        if: matrix.target == 'i686-pc-windows-msvc'
         run: apt install -y gcc-multilib
       - uses: actions-rs/toolchain@v1
         with:
