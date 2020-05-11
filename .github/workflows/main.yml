@@ -110,7 +110,7 @@ jobs:
           - wasm32-unknown-unknown
         experimental: [false]
         custom-features: [false]
-        features: []
+        features: [""]
 
         include:
           # Windows
