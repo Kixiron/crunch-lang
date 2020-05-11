@@ -70,5 +70,5 @@ git = "https://github.com/Kixiron/lasso.git"
 version = "1.6.0"
 default-features = false
 
-[dev-dependencies.proptest]
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies.proptest]
 version = "0.9.6"

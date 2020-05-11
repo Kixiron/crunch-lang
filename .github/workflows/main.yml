@@ -87,25 +87,6 @@ jobs:
           command: clippy
           args: -- -D warnings --locked
 
-  fuzzing:
-    name: Check Fuzzing
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        rust: [stable]
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: ${{ matrix.rust }}
-          override: true
-      - shell: bash
-        run: cd crates/crunch-fuzzing
-      - uses: actions-rs/cargo@v1
-        with:
-          command: check
-
   test:
     name: Test ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
@@ -153,14 +134,6 @@ jobs:
             os: macos-latest
             target: x86_64-apple-darwin
             experimental: true
-
-          # WASM
-          - name: wasm32-unknown-unknown
-            os: ubuntu-latest
-            target: wasm32-unknown-unknown
-            experimental: true
-            custom-features: true
-            features: ["no-std"]
 
     env:
       RUST_BACKTRACE: 1
@@ -213,13 +186,6 @@ jobs:
         with:
           command: hack
           args: test --target ${{ matrix.target }} --workspace --locked --feature-powerset
-
-      - name: Test with features
-        if: ${{ matrix.custom-features }}
-        uses: actions-rs/cargo@v1
-        with:
-          command: hack
-          args: test --target ${{ matrix.target }} --workspace --locked --features ${{ join(matrix.features, " ") }}
 
   miri:
     name: Miri ${{ matrix.name }}
@@ -305,3 +271,41 @@ jobs:
                   cd ../..
               fi
           done
+
+  fuzzing:
+    name: Check Fuzzing
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [stable]
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+      - shell: bash
+        run: cd crates/crunch-fuzzing
+      - uses: actions-rs/cargo@v1
+        with:
+          command: check
+
+  wasm:
+    name: WASM
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      matrix:
+        rust: [stable]
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: wasm32-unknown-unknown
+          override: true
+      - uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --all --locked --target wasm32-unknown-unknown
