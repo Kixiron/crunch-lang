@@ -96,22 +96,37 @@ pub struct Import {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ExtendBlock<'expr, 'stmt> {
+    target: Locatable<Type>,
+    extender: Option<Locatable<Type>>,
+    nodes: Vec<Ast<'expr, 'stmt>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Alias {
+    alias: Locatable<Type>,
+    actual: Locatable<Type>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Ast<'expr, 'stmt> {
     Function(Locatable<Function<'expr, 'stmt>>),
     Type(Locatable<TypeDecl<'expr>>),
     Enum(Locatable<Enum<'expr>>),
     Trait(Locatable<Trait<'expr, 'stmt>>),
     Import(Locatable<Import>),
+    ExtendBlock(Locatable<ExtendBlock<'expr, 'stmt>>),
+    Alias(Locatable<Alias>),
 }
 
 impl<'expr, 'stmt> Ast<'expr, 'stmt> {
-    pub fn name(&self) -> SmallSpur {
+    pub fn name(&self) -> Option<SmallSpur> {
         match self {
-            Self::Function(func) => func.data().name,
-            Self::Type(ty) => ty.data().name,
-            Self::Enum(e) => e.data().name,
-            Self::Trait(tr) => tr.data().name,
-            Self::Import(import) => *import.data().file.data(),
+            Self::Function(func) => Some(func.data().name),
+            Self::Type(ty) => Some(ty.data().name),
+            Self::Enum(e) => Some(e.data().name),
+            Self::Trait(tr) => Some(tr.data().name),
+            Self::Import(..) | Self::ExtendBlock(..) | Self::Alias(..) => None,
         }
     }
 
@@ -138,6 +153,8 @@ impl<'expr, 'stmt> Ast<'expr, 'stmt> {
             Self::Enum(en) => en.loc(),
             Self::Trait(tr) => tr.loc(),
             Self::Import(import) => import.loc(),
+            Self::ExtendBlock(block) => block.loc(),
+            Self::Alias(alias) => alias.loc(),
         }
     }
 }
@@ -861,7 +878,37 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         _decorators: Vec<Locatable<Decorator<'expr>>>,
         mut _attrs: Vec<Locatable<Attribute>>,
     ) -> ParseResult<Ast<'expr, 'stmt>> {
-        todo!()
+        let start = self.eat(TokenType::Extend, [TokenType::Newline])?.span();
+        let target = self.ascribed_type()?;
+
+        let extender = if self.peek()?.ty() == TokenType::With {
+            self.eat(TokenType::With, [TokenType::Newline])?;
+            Some(self.ascribed_type()?)
+        } else {
+            None
+        };
+
+        self.eat(TokenType::Newline, [])?;
+
+        let mut nodes = Vec::with_capacity(5);
+        while self.peek()?.ty() != TokenType::End {
+            if let Some(node) = self.ast()? {
+                nodes.push(node);
+            }
+        }
+
+        let end = self.eat(TokenType::End, [])?.span();
+
+        let block = ExtendBlock {
+            target,
+            extender,
+            nodes,
+        };
+
+        Ok(Ast::ExtendBlock(Locatable::new(
+            block,
+            Location::concrete(Span::merge(start, end), self.current_file),
+        )))
     }
 
     /// ```ebnf

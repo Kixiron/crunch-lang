@@ -44,6 +44,7 @@ impl<'expr, 'stmt> PrettyPrinter {
             Ast::Enum(enum_decl) => self.print_enum(f, enum_decl.data()),
             Ast::Trait(trait_decl) => self.print_trait(f, trait_decl.data()),
             Ast::Import(import) => self.print_import(f, import.data()),
+            _ => todo!(),
         }
     }
 

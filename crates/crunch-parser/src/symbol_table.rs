@@ -127,14 +127,14 @@ impl<'stmt, 'expr> Module<'stmt, 'expr> {
         let mut symbols = HashMap::with_capacity(ast.len());
 
         for node in ast {
-            let (name, location) = (node.name(), node.location());
+            let (name, location) = (node.name().unwrap(), node.location());
 
             match Symbol::try_from(node) {
                 Ok(sym) => {
                     if let Some(Symbol::Unresolved(_sig, node)) = symbols.insert(name, sym) {
                         error_handler.push_err(Locatable::new(
                             Error::Semantic(SemanticError::Redefinition {
-                                name: interner.resolve(&node.name()).to_owned(),
+                                name: interner.resolve(&node.name().unwrap()).to_owned(),
                                 first: node.location(),
                                 second: location,
                             }),
@@ -233,6 +233,8 @@ impl<'stmt, 'expr> TryFrom<Ast<'stmt, 'expr>> for Symbol<'stmt, 'expr> {
                     unreachable!();
                 }
             }
+
+            _ => todo!(),
         };
 
         Ok(Self::Unresolved(symbol, node))

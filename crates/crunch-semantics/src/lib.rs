@@ -94,6 +94,8 @@ impl SemanticAnalyzer {
                     interner,
                     error_handler,
                 ),
+
+                _ => todo!(),
             }
         }
     }
