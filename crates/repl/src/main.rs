@@ -97,8 +97,8 @@ fn main() -> rustyline::Result<()> {
                             );
                             crunch_semantics::SemanticAnalyzer::default().analyze_all(
                                 &*symbols
-                                    .package(&repl)
-                                    .map(|p| p.module(&file))
+                                    .package(repl)
+                                    .map(|p| p.module(file))
                                     .flatten()
                                     .unwrap(),
                                 &symbols,
@@ -112,8 +112,8 @@ fn main() -> rustyline::Result<()> {
                                 println!(
                                     "{:#?}",
                                     symbols
-                                        .package(&repl)
-                                        .map(|p| p.module(&file))
+                                        .package(repl)
+                                        .map(|p| p.module(file))
                                         .flatten()
                                         .unwrap()
                                         .symbols
@@ -149,8 +149,8 @@ fn main() -> rustyline::Result<()> {
                             );
                             crunch_semantics::SemanticAnalyzer::default().analyze_all(
                                 &*symbols
-                                    .package(&repl)
-                                    .map(|p| p.module(&file))
+                                    .package(repl)
+                                    .map(|p| p.module(file))
                                     .flatten()
                                     .unwrap(),
                                 &symbols,
@@ -190,8 +190,8 @@ fn main() -> rustyline::Result<()> {
                             );
                             crunch_semantics::SemanticAnalyzer::default().analyze_all(
                                 &*symbols
-                                    .package(&repl)
-                                    .map(|p| p.module(&file))
+                                    .package(repl)
+                                    .map(|p| p.module(file))
                                     .flatten()
                                     .unwrap(),
                                 &symbols,
