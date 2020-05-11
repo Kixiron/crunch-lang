@@ -563,7 +563,7 @@ fn non_ascii_idents() {
     ast_eq!("fn ȨʩӺޗઈဪ⏫㡘㢡䔹✅✨❗❓() -> infer\n    empty\nend\n");
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(any(target_arch = "wasm32", miri)))]
 mod proptests {
     use super::*;
     use core::ops::Deref;

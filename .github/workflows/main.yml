@@ -75,17 +75,14 @@ jobs:
           args: --locked --all -- -D warnings
 
   test:
-    name: ${{ matrix.name }}
+    name: Test ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.experimental }}
 
     strategy:
       fail-fast: false
       matrix:
-        rust: [stable]
         experimental: [false]
-        custom-features: [false]
-
         include:
           # Windows
           - name: x86_64-pc-windows-msvc
@@ -118,7 +115,7 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: ${{ matrix.rust }}
+          toolchain: stable
           target: ${{ matrix.target }}
           override: true
       - uses: actions-rs/cargo@v1
@@ -164,21 +161,12 @@ jobs:
           args: test --target ${{ matrix.target }} --workspace --locked --feature-powerset
 
   miri:
-    name: ${{ matrix.name }}
+    name: Miri ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
 
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - windows-latest
-          - ubuntu-latest
-        target:
-          - x86_64-pc-windows-msvc
-          - i686-pc-windows-msvc
-          - x86_64-unknown-linux-gnu
-          - i686-unknown-linux-gnu
-
         include:
           # Windows
           - name: x86_64-pc-windows-msvc

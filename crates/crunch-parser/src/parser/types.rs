@@ -851,7 +851,7 @@ mod tests {
         }
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(any(target_arch = "wasm32", miri)))]
     mod proptests {
         use super::*;
         use proptest::prelude::*;
