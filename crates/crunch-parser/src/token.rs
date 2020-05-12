@@ -62,6 +62,8 @@ pub enum TokenType {
     Extend,
     #[token("with")]
     With,
+    #[token("alias")]
+    Alias,
 
     #[token("in")]
     In,
@@ -256,6 +258,7 @@ impl TokenType {
             Self::Const => "comptime",
             Self::Extend => "extend",
             Self::With => "with",
+            Self::Alias => "alias",
 
             Self::Equal => "=",
             Self::AddAssign => "+=",

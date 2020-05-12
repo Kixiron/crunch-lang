@@ -103,9 +103,11 @@ pub struct ExtendBlock<'expr, 'stmt> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Alias {
-    alias: Locatable<Type>,
-    actual: Locatable<Type>,
+pub struct Alias<'expr> {
+    pub decorators: Vec<Locatable<Decorator<'expr>>>,
+    pub attrs: Vec<Locatable<Attribute>>,
+    pub alias: Locatable<Type>,
+    pub actual: Locatable<Type>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -116,7 +118,7 @@ pub enum Ast<'expr, 'stmt> {
     Trait(Locatable<Trait<'expr, 'stmt>>),
     Import(Locatable<Import>),
     ExtendBlock(Locatable<ExtendBlock<'expr, 'stmt>>),
-    Alias(Locatable<Alias>),
+    Alias(Locatable<Alias<'expr>>),
 }
 
 impl<'expr, 'stmt> Ast<'expr, 'stmt> {
@@ -330,6 +332,11 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
                     Ok(Some(import))
                 }
+            }
+
+            TokenType::Alias => {
+                let alias = self.alias(mem::take(decorators), mem::take(attributes))?;
+                Ok(Some(alias))
             }
 
             TokenType::Newline | TokenType::Space => {
@@ -878,6 +885,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         _decorators: Vec<Locatable<Decorator<'expr>>>,
         mut _attrs: Vec<Locatable<Attribute>>,
     ) -> ParseResult<Ast<'expr, 'stmt>> {
+        let _frame = self.add_stack_frame()?;
+
         let start = self.eat(TokenType::Extend, [TokenType::Newline])?.span();
         let target = self.ascribed_type()?;
 
@@ -891,10 +900,19 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         self.eat(TokenType::Newline, [])?;
 
         let mut nodes = Vec::with_capacity(5);
+        let (mut decorators, mut attributes) = (Vec::with_capacity(5), Vec::with_capacity(5));
+
         while self.peek()?.ty() != TokenType::End {
-            if let Some(node) = self.ast()? {
+            if let Some(node) = self.ast_impl(&mut decorators, &mut attributes)? {
                 nodes.push(node);
             }
+        }
+
+        if !decorators.is_empty() {
+            todo!("error")
+        }
+        if !attributes.is_empty() {
+            todo!("error")
         }
 
         let end = self.eat(TokenType::End, [])?.span();
@@ -907,6 +925,36 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
         Ok(Ast::ExtendBlock(Locatable::new(
             block,
+            Location::concrete(Span::merge(start, end), self.current_file),
+        )))
+    }
+
+    /// ```ebnf
+    /// Decorator* Attribute* 'alias' Type = Type '\n'
+    /// ```
+    fn alias(
+        &mut self,
+        decorators: Vec<Locatable<Decorator<'expr>>>,
+        attrs: Vec<Locatable<Attribute>>,
+    ) -> ParseResult<Ast<'expr, 'stmt>> {
+        let _frame = self.add_stack_frame()?;
+
+        let start = self.eat(TokenType::Alias, [TokenType::Newline])?.span();
+        let alias = self.ascribed_type()?;
+        self.eat(TokenType::Equal, [TokenType::Newline])?;
+
+        let actual = self.ascribed_type()?;
+        let end = self.eat(TokenType::Newline, [])?.span();
+
+        let alias = Alias {
+            decorators,
+            attrs,
+            alias,
+            actual,
+        };
+
+        Ok(Ast::Alias(Locatable::new(
+            alias,
             Location::concrete(Span::merge(start, end), self.current_file),
         )))
     }

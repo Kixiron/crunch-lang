@@ -42,6 +42,7 @@ pub enum Expression<'expr> {
         index: Expr<'expr>,
     },
     Array(Vec<Expr<'expr>>),
+    Tuple(Vec<Expr<'expr>>),
     Assignment(Expr<'expr>, AssignmentType, Expr<'expr>),
     Range(Expr<'expr>, Expr<'expr>),
 }
@@ -669,12 +670,12 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         let _frame = self.add_stack_frame()?;
         let mut token = self.next()?;
 
-        let prefix = Self::expr_prefix(token.ty());
+        let prefix = Self::expr_prefix(token);
         if let Some(prefix) = prefix {
             let mut left = prefix(self, token)?;
 
             if let Ok(peek) = self.peek() {
-                let postfix = Self::expr_postfix(peek.ty());
+                let postfix = Self::expr_postfix(peek);
                 if let Some(postfix) = postfix {
                     token = self.next()?;
                     left = postfix(self, token, left)?;
@@ -684,7 +685,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             while precedence < self.current_precedence() {
                 token = self.next()?;
 
-                let infix = Self::expr_infix(token.ty());
+                let infix = Self::expr_infix(token);
                 if let Some(infix) = infix {
                     left = infix(self, token, left)?;
                 } else {
@@ -704,8 +705,41 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         }
     }
 
-    fn expr_prefix(ty: TokenType) -> Option<PrefixParselet<'src, 'expr, 'stmt>> {
-        let prefix: PrefixParselet = match ty {
+    fn expr_prefix(token: Token) -> Option<PrefixParselet<'src, 'expr, 'stmt>> {
+        let prefix: PrefixParselet = match token.ty() {
+            // Array and tuple literals
+            TokenType::Ident if token.source() == "arr" || token.source() == "tup" => {
+                |parser, token| {
+                    let _frame = parser.add_stack_frame()?;
+
+                    parser.eat(TokenType::LeftBrace, [TokenType::Newline])?;
+
+                    let mut elements = Vec::with_capacity(5);
+                    while parser.peek()?.ty() != TokenType::RightBrace {
+                        let elm = parser.expr()?;
+                        elements.push(elm);
+
+                        if parser.peek()?.ty() == TokenType::Comma {
+                            parser.eat(TokenType::Comma, [TokenType::Newline])?;
+                        } else {
+                            break;
+                        }
+                    }
+
+                    elements.shrink_to_fit();
+                    parser.eat(TokenType::RightBrace, [TokenType::Newline])?;
+
+                    let expr = if token.source() == "arr" {
+                        Expression::Array(elements)
+                    } else {
+                        Expression::Tuple(elements)
+                    };
+                    let expr = parser.expr_arena.store(expr);
+
+                    Ok(expr)
+                }
+            }
+
             // Variables
             TokenType::Ident => |parser, token| {
                 use alloc::borrow::Cow;
@@ -765,38 +799,14 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 Ok(expr)
             },
 
-            // Array literals
-            TokenType::LeftBrace => |parser, _| {
-                let _frame = parser.add_stack_frame()?;
-
-                let mut elements = Vec::with_capacity(5);
-
-                while parser.peek()?.ty() != TokenType::RightBrace {
-                    let elm = parser.expr()?;
-                    elements.push(elm);
-
-                    if parser.peek()?.ty() == TokenType::Comma {
-                        parser.eat(TokenType::Comma, [TokenType::Newline])?;
-                    } else {
-                        break;
-                    }
-                }
-
-                elements.shrink_to_fit();
-                parser.eat(TokenType::RightBrace, [TokenType::Newline])?;
-                let expr = parser.expr_arena.store(Expression::Array(elements));
-
-                Ok(expr)
-            },
-
             _ => return None,
         };
 
         Some(prefix)
     }
 
-    fn expr_postfix(ty: TokenType) -> Option<PostfixParselet<'src, 'expr, 'stmt>> {
-        let postfix: PostfixParselet = match ty {
+    fn expr_postfix(token: Token) -> Option<PostfixParselet<'src, 'expr, 'stmt>> {
+        let postfix: PostfixParselet = match token.ty() {
             // Function calls
             TokenType::LeftParen => |parser, _left_paren, caller| {
                 let _frame = parser.add_stack_frame()?;
@@ -888,8 +898,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         Some(postfix)
     }
 
-    fn expr_infix(ty: TokenType) -> Option<InfixParselet<'src, 'expr, 'stmt>> {
-        let infix: InfixParselet = match ty {
+    fn expr_infix(token: Token) -> Option<InfixParselet<'src, 'expr, 'stmt>> {
+        let infix: InfixParselet = match token.ty() {
             // Binary Operations
             TokenType::Plus
             | TokenType::Minus

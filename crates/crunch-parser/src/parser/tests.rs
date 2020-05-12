@@ -354,6 +354,20 @@ fn functions_ast() {
     );
 }
 
+#[test]
+fn extend_block() {
+    println!(
+        "{:#?}",
+        format_ast(
+            "extend Struct
+                fn test()
+                    println()
+                end
+             end",
+        )
+    );
+}
+
 // TODO: Test generic functions
 
 #[test]

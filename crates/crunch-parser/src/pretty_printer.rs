@@ -449,11 +449,23 @@ impl<'expr, 'stmt> PrettyPrinter {
             }
 
             Expression::Array(arr) => {
-                write!(f, "[")?;
+                write!(f, "arr[")?;
                 for (i, elm) in arr.iter().enumerate() {
                     self.print_expr(f, elm)?;
 
                     if i != arr.len() - 1 {
+                        write!(f, ", ")?;
+                    }
+                }
+                write!(f, "]")
+            }
+
+            Expression::Tuple(tup) => {
+                write!(f, "tup[")?;
+                for (i, elm) in tup.iter().enumerate() {
+                    self.print_expr(f, elm)?;
+
+                    if i != tup.len() - 1 {
                         write!(f, ", ")?;
                     }
                 }
@@ -758,8 +770,13 @@ impl<'expr, 'stmt> PrettyPrinter {
                 writeln!(f, "end")
             }
 
-            Statement::VarDeclaration(name, ty, expr) => {
-                write!(f, "let {}: ", self.interner.resolve(name))?;
+            Statement::VarDeclaration(name, ty, expr, constant) => {
+                write!(
+                    f,
+                    "{} {}: ",
+                    if *constant { "const" } else { "let" },
+                    self.interner.resolve(name)
+                )?;
                 self.print_ty(f, ty.data())?;
                 write!(f, " := ")?;
                 self.print_expr(f, expr)?;

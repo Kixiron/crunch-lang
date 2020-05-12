@@ -20,7 +20,7 @@ pub enum Statement<'expr, 'stmt> {
         arm: Option<Stmt<'stmt, 'expr>>,
     },
     Expression(Expr<'expr>),
-    VarDeclaration(SmallSpur, Locatable<Type>, Expr<'expr>),
+    VarDeclaration(SmallSpur, Locatable<Type>, Expr<'expr>, bool),
     Return(Option<Expr<'expr>>),
     Break(Option<Expr<'expr>>),
     Continue,
@@ -64,8 +64,9 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 Ok(None)
             }
 
-            TokenType::Let => {
-                self.eat(TokenType::Let, [TokenType::Newline])?;
+            TokenType::Let | TokenType::Const => {
+                let start_token =
+                    self.eat_of([TokenType::Let, TokenType::Const], [TokenType::Newline])?;
 
                 let (var, span) = {
                     let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
@@ -90,9 +91,12 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 let expr = self.expr()?;
                 self.eat(TokenType::Newline, [])?;
 
-                let stmt = self
-                    .stmt_arena
-                    .store(Statement::VarDeclaration(var, ty, expr));
+                let stmt = self.stmt_arena.store(Statement::VarDeclaration(
+                    var,
+                    ty,
+                    expr,
+                    start_token.ty() == TokenType::Const,
+                ));
 
                 Ok(Some(stmt))
             }

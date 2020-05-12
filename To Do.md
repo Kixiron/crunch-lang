@@ -1,6 +1,6 @@
 # To Do
 
-- [ ] `distinct alias = Type`
+- [ ] Struct instantiation
 - [ ] Compiler Pipeline
   - [x] Read file
     - [ ] Make sure files aren't re-processed
