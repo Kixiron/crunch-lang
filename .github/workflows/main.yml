@@ -126,7 +126,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: install
-          args: cargo-hack
+          args: cargo-hack cargo-sweep
       - name: Set rustc version
         run: echo "::set-env name=CURRENT_RUSTC_VERSION::$(rustc -V)"
 
@@ -150,6 +150,11 @@ jobs:
         with:
           path: target
           key: ${{ matrix.os }}-cargo-build-target-${{ env.CURRENT_RUSTC_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
+      - name: Register Artifacts
+        uses: actions-rs/cargo@v1
+        with:
+          command: sweep
+          args: -s
 
       - name: Test each feature
         if: ${{ !matrix.custom-features }}
@@ -164,6 +169,12 @@ jobs:
         with:
           command: hack
           args: test --target ${{ matrix.target }} --workspace --locked --feature-powerset
+
+      - name: Clean unused artifacts
+        uses: actions-rs/cargo@v1
+        with:
+          command: sweep
+          args: -f
 
   miri:
     name: Miri ${{ matrix.name }}
@@ -205,7 +216,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: install
-          args: cargo-hack
+          args: cargo-hack cargo-sweep
       - name: Set rustc version
         run: echo "::set-env name=CURRENT_RUSTC_VERSION::$(rustc -V)"
 
@@ -229,6 +240,11 @@ jobs:
         with:
           path: target
           key: ${{ matrix.os }}-cargo-build-target-${{ env.CURRENT_RUSTC_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
+      - name: Register Artifacts
+        uses: actions-rs/cargo@v1
+        with:
+          command: sweep
+          args: -s
 
       - name: Miri
         shell: bash
@@ -240,6 +256,12 @@ jobs:
                   cd ../..
               fi
           done
+
+      - name: Clean unused artifacts
+        uses: actions-rs/cargo@v1
+        with:
+          command: sweep
+          args: -f
 
   fuzzing:
     name: Check Fuzzing

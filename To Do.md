@@ -1,5 +1,6 @@
 # To Do
 
+- [ ] `distinct alias = Type`
 - [ ] Compiler Pipeline
   - [x] Read file
     - [ ] Make sure files aren't re-processed
