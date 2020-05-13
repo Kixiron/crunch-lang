@@ -25,4 +25,3 @@ pub use files::{FileId, Files};
 pub use interner::{Interner, SmallSpur};
 pub use parser::{CurrentFile, Parser, SyntaxTree};
 pub use pretty_printer::PrettyPrinter;
-pub use symbol_table::GlobalSymbolTable;

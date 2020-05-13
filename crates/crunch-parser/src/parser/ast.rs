@@ -4,14 +4,14 @@ use crate::{
     token::{Token, TokenType},
 };
 
+use crunch_proc::recursion_guard;
 use lasso::SmallSpur;
 
 use alloc::{format, string::ToString, vec::Vec};
 use core::{convert::TryFrom, mem};
 
-// TODO: Rename `comptime` const
 // TODO: Const blocks
-// TODO: Remove types-by-value, add back generics to funcs
+// TODO: Add back generics to funcs
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function<'expr, 'stmt> {
@@ -194,6 +194,7 @@ pub enum Attribute {
 }
 
 impl Attribute {
+    #[inline]
     pub fn is_visibility(self) -> bool {
         if let Self::Visibility(_) = self {
             true
@@ -202,6 +203,7 @@ impl Attribute {
         }
     }
 
+    #[inline]
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Visibility(vis) => vis.as_str(),
@@ -250,9 +252,8 @@ impl Visibility {
 }
 
 impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
+    #[recursion_guard()]
     pub(super) fn ast(&mut self) -> ParseResult<Option<Ast<'expr, 'stmt>>> {
-        let _frame = self.add_stack_frame()?;
-
         let (mut decorators, mut attributes) = (Vec::with_capacity(5), Vec::with_capacity(5));
 
         while self.peek().is_ok() {
@@ -265,13 +266,12 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     }
 
     // Returns None when the function should be re-called, usually because an attribute or decorator was parsed
+    #[recursion_guard]
     fn ast_impl(
         &mut self,
         decorators: &mut Vec<Locatable<Decorator<'expr>>>,
         attributes: &mut Vec<Locatable<Attribute>>,
     ) -> ParseResult<Option<Ast<'expr, 'stmt>>> {
-        let _frame = self.add_stack_frame()?;
-
         let peek = self.peek()?;
         match peek.ty() {
             TokenType::AtSign => {
@@ -351,12 +351,11 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         }
     }
 
+    #[recursion_guard]
     fn import(
         &mut self,
         decorators: Vec<Locatable<Decorator<'expr>>>,
     ) -> ParseResult<Ast<'expr, 'stmt>> {
-        let _frame = self.add_stack_frame()?;
-
         let start_span = self.eat(TokenType::Import, [TokenType::Newline])?.span();
 
         let file = self.eat(TokenType::String, [TokenType::Newline])?;
@@ -503,13 +502,12 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         }
     }
 
+    #[recursion_guard]
     fn trait_decl(
         &mut self,
         decorators: Vec<Locatable<Decorator<'expr>>>,
         mut attrs: Vec<Locatable<Attribute>>,
     ) -> ParseResult<Ast<'expr, 'stmt>> {
-        let _frame = self.add_stack_frame()?;
-
         let start_span = self.eat(TokenType::Trait, [TokenType::Newline])?.span();
         let name = {
             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
@@ -596,13 +594,12 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         )))
     }
 
+    #[recursion_guard]
     fn enum_decl(
         &mut self,
         decorators: Vec<Locatable<Decorator<'expr>>>,
         mut attrs: Vec<Locatable<Attribute>>,
     ) -> ParseResult<Ast<'expr, 'stmt>> {
-        let _frame = self.add_stack_frame()?;
-
         let start_span = self.eat(TokenType::Enum, [TokenType::Newline])?.span();
         let name = {
             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
@@ -701,9 +698,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         )))
     }
 
+    #[recursion_guard]
     fn decorator(&mut self, decorators: &mut Vec<Locatable<Decorator<'expr>>>) -> ParseResult<()> {
-        let _frame = self.add_stack_frame()?;
-
         let start = self.eat(TokenType::AtSign, [TokenType::Newline])?.span();
         let (name, name_span) = {
             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
@@ -758,13 +754,12 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     ///         (Decorator* Attribute* Ident (':' Type)? '\n')+ | 'empty'
     ///     'end'
     /// ```
+    #[recursion_guard]
     fn type_decl(
         &mut self,
         decorators: Vec<Locatable<Decorator<'expr>>>,
         mut attrs: Vec<Locatable<Attribute>>,
     ) -> ParseResult<Ast<'expr, 'stmt>> {
-        let _frame = self.add_stack_frame()?;
-
         let start_span = self.eat(TokenType::Type, [TokenType::Newline])?.span();
         let name = {
             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
@@ -880,13 +875,12 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     ///         TopNode+ | 'empty'
     ///     'end'
     /// ```
+    #[recursion_guard]
     fn extend_block(
         &mut self,
         _decorators: Vec<Locatable<Decorator<'expr>>>,
         mut _attrs: Vec<Locatable<Attribute>>,
     ) -> ParseResult<Ast<'expr, 'stmt>> {
-        let _frame = self.add_stack_frame()?;
-
         let start = self.eat(TokenType::Extend, [TokenType::Newline])?.span();
         let target = self.ascribed_type()?;
 
@@ -932,13 +926,12 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     /// ```ebnf
     /// Decorator* Attribute* 'alias' Type = Type '\n'
     /// ```
+    #[recursion_guard]
     fn alias(
         &mut self,
         decorators: Vec<Locatable<Decorator<'expr>>>,
         attrs: Vec<Locatable<Attribute>>,
     ) -> ParseResult<Ast<'expr, 'stmt>> {
-        let _frame = self.add_stack_frame()?;
-
         let start = self.eat(TokenType::Alias, [TokenType::Newline])?.span();
         let alias = self.ascribed_type()?;
         self.eat(TokenType::Equal, [TokenType::Newline])?;
@@ -965,13 +958,12 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     ///         Statement* | 'empty'
     ///     'end'
     /// ```
+    #[recursion_guard]
     fn function(
         &mut self,
         decorators: Vec<Locatable<Decorator<'expr>>>,
         mut attrs: Vec<Locatable<Attribute>>,
     ) -> ParseResult<Ast<'expr, 'stmt>> {
-        let _frame = self.add_stack_frame()?;
-
         let start_span = self.eat(TokenType::Function, [TokenType::Newline])?.span();
         let name = {
             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
@@ -1035,8 +1027,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     /// Args ::= Argument | Argument ',' Args
     /// Argument ::= Ident ( ':' Type )?
     /// ```
+    #[recursion_guard]
     fn function_args(&mut self) -> ParseResult<Vec<Locatable<FuncArg>>> {
-        let _frame = self.add_stack_frame()?;
         self.eat(TokenType::LeftParen, [TokenType::Newline])?;
 
         let mut args = Vec::with_capacity(7);
@@ -1113,9 +1105,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     /// Generics ::= '[' GenericArgs? ']'
     /// GenericArgs ::= Type | Type ',' GenericArgs
     /// ```
+    #[recursion_guard]
     fn generics(&mut self) -> ParseResult<Vec<Locatable<Type>>> {
-        let _frame = self.add_stack_frame()?;
-
         if self.peek()?.ty() == TokenType::LeftBrace {
             self.eat(TokenType::LeftBrace, [TokenType::Newline])?;
 

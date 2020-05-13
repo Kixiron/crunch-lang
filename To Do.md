@@ -1,6 +1,17 @@
 # To Do
 
+- [ ] Macro for inserting stack frame counters
+- [ ] Allocator blocks
+  - [ ] Pointers only valid within
+- [ ] File checksums a la https://apenwarr.ca/log/20181113
 - [ ] Struct instantiation
+- [ ] Reflection/Metaprogramming
+- [ ] Pointer syntax
+- [ ] Blocks
+  - [ ] Async
+  - [ ] Const
+  - [ ] Scoped
+  - [ ] Closure
 - [ ] Compiler Pipeline
   - [x] Read file
     - [ ] Make sure files aren't re-processed
@@ -28,12 +39,6 @@
   - [ ] Generate LLIR
   - [ ] Resolve Stack and Register operations
   - [ ] Optimization
-  - [ ] Generate bytecode
-  - [ ] Final bytecode-level Optimization
-  - [ ] Emit or Execute
-- [ ] Make all parsers state machines
-  - [ ] Prevents stack overflows
-- [ ] Make all translators/parsers/generators state machines
 - [ ] Fully qualified HIR
   - [ ] Desugared
   - [ ] Type Methods are turned into stand-alone functions

@@ -4,6 +4,7 @@ use crate::{
     token::{Token, TokenType},
 };
 
+use crunch_proc::recursion_guard;
 use lasso::SmallSpur;
 use stadium::Ticket;
 
@@ -334,7 +335,7 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for Literal {
     fn try_from((token, file): (&Token<'src>, CurrentFile)) -> Result<Self, Self::Error> {
         let mut chars: Vec<char> = token.source().chars().filter(|c| *c != '_').collect();
 
-        Ok(match token.ty() {
+        match token.ty() {
             TokenType::Float => {
                 if token.source() == "inf" {
                     return Ok(Literal::Float(Float::F64(core::f64::INFINITY)));
@@ -410,7 +411,7 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for Literal {
                     float = -float;
                 }
 
-                Literal::Float(Float::F64(float))
+                Ok(Literal::Float(Float::F64(float)))
             }
 
             TokenType::Rune => {
@@ -442,12 +443,12 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for Literal {
                 };
 
                 if byte_rune {
-                    Literal::Integer(Integer {
+                    Ok(Literal::Integer(Integer {
                         sign: Sign::Positive,
                         bits: rune.as_u32() as u128,
-                    })
+                    }))
                 } else {
-                    Literal::Rune(rune)
+                    Ok(Literal::Rune(rune))
                 }
             }
 
@@ -500,7 +501,7 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for Literal {
                 };
 
                 if byte_str {
-                    Literal::Array(
+                    Ok(Literal::Array(
                         string
                             .to_bytes()
                             .into_iter()
@@ -511,9 +512,9 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for Literal {
                                 })
                             })
                             .collect(),
-                    )
+                    ))
                 } else {
-                    Literal::String(string)
+                    Ok(Literal::String(string))
                 }
             }
 
@@ -557,23 +558,23 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for Literal {
                     })?
                 };
 
-                Literal::Integer(Integer { sign, bits: int })
+                Ok(Literal::Integer(Integer { sign, bits: int }))
             }
 
-            TokenType::Bool => Self::Bool(token.source().parse::<bool>().map_err(|_| {
-                Locatable::new(
-                    Error::Syntax(SyntaxError::InvalidLiteral("bool")),
-                    Location::concrete(token, file),
-                )
-            })?),
+            TokenType::Bool => Ok(Self::Bool(token.source().parse::<bool>().map_err(
+                |_| {
+                    Locatable::new(
+                        Error::Syntax(SyntaxError::InvalidLiteral("bool")),
+                        Location::concrete(token, file),
+                    )
+                },
+            )?)),
 
-            ty => {
-                return Err(Locatable::new(
-                    Error::Syntax(SyntaxError::Generic(format!("Invalid Literal: '{}'", ty))),
-                    Location::concrete(token, file),
-                ))
-            }
-        })
+            ty => Err(Locatable::new(
+                Error::Syntax(SyntaxError::Generic(format!("Invalid Literal: '{}'", ty))),
+                Location::concrete(token, file),
+            )),
+        }
     }
 }
 
@@ -660,14 +661,13 @@ type InfixParselet<'src, 'expr, 'stmt> =
 
 /// Expression Parsing
 impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
+    #[recursion_guard]
     pub fn expr(&mut self) -> ParseResult<Expr<'expr>> {
-        let _frame = self.add_stack_frame()?;
-
         self.parse_expression(0)
     }
 
+    #[recursion_guard]
     fn parse_expression(&mut self, precedence: usize) -> ParseResult<Expr<'expr>> {
-        let _frame = self.add_stack_frame()?;
         let mut token = self.next()?;
 
         let prefix = Self::expr_prefix(token);
@@ -966,13 +966,12 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         Some(infix)
     }
 
+    #[recursion_guard]
     fn index_array(
         &mut self,
         _left_bracket: Token<'src>,
         array: Expr<'expr>,
     ) -> ParseResult<Expr<'expr>> {
-        let _frame = self.add_stack_frame()?;
-
         let index = self.expr()?;
         self.eat(TokenType::RightBrace, [TokenType::Newline])?;
         let expr = self

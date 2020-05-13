@@ -21,8 +21,8 @@ mod types;
 mod utils;
 
 pub use ast::{
-    Ast, Attribute, Decorator, Enum, EnumVariant, FuncArg, Function, Import, ImportDest,
-    ImportExposure, Trait, TypeDecl, TypeMember, Visibility,
+    Alias, Ast, Attribute, Decorator, Enum, EnumVariant, ExtendBlock, FuncArg, Function, Import,
+    ImportDest, ImportExposure, Trait, TypeDecl, TypeMember, Visibility,
 };
 pub use expr::{
     AssignmentType, BinaryOperand, ComparisonOperand, Expr, Expression, Float, Integer, Literal,
@@ -162,7 +162,6 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     #[inline(always)]
     fn next(&mut self) -> ParseResult<Token<'src>> {
-        let _frame = self.add_stack_frame()?;
         let mut next = self.token_stream.next_token();
         mem::swap(&mut next, &mut self.peek);
         self.next = next;
@@ -176,7 +175,6 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
     #[inline(always)]
     fn peek(&self) -> ParseResult<Token<'src>> {
-        let _frame = self.add_stack_frame()?;
         self.peek
             .ok_or_else(|| Locatable::new(Error::EndOfFile, self.current_file.eof()))
     }
@@ -187,8 +185,6 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     where
         T: AsRef<[TokenType]>,
     {
-        let _frame = self.add_stack_frame()?;
-
         let ignoring = ignoring.as_ref();
         let mut token = self.next()?;
 
@@ -222,8 +218,6 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         T: AsRef<[TokenType]>,
         E: AsRef<[TokenType]>,
     {
-        let _frame = self.add_stack_frame()?;
-
         let expected = expected.as_ref();
         let ignoring = ignoring.as_ref();
         let mut token = self.next()?;

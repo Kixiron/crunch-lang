@@ -4,6 +4,7 @@ use crate::{
     token::TokenType,
 };
 
+use crunch_proc::recursion_guard;
 use lasso::SmallSpur;
 use stadium::Ticket;
 
@@ -50,9 +51,8 @@ pub enum Statement<'expr, 'stmt> {
 
 /// Statement parsing
 impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
+    #[recursion_guard]
     pub fn stmt(&mut self) -> ParseResult<Option<Stmt<'stmt, 'expr>>> {
-        let _frame = self.add_stack_frame()?;
-
         match self.peek()?.ty() {
             TokenType::If => {
                 let stmt = self.if_stmt()?;
@@ -205,13 +205,12 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         }
     }
 
+    #[recursion_guard]
     fn statements(
         &mut self,
         breaks: &[TokenType],
         capacity: usize,
     ) -> ParseResult<Vec<Stmt<'stmt, 'expr>>> {
-        let _frame = self.add_stack_frame()?;
-
         let mut statements = Vec::with_capacity(capacity);
 
         let mut peek = self.peek()?.ty();
@@ -228,9 +227,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         Ok(statements)
     }
 
+    #[recursion_guard]
     fn if_stmt(&mut self) -> ParseResult<Stmt<'stmt, 'expr>> {
-        let _frame = self.add_stack_frame()?;
-
         self.eat(TokenType::If, [TokenType::Newline])?;
         let condition = self.expr()?;
         self.eat(TokenType::Newline, [])?;
@@ -275,9 +273,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         Ok(stmt)
     }
 
+    #[recursion_guard]
     fn match_stmt(&mut self) -> ParseResult<Stmt<'stmt, 'expr>> {
-        let _frame = self.add_stack_frame()?;
-
         self.eat(TokenType::Match, [TokenType::Newline])?;
         let var = self.expr()?;
         self.eat(TokenType::Newline, [])?;
@@ -316,9 +313,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         Ok(stmt)
     }
 
+    #[recursion_guard]
     fn while_stmt(&mut self) -> ParseResult<Stmt<'stmt, 'expr>> {
-        let _frame = self.add_stack_frame()?;
-
         self.eat(TokenType::While, [TokenType::Newline])?;
         let condition = self.expr()?;
         self.eat(TokenType::Newline, [])?;
@@ -338,9 +334,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         Ok(stmt)
     }
 
+    #[recursion_guard]
     fn loop_stmt(&mut self) -> ParseResult<Stmt<'stmt, 'expr>> {
-        let _frame = self.add_stack_frame()?;
-
         self.eat(TokenType::Loop, [TokenType::Newline])?;
         self.eat(TokenType::Newline, [])?;
 
@@ -355,9 +350,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         Ok(stmt)
     }
 
+    #[recursion_guard]
     fn for_stmt(&mut self) -> ParseResult<Stmt<'stmt, 'expr>> {
-        let _frame = self.add_stack_frame()?;
-
         self.eat(TokenType::For, [TokenType::Newline])?;
         let var = self.expr()?;
         self.eat(TokenType::In, [TokenType::Newline])?;
@@ -376,18 +370,17 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         Ok(stmt)
     }
 
+    #[recursion_guard]
     fn then_stmt(&mut self) -> ParseResult<Option<Vec<Stmt<'stmt, 'expr>>>> {
-        let _frame = self.add_stack_frame()?;
-
-        Ok(if self.peek()?.ty() == TokenType::Then {
+        if self.peek()?.ty() == TokenType::Then {
             self.eat(TokenType::Then, [TokenType::Newline])?;
             self.eat(TokenType::Newline, [])?;
 
             let then = self.statements(&[TokenType::End, TokenType::Then], 3)?;
 
-            Some(then)
+            Ok(Some(then))
         } else {
-            None
-        })
+            Ok(None)
+        }
     }
 }

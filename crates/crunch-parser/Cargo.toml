@@ -65,6 +65,10 @@ git = "https://github.com/Kixiron/stadium.git"
 [dependencies.lasso]
 git = "https://github.com/Kixiron/lasso.git"
 
+# Tracking stack frames
+[dependencies.crunch-proc]
+path = "../crunch-proc"
+
 # Logging during tests
 [dev-dependencies.simple_logger]
 version = "1.6.0"
