@@ -1,0 +1,17 @@
+[package]
+name = "crunch-proc"
+version = "0.1.0"
+authors = ["Chase Wilson <me@chasewilson.dev>"]
+edition = "2018"
+
+[lib]
+proc-macro = true
+
+[dependencies.syn]
+version = "1.0.21"
+
+[dependencies.quote]
+version = "1.0.5"
+
+[dependencies.proc-macro2]
+version = "1.0.12"

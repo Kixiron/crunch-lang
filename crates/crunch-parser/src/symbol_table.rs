@@ -1,4 +1,4 @@
-use crate::{error::ParseResult, interner::SmallSpur};
+use crate::interner::SmallSpur;
 
 use alloc::{
     rc::{Rc, Weak},
