@@ -1,431 +1,335 @@
-use crate::interner::SmallSpur;
-
-use alloc::{
-    rc::{Rc, Weak},
-    vec::Vec,
-};
-
-trait Scopelike {
-    fn get_parent(&self) -> Option<Rc<Scope>>;
-    fn parent_mut<'a>(&'a mut self) -> Option<&'a mut Option<Weak<Scope>>>;
-    fn children<'a>(&'a self) -> &'a Vec<Rc<Scope>>;
-    fn children_mut<'a>(&'a mut self) -> &'a mut Vec<Rc<Scope>>;
-    fn members<'a>(&'a self) -> &'a Vec<Symbol>;
-    fn members_mut<'a>(&'a mut self) -> &'a mut Vec<Symbol>;
-    fn define(&mut self, symbol: Symbol);
-    fn resolve<'a>(&'a self, name: SmallSpur) -> Option<&'a Symbol>;
-    fn push(&mut self, scope: Rc<Scope>);
-    fn pop(&mut self) -> Option<Rc<Scope>>;
-}
-
-#[derive(Debug, Clone)]
-enum Scope {
-    Global {
-        members: Vec<Symbol>,
-        children: Vec<Rc<Scope>>,
-    },
-    Local {
-        parent: Option<Weak<Scope>>,
-        members: Vec<Symbol>,
-        children: Vec<Rc<Scope>>,
-    },
-}
-
-impl Scopelike for Scope {
-    #[inline]
-    fn get_parent(&self) -> Option<Rc<Scope>> {
-        if let Self::Local { parent, .. } = self {
-            parent.map(|p| p.upgrade().expect("Parent should be valid"))
-        } else {
-            None
-        }
-    }
-
-    #[inline]
-    fn parent_mut<'a>(&'a mut self) -> Option<&'a mut Option<Weak<Scope>>> {
-        if let Self::Local { ref mut parent, .. } = self {
-            Some(parent)
-        } else {
-            None
-        }
-    }
-
-    #[inline]
-    fn children<'a>(&'a self) -> &'a Vec<Rc<Scope>> {
-        match self {
-            Self::Global { ref children, .. } | Self::Local { ref children, .. } => children,
-        }
-    }
-
-    #[inline]
-    fn children_mut<'a>(&'a mut self) -> &'a mut Vec<Rc<Scope>> {
-        match self {
-            Self::Global {
-                ref mut children, ..
-            }
-            | Self::Local {
-                ref mut children, ..
-            } => children,
-        }
-    }
-
-    #[inline]
-    fn members<'a>(&'a self) -> &'a Vec<Symbol> {
-        match self {
-            Self::Global { members, .. } | Self::Local { members, .. } => &members,
-        }
-    }
-
-    #[inline]
-    fn members_mut<'a>(&'a mut self) -> &'a mut Vec<Symbol> {
-        match self {
-            Self::Global {
-                ref mut members, ..
-            }
-            | Self::Local {
-                ref mut members, ..
-            } => members,
-        }
-    }
-
-    #[inline]
-    fn define(&mut self, symbol: Symbol) {
-        self.members_mut().push(symbol);
-    }
-
-    #[inline]
-    fn resolve<'a>(&'a self, name: SmallSpur) -> Option<&'a Symbol> {
-        if let Some(sym) = self.members().iter().find(|s| s.name() == name) {
-            return Some(sym);
-        }
-
-        self.get_parent().map(|p| p.resolve(name)).flatten()
-    }
-
-    #[inline]
-    fn push(&mut self, mut scope: Rc<Scope>) {
-        *scope
-            .parent_mut()
-            .expect("Cannot push global scopes to children") = Some(Rc::downgrade(self));
-        self.children_mut().push(scope);
-    }
-
-    #[inline]
-    fn pop(&mut self) -> Option<Rc<Scope>> {
-        self.children_mut().pop()
-    }
-}
-
-#[derive(Debug, Clone)]
-enum Symbol {
-    Type { name: SmallSpur },
-    Variable { name: SmallSpur },
-    Function { name: SmallSpur, scope: Rc<Scope> },
-}
-
-impl Symbol {
-    #[inline]
-    pub fn name(&self) -> SmallSpur {
-        match self {
-            Self::Type { name, .. } | Self::Variable { name, .. } | Self::Function { name, .. } => {
-                *name
-            }
-        }
-    }
-}
-
-/*
 use crate::{
-    error::{Error, ErrorHandler, Locatable, Location, ParseResult, SemanticError},
-    files::FileId,
-    interner::{Interner, SmallSpur},
-    parser::{Alias, Ast, EnumVariant, Expression, Import, Statement, SyntaxTree, Type},
+    error::Locatable,
+    interner::Spur,
+    parser::{Ast, EnumVariant, Type},
 };
 
-use alloc::{borrow::ToOwned, vec, vec::Vec};
-use cfg_if::cfg_if;
-use core::{fmt, iter::FromIterator};
-use stadium::Stadium;
+use alloc::vec::Vec;
+use core::{
+    convert::TryInto,
+    iter::FromIterator,
+    num::NonZeroU32,
+    ops::{self, Deref},
+};
 
-cfg_if! {
+cfg_if::cfg_if! {
     if #[cfg(feature = "no-std")] {
-        use hashbrown::{HashMap, HashSet};
-        use hashbrown::HashMap as ConMap;
-        type MapRef<'a, 'stmt, 'expr> = &'a Module<'stmt, 'expr>;
-    } else if #[cfg(feature = "concurrent")] {
-        use dashmap::DashMap as ConMap;
-        type MapRef<'a, 'stmt, 'expr> = dashmap::mapref::one::Ref<'a, FileLoc, Module<'stmt, 'expr>>;
-
-        cfg_if! {
-            if #[cfg(feature = "no-std")] {
-                use hashbrown::{HashMap, HashSet};
-            }  else {
-                use std::collections::{HashMap, HashSet};
-            }
-        }
-    } else {
-        use std::collections::{HashMap, HashSet};
-        use std::collections::HashMap as ConMap;
-        type MapRef<'a, 'stmt, 'expr> = &'a Module<'stmt, 'expr>;
+        use hashbrown::HashMap;
+    }  else {
+        use std::collections::HashMap;
     }
 }
 
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
-pub struct FileLoc {
-    file: FileId,
-    sym: SmallSpur,
-}
-
-impl FileLoc {
-    pub const fn new(file: FileId, name: SmallSpur) -> Self {
-        Self { file, sym: name }
-    }
-}
-
-#[derive(Debug)]
-pub struct GlobalSymbolTable<'stmt, 'expr> {
-    packages: HashMap<SmallSpur, Package<'stmt, 'expr>>,
-}
-
-impl<'stmt, 'expr> GlobalSymbolTable<'stmt, 'expr> {
-    pub fn new() -> Self {
-        Self {
-            packages: HashMap::new(),
-        }
-    }
-
-    pub fn from(name: SmallSpur, package: Package<'stmt, 'expr>) -> Self {
-        Self {
-            packages: HashMap::from_iter(vec![(name, package)].into_iter()),
-        }
-    }
-
-    pub fn package(&self, pkg: SmallSpur) -> Option<&Package<'stmt, 'expr>> {
-        self.packages.get(&pkg)
-    }
-}
-
-impl<'stmt, 'expr> Default for GlobalSymbolTable<'stmt, 'expr> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[derive(Debug)]
-pub struct Package<'stmt, 'expr> {
-    dependencies: Vec<()>,
-    modules: ConMap<FileLoc, Module<'stmt, 'expr>>,
-}
-
-impl<'stmt, 'expr> Package<'stmt, 'expr> {
-    pub fn new() -> Self {
-        Self {
-            dependencies: Vec::new(),
-            modules: ConMap::new(),
-        }
-    }
-
-    pub fn from(file: FileLoc, module: Module<'stmt, 'expr>) -> Self {
-        Self {
-            dependencies: Vec::new(),
-            modules: ConMap::from_iter(vec![(file, module)].into_iter()),
-        }
-    }
-
-    pub fn module<'a>(&'a self, module: FileLoc) -> Option<MapRef<'a, 'stmt, 'expr>> {
-        self.modules.get(&module)
-    }
-}
-
-impl<'stmt, 'expr> Default for Package<'stmt, 'expr> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-pub struct Module<'stmt, 'expr> {
-    pub imports: Vec<Import>,
-    pub symbols: HashMap<SmallSpur, Symbol<'stmt, 'expr>>,
-    pub aliases: Vec<Alias<'expr>>,
-    __exprs: Stadium<'expr, Expression<'expr>>,
-    __stmts: Stadium<'stmt, Statement<'expr, 'stmt>>,
-}
-
-impl<'stmt, 'expr> Module<'stmt, 'expr> {
-    pub fn new(
-        SyntaxTree {
-            ast,
-            __exprs,
-            __stmts,
-        }: SyntaxTree<'stmt, 'expr>,
-        error_handler: &mut ErrorHandler,
-        interner: &Interner,
-    ) -> Self {
-        let mut imports = Vec::with_capacity(5);
-        let mut aliases = Vec::new();
-        let mut symbols = HashMap::with_capacity(ast.len());
-
-        let redefinition = |node: &Ast, loc| {
-            Locatable::new(
-                Error::Semantic(SemanticError::Redefinition {
-                    name: interner.resolve(&node.name().unwrap()).to_owned(),
-                    first: node.location(),
-                    second: loc,
-                }),
-                loc,
-            )
-        };
-
-        for node in ast {
-            let (name, location) = (node.name().unwrap(), node.location());
-
-            match &node {
-                Ast::Function(func) => {
-                    let sig = Signature::Func {
-                        loc: func.loc(),
-                        args: HashMap::from_iter(
-                            func.data()
-                                .args
-                                .iter()
-                                .map(|a| (*a.data().name.data(), a.data().ty.data().clone())),
-                        ),
-                        // generics: func.data().generics.clone(),
-                        returns: func.data().returns.data().clone(),
-                    };
-
-                    if let Some(Symbol::Unresolved(_sig, old)) =
-                        symbols.insert(name, Symbol::Unresolved(sig, node))
-                    {
-                        error_handler.push_err(redefinition(&old, location));
-                    }
-                }
-
-                Ast::Type(ty) => {
-                    let sig = Signature::Type {
-                        loc: ty.loc(),
-                        generics: ty.data().generics.clone(),
-                        members: ty
-                            .data()
-                            .members
-                            .iter()
-                            .map(|m| {
-                                Locatable::new((m.data().name, m.data().ty.data().clone()), m.loc())
-                            })
-                            .collect(),
-                    };
-
-                    if let Some(Symbol::Unresolved(_sig, old)) =
-                        symbols.insert(name, Symbol::Unresolved(sig, node))
-                    {
-                        error_handler.push_err(redefinition(&old, location));
-                    }
-                }
-
-                Ast::Enum(en) => {
-                    let sig = Signature::Enum {
-                        loc: en.loc(),
-                        generics: en.data().generics.clone(),
-                        variants: HashMap::from_iter(en.data().variants.iter().map(|v| {
-                            (
-                                v.data().name(),
-                                Locatable::new(
-                                    if let EnumVariant::Tuple { elements, .. } = v.data() {
-                                        Some(elements.iter().map(|e| e.data().clone()).collect())
-                                    } else {
-                                        None
-                                    },
-                                    v.loc(),
-                                ),
-                            )
-                        })),
-                    };
-
-                    if let Some(Symbol::Unresolved(_sig, old)) =
-                        symbols.insert(name, Symbol::Unresolved(sig, node))
-                    {
-                        error_handler.push_err(redefinition(&old, location));
-                    }
-                }
-
-                Ast::Trait(tr) => {
-                    let sig = Signature::Trait {
-                        loc: tr.loc(),
-                        generics: tr.data().generics.clone(),
-                        methods: HashSet::from_iter(
-                            tr.data().methods.iter().map(|m| m.data().name),
-                        ),
-                    };
-
-                    if let Some(Symbol::Unresolved(_sig, old)) =
-                        symbols.insert(name, Symbol::Unresolved(sig, node))
-                    {
-                        error_handler.push_err(redefinition(&old, location));
-                    }
-                }
-
-                Ast::ExtendBlock(block) => {}
-
-                Ast::Import(import) => imports.push(import.data().clone()),
-                Ast::Alias(alias) => aliases.push(alias.data().clone()),
-            }
-        }
-
-        Self {
-            imports,
-            symbols,
-            aliases,
-            __exprs,
-            __stmts,
-        }
-    }
-}
-
-impl fmt::Debug for Module<'_, '_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Module")
-            .field("imports", &self.imports)
-            .field("symbols", &self.symbols)
-            .finish()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-#[repr(u8)]
-#[allow(clippy::large_enum_variant)]
-pub enum Symbol<'stmt, 'expr> {
-    Unresolved(Signature, Ast<'stmt, 'expr>),
-    Resolving,
-    Resolved(),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-#[repr(u8)]
-pub enum Signature {
-    Func {
-        loc: Location,
-        args: HashMap<SmallSpur, Type>,
-        //generics: Vec<Locatable<Type>>,
+// TODO: Is `Type` actually resolvable?
+#[derive(Debug, Clone)]
+pub enum Scope {
+    Type {
+        name: Spur,
+        members: HashMap<Spur, Type>,
+    },
+    Enum {
+        name: Spur,
+        variants: HashMap<Spur, Variant>,
+    },
+    Alias {
+        alias: Type,
+        actual: Type,
+    },
+    Variable {
+        name: Spur,
+        ty: Type,
+    },
+    Function {
+        name: Spur,
+        scope: NodeId,
+        params: Vec<(Spur, Type)>,
         returns: Type,
     },
-
-    Type {
-        loc: Location,
-        generics: Vec<Locatable<Type>>,
-        members: Vec<Locatable<(SmallSpur, Type)>>,
-        // TODO: This is a doozy, need to resolve all blocks to find type methods
-        // methods: HashSet<SmallSpur>,
-    },
-
-    Enum {
-        loc: Location,
-        generics: Vec<Locatable<Type>>,
-        variants: HashMap<SmallSpur, Locatable<Option<Vec<Type>>>>,
-    },
-
     Trait {
-        loc: Location,
-        generics: Vec<Locatable<Type>>,
-        methods: HashSet<SmallSpur>,
+        name: Spur,
+        methods: HashMap<Spur, MaybeSym>,
     },
+    ExtendBlock {
+        target: Type,
+        extender: Option<Type>,
+    },
+    LocalScope(Vec<Scope>),
 }
-*/
+
+impl Scope {
+    pub const fn new() -> Self {
+        Self::LocalScope(Vec::new())
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self::LocalScope(Vec::with_capacity(capacity))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Variant {
+    Unit,
+    Tuple(Vec<Type>),
+}
+
+impl From<&EnumVariant<'_>> for (Spur, Variant) {
+    fn from(variant: &EnumVariant) -> Self {
+        match variant {
+            EnumVariant::Unit { name, .. } => (*name, Variant::Unit),
+            EnumVariant::Tuple { name, elements, .. } => (
+                *name,
+                Variant::Tuple(elements.iter().map(|e| e.deref().clone()).collect()),
+            ),
+        }
+    }
+}
+
+impl From<&Locatable<EnumVariant<'_>>> for (Spur, Variant) {
+    fn from(variant: &Locatable<EnumVariant<'_>>) -> Self {
+        variant.deref().into()
+    }
+}
+
+// TODO: Think this through a bit more
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum MaybeSym {
+    Unresolved(Spur),
+    Resolved(NodeId),
+}
+
+impl From<NodeId> for MaybeSym {
+    fn from(id: NodeId) -> Self {
+        Self::Resolved(id)
+    }
+}
+
+impl From<Spur> for MaybeSym {
+    fn from(name: Spur) -> Self {
+        Self::Unresolved(name)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Graph<T, L> {
+    nodes: Vec<Node<T, L>>,
+}
+
+impl<T, L> Graph<T, L> {
+    pub const fn new() -> Self {
+        Self { nodes: Vec::new() }
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            nodes: Vec::with_capacity(capacity),
+        }
+    }
+
+    pub fn push(&mut self, data: T) -> NodeId {
+        self.push_with_capacity(data, 0)
+    }
+
+    pub fn push_with_capacity(&mut self, data: T, capacity: usize) -> NodeId {
+        let id = NodeId(
+            NonZeroU32::new(
+                (self.nodes.len() + 1)
+                    .try_into()
+                    .expect("Ran out of node capacity, should probably handle this"),
+            )
+            .expect("This shouldn't happen because of the +1"),
+        );
+        self.nodes.push(Node {
+            data,
+            parent: None,
+            links: Vec::new(),
+            children: Vec::with_capacity(capacity),
+        });
+
+        id
+    }
+
+    pub fn node(&self, id: NodeId) -> Option<&Node<T, L>> {
+        self.nodes.get(id.to_usize())
+    }
+
+    pub fn node_mut(&mut self, id: NodeId) -> Option<&mut Node<T, L>> {
+        self.nodes.get_mut(id.to_usize())
+    }
+
+    pub fn contains_node(&self, id: NodeId) -> bool {
+        id.to_usize() < self.nodes.len()
+    }
+}
+
+impl Graph<Scope, MaybeSym> {
+    pub fn push_ast(&mut self, id: NodeId, node: &Ast<'_, '_>) {
+        match node {
+            Ast::Function(func) => {
+                // TODO: All fields
+                let function_scope = Scope::Function {
+                    name: func.name,
+                    scope: self.push(Scope::new()),
+                    params: func
+                        .args
+                        .iter()
+                        .map(|a| (*a.name, a.ty.deref().clone()))
+                        .collect(),
+                    returns: func.returns.deref().clone(),
+                };
+
+                // TODO: Build the inner scope
+
+                let node = self.push(function_scope);
+                self.node_mut(id).unwrap().children.push(node);
+            }
+
+            Ast::Type(ty) => {
+                // TODO: All fields
+                let type_scope = Scope::Type {
+                    name: ty.name,
+                    members: HashMap::from_iter(
+                        ty.members.iter().map(|m| (m.name, m.ty.deref().clone())),
+                    ),
+                };
+
+                let node = self.push(type_scope);
+                self.node_mut(id).unwrap().children.push(node);
+            }
+
+            Ast::Enum(enu) => {
+                // TODO: All fields
+                let enum_scope = Scope::Enum {
+                    name: enu.name,
+                    variants: HashMap::from_iter(enu.variants.iter().map(<(Spur, Variant)>::from)),
+                };
+
+                let node = self.push(enum_scope);
+                self.node_mut(id).unwrap().children.push(node);
+            }
+
+            Ast::Trait(tr) => {
+                // TODO: All fields
+                let trait_scope = Scope::Trait {
+                    name: tr.name,
+                    methods: HashMap::from_iter(
+                        tr.methods
+                            .iter()
+                            .map(|f| (f.name, MaybeSym::Unresolved(f.name))),
+                    ),
+                };
+
+                // TODO: Process members, indicating if they're implemented by default or not
+                let node = self.push(trait_scope);
+                self.node_mut(id).unwrap().children.push(node);
+            }
+
+            Ast::Import(import) => {
+                self.node_mut(id)
+                    .unwrap()
+                    .links
+                    .push(MaybeSym::Unresolved(*import.file));
+            }
+
+            // TODO: How do I connect these to their implementors?
+            Ast::ExtendBlock(block) => {
+                let block_scope = Scope::ExtendBlock {
+                    target: block.target.deref().clone(),
+                    extender: block.extender.as_ref().map(|t| t.deref().clone()),
+                };
+
+                let node = self.push(block_scope);
+                self.node_mut(id).unwrap().children.push(node);
+            }
+
+            Ast::Alias(alias) => {
+                let alias_scope = Scope::Alias {
+                    alias: alias.alias.deref().clone(),
+                    actual: alias.actual.deref().clone(),
+                };
+
+                let node = self.push(alias_scope);
+                self.node_mut(id).unwrap().children.push(node);
+            }
+        }
+    }
+}
+
+impl<T, L> ops::Index<NodeId> for Graph<T, L> {
+    type Output = Node<T, L>;
+
+    fn index(&self, id: NodeId) -> &Self::Output {
+        &self.nodes[id.to_usize()]
+    }
+}
+
+impl<T, L> ops::IndexMut<NodeId> for Graph<T, L> {
+    fn index_mut(&mut self, id: NodeId) -> &mut Self::Output {
+        &mut self.nodes[id.to_usize()]
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Node<T, L> {
+    data: T,
+    parent: Option<NodeId>,
+    links: Vec<L>,
+    children: Vec<NodeId>,
+}
+
+impl<T, L> Node<T, L> {
+    pub fn data(&self) -> &T {
+        &self.data
+    }
+
+    pub fn data_mut(&mut self) -> &mut T {
+        &mut self.data
+    }
+
+    pub fn parent(&self) -> Option<NodeId> {
+        self.parent
+    }
+
+    pub fn parent_mut(&mut self) -> &mut Option<NodeId> {
+        &mut self.parent
+    }
+
+    pub fn children(&self) -> &Vec<NodeId> {
+        &self.children
+    }
+
+    pub fn children_mut(&mut self) -> &mut Vec<NodeId> {
+        &mut self.children
+    }
+
+    pub fn links(&self) -> &Vec<L> {
+        &self.links
+    }
+
+    pub fn links_mut(&mut self) -> &mut Vec<L> {
+        &mut self.links
+    }
+}
+
+impl<T, L> ops::Deref for Node<T, L> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
+}
+
+impl<T, L> ops::DerefMut for Node<T, L> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.data
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
+pub struct NodeId(NonZeroU32);
+
+impl NodeId {
+    pub fn to_usize(self) -> usize {
+        self.0.get() as usize
+    }
+}

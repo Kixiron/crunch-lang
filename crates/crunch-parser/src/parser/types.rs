@@ -5,7 +5,7 @@ use crate::{
     token::{Token, TokenType},
 };
 
-use lasso::SmallSpur;
+use lasso::Spur;
 
 use alloc::{
     borrow::ToOwned,
@@ -481,7 +481,7 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Operand(Box<Locatable<Type>>, TypeOperand, Box<Locatable<Type>>),
-    Const(SmallSpur, Box<Locatable<Type>>),
+    Const(Spur, Box<Locatable<Type>>),
     Not(Box<Locatable<Type>>),
     Parenthesised(Box<Locatable<Type>>),
     Function {
@@ -491,10 +491,10 @@ pub enum Type {
     Builtin(BuiltinType),
     TraitObj(Vec<Locatable<Type>>),
     Bounded {
-        ty: SmallSpur,
+        ty: Spur,
         bounds: Vec<Locatable<Type>>,
     },
-    Custom(SmallSpur),
+    Custom(Spur),
     Infer,
 }
 

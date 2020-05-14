@@ -9,15 +9,15 @@ cfg_if! {
     }
 }
 
-pub use lasso::SmallSpur;
+pub use lasso::Spur;
 
 #[derive(Debug, Clone)]
 pub struct Interner {
     #[cfg(feature = "concurrent")]
-    interner: Arc<ThreadedRodeo<SmallSpur>>,
+    interner: Arc<ThreadedRodeo<Spur>>,
 
     #[cfg(not(feature = "concurrent"))]
-    interner: Rodeo<SmallSpur>,
+    interner: Rodeo<Spur>,
 }
 
 impl Interner {
@@ -36,11 +36,11 @@ impl Interner {
         }
     }
 
-    pub fn resolve<'a>(&'a self, sym: &SmallSpur) -> &'a str {
+    pub fn resolve<'a>(&'a self, sym: &Spur) -> &'a str {
         self.interner.resolve(sym)
     }
 
-    pub fn intern(&mut self, string: &str) -> SmallSpur {
+    pub fn intern(&mut self, string: &str) -> Spur {
         self.interner.get_or_intern(string)
     }
 }

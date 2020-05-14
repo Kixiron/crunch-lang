@@ -5,7 +5,7 @@ use crate::{
 };
 
 use crunch_proc::recursion_guard;
-use lasso::SmallSpur;
+use lasso::Spur;
 
 use alloc::{format, string::ToString, vec::Vec};
 use core::{convert::TryFrom, mem};
@@ -17,7 +17,7 @@ use core::{convert::TryFrom, mem};
 pub struct Function<'expr, 'stmt> {
     pub decorators: Vec<Locatable<Decorator<'expr>>>,
     pub attrs: Vec<Locatable<Attribute>>,
-    pub name: SmallSpur,
+    pub name: Spur,
     pub args: Vec<Locatable<FuncArg>>,
     pub returns: Locatable<Type>,
     pub body: Vec<Stmt<'expr, 'stmt>>,
@@ -25,7 +25,7 @@ pub struct Function<'expr, 'stmt> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FuncArg {
-    pub name: Locatable<SmallSpur>,
+    pub name: Locatable<Spur>,
     pub ty: Locatable<Type>,
     pub comptime: bool,
 }
@@ -34,7 +34,7 @@ pub struct FuncArg {
 pub struct TypeDecl<'expr> {
     pub decorators: Vec<Locatable<Decorator<'expr>>>,
     pub attrs: Vec<Locatable<Attribute>>,
-    pub name: SmallSpur,
+    pub name: Spur,
     pub generics: Vec<Locatable<Type>>,
     pub members: Vec<Locatable<TypeMember<'expr>>>,
 }
@@ -43,7 +43,7 @@ pub struct TypeDecl<'expr> {
 pub struct TypeMember<'expr> {
     pub decorators: Vec<Locatable<Decorator<'expr>>>,
     pub attrs: Vec<Locatable<Attribute>>,
-    pub name: SmallSpur,
+    pub name: Spur,
     pub ty: Locatable<Type>,
 }
 
@@ -51,7 +51,7 @@ pub struct TypeMember<'expr> {
 pub struct Enum<'expr> {
     pub decorators: Vec<Locatable<Decorator<'expr>>>,
     pub attrs: Vec<Locatable<Attribute>>,
-    pub name: SmallSpur,
+    pub name: Spur,
     pub generics: Vec<Locatable<Type>>,
     pub variants: Vec<Locatable<EnumVariant<'expr>>>,
 }
@@ -59,19 +59,19 @@ pub struct Enum<'expr> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum EnumVariant<'expr> {
     Unit {
-        name: SmallSpur,
+        name: Spur,
         decorators: Vec<Locatable<Decorator<'expr>>>,
     },
 
     Tuple {
-        name: SmallSpur,
+        name: Spur,
         elements: Vec<Locatable<Type>>,
         decorators: Vec<Locatable<Decorator<'expr>>>,
     },
 }
 
 impl<'expr> EnumVariant<'expr> {
-    pub fn name(&self) -> SmallSpur {
+    pub fn name(&self) -> Spur {
         match self {
             Self::Unit { name, .. } => *name,
             Self::Tuple { name, .. } => *name,
@@ -83,23 +83,23 @@ impl<'expr> EnumVariant<'expr> {
 pub struct Trait<'expr, 'stmt> {
     pub decorators: Vec<Locatable<Decorator<'expr>>>,
     pub attrs: Vec<Locatable<Attribute>>,
-    pub name: SmallSpur,
+    pub name: Spur,
     pub generics: Vec<Locatable<Type>>,
     pub methods: Vec<Locatable<Function<'expr, 'stmt>>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Import {
-    pub file: Locatable<SmallSpur>,
+    pub file: Locatable<Spur>,
     pub dest: ImportDest,
     pub exposes: ImportExposure,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExtendBlock<'expr, 'stmt> {
-    target: Locatable<Type>,
-    extender: Option<Locatable<Type>>,
-    nodes: Vec<Ast<'expr, 'stmt>>,
+    pub target: Locatable<Type>,
+    pub extender: Option<Locatable<Type>>,
+    pub nodes: Vec<Ast<'expr, 'stmt>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -122,7 +122,7 @@ pub enum Ast<'expr, 'stmt> {
 }
 
 impl<'expr, 'stmt> Ast<'expr, 'stmt> {
-    pub fn name(&self) -> Option<SmallSpur> {
+    pub fn name(&self) -> Option<Spur> {
         match self {
             Self::Function(func) => Some(func.data().name),
             Self::Type(ty) => Some(ty.data().name),
@@ -163,9 +163,9 @@ impl<'expr, 'stmt> Ast<'expr, 'stmt> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ImportExposure {
-    None(Locatable<SmallSpur>),
+    None(Locatable<Spur>),
     All,
-    Members(Vec<Locatable<(SmallSpur, Option<SmallSpur>)>>),
+    Members(Vec<Locatable<(Spur, Option<Spur>)>>),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -183,7 +183,7 @@ impl Default for ImportDest {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Decorator<'expr> {
-    pub name: Locatable<SmallSpur>,
+    pub name: Locatable<Spur>,
     pub args: Vec<Expr<'expr>>,
 }
 
@@ -258,6 +258,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
         while self.peek().is_ok() {
             if let Some(node) = self.ast_impl(&mut decorators, &mut attributes)? {
+                self.symbol_table.push_ast(self.module_scope, &node);
+
                 return Ok(Some(node));
             }
         }

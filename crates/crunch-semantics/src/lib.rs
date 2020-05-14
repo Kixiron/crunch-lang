@@ -18,8 +18,8 @@ use crunch_parser::{
         Ast, Attribute, Enum, EnumVariant, Expression, FuncArg, Function, Import, Statement, Trait,
         TypeDecl, TypeMember,
     },
-    symbol_table::{Module, Symbol},
-    GlobalSymbolTable, Interner,
+    symbol_table::Scope,
+    Interner,
 };
 
 cfg_if::cfg_if! {
@@ -61,7 +61,7 @@ impl SemanticAnalyzer {
     pub fn analyze<'stmt, 'expr>(
         &mut self,
         node: &Ast<'stmt, 'expr>,
-        symbol_table: &GlobalSymbolTable,
+        symbol_table: &Scope,
         interner: &Interner,
         error_handler: &mut ErrorHandler,
     ) {
@@ -102,18 +102,12 @@ impl SemanticAnalyzer {
 
     pub fn analyze_all<'stmt, 'expr>(
         &mut self,
-        module: &Module<'stmt, 'expr>,
-        symbol_table: &GlobalSymbolTable,
+        module: &Scope,
+        symbol_table: &Scope,
         interner: &Interner,
         error_handler: &mut ErrorHandler,
     ) {
-        for node in module.symbols.values().map(|s| {
-            if let Symbol::Unresolved(_, node) = s {
-                node
-            } else {
-                panic!()
-            }
-        }) {
+        for node in module.symbols.values() {
             self.analyze(node, symbol_table, interner, error_handler);
         }
     }
@@ -148,7 +142,7 @@ pub trait SemanticPass {
         &mut self,
         _func: &Function<'stmt, 'expr>,
         _loc: Location,
-        _local_symbol_table: &GlobalSymbolTable,
+        _local_symbol_table: &Scope,
         _interner: &Interner,
         _error_handler: &mut ErrorHandler,
     ) {
@@ -158,7 +152,7 @@ pub trait SemanticPass {
         &mut self,
         _type: &TypeDecl<'stmt>,
         _loc: Location,
-        _local_symbol_table: &GlobalSymbolTable,
+        _local_symbol_table: &Scope,
         _interner: &Interner,
         _error_handler: &mut ErrorHandler,
     ) {
@@ -168,7 +162,7 @@ pub trait SemanticPass {
         &mut self,
         _enum: &Enum<'stmt>,
         _loc: Location,
-        _local_symbol_table: &GlobalSymbolTable,
+        _local_symbol_table: &Scope,
         _interner: &Interner,
         _error_handler: &mut ErrorHandler,
     ) {
@@ -178,7 +172,7 @@ pub trait SemanticPass {
         &mut self,
         _trait: &Trait<'stmt, 'expr>,
         _loc: Location,
-        _local_symbol_table: &GlobalSymbolTable,
+        _local_symbol_table: &Scope,
         _interner: &Interner,
         _error_handler: &mut ErrorHandler,
     ) {
@@ -188,7 +182,7 @@ pub trait SemanticPass {
         &mut self,
         _import: &Import,
         _loc: Location,
-        _local_symbol_table: &GlobalSymbolTable,
+        _local_symbol_table: &Scope,
         _interner: &Interner,
         _error_handler: &mut ErrorHandler,
     ) {
@@ -197,7 +191,7 @@ pub trait SemanticPass {
     fn analyze_stmt<'stmt, 'expr>(
         &mut self,
         _stmt: &Statement<'stmt, 'expr>,
-        _local_symbol_table: &GlobalSymbolTable,
+        _local_symbol_table: &Scope,
         _interner: &Interner,
         _error_handler: &mut ErrorHandler,
     ) {
@@ -206,7 +200,7 @@ pub trait SemanticPass {
     fn analyze_expr<'expr>(
         &mut self,
         _expr: &Expression<'expr>,
-        _local_symbol_table: &GlobalSymbolTable,
+        _local_symbol_table: &Scope,
         _interner: &Interner,
         _error_handler: &mut ErrorHandler,
     ) {
@@ -299,7 +293,7 @@ impl SemanticPass for Correctness {
         &mut self,
         func: &Function<'stmt, 'expr>,
         func_loc: Location,
-        local_symbol_table: &GlobalSymbolTable,
+        local_symbol_table: &Scope,
         interner: &Interner,
         error_handler: &mut ErrorHandler,
     ) {
@@ -337,7 +331,7 @@ impl SemanticPass for Correctness {
         &mut self,
         ty: &TypeDecl<'stmt>,
         ty_loc: Location,
-        _local_symbol_table: &GlobalSymbolTable,
+        _local_symbol_table: &Scope,
         interner: &Interner,
         error_handler: &mut ErrorHandler,
     ) {
@@ -439,7 +433,7 @@ impl SemanticPass for Correctness {
         &mut self,
         en: &Enum<'stmt>,
         _loc: Location,
-        _local_symbol_table: &GlobalSymbolTable,
+        _local_symbol_table: &Scope,
         interner: &Interner,
         error_handler: &mut ErrorHandler,
     ) {
@@ -495,7 +489,7 @@ impl SemanticPass for Correctness {
         &mut self,
         tr: &Trait<'stmt, 'expr>,
         _loc: Location,
-        local_symbol_table: &GlobalSymbolTable,
+        local_symbol_table: &Scope,
         interner: &Interner,
         error_handler: &mut ErrorHandler,
     ) {
@@ -517,7 +511,7 @@ impl SemanticPass for Correctness {
         &mut self,
         _import: &Import,
         _loc: Location,
-        _local_symbol_table: &GlobalSymbolTable,
+        _local_symbol_table: &Scope,
         _interner: &Interner,
         _error_handler: &mut ErrorHandler,
     ) {
@@ -527,7 +521,7 @@ impl SemanticPass for Correctness {
     fn analyze_stmt<'stmt, 'expr>(
         &mut self,
         stmt: &Statement<'stmt, 'expr>,
-        local_symbol_table: &GlobalSymbolTable,
+        local_symbol_table: &Scope,
         interner: &Interner,
         error_handler: &mut ErrorHandler,
     ) {
@@ -539,7 +533,7 @@ impl SemanticPass for Correctness {
     fn analyze_expr<'expr>(
         &mut self,
         _expr: &Expression<'expr>,
-        _local_symbol_table: &GlobalSymbolTable,
+        _local_symbol_table: &Scope,
         _interner: &Interner,
         _error_handler: &mut ErrorHandler,
     ) {

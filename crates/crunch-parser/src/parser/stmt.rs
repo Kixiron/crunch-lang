@@ -5,7 +5,7 @@ use crate::{
 };
 
 use crunch_proc::recursion_guard;
-use lasso::SmallSpur;
+use lasso::Spur;
 use stadium::Ticket;
 
 #[cfg(feature = "no-std")]
@@ -21,7 +21,7 @@ pub enum Statement<'expr, 'stmt> {
         arm: Option<Stmt<'stmt, 'expr>>,
     },
     Expression(Expr<'expr>),
-    VarDeclaration(SmallSpur, Locatable<Type>, Expr<'expr>, bool),
+    VarDeclaration(Spur, Locatable<Type>, Expr<'expr>, bool),
     Return(Option<Expr<'expr>>),
     Break(Option<Expr<'expr>>),
     Continue,
@@ -42,7 +42,7 @@ pub enum Statement<'expr, 'stmt> {
     },
     Match {
         var: Expr<'expr>,
-        arms: Vec<(SmallSpur, Option<Expr<'expr>>, Vec<Stmt<'stmt, 'expr>>)>,
+        arms: Vec<(Spur, Option<Expr<'expr>>, Vec<Stmt<'stmt, 'expr>>)>,
     },
     Empty,
 }

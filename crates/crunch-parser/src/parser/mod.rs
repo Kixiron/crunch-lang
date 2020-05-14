@@ -1,6 +1,7 @@
 use crate::{
     error::{Error, ErrorHandler, Locatable, Location, ParseResult, SyntaxError},
     interner::Interner,
+    symbol_table::{Graph, MaybeSym, NodeId, Scope},
     token::{Token, TokenStream, TokenType},
 };
 
@@ -49,12 +50,17 @@ pub struct Parser<'src, 'expr, 'stmt> {
     stmt_arena: Stadium<'stmt, Statement<'expr, 'stmt>>,
 
     string_interner: Interner,
+    symbol_table: Graph<Scope, MaybeSym>,
+    module_scope: NodeId,
 }
 
 /// Initialization and high-level usage
 impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     pub fn new(source: &'src str, current_file: CurrentFile, string_interner: Interner) -> Self {
         let (token_stream, next, peek) = Self::lex(source);
+        let mut symbol_table = Graph::new();
+        let module_scope =
+            symbol_table.push_with_capacity(Scope::LocalScope(Vec::with_capacity(10)), 10);
 
         Self {
             token_stream,
@@ -69,6 +75,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             stmt_arena: Stadium::with_capacity(NonZeroUsize::new(512).unwrap()),
 
             string_interner,
+            symbol_table,
+            module_scope,
         }
     }
 
@@ -79,6 +87,10 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         current_file: CurrentFile,
         string_interner: Interner,
     ) -> Self {
+        let mut symbol_table = Graph::new();
+        let module_scope =
+            symbol_table.push_with_capacity(Scope::LocalScope(Vec::with_capacity(10)), 10);
+
         Self {
             token_stream,
             next,
@@ -92,6 +104,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             stmt_arena: Stadium::with_capacity(NonZeroUsize::new(512).unwrap()),
 
             string_interner,
+            symbol_table,
+            module_scope,
         }
     }
 

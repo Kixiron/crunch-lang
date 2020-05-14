@@ -17,7 +17,10 @@ use codespan_reporting::{
         Config,
     },
 };
-use core::{fmt, ops::Range};
+use core::{
+    fmt,
+    ops::{self, Range},
+};
 use derive_more::Display;
 
 pub type ParseResult<T> = Result<T, Locatable<Error>>;
@@ -194,6 +197,32 @@ impl<T> Locatable<T> {
 
     pub fn range(&self) -> Range<usize> {
         self.span().into()
+    }
+}
+
+impl<T> AsRef<T> for Locatable<T> {
+    fn as_ref(&self) -> &T {
+        &self.data
+    }
+}
+
+impl<T> AsMut<T> for Locatable<T> {
+    fn as_mut(&mut self) -> &mut T {
+        &mut self.data
+    }
+}
+
+impl<T> ops::Deref for Locatable<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
+}
+
+impl<T> ops::DerefMut for Locatable<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.data
     }
 }
 

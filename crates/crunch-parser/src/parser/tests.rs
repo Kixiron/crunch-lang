@@ -491,18 +491,18 @@ fn types_ast() {
             "type[Trait1, Trait2]",
             Type::TraitObj(vec![
                 Locatable::new(
-                    Type::Custom(lasso::SmallSpur::try_from_usize(0).unwrap()),
+                    Type::Custom(lasso::Spur::try_from_usize(0).unwrap()),
                     Location::concrete(5..11, FileId(0)),
                 ),
                 Locatable::new(
-                    Type::Custom(lasso::SmallSpur::try_from_usize(1).unwrap()),
+                    Type::Custom(lasso::Spur::try_from_usize(1).unwrap()),
                     Location::concrete(13..19, FileId(0)),
                 ),
             ]),
         ),
         (
             "CustomThingy",
-            Type::Custom(lasso::SmallSpur::try_from_usize(0).unwrap()),
+            Type::Custom(lasso::Spur::try_from_usize(0).unwrap()),
         ),
     ];
 

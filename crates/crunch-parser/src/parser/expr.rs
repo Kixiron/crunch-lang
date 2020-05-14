@@ -5,7 +5,7 @@ use crate::{
 };
 
 use crunch_proc::recursion_guard;
-use lasso::SmallSpur;
+use lasso::Spur;
 use stadium::Ticket;
 
 use alloc::{
@@ -19,7 +19,7 @@ pub type Expr<'expr> = Ticket<'expr, Expression<'expr>>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression<'expr> {
-    Variable(SmallSpur),
+    Variable(Spur),
     UnaryExpr(UnaryOperand, Expr<'expr>),
     BinaryOp(Expr<'expr>, BinaryOperand, Expr<'expr>),
     InlineConditional {
