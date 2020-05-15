@@ -75,51 +75,14 @@ fn main() -> rustyline::Result<()> {
 
                 match eval_ty {
                     EvalType::None | EvalType::Ast => match parser.parse() {
-                        Ok((tree, mut interner, mut warns)) => {
-                            let repl = interner.intern("<repl>");
-
-                            let symbols = crunch_parser::GlobalSymbolTable::from(
-                                repl,
-                                crunch_parser::symbol_table::Package::from(
-                                    crunch_parser::symbol_table::FileLoc::new(
-                                        crunch_parser::files::FileId::new(0),
-                                        repl,
-                                    ),
-                                    crunch_parser::symbol_table::Module::new(
-                                        tree, &mut warns, &interner,
-                                    ),
-                                ),
-                            );
-
-                            let file = crunch_parser::symbol_table::FileLoc::new(
-                                crunch_parser::files::FileId::new(0),
-                                repl,
-                            );
-                            crunch_semantics::SemanticAnalyzer::default().analyze_all(
-                                &*symbols
-                                    .package(repl)
-                                    .map(|p| p.module(file))
-                                    .flatten()
-                                    .unwrap(),
-                                &symbols,
-                                &interner,
-                                &mut warns,
-                            );
+                        Ok((tree, interner, mut warns, graph, _module)) => {
+                            crunch_semantics::SemanticAnalyzer::default()
+                                .analyze_all(&*tree, &graph, &interner, &mut warns);
 
                             warns.emit(&files);
 
                             if !warns.is_fatal() {
-                                println!(
-                                    "{:#?}",
-                                    symbols
-                                        .package(repl)
-                                        .map(|p| p.module(file))
-                                        .flatten()
-                                        .unwrap()
-                                        .symbols
-                                        .values()
-                                        .collect::<Vec<_>>()
-                                );
+                                println!("{:#?}", graph);
                             }
                         }
 
@@ -127,40 +90,13 @@ fn main() -> rustyline::Result<()> {
                     },
 
                     EvalType::Symbol => match parser.parse() {
-                        Ok((tree, mut interner, mut warns)) => {
-                            let repl = interner.intern("<repl>");
-
-                            let symbols = crunch_parser::GlobalSymbolTable::from(
-                                interner.intern("<repl>"),
-                                crunch_parser::symbol_table::Package::from(
-                                    crunch_parser::symbol_table::FileLoc::new(
-                                        crunch_parser::files::FileId::new(0),
-                                        interner.intern("<repl>"),
-                                    ),
-                                    crunch_parser::symbol_table::Module::new(
-                                        tree, &mut warns, &interner,
-                                    ),
-                                ),
-                            );
-
-                            let file = crunch_parser::symbol_table::FileLoc::new(
-                                crunch_parser::files::FileId::new(0),
-                                repl,
-                            );
-                            crunch_semantics::SemanticAnalyzer::default().analyze_all(
-                                &*symbols
-                                    .package(repl)
-                                    .map(|p| p.module(file))
-                                    .flatten()
-                                    .unwrap(),
-                                &symbols,
-                                &interner,
-                                &mut warns,
-                            );
+                        Ok((tree, interner, mut warns, graph, _module)) => {
+                            crunch_semantics::SemanticAnalyzer::default()
+                                .analyze_all(&*tree, &graph, &interner, &mut warns);
                             warns.emit(&files);
 
                             if !warns.is_fatal() {
-                                println!("{:#?}", symbols);
+                                println!("{:#?}", graph);
                             }
                         }
 
@@ -168,36 +104,9 @@ fn main() -> rustyline::Result<()> {
                     },
 
                     EvalType::Pretty => match parser.parse() {
-                        Ok((ast, mut interner, mut warns)) => {
-                            let repl = interner.intern("<repl>");
-
-                            let symbols = crunch_parser::GlobalSymbolTable::from(
-                                interner.intern("<repl>"),
-                                crunch_parser::symbol_table::Package::from(
-                                    crunch_parser::symbol_table::FileLoc::new(
-                                        crunch_parser::files::FileId::new(0),
-                                        interner.intern("<repl>"),
-                                    ),
-                                    crunch_parser::symbol_table::Module::new(
-                                        ast, &mut warns, &interner,
-                                    ),
-                                ),
-                            );
-
-                            let file = crunch_parser::symbol_table::FileLoc::new(
-                                crunch_parser::files::FileId::new(0),
-                                repl,
-                            );
-                            crunch_semantics::SemanticAnalyzer::default().analyze_all(
-                                &*symbols
-                                    .package(repl)
-                                    .map(|p| p.module(file))
-                                    .flatten()
-                                    .unwrap(),
-                                &symbols,
-                                &interner,
-                                &mut warns,
-                            );
+                        Ok((tree, interner, mut warns, graph, _module)) => {
+                            crunch_semantics::SemanticAnalyzer::default()
+                                .analyze_all(&*tree, &graph, &interner, &mut warns);
                             warns.emit(&files);
 
                             /*

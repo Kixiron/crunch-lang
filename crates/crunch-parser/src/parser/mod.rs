@@ -111,7 +111,16 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
     pub fn parse(
         mut self,
-    ) -> Result<(SyntaxTree<'expr, 'stmt>, Interner, ErrorHandler), ErrorHandler> {
+    ) -> Result<
+        (
+            SyntaxTree<'expr, 'stmt>,
+            Interner,
+            ErrorHandler,
+            Graph<Scope, MaybeSym>,
+            NodeId,
+        ),
+        ErrorHandler,
+    > {
         #[cfg(feature = "logging")]
         info!("Started parsing");
 
@@ -150,7 +159,13 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
         #[cfg(feature = "logging")]
         info!("Finished parsing successfully");
-        Ok((ast, self.string_interner, self.error_handler))
+        Ok((
+            ast,
+            self.string_interner,
+            self.error_handler,
+            self.symbol_table,
+            self.module_scope,
+        ))
     }
 
     pub fn lex(source: &'src str) -> (TokenStream<'src>, Option<Token<'src>>, Option<Token<'src>>) {

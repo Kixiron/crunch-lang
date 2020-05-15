@@ -18,7 +18,7 @@ use crunch_parser::{
         Ast, Attribute, Enum, EnumVariant, Expression, FuncArg, Function, Import, Statement, Trait,
         TypeDecl, TypeMember,
     },
-    symbol_table::Scope,
+    symbol_table::{Graph, MaybeSym, Scope},
     Interner,
 };
 
@@ -61,7 +61,7 @@ impl SemanticAnalyzer {
     pub fn analyze<'stmt, 'expr>(
         &mut self,
         node: &Ast<'stmt, 'expr>,
-        symbol_table: &Scope,
+        symbol_table: &Graph<Scope, MaybeSym>,
         interner: &Interner,
         error_handler: &mut ErrorHandler,
     ) {
@@ -102,12 +102,12 @@ impl SemanticAnalyzer {
 
     pub fn analyze_all<'stmt, 'expr>(
         &mut self,
-        module: &Scope,
-        symbol_table: &Scope,
+        nodes: &[Ast<'stmt, 'expr>],
+        symbol_table: &Graph<Scope, MaybeSym>,
         interner: &Interner,
         error_handler: &mut ErrorHandler,
     ) {
-        for node in module.symbols.values() {
+        for node in nodes {
             self.analyze(node, symbol_table, interner, error_handler);
         }
     }
@@ -142,7 +142,7 @@ pub trait SemanticPass {
         &mut self,
         _func: &Function<'stmt, 'expr>,
         _loc: Location,
-        _local_symbol_table: &Scope,
+        _local_symbol_table: &Graph<Scope, MaybeSym>,
         _interner: &Interner,
         _error_handler: &mut ErrorHandler,
     ) {
@@ -152,7 +152,7 @@ pub trait SemanticPass {
         &mut self,
         _type: &TypeDecl<'stmt>,
         _loc: Location,
-        _local_symbol_table: &Scope,
+        _local_symbol_table: &Graph<Scope, MaybeSym>,
         _interner: &Interner,
         _error_handler: &mut ErrorHandler,
     ) {
@@ -162,7 +162,7 @@ pub trait SemanticPass {
         &mut self,
         _enum: &Enum<'stmt>,
         _loc: Location,
-        _local_symbol_table: &Scope,
+        _local_symbol_table: &Graph<Scope, MaybeSym>,
         _interner: &Interner,
         _error_handler: &mut ErrorHandler,
     ) {
@@ -172,7 +172,7 @@ pub trait SemanticPass {
         &mut self,
         _trait: &Trait<'stmt, 'expr>,
         _loc: Location,
-        _local_symbol_table: &Scope,
+        _local_symbol_table: &Graph<Scope, MaybeSym>,
         _interner: &Interner,
         _error_handler: &mut ErrorHandler,
     ) {
@@ -182,7 +182,7 @@ pub trait SemanticPass {
         &mut self,
         _import: &Import,
         _loc: Location,
-        _local_symbol_table: &Scope,
+        _local_symbol_table: &Graph<Scope, MaybeSym>,
         _interner: &Interner,
         _error_handler: &mut ErrorHandler,
     ) {
@@ -191,7 +191,7 @@ pub trait SemanticPass {
     fn analyze_stmt<'stmt, 'expr>(
         &mut self,
         _stmt: &Statement<'stmt, 'expr>,
-        _local_symbol_table: &Scope,
+        _local_symbol_table: &Graph<Scope, MaybeSym>,
         _interner: &Interner,
         _error_handler: &mut ErrorHandler,
     ) {
@@ -200,7 +200,7 @@ pub trait SemanticPass {
     fn analyze_expr<'expr>(
         &mut self,
         _expr: &Expression<'expr>,
-        _local_symbol_table: &Scope,
+        _local_symbol_table: &Graph<Scope, MaybeSym>,
         _interner: &Interner,
         _error_handler: &mut ErrorHandler,
     ) {
@@ -293,7 +293,7 @@ impl SemanticPass for Correctness {
         &mut self,
         func: &Function<'stmt, 'expr>,
         func_loc: Location,
-        local_symbol_table: &Scope,
+        local_symbol_table: &Graph<Scope, MaybeSym>,
         interner: &Interner,
         error_handler: &mut ErrorHandler,
     ) {
@@ -331,7 +331,7 @@ impl SemanticPass for Correctness {
         &mut self,
         ty: &TypeDecl<'stmt>,
         ty_loc: Location,
-        _local_symbol_table: &Scope,
+        _local_symbol_table: &Graph<Scope, MaybeSym>,
         interner: &Interner,
         error_handler: &mut ErrorHandler,
     ) {
@@ -433,7 +433,7 @@ impl SemanticPass for Correctness {
         &mut self,
         en: &Enum<'stmt>,
         _loc: Location,
-        _local_symbol_table: &Scope,
+        _local_symbol_table: &Graph<Scope, MaybeSym>,
         interner: &Interner,
         error_handler: &mut ErrorHandler,
     ) {
@@ -489,7 +489,7 @@ impl SemanticPass for Correctness {
         &mut self,
         tr: &Trait<'stmt, 'expr>,
         _loc: Location,
-        local_symbol_table: &Scope,
+        local_symbol_table: &Graph<Scope, MaybeSym>,
         interner: &Interner,
         error_handler: &mut ErrorHandler,
     ) {
@@ -511,7 +511,7 @@ impl SemanticPass for Correctness {
         &mut self,
         _import: &Import,
         _loc: Location,
-        _local_symbol_table: &Scope,
+        _local_symbol_table: &Graph<Scope, MaybeSym>,
         _interner: &Interner,
         _error_handler: &mut ErrorHandler,
     ) {
@@ -521,7 +521,7 @@ impl SemanticPass for Correctness {
     fn analyze_stmt<'stmt, 'expr>(
         &mut self,
         stmt: &Statement<'stmt, 'expr>,
-        local_symbol_table: &Scope,
+        local_symbol_table: &Graph<Scope, MaybeSym>,
         interner: &Interner,
         error_handler: &mut ErrorHandler,
     ) {
@@ -533,7 +533,7 @@ impl SemanticPass for Correctness {
     fn analyze_expr<'expr>(
         &mut self,
         _expr: &Expression<'expr>,
-        _local_symbol_table: &Scope,
+        _local_symbol_table: &Graph<Scope, MaybeSym>,
         _interner: &Interner,
         _error_handler: &mut ErrorHandler,
     ) {

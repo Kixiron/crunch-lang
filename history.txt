@@ -1,0 +1,13 @@
+#V2
+.help
+.symbol fn test()
+emd
+end
+.symbol fn test()
+end
+.clear
+.help
+fn main()
+end
+.clear
+.exit

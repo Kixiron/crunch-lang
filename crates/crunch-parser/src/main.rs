@@ -11,7 +11,7 @@ fn main() {
 
     match crunch_parser::Parser::new(&buf, CurrentFile::new(id, buf.len()), Interner::new()).parse()
     {
-        Ok((ast, _interner, mut warn)) => {
+        Ok((ast, _interner, mut warn, ..)) => {
             warn.emit(&files);
             println!("{:#?}", ast);
         }
