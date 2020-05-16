@@ -31,7 +31,7 @@ pub use expr::{
 };
 pub use stmt::{Statement, Stmt};
 pub use types::{BuiltinType, Signedness, Type};
-pub use utils::{CurrentFile, SyntaxTree};
+pub use utils::{CurrentFile, ItemPath, SyntaxTree};
 
 use utils::{BinaryPrecedence, StackGuard};
 

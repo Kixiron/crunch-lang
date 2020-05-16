@@ -1,7 +1,7 @@
 use crate::{
     error::Locatable,
     interner::Spur,
-    parser::{Ast, EnumVariant, Type},
+    parser::{Ast, EnumVariant, ItemPath, Type},
 };
 
 use alloc::vec::Vec;
@@ -63,6 +63,13 @@ impl Scope {
 
     pub fn with_capacity(capacity: usize) -> Self {
         Self::LocalScope(Vec::with_capacity(capacity))
+    }
+
+    pub fn name(&self) -> Spur {
+        match self {
+            Self::Function { name, .. } => *name,
+            _ => todo!(),
+        }
     }
 }
 
@@ -149,11 +156,11 @@ impl<T, L> Graph<T, L> {
     }
 
     pub fn node(&self, id: NodeId) -> Option<&Node<T, L>> {
-        self.nodes.get(id.to_usize())
+        self.nodes.get(id.to_usize() - 1)
     }
 
     pub fn node_mut(&mut self, id: NodeId) -> Option<&mut Node<T, L>> {
-        self.nodes.get_mut(id.to_usize())
+        self.nodes.get_mut(id.to_usize() - 1)
     }
 
     pub fn contains_node(&self, id: NodeId) -> bool {
@@ -307,6 +314,21 @@ impl<T, L> Node<T, L> {
 
     pub fn links_mut(&mut self) -> &mut Vec<L> {
         &mut self.links
+    }
+}
+
+impl Node<Scope, MaybeSym> {
+    pub fn resolve(&self, graph: &Graph<Scope, MaybeSym>, name: Spur) -> Option<ItemPath> {
+        if let Some(item) = self
+            .children
+            .iter()
+            .filter_map(|c| graph.node(*c))
+            .find(|c| c.data.name() == name)
+        {
+            Some(ItemPath::new(item.data.name()))
+        } else {
+            todo!("Do this later or something")
+        }
     }
 }
 

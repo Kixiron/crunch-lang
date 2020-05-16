@@ -8,13 +8,23 @@ use syn::{
 /// A macro for use in the parser, inserts a stack frame recording into the function
 ///
 /// ```rust
+/// # use crunch_proc::recursion_guard;
+/// # struct Dummy;
+/// # impl Dummy {
+/// #     fn add_stack_frame(&self) -> Result<(), ()> { Ok(()) }
+/// #
 /// // Counting a the function as a single frame
 /// #[recursion_guard]
+/// # fn a(&self) -> Result<(), ()> { Ok(()) }
 /// #[recursion_guard()]
+/// # fn b(&self) -> Result<(), ()> { Ok(()) }
 ///
-/// // Counting the function as more than one frame, `n` can be any integer
-/// #[recursion_guard(n)]
-/// #[recursion_guard(frames = n)]
+/// // Counting the function as more than one frame, `1` can be any integer
+/// #[recursion_guard(1)]
+/// # fn c(&self) -> Result<(), ()> { Ok(()) }
+/// #[recursion_guard(frames = 1)]
+/// # fn d(&self) -> Result<(), ()> { Ok(()) }
+/// # }
 /// ```
 #[proc_macro_attribute]
 pub fn recursion_guard(

@@ -174,6 +174,26 @@ impl Literal {
     }
 }
 
+impl fmt::Display for Literal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Integer(int) => write!(f, "{}", int),
+            Self::Bool(b) => write!(f, "{}", b),
+            Self::String(text) => write!(f, "{}", text),
+            Self::Rune(rune) => write!(f, "{}", rune),
+            Self::Float(float) => write!(f, "{}", float),
+            Self::Array(arr) => write!(
+                f,
+                "[{}]",
+                arr.iter()
+                    .map(|elm| format!("{}", elm))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Text(Vec<Rune>);

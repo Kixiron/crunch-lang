@@ -100,7 +100,7 @@ fn index_array_expr() {
 
 #[test]
 fn array_literal_expr() {
-    expr_eq!("[true, test, 100 / 5]");
+    expr_eq!("arr[true, test, 100 / 5]");
 }
 
 #[test]
@@ -491,18 +491,26 @@ fn types_ast() {
             "type[Trait1, Trait2]",
             Type::TraitObj(vec![
                 Locatable::new(
-                    Type::Custom(lasso::Spur::try_from_usize(0).unwrap()),
+                    Type::ItemPath(ItemPath::new(vec![lasso::Spur::try_from_usize(0).unwrap()])),
                     Location::concrete(5..11, FileId(0)),
                 ),
                 Locatable::new(
-                    Type::Custom(lasso::Spur::try_from_usize(1).unwrap()),
+                    Type::ItemPath(ItemPath::new(vec![lasso::Spur::try_from_usize(1).unwrap()])),
                     Location::concrete(13..19, FileId(0)),
                 ),
             ]),
         ),
         (
             "CustomThingy",
-            Type::Custom(lasso::Spur::try_from_usize(0).unwrap()),
+            Type::ItemPath(ItemPath::new(vec![lasso::Spur::try_from_usize(0).unwrap()])),
+        ),
+        (
+            "Custom.Thingy.Pathed",
+            Type::ItemPath(ItemPath::new(vec![
+                lasso::Spur::try_from_usize(0).unwrap(),
+                lasso::Spur::try_from_usize(1).unwrap(),
+                lasso::Spur::try_from_usize(2).unwrap(),
+            ])),
         ),
     ];
 

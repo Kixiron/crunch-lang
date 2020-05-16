@@ -1,5 +1,9 @@
 # To Do
 
+- [ ] Actor compiler
+- [ ] Utils module for parser to clean up stuff
+- [ ] Types as values
+- [ ] Actually implement precedence for types
 - [ ] Make imports `paths.like.this` instead of `'this.bullshit'`
 - [ ] Make an SMT solver
 - [ ] Make an LLVM wrapper

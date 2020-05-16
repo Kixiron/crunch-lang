@@ -1,8 +1,9 @@
 use crate::{
     parser::{
-        AssignmentType, Ast, Attribute, BinaryOperand, BuiltinType, ComparisonOperand, Decorator,
-        Enum, EnumVariant, Expr, Expression, Function, Import, ImportDest, ImportExposure, Literal,
-        Signedness, Statement, Stmt, Trait, Type, TypeDecl, TypeMember, UnaryOperand, Visibility,
+        Alias, AssignmentType, Ast, Attribute, BinaryOperand, BuiltinType, ComparisonOperand,
+        Decorator, Enum, EnumVariant, Expr, Expression, ExtendBlock, Function, Import, ImportDest,
+        ImportExposure, Literal, Signedness, Statement, Stmt, Trait, Type, TypeDecl, TypeMember,
+        UnaryOperand, Visibility,
     },
     Interner,
 };
@@ -44,8 +45,64 @@ impl<'expr, 'stmt> PrettyPrinter {
             Ast::Enum(enum_decl) => self.print_enum(f, enum_decl.data()),
             Ast::Trait(trait_decl) => self.print_trait(f, trait_decl.data()),
             Ast::Import(import) => self.print_import(f, import.data()),
-            _ => todo!(),
+            Ast::Alias(alias) => self.print_alias(f, &*alias),
+            Ast::ExtendBlock(block) => self.print_extend_block(f, &*block),
         }
+    }
+
+    fn print_extend_block(
+        &mut self,
+        f: &mut dyn Write,
+        ExtendBlock {
+            target,
+            extender,
+            nodes,
+        }: &ExtendBlock,
+    ) -> Result {
+        self.print_indent(f)?;
+        write!(f, "extend ")?;
+        self.print_ty(f, target)?;
+
+        if let Some(extender) = extender {
+            write!(f, " with ")?;
+            self.print_ty(f, extender)?;
+        }
+        writeln!(f)?;
+
+        self.indent_level += 1;
+        for node in nodes {
+            self.print_ast(f, node)?;
+        }
+        self.indent_level -= 1;
+
+        writeln!(f, "end")
+    }
+
+    fn print_alias(
+        &mut self,
+        f: &mut dyn Write,
+        Alias {
+            alias,
+            actual,
+            decorators,
+            attrs,
+        }: &Alias,
+    ) -> Result {
+        self.print_indent(f)?;
+        for dec in decorators {
+            self.print_decorator(f, dec.data())?;
+            writeln!(f)?;
+        }
+
+        for attr in attrs {
+            self.print_attr(f, *attr.data())?;
+        }
+
+        write!(f, "alias ")?;
+        self.print_ty(f, alias)?;
+        write!(f, " = ")?;
+        self.print_ty(f, actual)?;
+        writeln!(f)
     }
 
     fn print_import(
@@ -570,8 +627,15 @@ impl<'expr, 'stmt> PrettyPrinter {
                     write!(f, "]")
                 }
             }
-            Type::Bounded { ty, bounds } => {
-                write!(f, "{}[", self.interner.resolve(ty))?;
+            Type::Bounded { path, bounds } => {
+                write!(
+                    f,
+                    "{}[",
+                    path.iter()
+                        .map(|seg| self.interner.resolve(seg))
+                        .collect::<Vec<&str>>()
+                        .join(".")
+                )?;
                 for (i, ty) in bounds.iter().enumerate() {
                     self.print_ty(f, ty.data())?;
 
@@ -635,7 +699,14 @@ impl<'expr, 'stmt> PrettyPrinter {
                     write!(f, "]")
                 }
             },
-            Type::Custom(c) => write!(f, "{}", self.interner.resolve(c)),
+            Type::ItemPath(path) => write!(
+                f,
+                "{}",
+                path.iter()
+                    .map(|seg| self.interner.resolve(seg))
+                    .collect::<Vec<&str>>()
+                    .join(".")
+            ),
         }
     }
 

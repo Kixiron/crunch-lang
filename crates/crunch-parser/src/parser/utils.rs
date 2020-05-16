@@ -1,14 +1,15 @@
 use crate::{
-    error::{Location, Span},
+    error::{Location, ParseResult, Span},
     files::FileId,
-    parser::{Ast, Expression, Statement},
+    parser::{Ast, Expression, Parser, Statement},
     token::TokenType,
 };
 
-use stadium::Stadium;
-
-use alloc::{rc::Rc, vec::Vec};
+use alloc::{rc::Rc, vec, vec::Vec};
 use core::{convert::TryFrom, fmt, ops};
+use crunch_proc::recursion_guard;
+use lasso::Spur;
+use stadium::Stadium;
 
 pub struct SyntaxTree<'expr, 'stmt> {
     pub(crate) ast: Vec<Ast<'expr, 'stmt>>,
@@ -169,5 +170,71 @@ impl TryFrom<TokenType> for BinaryPrecedence {
 
             _ => return Err(()),
         })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
+pub struct ItemPath(Vec<Spur>);
+
+impl ItemPath {
+    pub fn new(path: impl Into<Self>) -> Self {
+        path.into()
+    }
+
+    pub fn join(&self, other: impl Into<Self>) -> Self {
+        let mut new = self.0.clone();
+        new.extend(other.into().0.drain(..));
+
+        Self(new)
+    }
+}
+
+impl From<Spur> for ItemPath {
+    fn from(seg: Spur) -> Self {
+        Self(vec![seg])
+    }
+}
+
+impl From<Vec<Spur>> for ItemPath {
+    fn from(segs: Vec<Spur>) -> Self {
+        Self(segs)
+    }
+}
+
+impl ops::Deref for ItemPath {
+    type Target = [Spur];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
+    /// ```ebnf
+    /// ItemPath ::= Ident | Ident '.' Path
+    /// ```
+    #[recursion_guard]
+    pub(crate) fn item_path(&mut self, path: impl Into<Option<Spur>>) -> ParseResult<ItemPath> {
+        let mut path = if let Some(start) = path.into() {
+            vec![start]
+        } else {
+            let segment = self.eat(TokenType::Ident, [TokenType::Newline])?.source();
+            vec![self.string_interner.intern(segment)]
+        };
+
+        while self.peek()?.ty() != TokenType::Dot {
+            if self.peek()?.ty() == TokenType::Newline {
+                self.eat(TokenType::Newline, [])?;
+                continue;
+            }
+
+            let segment = self.eat(TokenType::Ident, [TokenType::Newline])?.source();
+            path.push(self.string_interner.intern(segment));
+
+            self.eat(TokenType::Dot, [TokenType::Newline])?;
+        }
+
+        Ok(ItemPath::new(path))
     }
 }

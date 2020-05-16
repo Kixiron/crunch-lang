@@ -252,7 +252,7 @@ impl Visibility {
 }
 
 impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
-    #[recursion_guard()]
+    #[recursion_guard]
     pub(super) fn ast(&mut self) -> ParseResult<Option<Ast<'expr, 'stmt>>> {
         let (mut decorators, mut attributes) = (Vec::with_capacity(5), Vec::with_capacity(5));
 

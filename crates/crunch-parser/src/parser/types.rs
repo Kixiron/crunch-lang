@@ -1,20 +1,262 @@
 use crate::{
     error::{Error, Locatable, Location, ParseResult, Span, SyntaxError},
     interner::Interner,
-    parser::{CurrentFile, Integer, Literal, Parser},
+    parser::{CurrentFile, Integer, ItemPath, Literal, Parser},
     token::{Token, TokenType},
 };
 
 use lasso::Spur;
 
 use alloc::{
-    borrow::ToOwned,
     boxed::Box,
     format,
     string::{String, ToString},
+    vec,
     vec::Vec,
 };
 use core::{convert::TryFrom, fmt};
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Type {
+    Operand(Box<Locatable<Type>>, TypeOperand, Box<Locatable<Type>>),
+    Const(Spur, Box<Locatable<Type>>),
+    Not(Box<Locatable<Type>>),
+    Parenthesised(Box<Locatable<Type>>),
+    Function {
+        params: Vec<Locatable<Type>>,
+        returns: Box<Locatable<Type>>,
+    },
+    Builtin(BuiltinType),
+    TraitObj(Vec<Locatable<Type>>),
+    Bounded {
+        path: ItemPath,
+        bounds: Vec<Locatable<Type>>,
+    },
+    ItemPath(ItemPath),
+    Infer,
+}
+
+impl Type {
+    pub fn internal_types(&self) -> Vec<ItemPath> {
+        let mut buf = Vec::with_capacity(1);
+        self.internal_types_inner(&mut buf);
+
+        buf
+    }
+
+    fn internal_types_inner(&self, buf: &mut Vec<ItemPath>) {
+        match self {
+            Self::Operand(rhs, _, lhs) => {
+                rhs.internal_types_inner(buf);
+                lhs.internal_types_inner(buf);
+            }
+            Self::Const(name, ty) => {
+                buf.push(ItemPath::new(vec![*name]));
+                ty.internal_types_inner(buf);
+            }
+            Self::Not(ty) => ty.internal_types_inner(buf),
+            Self::Parenthesised(ty) => ty.internal_types_inner(buf),
+            Self::Function { params, returns } => {
+                for param in params {
+                    param.internal_types_inner(buf);
+                }
+
+                returns.internal_types_inner(buf);
+            }
+            Self::TraitObj(types) => {
+                for ty in types {
+                    ty.internal_types_inner(buf);
+                }
+            }
+            Self::Bounded { path, bounds } => {
+                buf.push(path.clone());
+
+                for bound in bounds {
+                    bound.internal_types_inner(buf);
+                }
+            }
+            Self::ItemPath(path) => buf.push(path.clone()),
+            Self::Builtin(..) | Self::Infer => {}
+        }
+    }
+
+    pub fn to_string(&self, interner: &Interner) -> String {
+        match self {
+            Type::Infer => "infer".to_string(),
+            Type::Not(ty) => format!("!{}", ty.data().to_string(interner)),
+            Type::Parenthesised(ty) => format!("({})", ty.data().to_string(interner)),
+            Type::Const(ident, ty) => format!(
+                "const {}: {}",
+                interner.resolve(ident),
+                ty.data().to_string(interner)
+            ),
+            Type::Operand(left, op, right) => format!(
+                "{} {} {}",
+                left.data().to_string(interner),
+                op,
+                right.data().to_string(interner)
+            ),
+            Type::Function { params, returns } => format!(
+                "fn({}) -> {}",
+                params
+                    .iter()
+                    .map(|ty| ty.data().to_string(interner))
+                    .collect::<Vec<String>>()
+                    .join(", "),
+                returns.data().to_string(interner)
+            ),
+            Type::TraitObj(traits) => format!(
+                "type[{}]",
+                traits
+                    .iter()
+                    .map(|ty| ty.data().to_string(interner))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
+            Type::Bounded { path, bounds } => format!(
+                "{}[{}]",
+                path.iter()
+                    .map(|seg| interner.resolve(seg))
+                    .collect::<Vec<&str>>()
+                    .join("."),
+                bounds
+                    .iter()
+                    .map(|ty| ty.data().to_string(interner))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
+            Type::Builtin(b) => b.to_string(interner),
+            Type::ItemPath(path) => path
+                .iter()
+                .map(|seg| interner.resolve(seg))
+                .collect::<Vec<&str>>()
+                .join("."),
+        }
+    }
+}
+
+impl Default for Type {
+    fn default() -> Self {
+        Self::Infer
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum TypeOperand {
+    And,
+    Or,
+}
+
+impl fmt::Display for TypeOperand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::And => write!(f, "&"),
+            Self::Or => write!(f, "|"),
+        }
+    }
+}
+
+impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for TypeOperand {
+    type Error = Locatable<Error>;
+
+    fn try_from((token, file): (&Token<'src>, CurrentFile)) -> Result<Self, Self::Error> {
+        match token.ty() {
+            TokenType::Ampersand => Ok(Self::And),
+            TokenType::Pipe => Ok(Self::Or),
+
+            ty => Err(Locatable::new(
+                Error::Syntax(SyntaxError::Generic(format!(
+                    "Expected one of {}, got '{}'",
+                    [TokenType::Ampersand, TokenType::Pipe]
+                        .iter()
+                        .map(|t| t.to_str())
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    ty,
+                ))),
+                Location::concrete(token, file),
+            )),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum BuiltinType {
+    Integer { sign: Signedness, width: u16 },
+    IntReg(Signedness),
+    IntPtr(Signedness),
+    Float { width: u16 },
+    Boolean,
+    String,
+    Rune,
+    Unit,
+    Absurd,
+    Array(u128, Box<Locatable<Type>>),
+    Slice(Box<Locatable<Type>>),
+    Tuple(Vec<Locatable<Type>>),
+}
+
+impl BuiltinType {
+    pub fn to_string(&self, interner: &Interner) -> String {
+        match self {
+            BuiltinType::Integer { sign, width } => format!(
+                "{}{}",
+                match sign {
+                    Signedness::Signed => "i",
+                    Signedness::Unsigned => "u",
+                },
+                width
+            ),
+            BuiltinType::IntPtr(sign) => format!(
+                "{}ptr",
+                match sign {
+                    Signedness::Signed => "i",
+                    Signedness::Unsigned => "u",
+                },
+            ),
+            BuiltinType::IntReg(sign) => format!(
+                "{}reg",
+                match sign {
+                    Signedness::Signed => "i",
+                    Signedness::Unsigned => "u",
+                },
+            ),
+            BuiltinType::Float { width } => format!("f{}", width),
+            BuiltinType::Boolean => "bool".to_string(),
+            BuiltinType::String => "str".to_string(),
+            BuiltinType::Rune => "rune".to_string(),
+            BuiltinType::Unit => "unit".to_string(),
+            BuiltinType::Absurd => "absurd".to_string(),
+            BuiltinType::Array(len, ty) => {
+                format!("arr[{}, {}]", len, ty.data().to_string(interner))
+            }
+            BuiltinType::Slice(ty) => format!("slice{}]", ty.data().to_string(interner)),
+            BuiltinType::Tuple(types) => format!(
+                "tup[{}]",
+                types
+                    .iter()
+                    .map(|ty| ty.data().to_string(interner))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Signedness {
+    Unsigned,
+    Signed,
+}
+
+impl fmt::Display for Signedness {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unsigned => write!(f, "u"),
+            Self::Signed => write!(f, "i"),
+        }
+    }
+}
 
 type PrefixParselet<'src, 'expr, 'stmt> =
     fn(&mut Parser<'src, 'expr, 'stmt>, Token<'src>) -> ParseResult<Locatable<Type>>;
@@ -33,13 +275,13 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
     /// ```ebnf
     /// Type ::=
     ///     'str' | 'rune' | 'bool' | 'unit' | 'absurd'
-    ///     | 'ureg' | 'ireg' | 'uptr' | 'iptr' | Ident
+    ///     | 'ureg' | 'ireg' | 'uptr' | 'iptr' | Path
     ///     | 'i' [0-9]+ | 'u' [0-9]+ | 'f' [0-9]+
     ///     | '!' Type | 'infer'
     ///     | '(' Type ')'
     ///     | Type '&' Type
     ///     | Type '|' Type
-    ///     | Ident '[' Type ']'
+    ///     | Path '[' Type ']'
     ///     | 'type' '[' Type ']'
     ///     | 'slice' '[' Type ']'
     ///     | 'const' Ident (':' Type)?
@@ -261,7 +503,9 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
                     }
 
                     custom => {
-                        let ty = parser.string_interner.intern(custom);
+                        let custom = parser.string_interner.intern(custom);
+                        let path = parser.item_path(custom)?;
+
                         if parser.peek().map(|t| t.ty()) == Ok(TokenType::LeftBrace) {
                             parser.eat(TokenType::LeftBrace, [])?;
 
@@ -284,9 +528,9 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
 
                             let end = parser.eat(TokenType::RightBrace, [])?.span();
 
-                            (Type::Bounded { ty, bounds }, Some(end))
+                            (Type::Bounded { path, bounds }, Some(end))
                         } else {
-                            (Type::Custom(ty), None)
+                            (Type::ItemPath(path), None)
                         }
                     }
                 };
@@ -475,198 +719,6 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
         };
 
         Some(infix)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Type {
-    Operand(Box<Locatable<Type>>, TypeOperand, Box<Locatable<Type>>),
-    Const(Spur, Box<Locatable<Type>>),
-    Not(Box<Locatable<Type>>),
-    Parenthesised(Box<Locatable<Type>>),
-    Function {
-        params: Vec<Locatable<Type>>,
-        returns: Box<Locatable<Type>>,
-    },
-    Builtin(BuiltinType),
-    TraitObj(Vec<Locatable<Type>>),
-    Bounded {
-        ty: Spur,
-        bounds: Vec<Locatable<Type>>,
-    },
-    Custom(Spur),
-    Infer,
-}
-
-impl Type {
-    pub fn to_string(&self, interner: &Interner) -> String {
-        match self {
-            Type::Infer => "infer".to_string(),
-            Type::Not(ty) => format!("!{}", ty.data().to_string(interner)),
-            Type::Parenthesised(ty) => format!("({})", ty.data().to_string(interner)),
-            Type::Const(ident, ty) => format!(
-                "const {}: {}",
-                interner.resolve(ident),
-                ty.data().to_string(interner)
-            ),
-            Type::Operand(left, op, right) => format!(
-                "{} {} {}",
-                left.data().to_string(interner),
-                op,
-                right.data().to_string(interner)
-            ),
-            Type::Function { params, returns } => format!(
-                "fn({}) -> {}",
-                params
-                    .iter()
-                    .map(|ty| ty.data().to_string(interner))
-                    .collect::<Vec<String>>()
-                    .join(", "),
-                returns.data().to_string(interner)
-            ),
-            Type::TraitObj(traits) => format!(
-                "type[{}]",
-                traits
-                    .iter()
-                    .map(|ty| ty.data().to_string(interner))
-                    .collect::<Vec<String>>()
-                    .join(", ")
-            ),
-            Type::Bounded { ty, bounds } => format!(
-                "{}[{}]",
-                interner.resolve(ty),
-                bounds
-                    .iter()
-                    .map(|ty| ty.data().to_string(interner))
-                    .collect::<Vec<String>>()
-                    .join(", ")
-            ),
-            Type::Builtin(b) => b.to_string(interner),
-            Type::Custom(c) => interner.resolve(c).to_owned(),
-        }
-    }
-}
-
-impl Default for Type {
-    fn default() -> Self {
-        Self::Infer
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum TypeOperand {
-    And,
-    Or,
-}
-
-impl fmt::Display for TypeOperand {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::And => write!(f, "&"),
-            Self::Or => write!(f, "|"),
-        }
-    }
-}
-
-impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for TypeOperand {
-    type Error = Locatable<Error>;
-
-    fn try_from((token, file): (&Token<'src>, CurrentFile)) -> Result<Self, Self::Error> {
-        match token.ty() {
-            TokenType::Ampersand => Ok(Self::And),
-            TokenType::Pipe => Ok(Self::Or),
-
-            ty => Err(Locatable::new(
-                Error::Syntax(SyntaxError::Generic(format!(
-                    "Expected one of {}, got '{}'",
-                    [TokenType::Ampersand, TokenType::Pipe]
-                        .iter()
-                        .map(|t| t.to_str())
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                    ty,
-                ))),
-                Location::concrete(token, file),
-            )),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum BuiltinType {
-    Integer { sign: Signedness, width: u16 },
-    IntReg(Signedness),
-    IntPtr(Signedness),
-    Float { width: u16 },
-    Boolean,
-    String,
-    Rune,
-    Unit,
-    Absurd,
-    Array(u128, Box<Locatable<Type>>),
-    Slice(Box<Locatable<Type>>),
-    Tuple(Vec<Locatable<Type>>),
-}
-
-impl BuiltinType {
-    pub fn to_string(&self, interner: &Interner) -> String {
-        match self {
-            BuiltinType::Integer { sign, width } => format!(
-                "{}{}",
-                match sign {
-                    Signedness::Signed => "i",
-                    Signedness::Unsigned => "u",
-                },
-                width
-            ),
-            BuiltinType::IntPtr(sign) => format!(
-                "{}ptr",
-                match sign {
-                    Signedness::Signed => "i",
-                    Signedness::Unsigned => "u",
-                },
-            ),
-            BuiltinType::IntReg(sign) => format!(
-                "{}reg",
-                match sign {
-                    Signedness::Signed => "i",
-                    Signedness::Unsigned => "u",
-                },
-            ),
-            BuiltinType::Float { width } => format!("f{}", width),
-            BuiltinType::Boolean => "bool".to_string(),
-            BuiltinType::String => "str".to_string(),
-            BuiltinType::Rune => "rune".to_string(),
-            BuiltinType::Unit => "unit".to_string(),
-            BuiltinType::Absurd => "absurd".to_string(),
-            BuiltinType::Array(len, ty) => {
-                format!("arr[{}, {}]", len, ty.data().to_string(interner))
-            }
-            BuiltinType::Slice(ty) => format!("slice{}]", ty.data().to_string(interner)),
-            BuiltinType::Tuple(types) => format!(
-                "tup[{}]",
-                types
-                    .iter()
-                    .map(|ty| ty.data().to_string(interner))
-                    .collect::<Vec<String>>()
-                    .join(", ")
-            ),
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Signedness {
-    Unsigned,
-    Signed,
-}
-
-impl fmt::Display for Signedness {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Unsigned => write!(f, "u"),
-            Self::Signed => write!(f, "i"),
-        }
     }
 }
 
