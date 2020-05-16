@@ -1,5 +1,5 @@
 use crate::{
-    error::{Error, Locatable, Location, ParseResult, SyntaxError},
+    error::{Error, Locatable, Location, ParseResult, SemanticError, Span, SyntaxError},
     parser::{Expr, Expression, Literal, Parser, Type},
     token::TokenType,
 };
@@ -21,7 +21,13 @@ pub enum Statement<'expr, 'stmt> {
         arm: Option<Stmt<'stmt, 'expr>>,
     },
     Expression(Expr<'expr>),
-    VarDeclaration(Spur, Locatable<Type>, Expr<'expr>, bool),
+    VarDeclaration {
+        name: Spur,
+        ty: Locatable<Type>,
+        val: Expr<'expr>,
+        constant: bool,
+        mutable: bool,
+    },
     Return(Option<Expr<'expr>>),
     Break(Option<Expr<'expr>>),
     Continue,
@@ -68,7 +74,13 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 let start_token =
                     self.eat_of([TokenType::Let, TokenType::Const], [TokenType::Newline])?;
 
-                let (var, span) = {
+                let constant = start_token.ty() == TokenType::Const;
+                let mutable = self.peek()?.ty() == TokenType::Mut;
+                if mutable {
+                    self.eat(TokenType::Mut, [TokenType::Newline])?;
+                }
+
+                let (name, span) = {
                     let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
                     (self.string_interner.intern(ident.source()), ident.span())
                 };
@@ -88,15 +100,26 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                     ty
                 };
 
-                let expr = self.expr()?;
-                self.eat(TokenType::Newline, [])?;
+                let val = self.expr()?;
+                let end_span = self.eat(TokenType::Newline, [])?.span();
 
-                let stmt = self.stmt_arena.store(Statement::VarDeclaration(
-                    var,
+                if constant && mutable {
+                    return Err(Locatable::new(
+                        Error::Semantic(SemanticError::MutableConstant),
+                        Location::concrete(
+                            Span::merge(start_token.span(), end_span),
+                            self.current_file,
+                        ),
+                    ));
+                }
+
+                let stmt = self.stmt_arena.store(Statement::VarDeclaration {
+                    name,
                     ty,
-                    expr,
-                    start_token.ty() == TokenType::Const,
-                ));
+                    val,
+                    constant,
+                    mutable,
+                });
 
                 Ok(Some(stmt))
             }

@@ -228,6 +228,22 @@ fn decl_var() {
 }
 
 #[test]
+fn decl_arr() {
+    assert_eq!(
+        "let variable: infer := arr[true, 10, \"test\", 'c']\n",
+        format_stmt("let variable := arr[true, 10, \"test\", 'c']\n"),
+    );
+}
+
+#[test]
+fn decl_mut_var() {
+    assert_eq!(
+        "let mut variable: infer := 10\n",
+        format_stmt("let mut variable := 10\n"),
+    );
+}
+
+#[test]
 fn long_func_decl_stmt() {
     stmt_eq!("let jkpwn: infer := vssekgmbxoxshmhinx(jnldfzbd, kcqpq, gbuaqbax, argro, xhmfc, bredcp, pwlfywfkb, vgsjjcy, exomcmbf, cjsjpvgcl, omtlfpw, ssdrm, kxrtaun, xexzz, ejvmxj, ssmqkbqqi)\n");
 }
@@ -488,19 +504,6 @@ fn types_ast() {
             ])),
         ),
         (
-            "type[Trait1, Trait2]",
-            Type::TraitObj(vec![
-                Locatable::new(
-                    Type::ItemPath(ItemPath::new(vec![lasso::Spur::try_from_usize(0).unwrap()])),
-                    Location::concrete(5..11, FileId(0)),
-                ),
-                Locatable::new(
-                    Type::ItemPath(ItemPath::new(vec![lasso::Spur::try_from_usize(1).unwrap()])),
-                    Location::concrete(13..19, FileId(0)),
-                ),
-            ]),
-        ),
-        (
             "CustomThingy",
             Type::ItemPath(ItemPath::new(vec![lasso::Spur::try_from_usize(0).unwrap()])),
         ),
@@ -515,12 +518,10 @@ fn types_ast() {
     ];
 
     for (src, ty) in builtins.iter() {
-        dbg!(src);
         assert_eq!(
-            Parser::new(src, CurrentFile::new(FileId(0), src.len()), Interner::new(),)
+            &*Parser::new(src, CurrentFile::new(FileId(0), src.len()), Interner::new(),)
                 .ascribed_type()
-                .unwrap()
-                .data(),
+                .unwrap(),
             &ty.clone(),
         );
     }

@@ -5,6 +5,7 @@ use crate::{
     token::{Token, TokenType},
 };
 
+use crunch_proc::recursion_guard;
 use lasso::Spur;
 
 use alloc::{
@@ -83,33 +84,33 @@ impl Type {
     pub fn to_string(&self, interner: &Interner) -> String {
         match self {
             Type::Infer => "infer".to_string(),
-            Type::Not(ty) => format!("!{}", ty.data().to_string(interner)),
-            Type::Parenthesised(ty) => format!("({})", ty.data().to_string(interner)),
+            Type::Not(ty) => format!("!{}", ty.to_string(interner)),
+            Type::Parenthesised(ty) => format!("({})", ty.to_string(interner)),
             Type::Const(ident, ty) => format!(
                 "const {}: {}",
                 interner.resolve(ident),
-                ty.data().to_string(interner)
+                ty.to_string(interner)
             ),
             Type::Operand(left, op, right) => format!(
                 "{} {} {}",
-                left.data().to_string(interner),
+                left.to_string(interner),
                 op,
-                right.data().to_string(interner)
+                right.to_string(interner)
             ),
             Type::Function { params, returns } => format!(
                 "fn({}) -> {}",
                 params
                     .iter()
-                    .map(|ty| ty.data().to_string(interner))
+                    .map(|ty| ty.to_string(interner))
                     .collect::<Vec<String>>()
                     .join(", "),
-                returns.data().to_string(interner)
+                returns.to_string(interner)
             ),
             Type::TraitObj(traits) => format!(
                 "type[{}]",
                 traits
                     .iter()
-                    .map(|ty| ty.data().to_string(interner))
+                    .map(|ty| ty.to_string(interner))
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
@@ -121,7 +122,7 @@ impl Type {
                     .join("."),
                 bounds
                     .iter()
-                    .map(|ty| ty.data().to_string(interner))
+                    .map(|ty| ty.to_string(interner))
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
@@ -227,15 +228,13 @@ impl BuiltinType {
             BuiltinType::Rune => "rune".to_string(),
             BuiltinType::Unit => "unit".to_string(),
             BuiltinType::Absurd => "absurd".to_string(),
-            BuiltinType::Array(len, ty) => {
-                format!("arr[{}, {}]", len, ty.data().to_string(interner))
-            }
-            BuiltinType::Slice(ty) => format!("slice{}]", ty.data().to_string(interner)),
+            BuiltinType::Array(len, ty) => format!("arr[{}, {}]", len, ty.to_string(interner)),
+            BuiltinType::Slice(ty) => format!("slice{}]", ty.to_string(interner)),
             BuiltinType::Tuple(types) => format!(
                 "tup[{}]",
                 types
                     .iter()
-                    .map(|ty| ty.data().to_string(interner))
+                    .map(|ty| ty.to_string(interner))
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
@@ -291,14 +290,13 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
     ///     | 'fn' '(' (Type | Type ',' Type)? ')' ('->' Type)?
     /// ```
     // TODO: Decide about `Self` and `self`
+    #[recursion_guard]
     pub(super) fn ascribed_type(&mut self) -> ParseResult<Locatable<Type>> {
-        let _frame = self.add_stack_frame()?;
-
         self.ascribed_type_internal(0)
     }
 
+    #[recursion_guard]
     fn ascribed_type_internal(&mut self, precedence: usize) -> ParseResult<Locatable<Type>> {
-        let _frame = self.add_stack_frame()?;
         let mut token = self.next()?;
 
         let prefix = Self::type_prefix(token.ty());
@@ -749,7 +747,7 @@ mod tests {
                 .ascribed_type()
                 .unwrap();
 
-            assert_eq!(ty.data(), &Type::Builtin(correct.clone()));
+            assert_eq!(&*ty, &Type::Builtin(correct.clone()));
         }
     }
 
@@ -795,7 +793,7 @@ mod tests {
                 .ascribed_type()
                 .unwrap();
 
-            assert_eq!(ty.data(), &Type::Builtin(correct.clone()));
+            assert_eq!(&*ty, &Type::Builtin(correct.clone()));
         }
     }
 
@@ -825,7 +823,7 @@ mod tests {
                 .ascribed_type()
                 .unwrap();
 
-            assert_eq!(ty.data(), correct);
+            assert_eq!(&*ty, correct);
         }
     }
 
@@ -855,7 +853,7 @@ mod tests {
                 .ascribed_type()
                 .unwrap();
 
-            assert_eq!(ty.data(), correct);
+            assert_eq!(&*ty, correct);
         }
     }
 
@@ -899,7 +897,7 @@ mod tests {
                 .ascribed_type()
                 .unwrap();
 
-            assert_eq!(ty.data(), correct);
+            assert_eq!(&*ty, correct);
         }
     }
 
@@ -914,7 +912,7 @@ mod tests {
                 let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), Interner::default());
 
                 let ty = parser.ascribed_type();
-                match ty.as_ref().map(|t| t.data()) {
+                match ty.as_ref().map(|t| &**t) {
                     Ok(Type::Builtin(BuiltinType::Integer { sign: Signedness::Signed, .. })) => {},
                     Err(Locatable { data: _data @ Error::Syntax(SyntaxError::Generic(..)), .. }) => {}
 
@@ -927,7 +925,7 @@ mod tests {
                 let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), Interner::default());
 
                 let ty = parser.ascribed_type();
-                match ty.as_ref().map(|t| t.data()) {
+                match ty.as_ref().map(|t| &**t) {
                     Ok(Type::Builtin(BuiltinType::Integer { sign: Signedness::Unsigned, .. })) => {},
                     Err(Locatable { data: _data @ Error::Syntax(SyntaxError::Generic(..)), .. }) => {}
 
@@ -940,7 +938,7 @@ mod tests {
                 let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), Interner::default());
 
                 let ty = parser.ascribed_type();
-                match ty.as_ref().map(|t| t.data()) {
+                match ty.as_ref().map(|t| &**t) {
                     Ok(Type::Builtin(BuiltinType::Float { .. })) => {},
                     Err(Locatable { data: _data @ Error::Syntax(SyntaxError::Generic(..)), .. }) => {}
 

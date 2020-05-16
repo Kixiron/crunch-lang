@@ -12,16 +12,14 @@
 - [ ] Pattern matching
 - [ ] Destructure type choices (`&str | i32`) via matches e.g. `match val: &str | i32 string: &str => ..`
 - [ ] Add reference types `&` and `&mut`
-- [ ] Add mutability to decls `let mut Ident`
-- [ ] Remove usages of `.data()` since `Deref` is implemented for `Locatable`
+- [x] Add mutability to decls `let mut Ident`
+- [x] Remove usages of `.data()` since `Deref` is implemented for `Locatable`
   - [x] Implement `DerefMut` for `Locatable`
   - [x] `AsRef` & `AsMut` for `Locatable`
 - [ ] Add all fields to the symbol table
 - [ ] Re-add function generics
 - [ ] Unions
 - [x] Macro for inserting stack frame counters
-- [ ] Allocator blocks
-  - [ ] Pointers only valid within
 - [ ] File checksums a la https://apenwarr.ca/log/20181113
 - [ ] Struct instantiation
 - [ ] Reflection/Metaprogramming
@@ -31,6 +29,8 @@
   - [ ] Const
   - [ ] Scoped
   - [ ] Closure
+  - [ ] Allocator blocks
+    - [ ] Pointers only valid within
 - [ ] Compiler Pipeline
   - [x] Read file
     - [ ] Make sure files aren't re-processed

@@ -124,10 +124,10 @@ pub enum Ast<'expr, 'stmt> {
 impl<'expr, 'stmt> Ast<'expr, 'stmt> {
     pub fn name(&self) -> Option<Spur> {
         match self {
-            Self::Function(func) => Some(func.data().name),
-            Self::Type(ty) => Some(ty.data().name),
-            Self::Enum(e) => Some(e.data().name),
-            Self::Trait(tr) => Some(tr.data().name),
+            Self::Function(func) => Some(func.name),
+            Self::Type(ty) => Some(ty.name),
+            Self::Enum(e) => Some(e.name),
+            Self::Trait(tr) => Some(tr.name),
             Self::Import(..) | Self::ExtendBlock(..) | Self::Alias(..) => None,
         }
     }
@@ -449,7 +449,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 // Get the last segment of the path as the alias if none is supplied
                 let last_segment = self
                     .string_interner
-                    .resolve(file.data())
+                    .resolve(&*file)
                     .split('.')
                     .last()
                     .ok_or(Locatable::new(
@@ -539,10 +539,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 }
 
                 TokenType::Function => {
-                    if !method_attributes
-                        .iter()
-                        .any(|attr| attr.data().is_visibility())
-                    {
+                    if !method_attributes.iter().any(|attr| attr.is_visibility()) {
                         method_attributes.push(Locatable::new(
                             Attribute::Visibility(Visibility::FileLocal),
                             Location::implicit(self.current_file.index_span(), self.current_file),
@@ -575,7 +572,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         }
         let end_span = self.eat(TokenType::End, [TokenType::Newline])?.span();
 
-        if !attrs.iter().any(|attr| attr.data().is_visibility()) {
+        if !attrs.iter().any(|attr| attr.is_visibility()) {
             attrs.push(Locatable::new(
                 Attribute::Visibility(Visibility::FileLocal),
                 Location::concrete(signature_span, self.current_file),
@@ -679,7 +676,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         }
         let end_span = self.eat(TokenType::End, [TokenType::Newline])?.span();
 
-        if !attrs.iter().any(|attr| attr.data().is_visibility()) {
+        if !attrs.iter().any(|attr| attr.is_visibility()) {
             attrs.push(Locatable::new(
                 Attribute::Visibility(Visibility::FileLocal),
                 Location::concrete(signature_span, self.current_file),
@@ -808,7 +805,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                         )
                     };
 
-                    if !member_attrs.iter().any(|attr| attr.data().is_visibility()) {
+                    if !member_attrs.iter().any(|attr| attr.is_visibility()) {
                         member_attrs.push(Locatable::new(
                             Attribute::Visibility(Visibility::FileLocal),
                             Location::implicit(signature_span, self.current_file),
@@ -850,7 +847,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             ));
         }
 
-        if !attrs.iter().any(|attr| attr.data().is_visibility()) {
+        if !attrs.iter().any(|attr| attr.is_visibility()) {
             attrs.push(Locatable::new(
                 Attribute::Visibility(Visibility::FileLocal),
                 Location::concrete(signature_span, self.current_file),
@@ -1002,7 +999,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
         let end_span = self.eat(TokenType::End, [TokenType::Newline])?.span();
 
-        if !attrs.iter().any(|attr| attr.data().is_visibility()) {
+        if !attrs.iter().any(|attr| attr.is_visibility()) {
             attrs.push(Locatable::new(
                 Attribute::Visibility(Visibility::FileLocal),
                 Location::implicit(signature_span, self.current_file),

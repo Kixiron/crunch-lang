@@ -841,16 +841,23 @@ impl<'expr, 'stmt> PrettyPrinter {
                 writeln!(f, "end")
             }
 
-            Statement::VarDeclaration(name, ty, expr, constant) => {
+            Statement::VarDeclaration {
+                name,
+                ty,
+                val,
+                constant,
+                mutable,
+            } => {
                 write!(
                     f,
-                    "{} {}: ",
+                    "{}{}{}: ",
                     if *constant { "const" } else { "let" },
+                    if *mutable { " mut " } else { " " },
                     self.interner.resolve(name)
                 )?;
                 self.print_ty(f, ty.data())?;
                 write!(f, " := ")?;
-                self.print_expr(f, expr)?;
+                self.print_expr(f, val)?;
                 writeln!(f)
             }
 

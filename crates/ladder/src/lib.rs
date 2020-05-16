@@ -122,7 +122,7 @@ impl Ladder {
     fn lower_statement(&self, stmt: &AstStmt<'_, '_>) -> Stmt {
         match stmt {
             AstStmt::Expression(expr) => Stmt::Expr(self.lower_expr(expr)),
-            AstStmt::VarDeclaration(name, _, val, _) => Stmt::VarDecl(VarDecl {
+            AstStmt::VarDeclaration { name, val, .. } => Stmt::VarDecl(VarDecl {
                 name: ItemPath::new(*name),
                 value: self.lower_expr(val),
             }),

@@ -68,7 +68,7 @@ impl SemanticAnalyzer {
         for pass in self.passes.iter_mut() {
             match node {
                 Ast::Function(func) => pass.analyze_function(
-                    func.data(),
+                    &**func,
                     func.loc(),
                     symbol_table,
                     interner,
@@ -76,19 +76,19 @@ impl SemanticAnalyzer {
                 ),
 
                 Ast::Type(ty) => {
-                    pass.analyze_type(ty.data(), ty.loc(), symbol_table, interner, error_handler)
+                    pass.analyze_type(&**ty, ty.loc(), symbol_table, interner, error_handler)
                 }
 
                 Ast::Enum(en) => {
-                    pass.analyze_enum(en.data(), en.loc(), symbol_table, interner, error_handler)
+                    pass.analyze_enum(&**en, en.loc(), symbol_table, interner, error_handler)
                 }
 
                 Ast::Trait(tr) => {
-                    pass.analyze_trait(tr.data(), tr.loc(), symbol_table, interner, error_handler)
+                    pass.analyze_trait(&**tr, tr.loc(), symbol_table, interner, error_handler)
                 }
 
                 Ast::Import(import) => pass.analyze_import(
-                    import.data(),
+                    &**import,
                     import.loc(),
                     symbol_table,
                     interner,
@@ -233,7 +233,7 @@ impl Correctness {
             Vec::with_capacity(1),
         );
         for attr in attrs.iter() {
-            let curr = match attr.data() {
+            let curr = match &**attr {
                 Attribute::Visibility(_) => {
                     vis.push(attr);
                     Attr::Vis
@@ -252,10 +252,10 @@ impl Correctness {
             }
 
             // If the attribute has already been seen, emit an error
-            if let Some(loc) = seen.insert(attr.data(), attr.loc()) {
+            if let Some(loc) = seen.insert(&**attr, attr.loc()) {
                 error_handler.push_err(Locatable::new(
                     Error::Semantic(SemanticError::DuplicatedAttributes {
-                        attr: attr.data().as_str().to_owned(),
+                        attr: attr.as_str().to_owned(),
                         first: loc,
                         second: attr.loc(),
                     }),
@@ -272,8 +272,8 @@ impl Correctness {
             while let Some([first, second]) = windows.next() {
                 error_handler.push_err(Locatable::new(
                     Error::Semantic(SemanticError::ConflictingAttributes {
-                        attr1: first.data().as_str().to_owned(),
-                        attr2: second.data().as_str().to_owned(),
+                        attr1: first.as_str().to_owned(),
+                        attr2: second.as_str().to_owned(),
                         first: first.loc(),
                         second: second.loc(),
                     }),
@@ -309,11 +309,11 @@ impl SemanticPass for Correctness {
 
         // Check for duplicated function arguments
         let mut args = HashMap::with_capacity(func.args.len());
-        for FuncArg { name, .. } in func.args.iter().map(|arg| arg.data()) {
-            if let Some(loc) = args.insert(name.data(), name.loc()) {
+        for FuncArg { name, .. } in func.args.iter().map(|arg| &**arg) {
+            if let Some(loc) = args.insert(**name, name.loc()) {
                 error_handler.push_err(Locatable::new(
                     Error::Semantic(SemanticError::Redefinition {
-                        name: interner.resolve(name.data()).to_owned(),
+                        name: interner.resolve(&**name).to_owned(),
                         first: loc,
                         second: name.loc(),
                     }),
@@ -354,13 +354,13 @@ impl SemanticPass for Correctness {
                 ty: member,
                 attrs,
                 ..
-            } = member.data();
+            } = &**member;
 
             // If there's already a member by the same name, emit an error
-            if let Some(loc) = members.insert(*name, member.loc()) {
+            if let Some(loc) = members.insert(name, member.loc()) {
                 error_handler.push_err(Locatable::new(
                     Error::Semantic(SemanticError::Redefinition {
-                        name: interner.resolve(name).to_owned(),
+                        name: interner.resolve(&name).to_owned(),
                         first: loc,
                         second: member.loc(),
                     }),
@@ -369,12 +369,12 @@ impl SemanticPass for Correctness {
             }
 
             // Mark the generic as used
-            if let Some((_, used)) = generics.iter_mut().find(|(g, _)| g.data() == member.data()) {
+            if let Some((_, used)) = generics.iter_mut().find(|(g, _)| ***g == **member) {
                 *used = true;
             }
 
             // Also check for unused attributes while we're here
-            self.duplicated_attrs(error_handler, attrs);
+            self.duplicated_attrs(error_handler, &attrs);
         }
 
         // Do the actual check that all generics are used
@@ -383,7 +383,7 @@ impl SemanticPass for Correctness {
             .filter_map(|(g, used)| if used { Some(g) } else { None })
         {
             error_handler.push_warning(Locatable::new(
-                Warning::UnusedGeneric(generic.data().to_string(&interner)),
+                Warning::UnusedGeneric(generic.to_string(&interner)),
                 generic.loc(),
             ));
         }
@@ -392,7 +392,7 @@ impl SemanticPass for Correctness {
         // // Check for duplicated methods, member/method overlap and analyze methods
         // let mut methods = HashMap::with_capacity(ty.methods.len());
         // for method in ty.methods.iter() {
-        //     let Function { name, .. } = method.data();
+        //     let Function { name, .. } = &**method;
         //
         //     // If there's already a method by the same name, emit an error
         //     if let Some(loc) = methods.insert(*name, method.loc()) {
@@ -420,7 +420,7 @@ impl SemanticPass for Correctness {
         //
         //     // Analyze the function while we're here
         //     self.analyze_function(
-        //         method.data(),
+        //         &*method,
         //         method.loc(),
         //         local_symbol_table,
         //         interner,
@@ -443,7 +443,7 @@ impl SemanticPass for Correctness {
         let mut variants = HashMap::with_capacity(en.variants.len());
         let mut generics: Vec<_> = en.generics.iter().map(|g| (g, false)).collect();
         for variant in en.variants.iter() {
-            let (name, elements) = match variant.data() {
+            let (name, elements) = match &**variant {
                 EnumVariant::Unit { name, .. } => (*name, None),
                 EnumVariant::Tuple { name, elements, .. } => (*name, Some(elements)),
             };
@@ -463,9 +463,7 @@ impl SemanticPass for Correctness {
             // Mark all used generics as used
             if let Some(elements) = elements {
                 for elm in elements {
-                    if let Some((_, used)) =
-                        generics.iter_mut().find(|(g, _)| g.data() == elm.data())
-                    {
+                    if let Some((_, used)) = generics.iter_mut().find(|(g, _)| ***g == **elm) {
                         *used = true;
                     }
                 }
@@ -478,7 +476,7 @@ impl SemanticPass for Correctness {
             .filter_map(|(g, used)| if used { Some(g) } else { None })
         {
             error_handler.push_warning(Locatable::new(
-                Warning::UnusedGeneric(generic.data().to_string(&interner)),
+                Warning::UnusedGeneric(generic.to_string(&interner)),
                 generic.loc(),
             ));
         }
@@ -498,7 +496,7 @@ impl SemanticPass for Correctness {
         // Analyze all the methods
         for method in tr.methods.iter() {
             self.analyze_function(
-                method.data(),
+                &*method,
                 method.loc(),
                 local_symbol_table,
                 interner,

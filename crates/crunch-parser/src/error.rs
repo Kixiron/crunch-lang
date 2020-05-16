@@ -262,7 +262,7 @@ impl ErrorHandler {
         let mut diag = Vec::with_capacity(5);
 
         while let Some(err) = self.warnings.pop_front() {
-            err.data().emit(err.file(), err.span(), &mut diag);
+            err.emit(err.file(), err.span(), &mut diag);
 
             for diag in diag.drain(..) {
                 term::emit(&mut writer.lock(), &config, files, &diag).unwrap();
@@ -270,7 +270,7 @@ impl ErrorHandler {
         }
 
         while let Some(err) = self.errors.pop_front() {
-            err.data().emit(err.file(), err.span(), &mut diag);
+            err.emit(err.file(), err.span(), &mut diag);
 
             for diag in diag.drain(..) {
                 term::emit(&mut writer.lock(), &config, files, &diag).unwrap();
@@ -426,6 +426,9 @@ pub enum SemanticError {
         first: Location,
         second: Location,
     },
+
+    #[display(fmt = "A constant cannot be declared as mutable")]
+    MutableConstant,
 }
 
 impl SemanticError {
