@@ -26,7 +26,7 @@ Another big goal is provable infallibility, or the ability to statically prove t
 
 Crunch takes a lot of inspiration from functional languages and attempts to bring some functional concepts, for example sum types, into the realm of imperative programming.
 
-Crunch has classes (known as types), enumerations and traits
+Crunch has types, enumerations and traits
 
 ```
 :: A single user
@@ -60,8 +60,18 @@ trait Account
     end
 end
 
-:: Implement the `Account` trait on the `User` type
+:: Implement the `Account` trait on the `User` and `Admin` types
 extend User with Account
+    fn name(&self) -> &str
+        &self.username
+    end
+
+    fn email(&self) -> &str
+        &self.email
+    end
+end
+
+extend Admin with Account
     fn name(&self) -> &str
         &self.username
     end
@@ -74,7 +84,7 @@ end
 :: This doesn't have to be done in actual code, but it's an example
 import std.collections.Vec
 
-fn filter_admins(users: slice[dyn Account]) -> Vec[dyn Account]
+fn filter_admins(users: slice[dyn Account & Clone]) -> Vec[dyn Account]
     let admin_names: arr[1, &str] := arr["Administrator"]
     let mut non_admins := Vec.new()
 
@@ -105,7 +115,9 @@ fn filter_admins(users: slice[dyn Account]) -> Vec[dyn Account]
 end
 
 :: An alternative way to write the above function would be this
-fn filter_admins(users: slice[User | Admin]) -> Vec[dyn Account]
+:: the type of `users` breaks down to this: Each element can be a `User`
+:: or an `Admin` and must also implement the `Clone` trait
+fn filter_admins(users: slice[(User | Admin) & Clone]) -> Vec[dyn Account]
     users.iter().filter_map(
         do |account|
             match account
@@ -124,5 +136,62 @@ fn filter_admins(users: slice[User | Admin]) -> Vec[dyn Account]
     .collect()
 end
 ```
+
+Crunch has no null, so all nullability comes from the `Option` type and must be explicitly handled
+
+```
+enum Option[T]
+    Some(T)
+    None
+end
+```
+
+Part of Crunch's focus is also on static analysis methods such as SMT solving and Symbolic Execution. These serve as mechanisms for the compiler to reason about your code and to provide otherwise impossible optimizations, like this short example
+
+```
+:: Unoptimized code
+fn func()
+    let y := std.io.read<i32>()
+    let z := y * 2
+
+    if z == 12
+        panic()
+    else
+        println("Worked!")
+    end
+end
+
+:: Optimized code
+fn func()
+    let y := std.io.read<i32>()
+
+    :: The code has changed, but the behavior has not
+    if y == 6
+        panic()
+    else
+        println("Worked!")
+    end
+end
+```
+
+These kinds of logical analysis also allow for other more complex optimizations, like dropping unused fields from types (with limitations for safety reasons)
+
+```
+type PartiallyUnused
+    used_field: u32
+    unused_field: u32
+end
+
+fn main()
+    let instance = PartiallyUnused is
+        used_field: 100
+        unused_field: 200
+    end
+
+    println("{}", instance.used_field)
+end
+```
+
+In that example only `used_field` is used, so for the instance `instance`, `unused_field` would never be present in the final binary. This optimization is applied at a program-scale, so it only happens to an instance of a struct if it's extra fields are *never* used throughout the entire lifetime of the type
 
 [`rustup`]: https://rustup.rs/
