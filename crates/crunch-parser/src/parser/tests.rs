@@ -183,13 +183,13 @@ fn integer_literals() {
 
     #[rustfmt::skip]
     let integers: Vec<(String, (u128, Sign))> = vec![
-        ("10".into(), (10, Sign::Positive)),
-        ("+10".into(), (10, Sign::Positive)),
-        ("-10".into(), (10, Sign::Negative)),
-        ("0".into(), (0, Sign::Positive)),
-        ("+0".into(), (0, Sign::Positive)),
-        ("-0".into(), (0, Sign::Negative)),
-        (format!("{}", u128::max_value()), (u128::max_value(), Sign::Positive)),
+        ("10".into(),   (10, Sign::Positive)),
+        ("+10".into(),  (10, Sign::Positive)),
+        ("-10".into(),  (10, Sign::Negative)),
+        ("0".into(),    (0, Sign::Positive)),
+        ("+0".into(),   (0, Sign::Positive)),
+        ("-0".into(),   (0, Sign::Negative)),
+        (format!("{}",  u128::max_value()), (u128::max_value(), Sign::Positive)),
         (format!("+{}", u128::max_value()), (u128::max_value(), Sign::Positive)),
         (format!("-{}", u128::max_value()), (u128::max_value(), Sign::Negative)),
     ];
@@ -322,6 +322,85 @@ fn comparison_operations() {
 }
 
 #[test]
+fn assignments() {
+    let fmt = |assign| {
+        format!(
+            "Assignment(Variable((key:1,)),{:?},Literal(Integer((sign:Positive,bits:\"100\",))),)",
+            assign
+        )
+    };
+
+    #[rustfmt::skip]
+    let integers: Vec<(String, AssignmentType)> = vec![
+        ("i := 100".into(),  AssignmentType::Normal),
+        ("i += 100".into(),  AssignmentType::BinaryOp(BinaryOperand::Add)),
+        ("i -= 100".into(),  AssignmentType::BinaryOp(BinaryOperand::Sub)),
+        ("i *= 100".into(),  AssignmentType::BinaryOp(BinaryOperand::Mult)),
+        ("i /= 100".into(),  AssignmentType::BinaryOp(BinaryOperand::Div)),
+        ("i %= 100".into(),  AssignmentType::BinaryOp(BinaryOperand::Mod)),
+        ("i **= 100".into(), AssignmentType::BinaryOp(BinaryOperand::Pow)),
+        ("i &= 100".into(),  AssignmentType::BinaryOp(BinaryOperand::BitAnd)),
+        ("i |= 100".into(),  AssignmentType::BinaryOp(BinaryOperand::BitOr)),
+        ("i ^= 100".into(),  AssignmentType::BinaryOp(BinaryOperand::BitXor)),
+        ("i >>= 100".into(), AssignmentType::BinaryOp(BinaryOperand::Shr)),
+        ("i <<= 100".into(), AssignmentType::BinaryOp(BinaryOperand::Shl)),
+    ];
+
+    for (src, ty) in integers {
+        let expr = eval_expr!(&src);
+        let expected = fmt(ty);
+
+        assert_eq!(expr, expected);
+    }
+}
+
+// TODO: Range more things
+//       - Functions
+//       - More ranges
+//       - Strings
+//       - Chars
+//       - Floats
+#[test]
+fn ranges() {
+    let expr = eval_expr!("1..100");
+    let expected = "Range(Literal(Integer((sign:Positive,bits:\"1\",))),Literal(Integer((sign:Positive,bits:\"100\",))),)";
+
+    assert_eq!(expr, expected);
+}
+
+#[test]
+fn binary_ops() {
+    let fmt = |op| {
+        format!(
+            "BinaryOp(Variable((key:1,)),{:?},Literal(Integer((sign:Positive,bits:\"100\",))),)",
+            op
+        )
+    };
+
+    #[rustfmt::skip]
+    let integers: Vec<(String, BinaryOperand)> = vec![
+        ("i + 100".into(),  BinaryOperand::Add),
+        ("i - 100".into(),  BinaryOperand::Sub),
+        ("i * 100".into(),  BinaryOperand::Mult),
+        ("i / 100".into(),  BinaryOperand::Div),
+        ("i % 100".into(),  BinaryOperand::Mod),
+        ("i ** 100".into(), BinaryOperand::Pow),
+        ("i & 100".into(),  BinaryOperand::BitAnd),
+        ("i | 100".into(),  BinaryOperand::BitOr),
+        ("i ^ 100".into(),  BinaryOperand::BitXor),
+        ("i >> 100".into(), BinaryOperand::Shr),
+        ("i << 100".into(), BinaryOperand::Shl),
+    ];
+
+    for (src, ty) in integers {
+        let expr = eval_expr!(&src);
+        let expected = fmt(ty);
+
+        assert_eq!(expr, expected);
+    }
+}
+
+#[test]
 fn index_array_expr() {
     expr_eq!("array[0]");
 }
@@ -335,59 +414,6 @@ fn func_call_expr() {
 #[test]
 fn dotted_func_call_expr() {
     expr_eq!("test_func.function()");
-}
-
-#[test]
-fn assignments() {
-    let fmt = |assign| {
-        format!(
-            "Assignment(Variable((key:1,)),{:?},Literal(Integer((sign:Positive,bits:\"100\",))),)",
-            assign
-        )
-    };
-
-    #[rustfmt::skip]
-    let integers: Vec<(String, AssignmentType)> = vec![
-        ("i := 100".into(), AssignmentType::Normal),
-        ("i += 100".into(), AssignmentType::BinaryOp(BinaryOperand::Add)),
-        ("i -= 100".into(), AssignmentType::BinaryOp(BinaryOperand::Sub)),
-        ("i *= 100".into(), AssignmentType::BinaryOp(BinaryOperand::Mult)),
-        ("i /= 100".into(), AssignmentType::BinaryOp(BinaryOperand::Div)),
-        ("i %= 100".into(), AssignmentType::BinaryOp(BinaryOperand::Mod)),
-        ("i **= 100".into(), AssignmentType::BinaryOp(BinaryOperand::Pow)),
-        ("i &= 100".into(), AssignmentType::BinaryOp(BinaryOperand::BitAnd)),
-        ("i |= 100".into(), AssignmentType::BinaryOp(BinaryOperand::BitOr)),
-        ("i ^= 100".into(), AssignmentType::BinaryOp(BinaryOperand::BitXor)),
-        ("i >>= 100".into(), AssignmentType::BinaryOp(BinaryOperand::Shr)),
-        ("i <<= 100".into(), AssignmentType::BinaryOp(BinaryOperand::Shl)),
-    ];
-
-    for (src, ty) in integers {
-        let expr = eval_expr!(&src);
-        let expected = fmt(ty);
-
-        assert_eq!(expr, expected);
-    }
-}
-
-#[test]
-fn range_expr() {
-    expr_eq!("1..100");
-}
-
-#[test]
-fn bin_ops_expr() {
-    expr_eq!("10 + 9");
-    expr_eq!("10 - 9");
-    expr_eq!("10 * 9");
-    expr_eq!("10 / 9");
-    expr_eq!("10 % 9");
-    expr_eq!("10 ** 9");
-    expr_eq!("10 & 9");
-    expr_eq!("10 | 9");
-    expr_eq!("10 ^ 9");
-    expr_eq!("10 << 9");
-    expr_eq!("10 >> 9");
 }
 
 #[test]
