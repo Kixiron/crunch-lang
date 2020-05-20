@@ -179,7 +179,7 @@ fn expr() {
 
 #[test]
 fn integer_literals() {
-    let fmt = |bits, sign| format!(r#"Literal(Integer((sign:{:?},bits:"{}",)))"#, sign, bits);
+    let fmt = |bits, sign| format!("Literal(Integer((sign:{:?},bits:\"{}\",)))", sign, bits);
 
     #[rustfmt::skip]
     let integers: Vec<(String, (u128, Sign))> = vec![
@@ -204,7 +204,7 @@ fn integer_literals() {
 
 #[test]
 fn float_literals() {
-    let fmt = |float| format!(r#"Literal(Float(F64({})))"#, float);
+    let fmt = |float| format!("Literal(Float(F64({})))", float);
 
     // TODO: More comprehensive testing
     #[rustfmt::skip]
@@ -229,13 +229,13 @@ fn float_literals() {
 
 #[test]
 fn string_literals() {
-    let expr = eval_expr!(r#""Some string""#);
+    let expr = eval_expr!("\"Some string\"");
     let expected =
         "Literal(String(([(83),(111),(109),(101),(32),(115),(116),(114),(105),(110),(103),])))";
 
     assert_eq!(expr, expected);
 
-    let expr = eval_expr!(r#"b"Some string""#);
+    let expr = eval_expr!("b\"Some string\"");
     let expected =
         "Literal(Array([Integer((sign:Positive,bits:\"83\",)),Integer((sign:Positive,bits:\"111\",)),\
         Integer((sign:Positive,bits:\"109\",)),Integer((sign:Positive,bits:\"101\",)),Integer((sign:Positive,bits:\"32\",)),\
@@ -299,10 +299,10 @@ fn tuple_literals() {
 
 #[test]
 fn comparison_operations() {
-    let fmt = |lhs, op, rhs| format!(r#"Comparison({},{:?},{},)"#, lhs, op, rhs);
+    let fmt = |lhs, op, rhs| format!("Comparison({},{:?},{},)", lhs, op, rhs);
 
-    let ten = r#"Literal(Integer((sign:Positive,bits:"10",)))"#;
-    let zero = r#"Literal(Integer((sign:Positive,bits:"0",)))"#;
+    let ten = "Literal(Integer((sign:Positive,bits:\"10\",)))";
+    let zero = "Literal(Integer((sign:Positive,bits:\"0\",)))";
     #[rustfmt::skip]
     let comparisons: Vec<(String, (String, ComparisonOperand, String))> = vec![
         ("10 == 0".into(), (ten.to_string(), ComparisonOperand::Equal,        zero.to_string())),
