@@ -1,5 +1,6 @@
 **/target
 **/*.rs.bk
+**/Cargo.lock
 
 left.dump
 right.dump
