@@ -10,7 +10,7 @@ use log::{info, trace};
 use stadium::Stadium;
 
 use alloc::{format, vec::Vec};
-use core::{convert::TryFrom, fmt, mem, num::NonZeroUsize};
+use core::{fmt, mem, num::NonZeroUsize};
 
 mod ast;
 mod expr;
@@ -33,7 +33,7 @@ pub use stmt::{Statement, Stmt};
 pub use types::{BuiltinType, Signedness, Type};
 pub use utils::{CurrentFile, ItemPath, SyntaxTree};
 
-use utils::{BinaryPrecedence, StackGuard};
+use utils::StackGuard;
 
 // TODO: Make the parser a little more lax, it's kinda strict about whitespace
 
@@ -59,8 +59,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     pub fn new(source: &'src str, current_file: CurrentFile, string_interner: Interner) -> Self {
         let (token_stream, next, peek) = Self::lex(source);
         let mut symbol_table = Graph::new();
-        let module_scope =
-            symbol_table.push_with_capacity(Scope::LocalScope(Vec::with_capacity(10)), 10);
+        let module_scope = symbol_table
+            .push_with_capacity(Scope::LocalScope(Vec::new(), Vec::with_capacity(10)), 10);
 
         Self {
             token_stream,
@@ -88,8 +88,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         string_interner: Interner,
     ) -> Self {
         let mut symbol_table = Graph::new();
-        let module_scope =
-            symbol_table.push_with_capacity(Scope::LocalScope(Vec::with_capacity(10)), 10);
+        let module_scope = symbol_table
+            .push_with_capacity(Scope::LocalScope(Vec::new(), Vec::with_capacity(10)), 10);
 
         Self {
             token_stream,
@@ -298,17 +298,6 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         }
 
         Ok(())
-    }
-
-    #[inline(always)]
-    fn current_precedence(&self) -> usize {
-        self.peek
-            .map(|p| {
-                BinaryPrecedence::try_from(p.ty())
-                    .map(|p| p.precedence())
-                    .unwrap_or(0)
-            })
-            .unwrap_or(0)
     }
 
     #[inline(always)]

@@ -3,16 +3,17 @@ use crate::{
     parser::{Expr, Expression, Literal, Parser, Type},
     token::TokenType,
 };
-
-use crunch_proc::recursion_guard;
-use lasso::Spur;
-use stadium::Ticket;
-
 #[cfg(feature = "no-std")]
 use alloc::{format, vec::Vec};
+use crunch_proc::recursion_guard;
+use lasso::Spur;
+#[cfg(test)]
+use serde::Serialize;
+use stadium::Ticket;
 
 pub type Stmt<'expr, 'stmt> = Ticket<'stmt, Statement<'expr, 'stmt>>;
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement<'expr, 'stmt> {
     If {
@@ -286,6 +287,10 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
             _ => unreachable!(),
         };
+
+        if arm.is_some() {
+            self.eat(TokenType::End, [])?;
+        }
 
         let stmt = self.stmt_arena.store(Statement::If {
             condition,

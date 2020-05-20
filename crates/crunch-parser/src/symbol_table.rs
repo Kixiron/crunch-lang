@@ -1,12 +1,13 @@
 use crate::{
     error::Locatable,
     interner::Spur,
-    parser::{Ast, EnumVariant, ItemPath, Type},
+    parser::{Ast, EnumVariant, Expression, ItemPath, Statement, Type},
 };
 
 use alloc::vec::Vec;
 use core::{
     convert::TryInto,
+    fmt,
     iter::FromIterator,
     num::NonZeroU32,
     ops::{self, Deref},
@@ -53,22 +54,30 @@ pub enum Scope {
         target: Type,
         extender: Option<Type>,
     },
-    LocalScope(Vec<Scope>),
+    LocalScope(Vec<(Spur, Type)>, Vec<Scope>),
 }
 
 impl Scope {
     pub const fn new() -> Self {
-        Self::LocalScope(Vec::new())
+        Self::LocalScope(Vec::new(), Vec::new())
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
-        Self::LocalScope(Vec::with_capacity(capacity))
+        Self::LocalScope(Vec::new(), Vec::with_capacity(capacity))
     }
 
     pub fn name(&self) -> Spur {
         match self {
             Self::Function { name, .. } => *name,
             _ => todo!(),
+        }
+    }
+
+    pub fn vars_mut(&mut self) -> &mut Vec<(Spur, Type)> {
+        if let Self::LocalScope(vars, ..) = self {
+            vars
+        } else {
+            todo!("Probably should return an option")
         }
     }
 }
@@ -116,7 +125,7 @@ impl From<Spur> for MaybeSym {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Graph<T, L> {
     nodes: Vec<Node<T, L>>,
 }
@@ -166,6 +175,12 @@ impl<T, L> Graph<T, L> {
     pub fn contains_node(&self, id: NodeId) -> bool {
         id.to_usize() < self.nodes.len()
     }
+
+    pub fn add_child(&mut self, parent: NodeId, child: NodeId) -> Option<()> {
+        self.node_mut(parent)?.children.push(child);
+        self.node_mut(child)?.parent = Some(parent);
+        Some(())
+    }
 }
 
 impl Graph<Scope, MaybeSym> {
@@ -173,9 +188,10 @@ impl Graph<Scope, MaybeSym> {
         match node {
             Ast::Function(func) => {
                 // TODO: All fields
+                let scope = self.push(Scope::new());
                 let function_scope = Scope::Function {
                     name: func.name,
-                    scope: self.push(Scope::new()),
+                    scope,
                     params: func
                         .args
                         .iter()
@@ -184,10 +200,13 @@ impl Graph<Scope, MaybeSym> {
                     returns: func.returns.deref().clone(),
                 };
 
-                // TODO: Build the inner scope
+                for stmt in func.body.iter() {
+                    self.push_stmt(scope, &*stmt);
+                }
 
                 let node = self.push(function_scope);
-                self.node_mut(id).unwrap().children.push(node);
+                self.add_child(id, node).unwrap();
+                self.add_child(node, scope).unwrap();
             }
 
             Ast::Type(ty) => {
@@ -200,7 +219,7 @@ impl Graph<Scope, MaybeSym> {
                 };
 
                 let node = self.push(type_scope);
-                self.node_mut(id).unwrap().children.push(node);
+                self.add_child(id, node).unwrap();
             }
 
             Ast::Enum(enu) => {
@@ -211,7 +230,7 @@ impl Graph<Scope, MaybeSym> {
                 };
 
                 let node = self.push(enum_scope);
-                self.node_mut(id).unwrap().children.push(node);
+                self.add_child(id, node).unwrap();
             }
 
             Ast::Trait(tr) => {
@@ -227,7 +246,7 @@ impl Graph<Scope, MaybeSym> {
 
                 // TODO: Process members, indicating if they're implemented by default or not
                 let node = self.push(trait_scope);
-                self.node_mut(id).unwrap().children.push(node);
+                self.add_child(id, node).unwrap();
             }
 
             Ast::Import(import) => {
@@ -245,7 +264,7 @@ impl Graph<Scope, MaybeSym> {
                 };
 
                 let node = self.push(block_scope);
-                self.node_mut(id).unwrap().children.push(node);
+                self.add_child(id, node).unwrap();
             }
 
             Ast::Alias(alias) => {
@@ -255,9 +274,159 @@ impl Graph<Scope, MaybeSym> {
                 };
 
                 let node = self.push(alias_scope);
-                self.node_mut(id).unwrap().children.push(node);
+                self.add_child(id, node).unwrap();
             }
         }
+    }
+
+    fn push_stmt(&mut self, parent: NodeId, stmt: &Statement<'_, '_>) {
+        match stmt {
+            Statement::If {
+                condition,
+                body,
+                arm,
+            } => {
+                self.push_expr(parent, condition);
+
+                let body_scope = self.push(Scope::new());
+                self.add_child(parent, body_scope).unwrap();
+
+                for stmt in body {
+                    self.push_stmt(parent, stmt);
+                }
+
+                if let Some(arm) = arm {
+                    let arm_scope = self.push(Scope::new());
+                    self.add_child(parent, arm_scope).unwrap();
+
+                    self.push_stmt(parent, arm);
+                }
+            }
+
+            Statement::Expression(expr) => self.push_expr(parent, expr),
+
+            Statement::VarDeclaration {
+                name,
+                ty,
+                val,
+                constant: _,
+                mutable: _,
+            } => {
+                let scope = self.node_mut(parent).unwrap();
+                scope.vars_mut().push((*name, ty.deref().clone()));
+
+                self.push_expr(parent, val);
+            }
+
+            Statement::Return(ret) => {
+                ret.as_ref().map(|ret| self.push_expr(parent, &*ret));
+            }
+            Statement::Break(brk) => {
+                brk.as_ref().map(|brk| self.push_expr(parent, &*brk));
+            }
+            Statement::Continue => {}
+            Statement::Empty => {}
+
+            Statement::While {
+                condition,
+                body,
+                then,
+            } => {
+                self.push_expr(parent, condition);
+
+                let body_scope = self.push(Scope::new());
+                self.add_child(parent, body_scope).unwrap();
+
+                for stmt in body {
+                    self.push_stmt(parent, stmt);
+                }
+
+                if let Some(body) = then {
+                    let then_scope = self.push(Scope::new());
+                    self.add_child(parent, then_scope).unwrap();
+
+                    for stmt in body {
+                        self.push_stmt(parent, &*stmt);
+                    }
+                }
+            }
+
+            Statement::Loop { body, then } => {
+                let body_scope = self.push(Scope::new());
+                self.add_child(parent, body_scope).unwrap();
+
+                for stmt in body {
+                    self.push_stmt(parent, stmt);
+                }
+
+                if let Some(then) = then {
+                    let then_scope = self.push(Scope::new());
+                    self.add_child(parent, then_scope).unwrap();
+
+                    for stmt in then {
+                        self.push_stmt(parent, stmt);
+                    }
+                }
+            }
+
+            Statement::For {
+                var,
+                condition,
+                body,
+                then,
+            } => {
+                self.push_expr(parent, var);
+                self.push_expr(parent, condition);
+
+                let body_scope = self.push(Scope::new());
+                self.add_child(parent, body_scope).unwrap();
+
+                for stmt in body {
+                    self.push_stmt(body_scope, stmt);
+                }
+
+                if let Some(body) = then {
+                    let then_scope = self.push(Scope::new());
+                    self.add_child(parent, then_scope).unwrap();
+
+                    for stmt in body {
+                        self.push_stmt(parent, &*stmt);
+                    }
+                }
+            }
+
+            Statement::Match { var, arms } => {
+                self.push_expr(parent, var);
+
+                for (bind, clause, body) in arms {
+                    let arm = self.push(Scope::new());
+                    self.add_child(parent, arm).unwrap();
+
+                    self.node_mut(arm)
+                        .unwrap()
+                        .vars_mut()
+                        .push((*bind, Type::Infer));
+                    clause.as_ref().map(|cl| self.push_expr(arm, &*cl));
+
+                    for stmt in body {
+                        self.push_stmt(arm, stmt);
+                    }
+                }
+            }
+        }
+    }
+
+    fn push_expr(&mut self, _parent: NodeId, _expr: &Expression<'_>) {}
+}
+
+impl<T: fmt::Debug, L: fmt::Debug> fmt::Debug for Graph<T, L> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Graph")
+            .field(
+                "nodes",
+                &HashMap::<usize, &Node<T, L>>::from_iter(self.nodes.iter().enumerate()),
+            )
+            .finish()
     }
 }
 
@@ -346,12 +515,18 @@ impl<T, L> ops::DerefMut for Node<T, L> {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct NodeId(NonZeroU32);
 
 impl NodeId {
     pub fn to_usize(self) -> usize {
         self.0.get() as usize
+    }
+}
+
+impl fmt::Debug for NodeId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "NodeId({})", self.0.get() - 1)
     }
 }

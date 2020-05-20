@@ -38,7 +38,7 @@ optional = true
 
 # Pretty error reporting
 [dependencies.codespan-reporting]
-version = "0.9.3"
+version = "0.9.4"
 
 # NFKC Normalization
 [dependencies.unicode-normalization]
@@ -55,15 +55,17 @@ optional = true
 
 # Error enum display impl generation
 [dependencies.derive_more]
-version = "0.99.5"
+version = "0.99.7"
 
 # Arena allocation
 [dependencies.stadium]
 git = "https://github.com/Kixiron/stadium.git"
+features = ["serialize"]
 
 # String interning
 [dependencies.lasso]
 git = "https://github.com/Kixiron/lasso.git"
+features = ["serialize"]
 
 # Tracking stack frames
 [dependencies.crunch-proc]
@@ -73,6 +75,13 @@ path = "../crunch-proc"
 [dev-dependencies.simple_logger]
 version = "1.6.0"
 default-features = false
+
+[dev-dependencies.serde]
+version = "1.0.110"
+features = ["derive"]
+
+[dev-dependencies.ron]
+version = "0.5.1"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies.proptest]
 version = "0.9.6"

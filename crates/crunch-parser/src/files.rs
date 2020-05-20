@@ -1,6 +1,8 @@
 use alloc::{string::String, vec::Vec};
 use codespan_reporting::files;
 use core::ops::Range;
+#[cfg(test)]
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone)]
 struct File {
@@ -21,6 +23,7 @@ impl File {
     }
 }
 
+#[cfg_attr(test, derive(Deserialize, Serialize))]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub struct FileId(pub u32);
 

@@ -1,8 +1,8 @@
 use super::*;
 use crate::{files::FileId, parser::types::Signedness, pretty_printer::PrettyPrinter};
-
 #[cfg(feature = "no-std")]
 use alloc::{boxed::Box, string::String};
+use core::iter;
 
 fn format_expr(source: &str) -> String {
     let interner = Interner::default();
@@ -76,49 +76,254 @@ macro_rules! ast_eq {
     };
 }
 
+macro_rules! eval_expr {
+    (@pretty $expr:expr) => {{
+        std::panic::catch_unwind(|| {
+            let interner = Interner::default();
+            let mut parser = Parser::new(
+                $expr,
+                CurrentFile::new(FileId::new(0), $expr.len()),
+                interner,
+            );
+            let expr = parser.expr().unwrap();
+
+            ron::ser::to_string_pretty(
+                &expr,
+                ron::ser::PrettyConfig {
+                    depth_limit: 15,
+                    new_line: "\n".into(),
+                    indentor: "    ".into(),
+                    separate_tuple_members: true,
+                    enumerate_arrays: false,
+                },
+            )
+            .unwrap()
+        })
+        .unwrap_or_else(|err| panic!("Error on the input {}: {:?}", $expr, err))
+    }};
+
+    ($expr:expr) => {{
+        std::panic::catch_unwind(|| {
+            let interner = Interner::default();
+            let mut parser = Parser::new(
+                $expr,
+                CurrentFile::new(FileId::new(0), $expr.len()),
+                interner,
+            );
+            let expr = parser.expr().unwrap();
+
+            ron::ser::to_string(&expr).unwrap()
+        })
+        .unwrap_or_else(|err| panic!("Error on the input {}: {:?}", $expr, err))
+    }};
+}
+
 #[test]
 fn expr() {
-    expr_eq!("!5 + -10 / (test(54, test_again) % 200 if 10 else 52) - (true)");
+    let expr = eval_expr!(@pretty "!5 + -10 / (test(54, test_again) % 200 if 10 else 52) - (true)");
+    let expected = r#"UnaryExpr(
+    Not,
+    BinaryOp(
+        Literal(Integer((
+            sign: Positive,
+            bits: "5",
+        ))),
+        Add,
+        BinaryOp(
+            Literal(Integer((
+                sign: Negative,
+                bits: "10",
+            ))),
+            Div,
+            BinaryOp(
+                Parenthesised(BinaryOp(
+                    FunctionCall(
+                        caller: Variable((
+                            key: 1,
+                        )),
+                        arguments: [
+                            Literal(Integer((
+                                sign: Positive,
+                                bits: "54",
+                            ))),
+                            Variable((
+                                key: 2,
+                            )),
+                        ],
+                    ),
+                    Mod,
+                    InlineConditional(
+                        true_arm: Literal(Integer((
+                            sign: Positive,
+                            bits: "200",
+                        ))),
+                        condition: Literal(Integer((
+                            sign: Positive,
+                            bits: "10",
+                        ))),
+                        false_arm: Literal(Integer((
+                            sign: Positive,
+                            bits: "52",
+                        ))),
+                    ),
+                )),
+                Sub,
+                Parenthesised(Literal(Bool(true))),
+            ),
+        ),
+    ),
+)"#;
+
+    assert_eq!(expr, expected);
 }
 
 #[test]
-fn parse_signed_ints() {
-    expr_eq!("10");
-    expr_eq!("-10");
-    assert_eq!("10", format_expr("+10"));
+fn integer_literals() {
+    let fmt = |bits, sign| format!(r#"Literal(Integer((sign:{:?},bits:"{}",)))"#, sign, bits);
+
+    #[rustfmt::skip]
+    let integers: Vec<(String, (u128, Sign))> = vec![
+        ("10".into(), (10, Sign::Positive)),
+        ("+10".into(), (10, Sign::Positive)),
+        ("-10".into(), (10, Sign::Negative)),
+        ("0".into(), (0, Sign::Positive)),
+        ("+0".into(), (0, Sign::Positive)),
+        ("-0".into(), (0, Sign::Negative)),
+        (format!("{}", u128::max_value()), (u128::max_value(), Sign::Positive)),
+        (format!("+{}", u128::max_value()), (u128::max_value(), Sign::Positive)),
+        (format!("-{}", u128::max_value()), (u128::max_value(), Sign::Negative)),
+    ];
+
+    for (src, (bits, sign)) in integers {
+        let expr = eval_expr!(&src);
+        let expected = fmt(bits, sign);
+
+        assert_eq!(expr, expected);
+    }
 }
 
 #[test]
-fn single_paren_expr() {
-    expr_eq!("10 == (0)");
+fn float_literals() {
+    let fmt = |float| format!(r#"Literal(Float(F64({})))"#, float);
+
+    // TODO: More comprehensive testing
+    #[rustfmt::skip]
+    let f64s: Vec<(String, f64)> = vec![
+        ("10.0".into(), 10.0),
+        ("+10.0".into(), 10.0),
+        ("-10.0".into(), -10.0),
+        ("0.0".into(), 0.0),
+        ("+0.0".into(), 0.0),
+        ("-0.0".into(), -0.0),
+        ("NaN".into(), f64::NAN),
+        ("inf".into(), f64::INFINITY),
+    ];
+
+    for (src, float) in f64s {
+        let expr = eval_expr!(&src);
+        let expected = fmt(float);
+
+        assert_eq!(expr, expected);
+    }
+}
+
+#[test]
+fn string_literals() {
+    let expr = eval_expr!(r#""Some string""#);
+    let expected =
+        "Literal(String(([(83),(111),(109),(101),(32),(115),(116),(114),(105),(110),(103),])))";
+
+    assert_eq!(expr, expected);
+
+    let expr = eval_expr!(r#"b"Some string""#);
+    let expected =
+        "Literal(Array([Integer((sign:Positive,bits:\"83\",)),Integer((sign:Positive,bits:\"111\",)),\
+        Integer((sign:Positive,bits:\"109\",)),Integer((sign:Positive,bits:\"101\",)),Integer((sign:Positive,bits:\"32\",)),\
+        Integer((sign:Positive,bits:\"115\",)),Integer((sign:Positive,bits:\"116\",)),Integer((sign:Positive,bits:\"114\",)),\
+        Integer((sign:Positive,bits:\"105\",)),Integer((sign:Positive,bits:\"110\",)),Integer((sign:Positive,bits:\"103\",)),]))";
+
+    assert_eq!(expr, expected);
+}
+
+#[test]
+fn char_literals() {
+    let expr = eval_expr!("'S'");
+    let expected = "Literal(Rune((83)))";
+    assert_eq!(expr, expected);
+
+    let expr = eval_expr!("b'S'");
+    let expected = "Literal(Integer((sign:Positive,bits:\"83\",)))";
+    assert_eq!(expr, expected);
+}
+
+#[test]
+fn boolean_literals() {
+    let fmt = |boolean| format!("Literal(Bool({}))", boolean);
+
+    let expr = eval_expr!("true");
+    let expected = fmt(true);
+    assert_eq!(expr, expected);
+
+    let expr = eval_expr!("false");
+    let expected = fmt(false);
+    assert_eq!(expr, expected);
+}
+
+// TODO: More varied internal types
+#[test]
+fn array_literals() {
+    for i in 0..64 {
+        let expr = format!(
+            "arr[{}]",
+            iter::repeat("true").take(i).collect::<Vec<_>>().join(", ")
+        );
+        let expected = format!("Array([{}])", "Literal(Bool(true)),".repeat(i));
+
+        assert_eq!(eval_expr!(&expr), expected);
+    }
+}
+
+// TODO: More varied internal types
+#[test]
+fn tuple_literals() {
+    for i in 0..64 {
+        let expr = format!(
+            "tup[{}]",
+            iter::repeat("true").take(i).collect::<Vec<_>>().join(", ")
+        );
+        let expected = format!("Tuple([{}])", "Literal(Bool(true)),".repeat(i));
+
+        assert_eq!(eval_expr!(&expr), expected);
+    }
+}
+
+#[test]
+fn comparison_operations() {
+    let fmt = |lhs, op, rhs| format!(r#"Comparison({},{:?},{},)"#, lhs, op, rhs);
+
+    let ten = r#"Literal(Integer((sign:Positive,bits:"10",)))"#;
+    let zero = r#"Literal(Integer((sign:Positive,bits:"0",)))"#;
+    #[rustfmt::skip]
+    let comparisons: Vec<(String, (String, ComparisonOperand, String))> = vec![
+        ("10 == 0".into(), (ten.to_string(), ComparisonOperand::Equal,        zero.to_string())),
+        ("10 != 0".into(), (ten.to_string(), ComparisonOperand::NotEqual,     zero.to_string())),
+        ("10 < 0".into(),  (ten.to_string(), ComparisonOperand::Less,         zero.to_string())),
+        ("10 > 0".into(),  (ten.to_string(), ComparisonOperand::Greater,      zero.to_string())),
+        ("10 <= 0".into(), (ten.to_string(), ComparisonOperand::LessEqual,    zero.to_string())),
+        ("10 >= 0".into(), (ten.to_string(), ComparisonOperand::GreaterEqual, zero.to_string())),
+    ];
+
+    for (src, (lhs, op, rhs)) in comparisons {
+        let expr = eval_expr!(&src);
+        let expected = fmt(lhs, op, rhs);
+
+        assert_eq!(expr, expected);
+    }
 }
 
 #[test]
 fn index_array_expr() {
     expr_eq!("array[0]");
-}
-
-#[test]
-fn array_literal_expr() {
-    expr_eq!("arr[true, test, 100 / 5]");
-}
-
-#[test]
-fn comparisons_expr() {
-    expr_eq!("10 > 9");
-    expr_eq!("10 < 9");
-    expr_eq!("10 >= 9");
-    expr_eq!("10 <= 9");
-    expr_eq!("10 == 9");
-    expr_eq!("10 != 9");
-}
-
-// TODO: More literals
-#[test]
-fn literals_expr() {
-    expr_eq!("100");
-    expr_eq!("false");
-    expr_eq!("true");
 }
 
 #[test]
@@ -133,19 +338,36 @@ fn dotted_func_call_expr() {
 }
 
 #[test]
-fn assignment_expr() {
-    expr_eq!("i := 100");
-    expr_eq!("i += 100");
-    expr_eq!("i -= 100");
-    expr_eq!("i *= 100");
-    expr_eq!("i /= 100");
-    expr_eq!("i %= 100");
-    expr_eq!("i **= 100");
-    expr_eq!("i &= 100");
-    expr_eq!("i |= 100");
-    expr_eq!("i ^= 100");
-    expr_eq!("i >>= 100");
-    expr_eq!("i <<= 100");
+fn assignments() {
+    let fmt = |assign| {
+        format!(
+            "Assignment(Variable((key:1,)),{:?},Literal(Integer((sign:Positive,bits:\"100\",))),)",
+            assign
+        )
+    };
+
+    #[rustfmt::skip]
+    let integers: Vec<(String, AssignmentType)> = vec![
+        ("i := 100".into(), AssignmentType::Normal),
+        ("i += 100".into(), AssignmentType::BinaryOp(BinaryOperand::Add)),
+        ("i -= 100".into(), AssignmentType::BinaryOp(BinaryOperand::Sub)),
+        ("i *= 100".into(), AssignmentType::BinaryOp(BinaryOperand::Mult)),
+        ("i /= 100".into(), AssignmentType::BinaryOp(BinaryOperand::Div)),
+        ("i %= 100".into(), AssignmentType::BinaryOp(BinaryOperand::Mod)),
+        ("i **= 100".into(), AssignmentType::BinaryOp(BinaryOperand::Pow)),
+        ("i &= 100".into(), AssignmentType::BinaryOp(BinaryOperand::BitAnd)),
+        ("i |= 100".into(), AssignmentType::BinaryOp(BinaryOperand::BitOr)),
+        ("i ^= 100".into(), AssignmentType::BinaryOp(BinaryOperand::BitXor)),
+        ("i >>= 100".into(), AssignmentType::BinaryOp(BinaryOperand::Shr)),
+        ("i <<= 100".into(), AssignmentType::BinaryOp(BinaryOperand::Shl)),
+    ];
+
+    for (src, ty) in integers {
+        let expr = eval_expr!(&src);
+        let expected = fmt(ty);
+
+        assert_eq!(expr, expected);
+    }
 }
 
 #[test]

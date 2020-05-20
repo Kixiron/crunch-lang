@@ -6,6 +6,8 @@ use crate::{
 
 use crunch_proc::recursion_guard;
 use lasso::Spur;
+#[cfg(test)]
+use serde::Serialize;
 
 use alloc::{format, string::ToString, vec::Vec};
 use core::{convert::TryFrom, mem};
@@ -13,6 +15,7 @@ use core::{convert::TryFrom, mem};
 // TODO: Const blocks
 // TODO: Add back generics to funcs
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function<'expr, 'stmt> {
     pub decorators: Vec<Locatable<Decorator<'expr>>>,
@@ -23,6 +26,7 @@ pub struct Function<'expr, 'stmt> {
     pub body: Vec<Stmt<'expr, 'stmt>>,
 }
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct FuncArg {
     pub name: Locatable<Spur>,
@@ -30,6 +34,7 @@ pub struct FuncArg {
     pub comptime: bool,
 }
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeDecl<'expr> {
     pub decorators: Vec<Locatable<Decorator<'expr>>>,
@@ -39,6 +44,7 @@ pub struct TypeDecl<'expr> {
     pub members: Vec<Locatable<TypeMember<'expr>>>,
 }
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeMember<'expr> {
     pub decorators: Vec<Locatable<Decorator<'expr>>>,
@@ -47,6 +53,7 @@ pub struct TypeMember<'expr> {
     pub ty: Locatable<Type>,
 }
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Enum<'expr> {
     pub decorators: Vec<Locatable<Decorator<'expr>>>,
@@ -56,6 +63,7 @@ pub struct Enum<'expr> {
     pub variants: Vec<Locatable<EnumVariant<'expr>>>,
 }
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum EnumVariant<'expr> {
     Unit {
@@ -79,6 +87,7 @@ impl<'expr> EnumVariant<'expr> {
     }
 }
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Trait<'expr, 'stmt> {
     pub decorators: Vec<Locatable<Decorator<'expr>>>,
@@ -88,6 +97,7 @@ pub struct Trait<'expr, 'stmt> {
     pub methods: Vec<Locatable<Function<'expr, 'stmt>>>,
 }
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Import {
     pub file: Locatable<Spur>,
@@ -95,6 +105,7 @@ pub struct Import {
     pub exposes: ImportExposure,
 }
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExtendBlock<'expr, 'stmt> {
     pub target: Locatable<Type>,
@@ -102,6 +113,7 @@ pub struct ExtendBlock<'expr, 'stmt> {
     pub nodes: Vec<Ast<'expr, 'stmt>>,
 }
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Alias<'expr> {
     pub decorators: Vec<Locatable<Decorator<'expr>>>,
@@ -110,6 +122,7 @@ pub struct Alias<'expr> {
     pub actual: Locatable<Type>,
 }
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Ast<'expr, 'stmt> {
     Function(Locatable<Function<'expr, 'stmt>>),
@@ -161,6 +174,7 @@ impl<'expr, 'stmt> Ast<'expr, 'stmt> {
     }
 }
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum ImportExposure {
     None(Locatable<Spur>),
@@ -168,6 +182,7 @@ pub enum ImportExposure {
     Members(Vec<Locatable<(Spur, Option<Spur>)>>),
 }
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ImportDest {
     NativeLib,
@@ -181,12 +196,14 @@ impl Default for ImportDest {
     }
 }
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Decorator<'expr> {
     pub name: Locatable<Spur>,
     pub args: Vec<Expr<'expr>>,
 }
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Attribute {
     Visibility(Visibility),
@@ -234,6 +251,7 @@ impl<'a> TryFrom<(&Token<'a>, CurrentFile)> for Attribute {
     }
 }
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Visibility {
     FileLocal,

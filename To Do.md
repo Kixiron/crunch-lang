@@ -1,5 +1,18 @@
 # To Do
 
+- [ ] Graphing of ASTs
+- [ ] Else clauses for loops?
+- [ ] Fix if parsing
+- [ ] `Type is fields := val`
+- [ ] `struct Type is unit`
+- [ ] All are expressions
+- [ ] Match bindings are a `pattern`
+- [ ] `if let <pattern> = <expr>`
+- [ ] Postfix macros
+- [ ] Bit pattern matching a la http://erlang.org/doc/programming_examples/bit_syntax.html
+- [ ] Named arguments
+- [ ] Typed variadic args
+  - [ ] Limited to last parameter
 - [ ] Actor compiler
 - [ ] Utils module for parser to clean up stuff
 - [ ] Types as values

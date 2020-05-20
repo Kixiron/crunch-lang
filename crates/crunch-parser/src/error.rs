@@ -22,9 +22,12 @@ use core::{
     ops::{self, Range},
 };
 use derive_more::Display;
+#[cfg(test)]
+use serde::{Deserialize, Serialize};
 
 pub type ParseResult<T> = Result<T, Locatable<Error>>;
 
+#[cfg_attr(test, derive(Deserialize, Serialize))]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Location {
     Concrete { span: Span, file: FileId },
@@ -73,6 +76,7 @@ impl Location {
     }
 }
 
+#[cfg_attr(test, derive(Deserialize, Serialize))]
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Span {
     start: usize,
@@ -164,6 +168,7 @@ impl Into<[usize; 2]> for Span {
     }
 }
 
+#[cfg_attr(test, derive(Deserialize, Serialize))]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Locatable<T> {
     pub data: T,

@@ -10,9 +10,6 @@ pub enum TokenType {
     #[regex(r"[ \t\f]+", logos::skip)]
     Error,
 
-    #[regex(r"[\p{XID_Start}\p{Emoji_Presentation}][\p{XID_Continue}\p{Emoji_Presentation}]*")]
-    Ident,
-
     #[regex("::[^\r\n]*", priority = 2)]
     #[regex("::[^\n]*", priority = 1)]
     Comment,
@@ -43,6 +40,9 @@ pub enum TokenType {
     #[token("true")]
     #[token("false")]
     Bool,
+
+    #[regex(r"[\p{XID_Start}\p{Emoji_Presentation}][\p{XID_Continue}\p{Emoji_Presentation}]*")]
+    Ident,
 
     #[token("fn")]
     Function,

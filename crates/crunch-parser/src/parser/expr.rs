@@ -3,20 +3,21 @@ use crate::{
     parser::{string_escapes, CurrentFile, Parser},
     token::{Token, TokenType},
 };
-
-use crunch_proc::recursion_guard;
-use lasso::Spur;
-use stadium::Ticket;
-
 use alloc::{
     format,
     string::{String, ToString},
     vec::Vec,
 };
 use core::{convert::TryFrom, fmt, iter::FromIterator};
+use crunch_proc::recursion_guard;
+use lasso::Spur;
+#[cfg(test)]
+use serde::Serialize;
+use stadium::Ticket;
 
 pub type Expr<'expr> = Ticket<'expr, Expression<'expr>>;
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression<'expr> {
     Variable(Spur),
@@ -48,6 +49,7 @@ pub enum Expression<'expr> {
     Range(Expr<'expr>, Expr<'expr>),
 }
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum AssignmentType {
     Normal,
@@ -105,14 +107,15 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for AssignmentType {
     }
 }
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum ComparisonOperand {
-    Greater,
-    Less,
-    GreaterEqual,
-    LessEqual,
     Equal,
     NotEqual,
+    Less,
+    Greater,
+    LessEqual,
+    GreaterEqual,
 }
 
 impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for ComparisonOperand {
@@ -154,6 +157,7 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for ComparisonOperand {
     }
 }
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
     Integer(Integer),
@@ -194,6 +198,7 @@ impl fmt::Display for Literal {
     }
 }
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Clone, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Text(Vec<Rune>);
@@ -242,6 +247,7 @@ impl From<&str> for Text {
     }
 }
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Rune(u32);
@@ -294,9 +300,16 @@ impl fmt::Display for Rune {
     }
 }
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Integer {
     pub sign: Sign,
+
+    // FIXME: Ron doesn't support u128s
+    #[cfg_attr(
+        test,
+        serde(serialize_with = "crate::parser::utils::serialize_u128_to_str")
+    )]
     pub bits: u128,
 }
 
@@ -306,6 +319,7 @@ impl fmt::Display for Integer {
     }
 }
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Sign {
     Positive,
@@ -331,6 +345,7 @@ impl fmt::Display for Sign {
     }
 }
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Float {
     F32(f32),
@@ -347,7 +362,6 @@ impl fmt::Display for Float {
 }
 
 // TODO: Actually make this throw useful errors
-// FIXME: Not unicode-aware, will panic on unicode boundaries
 // TODO: Make these errors actually helpful, and verify that the parsing matches with what is lexed
 impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for Literal {
     type Error = Locatable<Error>;
@@ -598,6 +612,7 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for Literal {
     }
 }
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum BinaryOperand {
     Add,
@@ -643,6 +658,7 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for BinaryOperand {
     }
 }
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum UnaryOperand {
     Positive,
@@ -686,6 +702,17 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         self.parse_expression(0)
     }
 
+    #[inline(always)]
+    fn expr_precedence(&self) -> usize {
+        self.peek
+            .map(|p| {
+                ExprPrecedence::try_from(p.ty())
+                    .map(|p| p.precedence())
+                    .unwrap_or(0)
+            })
+            .unwrap_or(0)
+    }
+
     #[recursion_guard]
     fn parse_expression(&mut self, precedence: usize) -> ParseResult<Expr<'expr>> {
         let mut token = self.next()?;
@@ -702,7 +729,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 }
             }
 
-            while precedence < self.current_precedence() {
+            while precedence < self.expr_precedence() {
                 token = self.next()?;
 
                 let infix = Self::expr_infix(token);
@@ -999,5 +1026,83 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             .store(Expression::IndexArray { array, index });
 
         Ok(expr)
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[rustfmt::skip]
+pub enum ExprPrecedence {
+    Mul, Div, Mod, Pow,
+    Add, Sub,
+    Shl, Shr,
+    Less, Greater, LessEq, GreaterEq,
+    Eq, Ne,
+    BitAnd,
+    BitXor,
+    BitOr,
+    LogAnd,
+    LogOr,
+    Ternary,
+    Assignment,
+}
+
+impl ExprPrecedence {
+    pub fn precedence(self) -> usize {
+        match self {
+            Self::Mul | Self::Div | Self::Mod | Self::Pow => 11,
+            Self::Add | Self::Sub => 10,
+            Self::Shl | Self::Shr => 9,
+            Self::Less | Self::Greater | Self::LessEq | Self::GreaterEq => 8,
+            Self::Eq | Self::Ne => 7,
+            Self::BitAnd => 6,
+            Self::BitXor => 5,
+            Self::BitOr => 4,
+            Self::LogAnd => 3,
+            Self::LogOr => 2,
+            Self::Ternary => 1,
+            Self::Assignment => 0,
+        }
+    }
+}
+
+impl TryFrom<TokenType> for ExprPrecedence {
+    type Error = ();
+
+    fn try_from(t: TokenType) -> Result<ExprPrecedence, ()> {
+        Ok(match t {
+            TokenType::Star => Self::Mul,
+            TokenType::Divide => Self::Div,
+            TokenType::Modulo => Self::Mod,
+            TokenType::DoubleStar => Self::Pow,
+            TokenType::Plus => Self::Add,
+            TokenType::Minus => Self::Sub,
+            TokenType::Shl => Self::Shl,
+            TokenType::Shr => Self::Shr,
+            TokenType::LeftCaret => Self::Less,
+            TokenType::RightCaret => Self::Greater,
+            TokenType::LessThanEqual => Self::LessEq,
+            TokenType::GreaterThanEqual => Self::GreaterEq,
+            TokenType::IsEqual => Self::Eq,
+            TokenType::IsNotEqual => Self::Ne,
+            TokenType::Ampersand => Self::BitAnd,
+            TokenType::Caret => Self::BitXor,
+            TokenType::Pipe => Self::BitOr,
+            TokenType::And => Self::LogAnd,
+            TokenType::Or => Self::LogOr,
+            TokenType::Colon
+            | TokenType::AddAssign
+            | TokenType::SubAssign
+            | TokenType::MultAssign
+            | TokenType::DivAssign
+            | TokenType::ModAssign
+            | TokenType::ShlAssign
+            | TokenType::ShrAssign
+            | TokenType::OrAssign
+            | TokenType::AndAssign
+            | TokenType::XorAssign => Self::Assignment,
+            TokenType::If => Self::Ternary,
+
+            _ => return Err(()),
+        })
     }
 }

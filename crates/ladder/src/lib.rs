@@ -1,12 +1,10 @@
 use crunch_parser::{
     parser::{
-        Ast, Expression as AstExpr, Function as AstFunction, Integer, ItemPath, Literal, Sign,
+        Ast, ComparisonOperand, Expression as AstExpr, Function as AstFunction, ItemPath, Literal,
         Statement as AstStmt,
     },
     symbol_table::{Graph, MaybeSym, NodeId, Scope},
 };
-
-use std::collections::HashMap;
 
 #[test]
 fn test() {
@@ -16,43 +14,58 @@ fn test() {
     fn main()
         let greeting := "Hello from Crunch!"
         println(greeting)
+
+        if greeting == "Hello"
+            println("You said hello")
+        else
+            println("You didn't say hello :(")
+        end
+
+        loop
+            println("Over and over again")
+        end
+
+        match greeting
+            string where string == "some string" =>
+                println("this can't happen")
+            end
+
+            greeting =>
+                println("{}", greeting)
+            end
+        end
     end
     "#;
 
     let interner = Interner::default();
-    let (tree, mut interner, _warnings, module_table, module_scope) = Parser::new(
+    let mut files = crunch_parser::Files::new();
+    files.add("<test>", source);
+
+    match Parser::new(
         source,
         CurrentFile::new(FileId::new(0), source.len()),
         interner,
     )
     .parse()
-    .unwrap();
+    {
+        Ok((tree, mut interner, mut warnings, module_table, module_scope)) => {
+            warnings.emit(&files);
 
-    let ladder = Ladder::new(
-        module_table,
-        module_scope,
-        ItemPath::new(interner.intern("package")),
-    );
+            dbg!(&module_table);
 
-    let hir = ladder.lower(&*tree);
+            let ladder = Ladder::new(
+                module_table,
+                module_scope,
+                ItemPath::new(interner.intern("package")),
+            );
 
-    let mut builtins: HashMap<ItemPath, fn(&[Literal])> = HashMap::new();
-    builtins.insert(ItemPath::new(interner.intern("println")), |args| {
-        for arg in args {
-            println!("{}", arg);
+            dbg!(ladder.lower(&*tree));
         }
-    });
 
-    let mut interp = Interpreter {
-        vars: HashMap::new(),
-        funcs: HashMap::new(),
-        builtins,
-    };
-    interp.eval_func(if let Hir::Function(f) = hir.first().unwrap() {
-        f
-    } else {
-        todo!()
-    });
+        Err(mut err) => {
+            err.emit(&files);
+        }
+    }
 }
 
 pub struct Ladder {
@@ -112,23 +125,89 @@ impl Ladder {
             body: function
                 .body
                 .iter()
-                .map(|stmt| self.lower_statement(stmt))
+                .filter_map(|stmt| self.lower_statement(stmt))
                 .collect(),
         };
 
         Hir::Function(func)
     }
 
-    fn lower_statement(&self, stmt: &AstStmt<'_, '_>) -> Stmt {
-        match stmt {
+    fn lower_statement(&self, stmt: &AstStmt<'_, '_>) -> Option<Stmt> {
+        let stmt = match stmt {
             AstStmt::Expression(expr) => Stmt::Expr(self.lower_expr(expr)),
+
             AstStmt::VarDeclaration { name, val, .. } => Stmt::VarDecl(VarDecl {
                 name: ItemPath::new(*name),
                 value: self.lower_expr(val),
             }),
 
+            AstStmt::Match { var, arms } => Stmt::Match(Match {
+                condition: self.lower_expr(var),
+                arms: arms
+                    .iter()
+                    // TODO: Patterns with matches
+                    .map(|(var, _clause, body)| MatchArm {
+                        condition: self.lower_expr(&AstExpr::Variable(*var)),
+                        body: body
+                            .iter()
+                            .filter_map(|stmt| self.lower_statement(stmt))
+                            .collect(),
+                    })
+                    .collect(),
+            }),
+
+            AstStmt::If {
+                condition,
+                body,
+                arm,
+            } => {
+                let mut arms = Vec::with_capacity(1 + arm.is_some() as usize);
+                arms.push(MatchArm {
+                    condition: Expr::Literal(Literal::Bool(true)),
+                    body: body
+                        .iter()
+                        .filter_map(|stmt| self.lower_statement(stmt))
+                        .collect(),
+                });
+
+                if let Some(arm) = arm {
+                    arms.push(MatchArm {
+                        condition: Expr::Literal(Literal::Bool(false)),
+                        body: vec![self.lower_statement(arm).unwrap()],
+                    });
+                }
+
+                Stmt::Match(Match {
+                    condition: self.lower_expr(condition),
+                    arms,
+                })
+            }
+
+            AstStmt::Loop { body, then: _then } => {
+                // TODO: Why in hell do `loop`s have `then`s?
+                Stmt::Loop(
+                    body.iter()
+                        .filter_map(|stmt| self.lower_statement(stmt))
+                        .collect(),
+                )
+            }
+
+            AstStmt::Empty => return None,
+
+            AstStmt::Return(val) => Stmt::Return(Return {
+                val: val.as_ref().map(|expr| self.lower_expr(expr)),
+            }),
+
+            AstStmt::Break(val) => Stmt::Break(Break {
+                val: val.as_ref().map(|expr| self.lower_expr(expr)),
+            }),
+
+            AstStmt::Continue => Stmt::Continue,
+
             _ => todo!(),
-        }
+        };
+
+        Some(stmt)
     }
 
     fn lower_expr(&self, expr: &AstExpr<'_>) -> Expr {
@@ -143,55 +222,13 @@ impl Ladder {
                 params: arguments.iter().map(|a| self.lower_expr(a)).collect(),
             }),
             AstExpr::Variable(var) => Expr::Var(ItemPath::new(*var)),
+            AstExpr::Comparison(lhs, op, rhs) => Expr::Comparison(
+                Box::new(self.lower_expr(lhs)),
+                *op,
+                Box::new(self.lower_expr(rhs)),
+            ),
 
             e => todo!("{:#?}", e),
-        }
-    }
-}
-
-pub struct Interpreter {
-    vars: HashMap<ItemPath, Literal>,
-    funcs: HashMap<ItemPath, Function>,
-    builtins: HashMap<ItemPath, fn(&[Literal])>,
-}
-
-impl Interpreter {
-    fn eval_func(&mut self, func: &Function) {
-        for stmt in func.body.iter() {
-            self.eval_stmt(stmt);
-        }
-    }
-
-    fn eval_stmt(&mut self, stmt: &Stmt) {
-        match stmt {
-            Stmt::VarDecl(decl) => {
-                let val = self.eval_expr(&decl.value);
-                self.vars.insert(decl.name.clone(), val);
-            }
-            Stmt::Expr(expr) => {
-                self.eval_expr(expr);
-            }
-        }
-    }
-
-    fn eval_expr(&mut self, expr: &Expr) -> Literal {
-        match expr {
-            Expr::FnCall(func) => {
-                let args: Vec<Literal> = func.params.iter().map(|e| self.eval_expr(e)).collect();
-
-                if let Some(f) = self.builtins.get(&func.func) {
-                    f(&args);
-
-                    return Literal::Integer(Integer {
-                        sign: Sign::Positive,
-                        bits: 0,
-                    });
-                }
-
-                todo!()
-            }
-            Expr::Literal(lit) => lit.clone(),
-            Expr::Var(path) => self.vars.get(path).unwrap().clone(),
         }
     }
 }
@@ -220,6 +257,12 @@ pub struct Function {
 pub enum Stmt {
     VarDecl(VarDecl),
     Expr(Expr),
+    Match(Match),
+    Scope(Vec<Stmt>),
+    Loop(Vec<Stmt>),
+    Return(Return),
+    Continue,
+    Break(Break),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -233,10 +276,33 @@ pub enum Expr {
     FnCall(FuncCall),
     Literal(Literal),
     Var(ItemPath),
+    Comparison(Box<Expr>, ComparisonOperand, Box<Expr>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FuncCall {
     func: ItemPath,
     params: Vec<Expr>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Match {
+    condition: Expr,
+    arms: Vec<MatchArm>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MatchArm {
+    condition: Expr,
+    body: Vec<Stmt>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Return {
+    val: Option<Expr>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Break {
+    val: Option<Expr>,
 }

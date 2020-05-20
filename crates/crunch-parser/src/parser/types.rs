@@ -4,10 +4,6 @@ use crate::{
     parser::{CurrentFile, Integer, ItemPath, Literal, Parser},
     token::{Token, TokenType},
 };
-
-use crunch_proc::recursion_guard;
-use lasso::Spur;
-
 use alloc::{
     boxed::Box,
     format,
@@ -16,7 +12,12 @@ use alloc::{
     vec::Vec,
 };
 use core::{convert::TryFrom, fmt};
+use crunch_proc::recursion_guard;
+use lasso::Spur;
+#[cfg(test)]
+use serde::{Deserialize, Serialize};
 
+#[cfg_attr(test, derive(Deserialize, Serialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Operand(Box<Locatable<Type>>, TypeOperand, Box<Locatable<Type>>),
@@ -142,6 +143,7 @@ impl Default for Type {
     }
 }
 
+#[cfg_attr(test, derive(Deserialize, Serialize))]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum TypeOperand {
     And,
@@ -181,18 +183,32 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for TypeOperand {
     }
 }
 
+#[cfg_attr(test, derive(Deserialize, Serialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum BuiltinType {
-    Integer { sign: Signedness, width: u16 },
+    Integer {
+        sign: Signedness,
+        width: u16,
+    },
     IntReg(Signedness),
     IntPtr(Signedness),
-    Float { width: u16 },
+    Float {
+        width: u16,
+    },
     Boolean,
     String,
     Rune,
     Unit,
     Absurd,
-    Array(u128, Box<Locatable<Type>>),
+    Array(
+        // FIXME: Ron doesn't support u128s
+        #[cfg_attr(
+            test,
+            serde(serialize_with = "crate::parser::utils::serialize_u128_to_str")
+        )]
+        u128,
+        Box<Locatable<Type>>,
+    ),
     Slice(Box<Locatable<Type>>),
     Tuple(Vec<Locatable<Type>>),
 }
@@ -242,6 +258,7 @@ impl BuiltinType {
     }
 }
 
+#[cfg_attr(test, derive(Deserialize, Serialize))]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Signedness {
     Unsigned,
@@ -295,6 +312,17 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
         self.ascribed_type_internal(0)
     }
 
+    #[inline(always)]
+    fn type_precedence(&self) -> usize {
+        self.peek
+            .map(|p| {
+                TypePrecedence::try_from(p.ty())
+                    .map(|p| p.precedence())
+                    .unwrap_or(0)
+            })
+            .unwrap_or(0)
+    }
+
     #[recursion_guard]
     fn ascribed_type_internal(&mut self, precedence: usize) -> ParseResult<Locatable<Type>> {
         let mut token = self.next()?;
@@ -311,7 +339,7 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
                 }
             }
 
-            while precedence < self.current_precedence() {
+            while precedence < self.type_precedence() {
                 token = self.next()?;
 
                 let infix = Self::type_infix(token.ty());
@@ -717,6 +745,37 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
         };
 
         Some(infix)
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum TypePrecedence {
+    And,
+    Or,
+    Ternary,
+}
+
+impl TypePrecedence {
+    pub fn precedence(self) -> usize {
+        match self {
+            Self::And => 6,
+            Self::Or => 4,
+            Self::Ternary => 1,
+        }
+    }
+}
+
+impl TryFrom<TokenType> for TypePrecedence {
+    type Error = ();
+
+    fn try_from(t: TokenType) -> Result<TypePrecedence, ()> {
+        Ok(match t {
+            TokenType::Ampersand => Self::And,
+            TokenType::Pipe => Self::Or,
+            TokenType::If | TokenType::Function => Self::Ternary,
+
+            _ => return Err(()),
+        })
     }
 }
 
