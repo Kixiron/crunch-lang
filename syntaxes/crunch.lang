@@ -4,13 +4,19 @@
   <metadata>
     <property name="globs">*.crunch</property>
     <property name="line-comment-start">::</property>
+    <!--
+    <property name="block-comment-start">/*</property>
+    <property name="block-comment-end">*/</property>
+    -->
   </metadata>
 
   <styles>
     <style id="comment" _name="Comment" map-to="def:comment"/>
     <style id="string" _name="String" map-to="def:string"/>
     <style id="char" _name="Character" map-to="def:character"/>
+    <style id="format" name="Format" map-to="def:character"/>
     <style id="keyword" _name="Keyword" map-to="def:keyword"/>
+    <style id="builtin-constant" name="Builtin Constant" map-to="def:special-constant"/>
     <style id="type" _name="Data Type" map-to="def:type"/>
     <style id="boolean" _name="Boolean value" map-to="def:boolean"/>
     <style id="identifier" _name="Identifier" map-to="def:identifier"/>
@@ -22,15 +28,20 @@
 
   <definitions>
     <context id="keywords" style-ref="keyword">
+      <keyword>alias</keyword>
       <keyword>as</keyword>
+      <keyword>async</keyword>
       <keyword>break</keyword>
       <keyword>continue</keyword>
+      <keyword>do</keyword>
+      <keyword>dyn</keyword>
       <keyword>else</keyword>
       <keyword>empty</keyword>
       <keyword>end</keyword>
       <keyword>enum</keyword>
       <keyword>exposed</keyword>
       <keyword>exposing</keyword>
+      <keyword>extend</keyword>
       <keyword>fn</keyword>
       <keyword>for</keyword>
       <keyword>if</keyword>
@@ -39,6 +50,7 @@
       <keyword>let</keyword>
       <keyword>loop</keyword>
       <keyword>match</keyword>
+      <keyword>mut</keyword>
       <keyword>pkg</keyword>
       <keyword>return</keyword>
       <keyword>then</keyword>
@@ -46,16 +58,17 @@
       <keyword>type</keyword>
       <keyword>where</keyword>
       <keyword>while</keyword>
+      <keyword>with</keyword>
     </context>
-    
-    <!--
-    <context id="reserved" style-ref="def:reserved">
+
+    <context id="builtin-constants" style-ref="builtin-constant">
+      <keyword>inf</keyword>
+      <keyword>NaN</keyword>
     </context>
-    -->
 
     <context id="types" style-ref="type">
       <match extended="true">
-        \b(bool|unit|int|float|str)\b
+        \b(bool|unit|str|rune|absurd|[ui]reg|[ui]ptr|[iuf][0-9]+|arr|slice|tup)\b
       </match>
     </context>
 
@@ -82,7 +95,7 @@
         (
         [1-9][0-9_]*|
         0[0-9_]*|
-        0b[01_]+|
+        [+-]?0b[01][01_]*|
         0o(\%{oct-digit}|_)+|
         0x(\%{hex-digit}|_)+
         )
@@ -103,6 +116,10 @@
     <define-regex id="unicode-escape" extended="true">
       u{\%{hex-digit}{1,6}}
     </define-regex>
+    
+    <context id="format" style-ref="format" extend-parent="false">
+      <match>{}</match>
+    </context>
 
     <context id="string-escape" style-ref="def:special-char">
       <match>\\\%{common-escape}|\\\%{unicode-escape}</match>
@@ -124,6 +141,7 @@
       <start>"</start>
       <end>"</end>
       <include>
+        <context ref="format"/>
         <context ref="string-escape"/>
         <context ref="def:line-continue"/>
       </include>
@@ -133,6 +151,7 @@
       <start>b"</start>
       <end>"</end>
       <include>
+        <context ref="format"/>
         <context ref="byte-string-escape"/>
         <context ref="def:line-continue"/>
       </include>
@@ -166,7 +185,6 @@
       	<context ref="line-comment"/>
       	<context ref="line-doc-comment"/>
         <context ref="keywords"/>
-        <context ref="reserved"/>
         <context ref="types"/>
         <context ref="boolean"/>
         <context ref="number"/>
@@ -174,12 +192,9 @@
         <context ref="self"/>
         <context ref="char"/>
         <context ref="attribute"/>
-        <!--
         <context ref="byte-string"/>
         <context ref="raw-string"/>
         <context ref="byte"/>
-        <context ref="lifetime"/>
-        -->
       </include>
     </context>
 
