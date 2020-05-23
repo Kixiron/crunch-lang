@@ -51,7 +51,7 @@ fn test() {
         Ok((tree, mut interner, mut warnings, module_table, module_scope)) => {
             warnings.emit(&files);
 
-            dbg!(&module_table);
+            println!("{:#?}", &module_scope);
 
             let ladder = Ladder::new(
                 module_table,
@@ -59,7 +59,7 @@ fn test() {
                 ItemPath::new(interner.intern("package")),
             );
 
-            dbg!(ladder.lower(&*tree));
+            println!("{:#?}", ladder.lower(&*tree));
         }
 
         Err(mut err) => {

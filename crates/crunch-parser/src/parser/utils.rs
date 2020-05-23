@@ -139,24 +139,26 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
     /// ItemPath ::= Ident | Ident '.' Path
     /// ```
     #[recursion_guard]
-    pub(crate) fn item_path(&mut self, path: impl Into<Option<Spur>>) -> ParseResult<ItemPath> {
-        let mut path = if let Some(start) = path.into() {
-            vec![start]
+    pub(crate) fn item_path(&mut self, start: Spur) -> ParseResult<ItemPath> {
+        let mut path = vec![start];
+
+        if matches!(self.peek().map(|t| t.ty()), Ok(TokenType::Dot)) {
+            self.eat(TokenType::Dot, [])?;
         } else {
-            let segment = self.eat(TokenType::Ident, [TokenType::Newline])?.source();
-            vec![self.string_interner.intern(segment)]
-        };
+            return Ok(ItemPath::new(path));
+        }
 
-        while self.peek()?.ty() != TokenType::Dot && self.peek()?.ty() == TokenType::Ident {
-            if self.peek()?.ty() == TokenType::Newline {
-                self.eat(TokenType::Newline, [])?;
-                continue;
+        if let Ok(peek) = self.peek() {
+            while peek.ty() == TokenType::Ident {
+                let segment = self.eat(TokenType::Ident, [TokenType::Newline])?.source();
+                path.push(self.string_interner.intern(segment));
+
+                if matches!(self.peek().map(|t| t.ty()), Ok(TokenType::Dot)) {
+                    self.eat(TokenType::Dot, [TokenType::Newline])?;
+                } else {
+                    break;
+                }
             }
-
-            let segment = self.eat(TokenType::Ident, [TokenType::Newline])?.source();
-            path.push(self.string_interner.intern(segment));
-
-            self.eat(TokenType::Dot, [TokenType::Newline])?;
         }
 
         Ok(ItemPath::new(path))

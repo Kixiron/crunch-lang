@@ -571,20 +571,20 @@ fn strings() {
 
 #[test]
 fn functions_ast() {
-    let expected = "Function((data:(decorators:[],attrs:[(data:Visibility(FileLocal),loc:Concrete(span:(start:5,\
-        end:15,),file:(0),),),],name:(key:1,),args:[],returns:(data:Infer,loc:Concrete(span:(start:5,end:15,),file:(0),)\
-        ,),body:[],),loc:Concrete(span:(start:5,end:22,),file:(0),),))";
+    let expected = "Function((data:(decorators:[],attrs:[(data:Visibility(FileLocal),loc:Concrete(span:(start:9,end:19,),\
+        file:(0),),),],name:(key:1,),args:[],returns:(data:Infer,loc:Concrete(span:(start:9,end:19,),file:(0),),),body:[],),loc:\
+        Concrete(span:(start:9,end:30,),file:(0),),))";
     let src = "
         fn test()
         end";
     let func = eval!(@ast src);
     assert_eq!(func, expected);
 
-    let expected = "Function((data:(decorators:[(data:(name:(data:(key:1,),loc:Concrete(span:(start:6,end:12,),file:(0),\
-        ),),args:[],),loc:Concrete(span:(start:5,end:12,),file:(0),),),(data:(name:(data:(key:1,),loc:Concrete(span:(start:18,end:24,),\
-        file:(0),),),args:[],),loc:Concrete(span:(start:17,end:24,),file:(0),),),],attrs:[(data:Visibility(FileLocal),loc:Concrete(span:\
-        (start:29,end:39,),file:(0),),),],name:(key:2,),args:[],returns:(data:Infer,loc:Concrete(span:(start:29,end:39,),file:(0),),),\
-        body:[],),loc:Concrete(span:(start:29,end:46,),file:(0),),))";
+    let expected = "Function((data:(decorators:[(data:(name:(data:(key:1,),loc:Concrete(span:(start:10,end:16,),file:(0),),),\
+        args:[],),loc:Concrete(span:(start:9,end:16,),file:(0),),),(data:(name:(data:(key:1,),loc:Concrete(span:(start:26,end:32,),\
+        file:(0),),),args:[],),loc:Concrete(span:(start:25,end:32,),file:(0),),),],attrs:[(data:Visibility(FileLocal),loc:Concrete(\
+        span:(start:41,end:51,),file:(0),),),],name:(key:2,),args:[],returns:(data:Infer,loc:Concrete(span:(start:41,end:51,),\
+        file:(0),),),body:[],),loc:Concrete(span:(start:41,end:62,),file:(0),),))";
     let src = "
         @inline
         @inline
@@ -593,13 +593,13 @@ fn functions_ast() {
     let func = eval!(@ast src);
     assert_eq!(func, expected);
 
-    let expected = "Function((data:(decorators:[],attrs:[(data:Visibility(Exposed),loc:Concrete(span:(start:5,end:12,),\
-        file:(0),),),],name:(key:1,),args:[(data:(name:(data:(key:2,),loc:Concrete(span:(start:21,end:22,),file:(0),),),ty:(data:\
-        ItemPath(([(key:2,),])),loc:Concrete(span:(start:24,end:25,),file:(0),),),comptime:false,),loc:Concrete(span:(start:21,end:25,\
-        ),file:(0),),),(data:(name:(data:(key:3,),loc:Concrete(span:(start:27,end:28,),file:(0),),),ty:(data:ItemPath(([(key:3,),])),\
-        loc:Concrete(span:(start:30,end:31,),file:(0),),),comptime:false,),loc:Concrete(span:(start:27,end:31,),file:(0),),),],returns:\
-        (data:Boolean,loc:Concrete(span:(start:36,end:40,),file:(0),),),body:[Expression(FunctionCall(caller:Variable((key:4,)),arguments:\
-        [Literal(Integer((sign:Positive,bits:\"1\",))),],)),],),loc:Concrete(span:(start:13,end:67,),file:(0),),))";
+    let expected = "Function((data:(decorators:[],attrs:[(data:Visibility(Exposed),loc:Concrete(span:(start:9,end:16,),file:(0),),),],\
+        name:(key:1,),args:[(data:(name:(data:(key:2,),loc:Concrete(span:(start:25,end:26,),file:(0),),),ty:(data:ItemPath(([(key:2,),])),\
+        loc:Concrete(span:(start:28,end:29,),file:(0),),),comptime:false,),loc:Concrete(span:(start:25,end:29,),file:(0),),),(data:(name:\
+        (data:(key:3,),loc:Concrete(span:(start:31,end:32,),file:(0),),),ty:(data:ItemPath(([(key:3,),])),loc:Concrete(span:(start:34,\
+        end:35,),file:(0),),),comptime:false,),loc:Concrete(span:(start:31,end:35,),file:(0),),),],returns:(data:Boolean,loc:Concrete\
+        (span:(start:40,end:44,),file:(0),),),body:[Expression(FunctionCall(caller:Variable((key:4,)),arguments:[Literal(Integer((\
+        sign:Positive,bits:\"1\",))),],)),],),loc:Concrete(span:(start:17,end:79,),file:(0),),))";
     let src = "
         exposed fn test(a: a, b: b) -> bool
             println(1)
