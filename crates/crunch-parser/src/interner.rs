@@ -7,7 +7,6 @@ cfg_if! {
     } else {
         use lasso::Rodeo;
         use alloc::rc::Rc;
-        use core::cell::RefCell;
     }
 }
 
@@ -19,7 +18,7 @@ pub struct Interner {
     interner: Arc<ThreadedRodeo<Spur>>,
 
     #[cfg(not(feature = "concurrent"))]
-    interner: Rc<RefCell<Rodeo<Spur>>>,
+    interner: Rc<Rodeo<Spur>>,
 }
 
 impl Interner {
@@ -32,7 +31,7 @@ impl Interner {
 
             } else {
                 Self {
-                    interner: Rc::new(RefCell::new(Rodeo::with_capacity(100))),
+                    interner: Rc::new(Rodeo::with_capacity(100)),
                 }
             }
         }
@@ -50,12 +49,14 @@ impl Interner {
 
     #[cfg(not(feature = "concurrent"))]
     pub fn resolve<'a>(&'a self, sym: &Spur) -> &'a str {
-        self.interner.borrow().resolve(sym)
+        self.interner.resolve(sym)
     }
 
     #[cfg(not(feature = "concurrent"))]
     pub fn intern(&mut self, string: &str) -> Spur {
-        self.interner.borrow_mut().get_or_intern(string)
+        Rc::get_mut(&mut self.interner)
+            .expect("Multiple mutable borrows of an interner")
+            .get_or_intern(string)
     }
 }
 
