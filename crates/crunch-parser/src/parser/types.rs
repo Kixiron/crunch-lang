@@ -17,263 +17,6 @@ use lasso::Spur;
 #[cfg(test)]
 use serde::{Deserialize, Serialize};
 
-#[cfg_attr(test, derive(Deserialize, Serialize))]
-#[derive(Debug, Clone, PartialEq)]
-pub enum Type {
-    Operand(Box<Locatable<Type>>, TypeOperand, Box<Locatable<Type>>),
-    Const(Spur, Box<Locatable<Type>>),
-    Not(Box<Locatable<Type>>),
-    Parenthesised(Box<Locatable<Type>>),
-    Function {
-        params: Vec<Locatable<Type>>,
-        returns: Box<Locatable<Type>>,
-    },
-    Builtin(BuiltinType),
-    TraitObj(Vec<Locatable<Type>>),
-    Bounded {
-        path: ItemPath,
-        bounds: Vec<Locatable<Type>>,
-    },
-    ItemPath(ItemPath),
-    Infer,
-}
-
-impl Type {
-    pub fn internal_types(&self) -> Vec<ItemPath> {
-        let mut buf = Vec::with_capacity(1);
-        self.internal_types_inner(&mut buf);
-
-        buf
-    }
-
-    fn internal_types_inner(&self, buf: &mut Vec<ItemPath>) {
-        match self {
-            Self::Operand(rhs, _, lhs) => {
-                rhs.internal_types_inner(buf);
-                lhs.internal_types_inner(buf);
-            }
-            Self::Const(name, ty) => {
-                buf.push(ItemPath::new(vec![*name]));
-                ty.internal_types_inner(buf);
-            }
-            Self::Not(ty) => ty.internal_types_inner(buf),
-            Self::Parenthesised(ty) => ty.internal_types_inner(buf),
-            Self::Function { params, returns } => {
-                for param in params {
-                    param.internal_types_inner(buf);
-                }
-
-                returns.internal_types_inner(buf);
-            }
-            Self::TraitObj(types) => {
-                for ty in types {
-                    ty.internal_types_inner(buf);
-                }
-            }
-            Self::Bounded { path, bounds } => {
-                buf.push(path.clone());
-
-                for bound in bounds {
-                    bound.internal_types_inner(buf);
-                }
-            }
-            Self::ItemPath(path) => buf.push(path.clone()),
-            Self::Builtin(..) | Self::Infer => {}
-        }
-    }
-
-    pub fn to_string(&self, interner: &Interner) -> String {
-        match self {
-            Type::Infer => "infer".to_string(),
-            Type::Not(ty) => format!("!{}", ty.to_string(interner)),
-            Type::Parenthesised(ty) => format!("({})", ty.to_string(interner)),
-            Type::Const(ident, ty) => format!(
-                "const {}: {}",
-                interner.resolve(ident),
-                ty.to_string(interner)
-            ),
-            Type::Operand(left, op, right) => format!(
-                "{} {} {}",
-                left.to_string(interner),
-                op,
-                right.to_string(interner)
-            ),
-            Type::Function { params, returns } => format!(
-                "fn({}) -> {}",
-                params
-                    .iter()
-                    .map(|ty| ty.to_string(interner))
-                    .collect::<Vec<String>>()
-                    .join(", "),
-                returns.to_string(interner)
-            ),
-            Type::TraitObj(traits) => format!(
-                "type[{}]",
-                traits
-                    .iter()
-                    .map(|ty| ty.to_string(interner))
-                    .collect::<Vec<String>>()
-                    .join(", ")
-            ),
-            Type::Bounded { path, bounds } => format!(
-                "{}[{}]",
-                path.iter()
-                    .map(|seg| interner.resolve(seg))
-                    .collect::<Vec<&str>>()
-                    .join("."),
-                bounds
-                    .iter()
-                    .map(|ty| ty.to_string(interner))
-                    .collect::<Vec<String>>()
-                    .join(", ")
-            ),
-            Type::Builtin(b) => b.to_string(interner),
-            Type::ItemPath(path) => path
-                .iter()
-                .map(|seg| interner.resolve(seg))
-                .collect::<Vec<&str>>()
-                .join("."),
-        }
-    }
-}
-
-impl Default for Type {
-    fn default() -> Self {
-        Self::Infer
-    }
-}
-
-#[cfg_attr(test, derive(Deserialize, Serialize))]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum TypeOperand {
-    And,
-    Or,
-}
-
-impl fmt::Display for TypeOperand {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::And => write!(f, "&"),
-            Self::Or => write!(f, "|"),
-        }
-    }
-}
-
-impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for TypeOperand {
-    type Error = Locatable<Error>;
-
-    fn try_from((token, file): (&Token<'src>, CurrentFile)) -> Result<Self, Self::Error> {
-        match token.ty() {
-            TokenType::Ampersand => Ok(Self::And),
-            TokenType::Pipe => Ok(Self::Or),
-
-            ty => Err(Locatable::new(
-                Error::Syntax(SyntaxError::Generic(format!(
-                    "Expected one of {}, got '{}'",
-                    [TokenType::Ampersand, TokenType::Pipe]
-                        .iter()
-                        .map(|t| t.to_str())
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                    ty,
-                ))),
-                Location::concrete(token, file),
-            )),
-        }
-    }
-}
-
-#[cfg_attr(test, derive(Deserialize, Serialize))]
-#[derive(Debug, Clone, PartialEq)]
-pub enum BuiltinType {
-    Integer {
-        sign: Signedness,
-        width: u16,
-    },
-    IntReg(Signedness),
-    IntPtr(Signedness),
-    Float {
-        width: u16,
-    },
-    Boolean,
-    String,
-    Rune,
-    Unit,
-    Absurd,
-    Array(
-        // FIXME: Ron doesn't support u128s
-        #[cfg_attr(
-            test,
-            serde(serialize_with = "crate::parser::utils::serialize_u128_to_str")
-        )]
-        u128,
-        Box<Locatable<Type>>,
-    ),
-    Slice(Box<Locatable<Type>>),
-    Tuple(Vec<Locatable<Type>>),
-}
-
-impl BuiltinType {
-    pub fn to_string(&self, interner: &Interner) -> String {
-        match self {
-            BuiltinType::Integer { sign, width } => format!(
-                "{}{}",
-                match sign {
-                    Signedness::Signed => "i",
-                    Signedness::Unsigned => "u",
-                },
-                width
-            ),
-            BuiltinType::IntPtr(sign) => format!(
-                "{}ptr",
-                match sign {
-                    Signedness::Signed => "i",
-                    Signedness::Unsigned => "u",
-                },
-            ),
-            BuiltinType::IntReg(sign) => format!(
-                "{}reg",
-                match sign {
-                    Signedness::Signed => "i",
-                    Signedness::Unsigned => "u",
-                },
-            ),
-            BuiltinType::Float { width } => format!("f{}", width),
-            BuiltinType::Boolean => "bool".to_string(),
-            BuiltinType::String => "str".to_string(),
-            BuiltinType::Rune => "rune".to_string(),
-            BuiltinType::Unit => "unit".to_string(),
-            BuiltinType::Absurd => "absurd".to_string(),
-            BuiltinType::Array(len, ty) => format!("arr[{}, {}]", len, ty.to_string(interner)),
-            BuiltinType::Slice(ty) => format!("slice{}]", ty.to_string(interner)),
-            BuiltinType::Tuple(types) => format!(
-                "tup[{}]",
-                types
-                    .iter()
-                    .map(|ty| ty.to_string(interner))
-                    .collect::<Vec<String>>()
-                    .join(", ")
-            ),
-        }
-    }
-}
-
-#[cfg_attr(test, derive(Deserialize, Serialize))]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Signedness {
-    Unsigned,
-    Signed,
-}
-
-impl fmt::Display for Signedness {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Unsigned => write!(f, "u"),
-            Self::Signed => write!(f, "i"),
-        }
-    }
-}
-
 type PrefixParselet<'src, 'expr, 'stmt> =
     fn(&mut Parser<'src, 'expr, 'stmt>, Token<'src>) -> ParseResult<Locatable<Type>>;
 type PostfixParselet<'src, 'expr, 'stmt> = fn(
@@ -369,11 +112,11 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
                 let _frame = parser.add_stack_frame()?;
 
                 let (ty, end) = match token.source() {
-                    "str" => (Type::Builtin(BuiltinType::String), None),
-                    "rune" => (Type::Builtin(BuiltinType::Rune), None),
-                    "bool" => (Type::Builtin(BuiltinType::Boolean), None),
-                    "unit" => (Type::Builtin(BuiltinType::Unit), None),
-                    "absurd" => (Type::Builtin(BuiltinType::Absurd), None),
+                    "str" => (Type::String, None),
+                    "rune" => (Type::Rune, None),
+                    "bool" => (Type::Boolean, None),
+                    "unit" => (Type::Unit, None),
+                    "absurd" => (Type::Absurd, None),
                     "infer" => (Type::Infer, None),
 
                     "ureg" | "ireg" => {
@@ -383,7 +126,7 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
                             Signedness::Signed
                         };
 
-                        (Type::Builtin(BuiltinType::IntReg(sign)), None)
+                        (Type::IntReg(sign), None)
                     }
 
                     "uptr" | "iptr" => {
@@ -393,7 +136,7 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
                             Signedness::Signed
                         };
 
-                        (Type::Builtin(BuiltinType::IntPtr(sign)), None)
+                        (Type::IntPtr(sign), None)
                     }
 
                     "arr" => {
@@ -419,10 +162,7 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
                             .eat(TokenType::RightBrace, [TokenType::Newline])?
                             .span();
 
-                        (
-                            Type::Builtin(BuiltinType::Array(len, Box::new(ty))),
-                            Some(end),
-                        )
+                        (Type::Array(len, Box::new(ty)), Some(end))
                     }
 
                     "slice" => {
@@ -432,7 +172,7 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
                             .eat(TokenType::RightBrace, [TokenType::Newline])?
                             .span();
 
-                        (Type::Builtin(BuiltinType::Slice(Box::new(ty))), Some(end))
+                        (Type::Slice(Box::new(ty)), Some(end))
                     }
 
                     "tup" => {
@@ -458,7 +198,7 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
                             .eat(TokenType::RightBrace, [TokenType::Newline])?
                             .span();
 
-                        (Type::Builtin(BuiltinType::Tuple(types)), Some(end))
+                        (Type::Tuple(types), Some(end))
                     }
 
                     uint if uint.starts_with('u')
@@ -477,10 +217,10 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
                             })?;
 
                         (
-                            Type::Builtin(BuiltinType::Integer {
+                            Type::Integer {
                                 sign: Signedness::Unsigned,
                                 width,
-                            }),
+                            },
                             None,
                         )
                     }
@@ -501,10 +241,10 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
                             })?;
 
                         (
-                            Type::Builtin(BuiltinType::Integer {
+                            Type::Integer {
                                 sign: Signedness::Signed,
                                 width,
-                            }),
+                            },
                             None,
                         )
                     }
@@ -525,7 +265,7 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
                                 )
                             })?;
 
-                        (Type::Builtin(BuiltinType::Float { width }), None)
+                        (Type::Float { width }, None)
                     }
 
                     custom => {
@@ -748,6 +488,250 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
     }
 }
 
+#[cfg_attr(test, derive(Deserialize, Serialize))]
+#[derive(Debug, Clone, PartialEq)]
+pub enum Type {
+    Operand(Box<Locatable<Type>>, TypeOperand, Box<Locatable<Type>>),
+    Const(Spur, Box<Locatable<Type>>),
+    Not(Box<Locatable<Type>>),
+    Parenthesised(Box<Locatable<Type>>),
+    Function {
+        params: Vec<Locatable<Type>>,
+        returns: Box<Locatable<Type>>,
+    },
+    TraitObj(Vec<Locatable<Type>>),
+    Bounded {
+        path: ItemPath,
+        bounds: Vec<Locatable<Type>>,
+    },
+    ItemPath(ItemPath),
+    Infer,
+    Integer {
+        sign: Signedness,
+        width: u16,
+    },
+    IntReg(Signedness),
+    IntPtr(Signedness),
+    Float {
+        width: u16,
+    },
+    Boolean,
+    String,
+    Rune,
+    Unit,
+    Absurd,
+    Array(
+        // FIXME: Ron doesn't support u128s
+        #[cfg_attr(
+            test,
+            serde(serialize_with = "crate::parser::utils::serialize_u128_to_str")
+        )]
+        u128,
+        Box<Locatable<Type>>,
+    ),
+    Slice(Box<Locatable<Type>>),
+    Tuple(Vec<Locatable<Type>>),
+}
+
+impl Type {
+    pub fn internal_types(&self) -> Vec<ItemPath> {
+        let mut buf = Vec::with_capacity(1);
+        self.internal_types_inner(&mut buf);
+
+        buf
+    }
+
+    fn internal_types_inner(&self, buf: &mut Vec<ItemPath>) {
+        match self {
+            Self::Operand(rhs, _, lhs) => {
+                rhs.internal_types_inner(buf);
+                lhs.internal_types_inner(buf);
+            }
+            Self::Const(name, ty) => {
+                buf.push(ItemPath::new(vec![*name]));
+                ty.internal_types_inner(buf);
+            }
+            Self::Not(ty) => ty.internal_types_inner(buf),
+            Self::Parenthesised(ty) => ty.internal_types_inner(buf),
+            Self::Function { params, returns } => {
+                for param in params {
+                    param.internal_types_inner(buf);
+                }
+
+                returns.internal_types_inner(buf);
+            }
+            Self::TraitObj(types) => {
+                for ty in types {
+                    ty.internal_types_inner(buf);
+                }
+            }
+            Self::Bounded { path, bounds } => {
+                buf.push(path.clone());
+
+                for bound in bounds {
+                    bound.internal_types_inner(buf);
+                }
+            }
+            Self::ItemPath(path) => buf.push(path.clone()),
+
+            _ => {}
+        }
+    }
+
+    pub fn to_string(&self, interner: &Interner) -> String {
+        match self {
+            Self::Infer => "infer".to_string(),
+            Self::Not(ty) => format!("!{}", ty.to_string(interner)),
+            Self::Parenthesised(ty) => format!("({})", ty.to_string(interner)),
+            Self::Const(ident, ty) => format!(
+                "const {}: {}",
+                interner.resolve(ident),
+                ty.to_string(interner)
+            ),
+            Self::Operand(left, op, right) => format!(
+                "{} {} {}",
+                left.to_string(interner),
+                op,
+                right.to_string(interner)
+            ),
+            Self::Function { params, returns } => format!(
+                "fn({}) -> {}",
+                params
+                    .iter()
+                    .map(|ty| ty.to_string(interner))
+                    .collect::<Vec<String>>()
+                    .join(", "),
+                returns.to_string(interner)
+            ),
+            Self::TraitObj(traits) => format!(
+                "type[{}]",
+                traits
+                    .iter()
+                    .map(|ty| ty.to_string(interner))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
+            Self::Bounded { path, bounds } => format!(
+                "{}[{}]",
+                path.iter()
+                    .map(|seg| interner.resolve(seg))
+                    .collect::<Vec<&str>>()
+                    .join("."),
+                bounds
+                    .iter()
+                    .map(|ty| ty.to_string(interner))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
+            Self::ItemPath(path) => path
+                .iter()
+                .map(|seg| interner.resolve(seg))
+                .collect::<Vec<&str>>()
+                .join("."),
+            Self::Integer { sign, width } => format!(
+                "{}{}",
+                match sign {
+                    Signedness::Signed => "i",
+                    Signedness::Unsigned => "u",
+                },
+                width
+            ),
+            Self::IntPtr(sign) => format!(
+                "{}ptr",
+                match sign {
+                    Signedness::Signed => "i",
+                    Signedness::Unsigned => "u",
+                },
+            ),
+            Self::IntReg(sign) => format!(
+                "{}reg",
+                match sign {
+                    Signedness::Signed => "i",
+                    Signedness::Unsigned => "u",
+                },
+            ),
+            Self::Float { width } => format!("f{}", width),
+            Self::Boolean => "bool".to_string(),
+            Self::String => "str".to_string(),
+            Self::Rune => "rune".to_string(),
+            Self::Unit => "unit".to_string(),
+            Self::Absurd => "absurd".to_string(),
+            Self::Array(len, ty) => format!("arr[{}, {}]", len, ty.to_string(interner)),
+            Self::Slice(ty) => format!("slice{}]", ty.to_string(interner)),
+            Self::Tuple(types) => format!(
+                "tup[{}]",
+                types
+                    .iter()
+                    .map(|ty| ty.to_string(interner))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
+        }
+    }
+}
+
+impl Default for Type {
+    fn default() -> Self {
+        Self::Infer
+    }
+}
+
+#[cfg_attr(test, derive(Deserialize, Serialize))]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum TypeOperand {
+    And,
+    Or,
+}
+
+impl fmt::Display for TypeOperand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::And => write!(f, "&"),
+            Self::Or => write!(f, "|"),
+        }
+    }
+}
+
+impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for TypeOperand {
+    type Error = Locatable<Error>;
+
+    fn try_from((token, file): (&Token<'src>, CurrentFile)) -> Result<Self, Self::Error> {
+        match token.ty() {
+            TokenType::Ampersand => Ok(Self::And),
+            TokenType::Pipe => Ok(Self::Or),
+
+            ty => Err(Locatable::new(
+                Error::Syntax(SyntaxError::Generic(format!(
+                    "Expected one of {}, got '{}'",
+                    [TokenType::Ampersand, TokenType::Pipe]
+                        .iter()
+                        .map(|t| t.to_str())
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    ty,
+                ))),
+                Location::concrete(token, file),
+            )),
+        }
+    }
+}
+
+#[cfg_attr(test, derive(Deserialize, Serialize))]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Signedness {
+    Unsigned,
+    Signed,
+}
+
+impl fmt::Display for Signedness {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unsigned => write!(f, "u"),
+            Self::Signed => write!(f, "i"),
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum TypePrecedence {
     And,
@@ -788,15 +772,15 @@ mod tests {
     #[test]
     fn builtins() {
         let types = [
-            ("str", BuiltinType::String),
-            ("rune", BuiltinType::Rune),
-            ("bool", BuiltinType::Boolean),
-            ("unit", BuiltinType::Unit),
-            ("absurd", BuiltinType::Absurd),
-            ("ureg", BuiltinType::IntReg(Signedness::Unsigned)),
-            ("ireg", BuiltinType::IntReg(Signedness::Signed)),
-            ("uptr", BuiltinType::IntPtr(Signedness::Unsigned)),
-            ("iptr", BuiltinType::IntPtr(Signedness::Signed)),
+            ("str", Type::String),
+            ("rune", Type::Rune),
+            ("bool", Type::Boolean),
+            ("unit", Type::Unit),
+            ("absurd", Type::Absurd),
+            ("ureg", Type::IntReg(Signedness::Unsigned)),
+            ("ireg", Type::IntReg(Signedness::Signed)),
+            ("uptr", Type::IntPtr(Signedness::Unsigned)),
+            ("iptr", Type::IntPtr(Signedness::Signed)),
         ];
         let string_interner = Interner::new();
 
@@ -806,7 +790,7 @@ mod tests {
                 .ascribed_type()
                 .unwrap();
 
-            assert_eq!(&*ty, &Type::Builtin(correct.clone()));
+            assert_eq!(&*ty, correct);
         }
     }
 
@@ -815,34 +799,34 @@ mod tests {
         let types = [
             (
                 "i0",
-                BuiltinType::Integer {
+                Type::Integer {
                     sign: Signedness::Signed,
                     width: 0,
                 },
             ),
             (
                 "i65535",
-                BuiltinType::Integer {
+                Type::Integer {
                     sign: Signedness::Signed,
                     width: 65535,
                 },
             ),
             (
                 "u0",
-                BuiltinType::Integer {
+                Type::Integer {
                     sign: Signedness::Unsigned,
                     width: 0,
                 },
             ),
             (
                 "u65535",
-                BuiltinType::Integer {
+                Type::Integer {
                     sign: Signedness::Unsigned,
                     width: 65535,
                 },
             ),
-            ("f0", BuiltinType::Float { width: 0 }),
-            ("f65535", BuiltinType::Float { width: 65535 }),
+            ("f0", Type::Float { width: 0 }),
+            ("f65535", Type::Float { width: 65535 }),
         ];
         let string_interner = Interner::new();
 
@@ -852,7 +836,7 @@ mod tests {
                 .ascribed_type()
                 .unwrap();
 
-            assert_eq!(&*ty, &Type::Builtin(correct.clone()));
+            assert_eq!(&*ty, correct);
         }
     }
 
@@ -862,14 +846,14 @@ mod tests {
             (
                 "!str",
                 Type::Not(Box::new(Locatable {
-                    data: Type::Builtin(BuiltinType::String),
+                    data: Type::String,
                     loc: Location::concrete(Span::from(1..4), FileId::new(0)),
                 })),
             ),
             (
                 "!rune",
                 Type::Not(Box::new(Locatable {
-                    data: Type::Builtin(BuiltinType::Rune),
+                    data: Type::Rune,
                     loc: Location::concrete(Span::from(1..5), FileId::new(0)),
                 })),
             ),
@@ -892,14 +876,14 @@ mod tests {
             (
                 "(str)",
                 Type::Parenthesised(Box::new(Locatable {
-                    data: Type::Builtin(BuiltinType::String),
+                    data: Type::String,
                     loc: Location::concrete(Span::from(1..4), FileId::new(0)),
                 })),
             ),
             (
                 "(rune)",
                 Type::Parenthesised(Box::new(Locatable {
-                    data: Type::Builtin(BuiltinType::Rune),
+                    data: Type::Rune,
                     loc: Location::concrete(Span::from(1..5), FileId::new(0)),
                 })),
             ),
@@ -923,12 +907,12 @@ mod tests {
                 "str & rune",
                 Type::Operand(
                     Box::new(Locatable {
-                        data: Type::Builtin(BuiltinType::String),
+                        data: Type::String,
                         loc: Location::concrete(Span::from(0..3), FileId::new(0)),
                     }),
                     TypeOperand::And,
                     Box::new(Locatable {
-                        data: Type::Builtin(BuiltinType::Rune),
+                        data: Type::Rune,
                         loc: Location::concrete(Span::from(6..10), FileId::new(0)),
                     }),
                 ),
@@ -937,12 +921,12 @@ mod tests {
                 "str | rune",
                 Type::Operand(
                     Box::new(Locatable {
-                        data: Type::Builtin(BuiltinType::String),
+                        data: Type::String,
                         loc: Location::concrete(Span::from(0..3), FileId::new(0)),
                     }),
                     TypeOperand::Or,
                     Box::new(Locatable {
-                        data: Type::Builtin(BuiltinType::Rune),
+                        data: Type::Rune,
                         loc: Location::concrete(Span::from(6..10), FileId::new(0)),
                     }),
                 ),
@@ -972,7 +956,7 @@ mod tests {
 
                 let ty = parser.ascribed_type();
                 match ty.as_ref().map(|t| &**t) {
-                    Ok(Type::Builtin(BuiltinType::Integer { sign: Signedness::Signed, .. })) => {},
+                    Ok(Type::Integer { sign: Signedness::Signed, .. }) => {},
                     Err(Locatable { data: _data @ Error::Syntax(SyntaxError::Generic(..)), .. }) => {}
 
                     _ => prop_assert!(false),
@@ -985,7 +969,7 @@ mod tests {
 
                 let ty = parser.ascribed_type();
                 match ty.as_ref().map(|t| &**t) {
-                    Ok(Type::Builtin(BuiltinType::Integer { sign: Signedness::Unsigned, .. })) => {},
+                    Ok(Type::Integer { sign: Signedness::Unsigned, .. }) => {},
                     Err(Locatable { data: _data @ Error::Syntax(SyntaxError::Generic(..)), .. }) => {}
 
                     _ => prop_assert!(false),
@@ -998,7 +982,7 @@ mod tests {
 
                 let ty = parser.ascribed_type();
                 match ty.as_ref().map(|t| &**t) {
-                    Ok(Type::Builtin(BuiltinType::Float { .. })) => {},
+                    Ok(Type::Float { .. }) => {},
                     Err(Locatable { data: _data @ Error::Syntax(SyntaxError::Generic(..)), .. }) => {}
 
                     _ => prop_assert!(false),

@@ -264,6 +264,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             TokenType::Else if self.peek()?.ty() == TokenType::If => {
                 let stmt = self.if_stmt()?;
 
+                self.eat(TokenType::End, [TokenType::Newline])?;
                 Some(stmt)
             }
 
@@ -287,10 +288,6 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
             _ => unreachable!(),
         };
-
-        if arm.is_some() {
-            self.eat(TokenType::End, [])?;
-        }
 
         let stmt = self.stmt_arena.store(Statement::If {
             condition,

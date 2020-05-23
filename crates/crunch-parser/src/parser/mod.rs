@@ -30,7 +30,7 @@ pub use expr::{
     Rune, Sign, Text, UnaryOperand,
 };
 pub use stmt::{Statement, Stmt};
-pub use types::{BuiltinType, Signedness, Type};
+pub use types::{Signedness, Type};
 pub use utils::{CurrentFile, ItemPath, SyntaxTree};
 
 use utils::StackGuard;

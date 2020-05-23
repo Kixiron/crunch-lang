@@ -76,33 +76,8 @@ macro_rules! ast_eq {
     };
 }
 
-macro_rules! eval_expr {
-    (@pretty $expr:expr) => {{
-        std::panic::catch_unwind(|| {
-            let interner = Interner::default();
-            let mut parser = Parser::new(
-                $expr,
-                CurrentFile::new(FileId::new(0), $expr.len()),
-                interner,
-            );
-            let expr = parser.expr().unwrap();
-
-            ron::ser::to_string_pretty(
-                &expr,
-                ron::ser::PrettyConfig {
-                    depth_limit: 15,
-                    new_line: "\n".into(),
-                    indentor: "    ".into(),
-                    separate_tuple_members: true,
-                    enumerate_arrays: false,
-                },
-            )
-            .unwrap()
-        })
-        .unwrap_or_else(|err| panic!("Error on the input {}: {:?}", $expr, err))
-    }};
-
-    ($expr:expr) => {{
+macro_rules! eval {
+    (@expr $expr:expr) => {{
         std::panic::catch_unwind(|| {
             let interner = Interner::default();
             let mut parser = Parser::new(
@@ -116,63 +91,44 @@ macro_rules! eval_expr {
         })
         .unwrap_or_else(|err| panic!("Error on the input {}: {:?}", $expr, err))
     }};
+
+    (@generics $generics:expr) => {{
+        std::panic::catch_unwind(|| {
+            let interner = Interner::default();
+            let mut parser = Parser::new(
+                $generics,
+                CurrentFile::new(FileId::new(0), $generics.len()),
+                interner,
+            );
+            let generics = parser.generics().unwrap();
+
+            ron::ser::to_string(&generics).unwrap()
+        })
+        .unwrap_or_else(|err| panic!("Error on the input {}: {:?}", $generics, err))
+    }};
+
+    (@ast $ast:expr) => {{
+        std::panic::catch_unwind(|| {
+            let interner = Interner::default();
+            let mut parser =
+                Parser::new($ast, CurrentFile::new(FileId::new(0), $ast.len()), interner);
+            let ast = parser.ast().unwrap().unwrap();
+
+            ron::ser::to_string(&ast).unwrap()
+        })
+        .unwrap_or_else(|err| panic!("Error on the input {}: {:?}", $ast, err))
+    }};
 }
 
 #[test]
 fn expr() {
-    let expr = eval_expr!(@pretty "!5 + -10 / (test(54, test_again) % 200 if 10 else 52) - (true)");
-    let expected = r#"UnaryExpr(
-    Not,
-    BinaryOp(
-        Literal(Integer((
-            sign: Positive,
-            bits: "5",
-        ))),
-        Add,
-        BinaryOp(
-            Literal(Integer((
-                sign: Negative,
-                bits: "10",
-            ))),
-            Div,
-            BinaryOp(
-                Parenthesised(BinaryOp(
-                    FunctionCall(
-                        caller: Variable((
-                            key: 1,
-                        )),
-                        arguments: [
-                            Literal(Integer((
-                                sign: Positive,
-                                bits: "54",
-                            ))),
-                            Variable((
-                                key: 2,
-                            )),
-                        ],
-                    ),
-                    Mod,
-                    InlineConditional(
-                        true_arm: Literal(Integer((
-                            sign: Positive,
-                            bits: "200",
-                        ))),
-                        condition: Literal(Integer((
-                            sign: Positive,
-                            bits: "10",
-                        ))),
-                        false_arm: Literal(Integer((
-                            sign: Positive,
-                            bits: "52",
-                        ))),
-                    ),
-                )),
-                Sub,
-                Parenthesised(Literal(Bool(true))),
-            ),
-        ),
-    ),
-)"#;
+    let expr = eval!(@expr "!5 + -10 / (test(54, test_again) % 200 if 10 else 52) - (true)");
+    let expected = "UnaryExpr(Not,BinaryOp(Literal(Integer((sign:Positive,bits:\"5\",))),Add,\
+    BinaryOp(Literal(Integer((sign:Negative,bits:\"10\",))),Div,BinaryOp(Parenthesised(BinaryOp(\
+        FunctionCall(caller:Variable((key:1,)),arguments:[Literal(Integer((sign:Positive,bits:\"54\",\
+    ))),Variable((key:2,)),],),Mod,InlineConditional(true_arm:Literal(Integer((sign:Positive,bits:\"200\",\
+    ))),condition:Literal(Integer((sign:Positive,bits:\"10\",))),false_arm:Literal(Integer((sign:Positive,\
+    bits:\"52\",))),),)),Sub,Parenthesised(Literal(Bool(true))),),),),)";
 
     assert_eq!(expr, expected);
 }
@@ -183,19 +139,22 @@ fn integer_literals() {
 
     #[rustfmt::skip]
     let integers: Vec<(String, (u128, Sign))> = vec![
-        ("10".into(),   (10, Sign::Positive)),
-        ("+10".into(),  (10, Sign::Positive)),
-        ("-10".into(),  (10, Sign::Negative)),
-        ("0".into(),    (0, Sign::Positive)),
-        ("+0".into(),   (0, Sign::Positive)),
-        ("-0".into(),   (0, Sign::Negative)),
-        (format!("{}",  u128::max_value()), (u128::max_value(), Sign::Positive)),
-        (format!("+{}", u128::max_value()), (u128::max_value(), Sign::Positive)),
-        (format!("-{}", u128::max_value()), (u128::max_value(), Sign::Negative)),
+        ("10".into(),    (10, Sign::Positive)),
+        ("+10".into(),   (10, Sign::Positive)),
+        ("-10".into(),   (10, Sign::Negative)),
+        ("0".into(),     (0,  Sign::Positive)),
+        ("+0".into(),    (0,  Sign::Positive)),
+        ("-0".into(),    (0,  Sign::Negative)),
+        ("0x64".into(),  (100, Sign::Positive)),
+        ("+0x64".into(), (100, Sign::Positive)),
+        ("-0x64".into(), (100, Sign::Negative)),
+        (format!("{}",   u128::max_value()), (u128::max_value(), Sign::Positive)),
+        (format!("+{}",  u128::max_value()), (u128::max_value(), Sign::Positive)),
+        (format!("-{}",  u128::max_value()), (u128::max_value(), Sign::Negative)),
     ];
 
     for (src, (bits, sign)) in integers {
-        let expr = eval_expr!(&src);
+        let expr = eval!(@expr &src);
         let expected = fmt(bits, sign);
 
         assert_eq!(expr, expected);
@@ -220,7 +179,7 @@ fn float_literals() {
     ];
 
     for (src, float) in f64s {
-        let expr = eval_expr!(&src);
+        let expr = eval!(@expr &src);
         let expected = fmt(float);
 
         assert_eq!(expr, expected);
@@ -229,13 +188,13 @@ fn float_literals() {
 
 #[test]
 fn string_literals() {
-    let expr = eval_expr!("\"Some string\"");
+    let expr = eval!(@expr "\"Some string\"");
     let expected =
         "Literal(String(([(83),(111),(109),(101),(32),(115),(116),(114),(105),(110),(103),])))";
 
     assert_eq!(expr, expected);
 
-    let expr = eval_expr!("b\"Some string\"");
+    let expr = eval!(@expr "b\"Some string\"");
     let expected =
         "Literal(Array([Integer((sign:Positive,bits:\"83\",)),Integer((sign:Positive,bits:\"111\",)),\
         Integer((sign:Positive,bits:\"109\",)),Integer((sign:Positive,bits:\"101\",)),Integer((sign:Positive,bits:\"32\",)),\
@@ -247,11 +206,11 @@ fn string_literals() {
 
 #[test]
 fn char_literals() {
-    let expr = eval_expr!("'S'");
+    let expr = eval!(@expr "'S'");
     let expected = "Literal(Rune((83)))";
     assert_eq!(expr, expected);
 
-    let expr = eval_expr!("b'S'");
+    let expr = eval!(@expr "b'S'");
     let expected = "Literal(Integer((sign:Positive,bits:\"83\",)))";
     assert_eq!(expr, expected);
 }
@@ -260,11 +219,11 @@ fn char_literals() {
 fn boolean_literals() {
     let fmt = |boolean| format!("Literal(Bool({}))", boolean);
 
-    let expr = eval_expr!("true");
+    let expr = eval!(@expr "true");
     let expected = fmt(true);
     assert_eq!(expr, expected);
 
-    let expr = eval_expr!("false");
+    let expr = eval!(@expr "false");
     let expected = fmt(false);
     assert_eq!(expr, expected);
 }
@@ -279,7 +238,7 @@ fn array_literals() {
         );
         let expected = format!("Array([{}])", "Literal(Bool(true)),".repeat(i));
 
-        assert_eq!(eval_expr!(&expr), expected);
+        assert_eq!(eval!(@expr &expr), expected);
     }
 }
 
@@ -293,7 +252,7 @@ fn tuple_literals() {
         );
         let expected = format!("Tuple([{}])", "Literal(Bool(true)),".repeat(i));
 
-        assert_eq!(eval_expr!(&expr), expected);
+        assert_eq!(eval!(@expr &expr), expected);
     }
 }
 
@@ -304,17 +263,17 @@ fn comparison_operations() {
     let ten = "Literal(Integer((sign:Positive,bits:\"10\",)))";
     let zero = "Literal(Integer((sign:Positive,bits:\"0\",)))";
     #[rustfmt::skip]
-    let comparisons: Vec<(String, (String, ComparisonOperand, String))> = vec![
-        ("10 == 0".into(), (ten.to_string(), ComparisonOperand::Equal,        zero.to_string())),
-        ("10 != 0".into(), (ten.to_string(), ComparisonOperand::NotEqual,     zero.to_string())),
-        ("10 < 0".into(),  (ten.to_string(), ComparisonOperand::Less,         zero.to_string())),
-        ("10 > 0".into(),  (ten.to_string(), ComparisonOperand::Greater,      zero.to_string())),
-        ("10 <= 0".into(), (ten.to_string(), ComparisonOperand::LessEqual,    zero.to_string())),
-        ("10 >= 0".into(), (ten.to_string(), ComparisonOperand::GreaterEqual, zero.to_string())),
+    let comparisons: Vec<(&str, (&str, ComparisonOperand, &str))> = vec![
+        ("10 == 0", (ten, ComparisonOperand::Equal,        zero)),
+        ("10 != 0", (ten, ComparisonOperand::NotEqual,     zero)),
+        ("10 < 0",  (ten, ComparisonOperand::Less,         zero)),
+        ("10 > 0",  (ten, ComparisonOperand::Greater,      zero)),
+        ("10 <= 0", (ten, ComparisonOperand::LessEqual,    zero)),
+        ("10 >= 0", (ten, ComparisonOperand::GreaterEqual, zero)),
     ];
 
     for (src, (lhs, op, rhs)) in comparisons {
-        let expr = eval_expr!(&src);
+        let expr = eval!(@expr &src);
         let expected = fmt(lhs, op, rhs);
 
         assert_eq!(expr, expected);
@@ -331,23 +290,23 @@ fn assignments() {
     };
 
     #[rustfmt::skip]
-    let integers: Vec<(String, AssignmentType)> = vec![
-        ("i := 100".into(),  AssignmentType::Normal),
-        ("i += 100".into(),  AssignmentType::BinaryOp(BinaryOperand::Add)),
-        ("i -= 100".into(),  AssignmentType::BinaryOp(BinaryOperand::Sub)),
-        ("i *= 100".into(),  AssignmentType::BinaryOp(BinaryOperand::Mult)),
-        ("i /= 100".into(),  AssignmentType::BinaryOp(BinaryOperand::Div)),
-        ("i %= 100".into(),  AssignmentType::BinaryOp(BinaryOperand::Mod)),
-        ("i **= 100".into(), AssignmentType::BinaryOp(BinaryOperand::Pow)),
-        ("i &= 100".into(),  AssignmentType::BinaryOp(BinaryOperand::BitAnd)),
-        ("i |= 100".into(),  AssignmentType::BinaryOp(BinaryOperand::BitOr)),
-        ("i ^= 100".into(),  AssignmentType::BinaryOp(BinaryOperand::BitXor)),
-        ("i >>= 100".into(), AssignmentType::BinaryOp(BinaryOperand::Shr)),
-        ("i <<= 100".into(), AssignmentType::BinaryOp(BinaryOperand::Shl)),
+    let integers: Vec<(&str, AssignmentType)> = vec![
+        ("i := 100",  AssignmentType::Normal),
+        ("i += 100",  AssignmentType::BinaryOp(BinaryOperand::Add)),
+        ("i -= 100",  AssignmentType::BinaryOp(BinaryOperand::Sub)),
+        ("i *= 100",  AssignmentType::BinaryOp(BinaryOperand::Mult)),
+        ("i /= 100",  AssignmentType::BinaryOp(BinaryOperand::Div)),
+        ("i %= 100",  AssignmentType::BinaryOp(BinaryOperand::Mod)),
+        ("i **= 100", AssignmentType::BinaryOp(BinaryOperand::Pow)),
+        ("i &= 100",  AssignmentType::BinaryOp(BinaryOperand::BitAnd)),
+        ("i |= 100",  AssignmentType::BinaryOp(BinaryOperand::BitOr)),
+        ("i ^= 100",  AssignmentType::BinaryOp(BinaryOperand::BitXor)),
+        ("i >>= 100", AssignmentType::BinaryOp(BinaryOperand::Shr)),
+        ("i <<= 100", AssignmentType::BinaryOp(BinaryOperand::Shl)),
     ];
 
     for (src, ty) in integers {
-        let expr = eval_expr!(&src);
+        let expr = eval!(@expr &src);
         let expected = fmt(ty);
 
         assert_eq!(expr, expected);
@@ -362,7 +321,7 @@ fn assignments() {
 //       - Floats
 #[test]
 fn ranges() {
-    let expr = eval_expr!("1..100");
+    let expr = eval!(@expr "1..100");
     let expected = "Range(Literal(Integer((sign:Positive,bits:\"1\",))),Literal(Integer((sign:Positive,bits:\"100\",))),)";
 
     assert_eq!(expr, expected);
@@ -378,23 +337,61 @@ fn binary_ops() {
     };
 
     #[rustfmt::skip]
-    let integers: Vec<(String, BinaryOperand)> = vec![
-        ("i + 100".into(),  BinaryOperand::Add),
-        ("i - 100".into(),  BinaryOperand::Sub),
-        ("i * 100".into(),  BinaryOperand::Mult),
-        ("i / 100".into(),  BinaryOperand::Div),
-        ("i % 100".into(),  BinaryOperand::Mod),
-        ("i ** 100".into(), BinaryOperand::Pow),
-        ("i & 100".into(),  BinaryOperand::BitAnd),
-        ("i | 100".into(),  BinaryOperand::BitOr),
-        ("i ^ 100".into(),  BinaryOperand::BitXor),
-        ("i >> 100".into(), BinaryOperand::Shr),
-        ("i << 100".into(), BinaryOperand::Shl),
+    let integers: Vec<(&str, BinaryOperand)> = vec![
+        ("i + 100",  BinaryOperand::Add),
+        ("i - 100",  BinaryOperand::Sub),
+        ("i * 100",  BinaryOperand::Mult),
+        ("i / 100",  BinaryOperand::Div),
+        ("i % 100",  BinaryOperand::Mod),
+        ("i ** 100", BinaryOperand::Pow),
+        ("i & 100",  BinaryOperand::BitAnd),
+        ("i | 100",  BinaryOperand::BitOr),
+        ("i ^ 100",  BinaryOperand::BitXor),
+        ("i >> 100", BinaryOperand::Shr),
+        ("i << 100", BinaryOperand::Shl),
     ];
 
     for (src, ty) in integers {
-        let expr = eval_expr!(&src);
+        let expr = eval!(@expr &src);
         let expected = fmt(ty);
+
+        assert_eq!(expr, expected);
+    }
+}
+
+#[test]
+fn generics() {
+    let integers: Vec<(&str, &str)> = vec![
+        ("[]", "[]"),
+        (
+            "[str]",
+            "[(data:String,loc:Concrete(span:(start:1,end:4,),file:(0),),),]",
+        ),
+        (
+            "[rune]",
+            "[(data:Rune,loc:Concrete(span:(start:1,end:5,),file:(0),),),]",
+        ),
+        (
+            "[rune, rune]",
+            "[(data:Rune,loc:Concrete(span:(start:1,end:5,),file:(0),),),\
+            (data:Rune,loc:Concrete(span:(start:7,end:11,),file:(0),),),]",
+        ),
+        (
+            "[arr[10, bool]]",
+            "[(data:Array(\"10\",(data:Boolean,loc:Concrete(span:(start:9,end:13,),\
+            file:(0),),),),loc:Concrete(span:(start:1,end:14,),file:(0),),),]",
+        ),
+        (
+            "[arr[10, bool], arr[10, bool]]",
+            "[(data:Array(\"10\",(data:Boolean,loc:Concrete(span:(start:9,end:13,),\
+            file:(0),),),),loc:Concrete(span:(start:1,end:14,),file:(0),),),\
+            (data:Array(\"10\",(data:Boolean,loc:Concrete(span:(start:24,end:28,),\
+            file:(0),),),),loc:Concrete(span:(start:16,end:29,),file:(0),),),]",
+        ),
+    ];
+
+    for (src, expected) in integers {
+        let expr = eval!(@generics &src);
 
         assert_eq!(expr, expected);
     }
@@ -428,26 +425,13 @@ fn inline_conditional_expr() {
     expr_eq!("0 if true else 1");
 }
 
+// TODO: All the ifs
 #[test]
 fn if_stmt() {
     stmt_eq!(
         "if true\n    \
             println(1)\n\
         end\n"
-    );
-    assert_eq!(
-        "if true\n    println(1)\nelse if true\n    println(2)\nend\n",
-        format_stmt("if true\n    println(1)\nelse\n    println(2)\nend\n"),
-    );
-    assert_eq!(
-        "if true\n    println(1)\nelse if 1 > 5\n    println(2)\nend\n",
-        format_stmt("if true\n    println(1)\nelse if 1 > 5\n    println(2)\nend\n"),
-    );
-    assert_eq!(
-        "if true\n    println(1)\nelse if 1 > 5\n    println(2)\nelse if true\n    println(3)\nend\n",
-        format_stmt(
-            "if true\n    println(1)\nelse if 1 > 5\n    println(2)\nelse\n    println(3)\nend\n"
-        ),
     );
 }
 
@@ -586,36 +570,42 @@ fn strings() {
 }
 
 #[test]
-fn integers() {
-    expr_eq!("100");
-    assert_eq!("100", format_expr("0x64"));
-    assert_eq!("100", format_expr("+100"));
-    assert_eq!("100", format_expr("+0x64"));
-    expr_eq!("-100");
-    assert_eq!("-100", format_expr("-0x64"));
-}
-
-// TODO: Test floats well
-#[test]
-fn floats() {
-    expr_eq!("NaN");
-    expr_eq!("inf");
-
-    expr_eq!("0.1");
-    assert_eq!("0.1", format_expr("0000000.1"));
-    assert_eq!("0.1", format_expr("0000000.100000000"));
-}
-
-#[test]
 fn functions_ast() {
-    assert_eq!(
-        "@inline\nfn test() -> infer\nend\n",
-        format_ast("@inline\nfn test()\nend"),
-    );
-    assert_eq!(
-        "exposed fn test(a: infer, a: b) -> bool\n    println(1)\nend\n",
-        format_ast("exposed fn test(a, a: b) -> bool\n    println(1)\nend\n"),
-    );
+    let expected = "Function((data:(decorators:[],attrs:[(data:Visibility(FileLocal),loc:Concrete(span:(start:5,\
+        end:15,),file:(0),),),],name:(key:1,),args:[],returns:(data:Infer,loc:Concrete(span:(start:5,end:15,),file:(0),)\
+        ,),body:[],),loc:Concrete(span:(start:5,end:22,),file:(0),),))";
+    let src = "
+        fn test()
+        end";
+    let func = eval!(@ast src);
+    assert_eq!(func, expected);
+
+    let expected = "Function((data:(decorators:[(data:(name:(data:(key:1,),loc:Concrete(span:(start:6,end:12,),file:(0),\
+        ),),args:[],),loc:Concrete(span:(start:5,end:12,),file:(0),),),(data:(name:(data:(key:1,),loc:Concrete(span:(start:18,end:24,),\
+        file:(0),),),args:[],),loc:Concrete(span:(start:17,end:24,),file:(0),),),],attrs:[(data:Visibility(FileLocal),loc:Concrete(span:\
+        (start:29,end:39,),file:(0),),),],name:(key:2,),args:[],returns:(data:Infer,loc:Concrete(span:(start:29,end:39,),file:(0),),),\
+        body:[],),loc:Concrete(span:(start:29,end:46,),file:(0),),))";
+    let src = "
+        @inline
+        @inline
+        fn test()
+        end";
+    let func = eval!(@ast src);
+    assert_eq!(func, expected);
+
+    let expected = "Function((data:(decorators:[],attrs:[(data:Visibility(Exposed),loc:Concrete(span:(start:5,end:12,),\
+        file:(0),),),],name:(key:1,),args:[(data:(name:(data:(key:2,),loc:Concrete(span:(start:21,end:22,),file:(0),),),ty:(data:\
+        ItemPath(([(key:2,),])),loc:Concrete(span:(start:24,end:25,),file:(0),),),comptime:false,),loc:Concrete(span:(start:21,end:25,\
+        ),file:(0),),),(data:(name:(data:(key:3,),loc:Concrete(span:(start:27,end:28,),file:(0),),),ty:(data:ItemPath(([(key:3,),])),\
+        loc:Concrete(span:(start:30,end:31,),file:(0),),),comptime:false,),loc:Concrete(span:(start:27,end:31,),file:(0),),),],returns:\
+        (data:Boolean,loc:Concrete(span:(start:36,end:40,),file:(0),),),body:[Expression(FunctionCall(caller:Variable((key:4,)),arguments:\
+        [Literal(Integer((sign:Positive,bits:\"1\",))),],)),],),loc:Concrete(span:(start:13,end:67,),file:(0),),))";
+    let src = "
+        exposed fn test(a: a, b: b) -> bool
+            println(1)
+        end";
+    let func = eval!(@ast src);
+    assert_eq!(func, expected);
 }
 
 #[test]
@@ -641,115 +631,100 @@ fn types_ast() {
     let builtins = [
         (
             "i128",
-            Type::Builtin(BuiltinType::Integer {
+            Type::Integer {
                 sign: Signedness::Signed,
                 width: 128,
-            }),
+            },
         ),
         (
             "u128",
-            Type::Builtin(BuiltinType::Integer {
+            Type::Integer {
                 sign: Signedness::Unsigned,
                 width: 128,
-            }),
+            },
         ),
         (
             "u1",
-            Type::Builtin(BuiltinType::Integer {
+            Type::Integer {
                 sign: Signedness::Unsigned,
                 width: 1,
-            }),
+            },
         ),
         (
             "i65535",
-            Type::Builtin(BuiltinType::Integer {
+            Type::Integer {
                 sign: Signedness::Signed,
                 width: u16::max_value(),
-            }),
+            },
         ),
         (
             "u65535",
-            Type::Builtin(BuiltinType::Integer {
+            Type::Integer {
                 sign: Signedness::Unsigned,
                 width: u16::max_value(),
-            }),
+            },
         ),
         (
             "f65535",
-            Type::Builtin(BuiltinType::Float {
+            Type::Float {
                 width: u16::max_value(),
-            }),
+            },
         ),
         (
             "i7453",
-            Type::Builtin(BuiltinType::Integer {
+            Type::Integer {
                 sign: Signedness::Signed,
                 width: 7453,
-            }),
+            },
         ),
-        ("f32", Type::Builtin(BuiltinType::Float { width: 32 })),
-        ("f1", Type::Builtin(BuiltinType::Float { width: 1 })),
-        ("bool", Type::Builtin(BuiltinType::Boolean)),
-        ("unit", Type::Builtin(BuiltinType::Unit)),
-        ("str", Type::Builtin(BuiltinType::String)),
-        ("absurd", Type::Builtin(BuiltinType::Absurd)),
-        (
-            "uptr",
-            Type::Builtin(BuiltinType::IntPtr(Signedness::Unsigned)),
-        ),
-        (
-            "iptr",
-            Type::Builtin(BuiltinType::IntPtr(Signedness::Signed)),
-        ),
-        (
-            "ureg",
-            Type::Builtin(BuiltinType::IntReg(Signedness::Unsigned)),
-        ),
-        (
-            "ireg",
-            Type::Builtin(BuiltinType::IntReg(Signedness::Signed)),
-        ),
+        ("f32", Type::Float { width: 32 }),
+        ("f1", Type::Float { width: 1 }),
+        ("bool", Type::Boolean),
+        ("unit", Type::Unit),
+        ("str", Type::String),
+        ("absurd", Type::Absurd),
+        ("uptr", Type::IntPtr(Signedness::Unsigned)),
+        ("iptr", Type::IntPtr(Signedness::Signed)),
+        ("ureg", Type::IntReg(Signedness::Unsigned)),
+        ("ireg", Type::IntReg(Signedness::Signed)),
         (
             "arr[100, infer]",
-            Type::Builtin(BuiltinType::Array(
+            Type::Array(
                 100,
                 Box::new(Locatable::new(
                     Type::Infer,
                     Location::implicit(9..14, FileId(0)),
                 )),
-            )),
+            ),
         ),
         (
             "arr[1, str]",
-            Type::Builtin(BuiltinType::Array(
+            Type::Array(
                 1,
                 Box::new(Locatable::new(
-                    Type::Builtin(BuiltinType::String),
+                    Type::String,
                     Location::concrete(7..10, FileId(0)),
                 )),
-            )),
+            ),
         ),
         (
             "tup[str, arr[5, i32]]",
-            Type::Builtin(BuiltinType::Tuple(vec![
+            Type::Tuple(vec![
+                Locatable::new(Type::String, Location::concrete(4..7, FileId(0))),
                 Locatable::new(
-                    Type::Builtin(BuiltinType::String),
-                    Location::concrete(4..7, FileId(0)),
-                ),
-                Locatable::new(
-                    Type::Builtin(BuiltinType::Array(
+                    Type::Array(
                         5,
                         Box::new(Locatable::new(
-                            Type::Builtin(BuiltinType::Integer {
+                            Type::Integer {
                                 sign: Signedness::Signed,
                                 width: 32,
-                            }),
+                            },
                             Location::concrete(16..19, FileId(0)),
                         )),
-                    )),
+                    ),
                     Location::concrete(9..20, FileId(0)),
                 ),
-            ])),
+            ]),
         ),
         (
             "CustomThingy",

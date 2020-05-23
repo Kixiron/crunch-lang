@@ -6,6 +6,7 @@ cfg_if! {
         use alloc::sync::Arc;
     } else {
         use lasso::Rodeo;
+        use alloc::{rc::Rc, cell::RefCell};
     }
 }
 
@@ -17,7 +18,7 @@ pub struct Interner {
     interner: Arc<ThreadedRodeo<Spur>>,
 
     #[cfg(not(feature = "concurrent"))]
-    interner: Rodeo<Spur>,
+    interner: Rc<RefCell<Rodeo<Spur>>>,
 }
 
 impl Interner {
@@ -36,12 +37,24 @@ impl Interner {
         }
     }
 
+    #[cfg(feature = "concurrent")]
     pub fn resolve<'a>(&'a self, sym: &Spur) -> &'a str {
         self.interner.resolve(sym)
     }
 
+    #[cfg(feature = "concurrent")]
     pub fn intern(&mut self, string: &str) -> Spur {
         self.interner.get_or_intern(string)
+    }
+
+    #[cfg(not(feature = "concurrent"))]
+    pub fn resolve<'a>(&'a self, sym: &Spur) -> &'a str {
+        self.interner.borrow().resolve(sym)
+    }
+
+    #[cfg(not(feature = "concurrent"))]
+    pub fn intern(&mut self, string: &str) -> Spur {
+        self.interner.borrow_mut().get_or_intern(string)
     }
 }
 

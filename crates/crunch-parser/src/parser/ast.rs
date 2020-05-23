@@ -1042,7 +1042,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     /// ```ebnf
     /// FunctionArgs ::= '(' Args? ')'
     /// Args ::= Argument | Argument ',' Args
-    /// Argument ::= Ident ( ':' Type )?
+    /// Argument ::= Ident ':' Type
     /// ```
     #[recursion_guard]
     fn function_args(&mut self) -> ParseResult<Vec<Locatable<FuncArg>>> {
@@ -1074,33 +1074,12 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                     _ => unreachable!(),
                 };
 
-            if self.peek()?.ty() == TokenType::Newline {
-                self.eat(TokenType::Newline, [])?;
-                continue;
-            }
-
-            let (ty, ty_span) = if self.peek()?.ty() == TokenType::Colon {
-                self.eat(TokenType::Colon, [TokenType::Newline])?;
-                let ty = self.ascribed_type()?;
-                let span = Some(ty.span());
-
-                (ty, span)
-            } else {
-                (
-                    Locatable::new(
-                        Type::default(),
-                        Location::implicit(name_span, self.current_file),
-                    ),
-                    None,
-                )
-            };
+            self.eat(TokenType::Colon, [TokenType::Newline])?;
+            let ty = self.ascribed_type()?;
+            let arg_end = ty.span();
 
             let arg = FuncArg { name, ty, comptime };
-            let arg_span = if let Some(end) = ty_span {
-                Span::merge(name_span, end)
-            } else {
-                name_span
-            };
+            let arg_span = Span::merge(name_span, arg_end);
 
             args.push(Locatable::new(
                 arg,
@@ -1123,12 +1102,18 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     /// GenericArgs ::= Type | Type ',' GenericArgs
     /// ```
     #[recursion_guard]
-    fn generics(&mut self) -> ParseResult<Vec<Locatable<Type>>> {
-        if self.peek()?.ty() == TokenType::LeftBrace {
+    pub(super) fn generics(&mut self) -> ParseResult<Vec<Locatable<Type>>> {
+        let peek = if let Ok(peek) = self.peek() {
+            peek
+        } else {
+            return Ok(Vec::new());
+        };
+
+        if peek.ty() == TokenType::LeftBrace {
             self.eat(TokenType::LeftBrace, [TokenType::Newline])?;
 
             let mut generics = Vec::with_capacity(5);
-            while self.peek()?.ty() != TokenType::RightCaret {
+            while self.peek()?.ty() != TokenType::RightBrace {
                 generics.push(self.ascribed_type()?);
 
                 if self.peek()?.ty() == TokenType::Comma {

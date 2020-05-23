@@ -1,9 +1,9 @@
 use crate::{
     parser::{
-        Alias, AssignmentType, Ast, Attribute, BinaryOperand, BuiltinType, ComparisonOperand,
-        Decorator, Enum, EnumVariant, Expr, Expression, ExtendBlock, Function, Import, ImportDest,
-        ImportExposure, Literal, Signedness, Statement, Stmt, Trait, Type, TypeDecl, TypeMember,
-        UnaryOperand, Visibility,
+        Alias, AssignmentType, Ast, Attribute, BinaryOperand, ComparisonOperand, Decorator, Enum,
+        EnumVariant, Expr, Expression, ExtendBlock, Function, Import, ImportDest, ImportExposure,
+        Literal, Signedness, Statement, Stmt, Trait, Type, TypeDecl, TypeMember, UnaryOperand,
+        Visibility,
     },
     Interner,
 };
@@ -12,7 +12,7 @@ use crate::{
 use alloc::{format, vec::Vec};
 use core::fmt::{Result, Write};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PrettyPrinter {
     indent_level: usize,
     interner: Interner,
@@ -645,60 +645,58 @@ impl<'expr, 'stmt> PrettyPrinter {
                 }
                 write!(f, "]")
             }
-            Type::Builtin(b) => match b {
-                BuiltinType::Integer { sign, width } => write!(
-                    f,
-                    "{}{}",
-                    match sign {
-                        Signedness::Signed => "i",
-                        Signedness::Unsigned => "u",
-                    },
-                    width
-                ),
-                BuiltinType::IntPtr(sign) => write!(
-                    f,
-                    "{}ptr",
-                    match sign {
-                        Signedness::Signed => "i",
-                        Signedness::Unsigned => "u",
-                    },
-                ),
-                BuiltinType::IntReg(sign) => write!(
-                    f,
-                    "{}reg",
-                    match sign {
-                        Signedness::Signed => "i",
-                        Signedness::Unsigned => "u",
-                    },
-                ),
-                BuiltinType::Float { width } => write!(f, "f{}", width),
-                BuiltinType::Boolean => write!(f, "bool"),
-                BuiltinType::String => write!(f, "str"),
-                BuiltinType::Rune => write!(f, "rune"),
-                BuiltinType::Unit => write!(f, "unit"),
-                BuiltinType::Absurd => write!(f, "absurd"),
-                BuiltinType::Array(len, ty) => {
-                    write!(f, "arr[{}, ", len)?;
+            Type::Integer { sign, width } => write!(
+                f,
+                "{}{}",
+                match sign {
+                    Signedness::Signed => "i",
+                    Signedness::Unsigned => "u",
+                },
+                width
+            ),
+            Type::IntPtr(sign) => write!(
+                f,
+                "{}ptr",
+                match sign {
+                    Signedness::Signed => "i",
+                    Signedness::Unsigned => "u",
+                },
+            ),
+            Type::IntReg(sign) => write!(
+                f,
+                "{}reg",
+                match sign {
+                    Signedness::Signed => "i",
+                    Signedness::Unsigned => "u",
+                },
+            ),
+            Type::Float { width } => write!(f, "f{}", width),
+            Type::Boolean => write!(f, "bool"),
+            Type::String => write!(f, "str"),
+            Type::Rune => write!(f, "rune"),
+            Type::Unit => write!(f, "unit"),
+            Type::Absurd => write!(f, "absurd"),
+            Type::Array(len, ty) => {
+                write!(f, "arr[{}, ", len)?;
+                self.print_ty(f, ty.data())?;
+                write!(f, "]")
+            }
+            Type::Slice(ty) => {
+                write!(f, "arr[")?;
+                self.print_ty(f, ty.data())?;
+                write!(f, "]")
+            }
+            Type::Tuple(types) => {
+                write!(f, "tup[")?;
+                for (i, ty) in types.iter().enumerate() {
                     self.print_ty(f, ty.data())?;
-                    write!(f, "]")
-                }
-                BuiltinType::Slice(ty) => {
-                    write!(f, "arr[")?;
-                    self.print_ty(f, ty.data())?;
-                    write!(f, "]")
-                }
-                BuiltinType::Tuple(types) => {
-                    write!(f, "tup[")?;
-                    for (i, ty) in types.iter().enumerate() {
-                        self.print_ty(f, ty.data())?;
 
-                        if i != types.len() - 1 {
-                            write!(f, ", ")?;
-                        }
+                    if i != types.len() - 1 {
+                        write!(f, ", ")?;
                     }
-                    write!(f, "]")
                 }
-            },
+                write!(f, "]")
+            }
             Type::ItemPath(path) => write!(
                 f,
                 "{}",

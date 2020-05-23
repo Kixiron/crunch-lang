@@ -147,7 +147,7 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
             vec![self.string_interner.intern(segment)]
         };
 
-        while self.peek()?.ty() != TokenType::Dot {
+        while self.peek()?.ty() != TokenType::Dot && self.peek()?.ty() == TokenType::Ident {
             if self.peek()?.ty() == TokenType::Newline {
                 self.eat(TokenType::Newline, [])?;
                 continue;

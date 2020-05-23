@@ -83,7 +83,7 @@ fn recursion_guard_inner(mut meta: AttributeArgs, mut input: ItemFn) -> Result<T
         #block
     });
 
-    Ok(TokenStream::from(quote! {
+    Ok(quote! {
         #input
-    }))
+    })
 }
