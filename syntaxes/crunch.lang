@@ -4,10 +4,6 @@
   <metadata>
     <property name="globs">*.crunch</property>
     <property name="line-comment-start">::</property>
-    <!--
-    <property name="block-comment-start">/*</property>
-    <property name="block-comment-end">*/</property>
-    -->
   </metadata>
 
   <styles>
@@ -21,9 +17,7 @@
     <style id="boolean" _name="Boolean value" map-to="def:boolean"/>
     <style id="identifier" _name="Identifier" map-to="def:identifier"/>
     <style id="number" _name="Number" map-to="def:number"/>
-    <style id="scope" _name="Scope" map-to="def:preprocessor"/>
     <style id="attribute" _name="Attribute" map-to="def:preprocessor"/>
-    <style id="macro" _name="Macro" map-to="def:preprocessor"/>
   </styles>
 
   <definitions>
