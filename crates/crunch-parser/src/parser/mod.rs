@@ -35,6 +35,14 @@ pub use utils::{CurrentFile, ItemPath, SyntaxTree};
 
 use utils::StackGuard;
 
+type ReturnData<'expr, 'stmt> = (
+    SyntaxTree<'expr, 'stmt>,
+    Interner,
+    ErrorHandler,
+    Graph<Scope, MaybeSym>,
+    NodeId,
+);
+
 // TODO: Make the parser a little more lax, it's kinda strict about whitespace
 
 pub struct Parser<'src, 'expr, 'stmt> {
@@ -109,18 +117,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         }
     }
 
-    pub fn parse(
-        mut self,
-    ) -> Result<
-        (
-            SyntaxTree<'expr, 'stmt>,
-            Interner,
-            ErrorHandler,
-            Graph<Scope, MaybeSym>,
-            NodeId,
-        ),
-        ErrorHandler,
-    > {
+    pub fn parse(mut self) -> Result<ReturnData<'expr, 'stmt>, ErrorHandler> {
         #[cfg(feature = "logging")]
         info!("Started parsing");
 

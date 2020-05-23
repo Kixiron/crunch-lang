@@ -319,10 +319,14 @@ impl Graph<Scope, MaybeSym> {
             }
 
             Statement::Return(ret) => {
-                ret.as_ref().map(|ret| self.push_expr(parent, &*ret));
+                if let Some(ret) = ret {
+                    self.push_expr(parent, &*ret);
+                }
             }
             Statement::Break(brk) => {
-                brk.as_ref().map(|brk| self.push_expr(parent, &*brk));
+                if let Some(brk) = brk {
+                    self.push_expr(parent, &brk);
+                }
             }
             Statement::Continue => {}
             Statement::Empty => {}
@@ -406,7 +410,10 @@ impl Graph<Scope, MaybeSym> {
                         .unwrap()
                         .vars_mut()
                         .push((*bind, Type::Infer));
-                    clause.as_ref().map(|cl| self.push_expr(arm, &*cl));
+
+                    if let Some(clause) = clause {
+                        self.push_expr(arm, &*clause);
+                    }
 
                     for stmt in body {
                         self.push_stmt(arm, stmt);

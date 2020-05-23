@@ -6,7 +6,8 @@ cfg_if! {
         use alloc::sync::Arc;
     } else {
         use lasso::Rodeo;
-        use alloc::{rc::Rc, cell::RefCell};
+        use alloc::rc::Rc;
+        use core::cell::RefCell;
     }
 }
 
@@ -31,7 +32,7 @@ impl Interner {
 
             } else {
                 Self {
-                    interner: Rodeo::with_capacity(100),
+                    interner: Rc::new(RefCell::new(Rodeo::with_capacity(100))),
                 }
             }
         }
