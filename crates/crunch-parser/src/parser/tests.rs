@@ -864,7 +864,8 @@ mod proptests {
             let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), Interner::default());
 
             let expr = parser.expr().map(|e| e.deref().clone());
-            let cond = matches!(expr, Ok(Expression::Literal(Literal::Integer(Integer { .. }))));
+            let cond = matches!(expr, Ok(Expression::Literal(Literal::Integer(Integer { .. })))
+                | Err(Locatable { data: Error::Syntax(SyntaxError::LiteralOverflow(..)), .. }));
             prop_assert!(cond);
         }
 
@@ -873,7 +874,8 @@ mod proptests {
             let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), Interner::default());
 
             let expr = parser.expr().map(|e| e.deref().clone());
-            let cond = matches!(expr, Ok(Expression::Literal(Literal::Integer(Integer { .. }))));
+            let cond = matches!(expr, Ok(Expression::Literal(Literal::Integer(Integer { .. })))
+                | Err(Locatable { data: Error::Syntax(SyntaxError::LiteralOverflow(..)), .. }));
             prop_assert!(cond);
         }
 
@@ -882,7 +884,9 @@ mod proptests {
             let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), Interner::default());
 
             let expr = parser.expr().map(|e| e.deref().clone());
-            prop_assert!(matches!(expr, Ok(Expression::Literal(Literal::Float(..)))));
+            let cond = matches!(expr, Ok(Expression::Literal(Literal::Float(..)))
+                | Err(Locatable { data: Error::Syntax(SyntaxError::LiteralOverflow(..)), .. }));
+            prop_assert!(cond);
         }
 
         #[test]
@@ -890,7 +894,9 @@ mod proptests {
             let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), Interner::default());
 
             let expr = parser.expr().map(|e| e.deref().clone());
-            prop_assert!(matches!(expr, Ok(Expression::Literal(Literal::Float(..)))));
+            let cond = matches!(expr, Ok(Expression::Literal(Literal::Float(..)))
+                | Err(Locatable { data: Error::Syntax(SyntaxError::LiteralOverflow(..)), .. }));
+            prop_assert!(cond);
         }
     }
 }
