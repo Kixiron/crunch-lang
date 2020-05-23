@@ -1,62 +1,121 @@
 {
     "repository": {
         "comment": {
-            "patterns": [{
-                "name": "comment.line.crunch",
-                "begin": "::",
-                "end": "$"
-            }, {
-                "name": "comment.line.documentation.crunch",
-                "begin": ":::",
-                "end": "$"
-            }]
+            "patterns": [
+                {
+                    "name": "comment.line.crunch",
+                    "begin": "::",
+                    "end": "$"
+                },
+                {
+                    "name": "comment.line.documentation.crunch",
+                    "begin": ":::",
+                    "end": "$"
+                }
+            ]
         },
         "keyword": {
-            "patterns": [{
-                "name": "keyword.control.crunch",
-                "match": "\\b(break|continue|else|if|in|for|loop|match|return|while|empty|then|where)\\b"
-            }, {
-                "name": "variable.language.self.crunch",
-                "match": "\\b(self)\\b"
-            }, {
-                "name": "keyword.other.as.crunch",
-                "match": "(\\b(as)\\b)"
-            }]
+            "patterns": [
+                {
+                    "name": "keyword.control.crunch",
+                    "match": "\\b(break|continue|do|else|for|if|in|loop|match|return|then|where|while|with)\\b"
+                },
+                {
+                    "name": "keyword.control.import",
+                    "match": "\\b(exposing|import)\\b"
+                },
+                {
+                    "name": "keyword.attribute.crunch",
+                    "match": "\\b(async|dyn|mut|pkg|exposed)\\b"
+                },
+                {
+                    "name": "variable.empty.crunch",
+                    "match": "\\b(empty)\\b"
+                },
+                {
+                    "name": "variable.language.self.crunch",
+                    "match": "\\b(self)\\b"
+                },
+                {
+                    "name": "keyword.other.as.crunch",
+                    "match": "\\b(as)\\b"
+                }
+            ]
+        },
+        "storage": {
+            "patterns": [
+                {
+                    "name": "storage.type.function.crunch",
+                    "match": "\\b(fn)\\b"
+                },
+                {
+                    "name": "storage.type.end.crunch",
+                    "match": "\\b(end)\\b"
+                },
+                {
+                    "name": "storage.type.crunch",
+                    "match": "\\b(enum|extend|type|trait|import)\\b"
+                },
+                {
+                    "name": "storage.type.access.crunch",
+                    "match": "\\b(exposed|pkg)\\b"
+                },
+                {
+                    "name": "keyword.binding.crunch",
+                    "match": "\\b(let)\\b"
+                }
+            ]
         },
         "entity": {
-            "patterns": [{
-                "match": "(?<=fn )([a-zA-Z][a-zA-Z0-9_]+)",
-                "name": "entity.name.function.crunch"
-            }, {
-                "match": "\\b(enum|type|trait|import)\\b",
-                "name": "storage.type.crunch"
-            }, {
-                "match": "([a-zA-Z][a-zA-Z0-9_]+)(?=[(])",
-                "name": "entity.name.function.crunch"
-            }, {
-                "match": "([a-zA-Z]+)(?=[(])",
-                "name": "entity.name.function.crunch"
-            }, {
-                "match": "(@([a-zA-Z][a-zA-Z0-9_]+))(\\(([a-zA-Z][a-zA-Z0-9_]+)*\\))?",
-                "captures": {
-                    "1": {
-                        "name": "entity.name.function.crunch"
+            "patterns": [
+                {
+                    "match": "(?<=fn )([a-zA-Z][a-zA-Z0-9_]+)",
+                    "name": "entity.name.function.crunch"
+                },
+                {
+                    "match": "\\b(enum|type|trait|import)\\b",
+                    "name": "storage.type.crunch"
+                },
+                {
+                    "match": "([a-zA-Z][a-zA-Z0-9_]+)(?=[(])",
+                    "name": "entity.name.function.crunch"
+                },
+                {
+                    "match": "([a-zA-Z]+)(?=[(])",
+                    "name": "entity.name.function.crunch"
+                },
+                {
+                    "match": "(@[a-zA-Z][a-zA-Z0-9_]*)(\\(([a-zA-Z][a-zA-Z0-9_]*|[0-9][0-9_]*)\\))?",
+                    "captures": {
+                        "1": {
+                            "name": "entity.name.function.crunch"
+                        },
+                        "2": {
+                            "name": "entity.name.decorator"
+                        }
                     }
+                },
+                {
+                    "match": "",
+                    "name": "entity.name.decorator"
                 }
-            }]
+            ]
         },
         "variable": {
-            "patterns": [{
-                "match": "(let) ([a-zA-Z_][a-zA-Z0-9_]+)",
-                "captures": {
-                    "1": {
-                        "name": "storage.type.crunch"
+            "patterns": [
+                {
+                    "match": "(let) ([a-zA-Z_][a-zA-Z0-9_]+)",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.binding.crunch"
+                        }
                     }
                 }
-            }]
+            ]
         },
         "constant": {
-            "patterns": [{
+            "patterns": [
+                {
                     "comment": "Floating point literal (fraction)",
                     "name": "constant.numeric.float.crunch",
                     "match": "\\b[0-9][0-9_]*\\.[0-9][0-9_]*([eE][+-]?[0-9_]+)?\\b"
@@ -67,6 +126,11 @@
                     "match": "\\b[0-9][0-9_]*(\\.[0-9][0-9_]*)?[eE][+-]?[0-9_]+\\b"
                 },
                 {
+                    "comment": "Floating point literal (Inf/NaN)",
+                    "name": "constant.numeric.float.crunch",
+                    "match": "\\b(inf|NaN)\\b"
+                },
+                {
                     "comment": "Integer literal (decimal)",
                     "name": "constant.numeric.integer.decimal.crunch",
                     "match": "\\b[0-9][0-9_]*\\b"
@@ -74,17 +138,12 @@
                 {
                     "comment": "Integer literal (hexadecimal)",
                     "name": "constant.numeric.integer.hexadecimal.crunch",
-                    "match": "\\b0x[a-fA-F0-9_]+\\b"
-                },
-                {
-                    "comment": "Integer literal (octal)",
-                    "name": "constant.numeric.integer.octal.crunch",
-                    "match": "\\b0o[0-7_]+\\b"
+                    "match": "\\b0x[a-fA-F0-9][a-fA-F0-9_]*\\b"
                 },
                 {
                     "comment": "Integer literal (binary)",
                     "name": "constant.numeric.integer.binary.crunch",
-                    "match": "\\b0b[01_]+\\b"
+                    "match": "\\b0b[01][01_]*\\b"
                 },
                 {
                     "name": "constant.language.boolean.crunch",
@@ -93,7 +152,8 @@
             ]
         },
         "punctuation": {
-            "patterns": [{
+            "patterns": [
+                {
                     "name": "punctuation.separator.type.crunch",
                     "match": ":\\s+?(?=(bool|unit|int|float|str))"
                 },
@@ -107,26 +167,9 @@
                 }
             ]
         },
-        "storage": {
-            "patterns": [{
-                "name": "storage.type.function.crunch",
-                "match": "\\b(fn)\\b"
-            }, {
-                "name": "storage.type.end.crunch",
-                "match": "\\b(end)\\b"
-            }, {
-                "name": "storage.type.crunch",
-                "match": "\\b(enum|type|trait|import)\\b"
-            }, {
-                "name": "storage.type.core.crunch",
-                "match": "\\b(bool|unit|int|float|str)\\b"
-            }, {
-                "name": "storage.type.access.crunch",
-                "match": "(exposed|pkg)"
-            }]
-        },
         "string": {
-            "patterns": [{
+            "patterns": [
+                {
                     "name": "constant.character.escape.crunch",
                     "match": "\\\\(x[0-9A-Fa-f]{2}|[0-2][0-7]{0,2}|3[0-6][0-7]?|37[0-7]?|[4-7][0-7]?|.)"
                 },
@@ -134,7 +177,8 @@
                     "name": "string.quoted.single.crunch",
                     "begin": "b?'",
                     "end": "'",
-                    "patterns": [{
+                    "patterns": [
+                        {
                             "name": "constant.character.escape.crunch",
                             "match": "\\\\(x[0-9A-Fa-f]{2}|[0-2][0-7]{0,2}|3[0-6][0-7]?|37[0-7]?|[4-7][0-7]?|.)"
                         },
@@ -143,11 +187,13 @@
                             "match": "(\\{)([a-zA-Z0-9_?:$.*<>]+)?(\\})"
                         }
                     ]
-                }, {
+                },
+                {
                     "name": "string.quoted.double.crunch",
                     "begin": "b?\"",
                     "end": "\"",
-                    "patterns": [{
+                    "patterns": [
+                        {
                             "name": "constant.character.escape.crunch",
                             "match": "\\\\(x[0-9A-Fa-f]{2}|[0-2][0-7]{0,2}|3[0-6][0-7]?|37[0-7]?|[4-7][0-7]?|.)"
                         },
@@ -160,10 +206,32 @@
             ]
         },
         "support": {
-            "patterns": []
+            "patterns": [
+                {
+                    "name": "support.type.primitive.rust",
+                    "match": "\\b(absurd|bool|unit|str|rune|[ui]reg|[ui]ptr|[iuf][0-9][0-9_]*)\\b"
+                },
+                {
+                    "name": "support.type.primitive.slice.crunch",
+                    "match": "\\b(slice)\\b"
+                },
+                {
+                    "name": "support.type.primitive.tuple.crunch",
+                    "match": "\\b(tup)\\b"
+                },
+                {
+                    "name": "support.type.primitive.array.crunch",
+                    "match": "\\b(arr)\\b"
+                }
+            ]
         },
         "operator": {
-            "patterns": [{
+            "patterns": [
+                {
+                    "name": "keyword.operator.crunch",
+                    "match": "->|=>"
+                },
+                {
                     "name": "keyword.operator.member-access.crunch",
                     "match": "(\\.)(?=parse)"
                 },
@@ -182,42 +250,38 @@
                 {
                     "name": "keyword.operator.member-access.crunch",
                     "match": "(\\.)(?=to_string)"
-                }, {
+                },
+                {
                     "name": "keyword.operator.range.crunch",
                     "match": "(\\.\\.)"
-                }, {
-                    "name": "keyword.operator.match.crunch",
-                    "match": "(=>)"
-                }, {
-                    "name": "keyword.operator.return-type.crunch",
-                    "match": "(->)"
-                }, {
-                    "name": "keyword.operator.assignment.crunch",
-                    "match": "(\\=)"
-                }, {
+                },
+                {
                     "name": "keyword.operator.comparison.crunch",
                     "match": "\\b(==|\\>=|\\<=|\\<|\\>|!=)\\b"
-                }, {
-                    "name": "keyword.operator.comparison.crunch",
-                    "match": "\\b(and|or)\\b"
-                }, {
+                },
+                {
                     "name": "keyword.operator.assignment.crunch",
-                    "match": "\\b(\\+=|-=|/=|\\*=|%=|\\^=|&=|\\|=|<<=|>>=|=)\\b"
-                }, {
+                    "match": ":="
+                },
+                {
+                    "name": "keyword.operator.assignment.arithmetic.crunch",
+                    "match": "\\b(\\+=|-=|/=|\\*=|%=|\\^=|&=|\\|=|<<=|>>=)\\b"
+                },
+                {
                     "name": "keyword.operator.comparison.crunch",
-                    "match": "(&&|\\|\\||==|!=)"
-                }, {
+                    "match": "&&|\\|\\||==|!="
+                },
+                {
                     "name": "keyword.operator.comparison.crunch",
                     "match": "\\s(<|>)"
-                }, {
+                },
+                {
                     "name": "keyword.operator.comparison.crunch",
-                    "match": "\\B(<=|>=)\\B"
-                }, {
+                    "match": "\\b(<=|>=)\\b"
+                },
+                {
                     "name": "keyword.operator.arithmetic.crunch",
-                    "match": "(!|\\+|-|/|\\*|%|\\^|\\||<<|>>)"
-                }, {
-                    "name": "keyword.operator.exposing.crunch",
-                    "match": "\\b(exposing)\\b"
+                    "match": "!|\\+|-|/|\\*|%|\\^|\\||<<|>>|&"
                 }
             ]
         }
@@ -225,7 +289,8 @@
     "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
     "name": "crunch",
     "scopeName": "source.crunch",
-    "patterns": [{
+    "patterns": [
+        {
             "include": "#comment"
         },
         {
