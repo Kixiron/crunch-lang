@@ -164,11 +164,3 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
         Ok(ItemPath::new(path))
     }
 }
-
-#[cfg(test)]
-pub(super) fn serialize_u128_to_str<S: serde::Serializer>(
-    int: &u128,
-    serializer: S,
-) -> Result<S::Ok, S::Error> {
-    int.to_string().serialize(serializer)
-}

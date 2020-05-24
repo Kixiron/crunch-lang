@@ -123,19 +123,19 @@ macro_rules! eval {
 #[test]
 fn expr() {
     let expr = eval!(@expr "!5 + -10 / (test(54, test_again) % 200 if 10 else 52) - (true)");
-    let expected = "UnaryExpr(Not,BinaryOp(Literal(Integer((sign:Positive,bits:\"5\",))),Add,\
-    BinaryOp(Literal(Integer((sign:Negative,bits:\"10\",))),Div,BinaryOp(Parenthesised(BinaryOp(\
-        FunctionCall(caller:Variable((key:1,)),arguments:[Literal(Integer((sign:Positive,bits:\"54\",\
-    ))),Variable((key:2,)),],),Mod,InlineConditional(true_arm:Literal(Integer((sign:Positive,bits:\"200\",\
-    ))),condition:Literal(Integer((sign:Positive,bits:\"10\",))),false_arm:Literal(Integer((sign:Positive,\
-    bits:\"52\",))),),)),Sub,Parenthesised(Literal(Bool(true))),),),),)";
+    let expected = "UnaryExpr(Not,BinaryOp(Literal(Integer((sign:Positive,bits:5))),Add,\
+        BinaryOp(Literal(Integer((sign:Negative,bits:10))),Div,BinaryOp(Parenthesised(BinaryOp(\
+        FunctionCall(caller:Variable((key:1)),arguments:[Literal(Integer((sign:Positive,bits:54\
+        ))),Variable((key:2))]),Mod,InlineConditional(true_arm:Literal(Integer((sign:Positive,bits:200\
+        ))),condition:Literal(Integer((sign:Positive,bits:10))),false_arm:Literal(Integer((sign:Positive,\
+        bits:52)))))),Sub,Parenthesised(Literal(Bool(true)))))))";
 
     assert_eq!(expr, expected);
 }
 
 #[test]
 fn integer_literals() {
-    let fmt = |bits, sign| format!("Literal(Integer((sign:{:?},bits:\"{}\",)))", sign, bits);
+    let fmt = |bits, sign| format!("Literal(Integer((sign:{:?},bits:{})))", sign, bits);
 
     #[rustfmt::skip]
     let integers: Vec<(String, (u128, Sign))> = vec![
@@ -190,16 +190,16 @@ fn float_literals() {
 fn string_literals() {
     let expr = eval!(@expr "\"Some string\"");
     let expected =
-        "Literal(String(([(83),(111),(109),(101),(32),(115),(116),(114),(105),(110),(103),])))";
+        "Literal(String(([(83),(111),(109),(101),(32),(115),(116),(114),(105),(110),(103)])))";
 
     assert_eq!(expr, expected);
 
     let expr = eval!(@expr "b\"Some string\"");
     let expected =
-        "Literal(Array([Integer((sign:Positive,bits:\"83\",)),Integer((sign:Positive,bits:\"111\",)),\
-        Integer((sign:Positive,bits:\"109\",)),Integer((sign:Positive,bits:\"101\",)),Integer((sign:Positive,bits:\"32\",)),\
-        Integer((sign:Positive,bits:\"115\",)),Integer((sign:Positive,bits:\"116\",)),Integer((sign:Positive,bits:\"114\",)),\
-        Integer((sign:Positive,bits:\"105\",)),Integer((sign:Positive,bits:\"110\",)),Integer((sign:Positive,bits:\"103\",)),]))";
+        "Literal(Array([Integer((sign:Positive,bits:83)),Integer((sign:Positive,bits:111)),\
+        Integer((sign:Positive,bits:109)),Integer((sign:Positive,bits:101)),Integer((sign:Positive,bits:32)),\
+        Integer((sign:Positive,bits:115)),Integer((sign:Positive,bits:116)),Integer((sign:Positive,bits:114)),\
+        Integer((sign:Positive,bits:105)),Integer((sign:Positive,bits:110)),Integer((sign:Positive,bits:103))]))";
 
     assert_eq!(expr, expected);
 }
@@ -211,7 +211,7 @@ fn char_literals() {
     assert_eq!(expr, expected);
 
     let expr = eval!(@expr "b'S'");
-    let expected = "Literal(Integer((sign:Positive,bits:\"83\",)))";
+    let expected = "Literal(Integer((sign:Positive,bits:83)))";
     assert_eq!(expr, expected);
 }
 
@@ -236,7 +236,13 @@ fn array_literals() {
             "arr[{}]",
             iter::repeat("true").take(i).collect::<Vec<_>>().join(", ")
         );
-        let expected = format!("Array([{}])", "Literal(Bool(true)),".repeat(i));
+        let expected = format!(
+            "Array([{}])",
+            iter::repeat("Literal(Bool(true))")
+                .take(i)
+                .collect::<Vec<_>>()
+                .join(",")
+        );
 
         assert_eq!(eval!(@expr &expr), expected);
     }
@@ -250,7 +256,13 @@ fn tuple_literals() {
             "tup[{}]",
             iter::repeat("true").take(i).collect::<Vec<_>>().join(", ")
         );
-        let expected = format!("Tuple([{}])", "Literal(Bool(true)),".repeat(i));
+        let expected = format!(
+            "Tuple([{}])",
+            iter::repeat("Literal(Bool(true))")
+                .take(i)
+                .collect::<Vec<&str>>()
+                .join(",")
+        );
 
         assert_eq!(eval!(@expr &expr), expected);
     }
@@ -258,10 +270,10 @@ fn tuple_literals() {
 
 #[test]
 fn comparison_operations() {
-    let fmt = |lhs, op, rhs| format!("Comparison({},{:?},{},)", lhs, op, rhs);
+    let fmt = |lhs, op, rhs| format!("Comparison({},{:?},{})", lhs, op, rhs);
 
-    let ten = "Literal(Integer((sign:Positive,bits:\"10\",)))";
-    let zero = "Literal(Integer((sign:Positive,bits:\"0\",)))";
+    let ten = "Literal(Integer((sign:Positive,bits:10)))";
+    let zero = "Literal(Integer((sign:Positive,bits:0)))";
     #[rustfmt::skip]
     let comparisons: Vec<(&str, (&str, ComparisonOperand, &str))> = vec![
         ("10 == 0", (ten, ComparisonOperand::Equal,        zero)),
@@ -284,7 +296,7 @@ fn comparison_operations() {
 fn assignments() {
     let fmt = |assign| {
         format!(
-            "Assignment(Variable((key:1,)),{:?},Literal(Integer((sign:Positive,bits:\"100\",))),)",
+            "Assignment(Variable((key:1)),{:?},Literal(Integer((sign:Positive,bits:100))))",
             assign
         )
     };
@@ -322,7 +334,7 @@ fn assignments() {
 #[test]
 fn ranges() {
     let expr = eval!(@expr "1..100");
-    let expected = "Range(Literal(Integer((sign:Positive,bits:\"1\",))),Literal(Integer((sign:Positive,bits:\"100\",))),)";
+    let expected = "Range(Literal(Integer((sign:Positive,bits:1))),Literal(Integer((sign:Positive,bits:100))))";
 
     assert_eq!(expr, expected);
 }
@@ -331,7 +343,7 @@ fn ranges() {
 fn binary_ops() {
     let fmt = |op| {
         format!(
-            "BinaryOp(Variable((key:1,)),{:?},Literal(Integer((sign:Positive,bits:\"100\",))),)",
+            "BinaryOp(Variable((key:1)),{:?},Literal(Integer((sign:Positive,bits:100))))",
             op
         )
     };
@@ -365,28 +377,28 @@ fn generics() {
         ("[]", "[]"),
         (
             "[str]",
-            "[(data:String,loc:Concrete(span:(start:1,end:4,),file:(0),),),]",
+            "[(data:String,loc:Concrete(span:(start:1,end:4),file:(0)))]",
         ),
         (
             "[rune]",
-            "[(data:Rune,loc:Concrete(span:(start:1,end:5,),file:(0),),),]",
+            "[(data:Rune,loc:Concrete(span:(start:1,end:5),file:(0)))]",
         ),
         (
             "[rune, rune]",
-            "[(data:Rune,loc:Concrete(span:(start:1,end:5,),file:(0),),),\
-            (data:Rune,loc:Concrete(span:(start:7,end:11,),file:(0),),),]",
+            "[(data:Rune,loc:Concrete(span:(start:1,end:5),file:(0))),\
+            (data:Rune,loc:Concrete(span:(start:7,end:11),file:(0)))]",
         ),
         (
             "[arr[10, bool]]",
-            "[(data:Array(\"10\",(data:Boolean,loc:Concrete(span:(start:9,end:13,),\
-            file:(0),),),),loc:Concrete(span:(start:1,end:14,),file:(0),),),]",
+            "[(data:Array(10,(data:Boolean,loc:Concrete(span:(start:9,end:13),\
+            file:(0)))),loc:Concrete(span:(start:1,end:14),file:(0)))]",
         ),
         (
             "[arr[10, bool], arr[10, bool]]",
-            "[(data:Array(\"10\",(data:Boolean,loc:Concrete(span:(start:9,end:13,),\
-            file:(0),),),),loc:Concrete(span:(start:1,end:14,),file:(0),),),\
-            (data:Array(\"10\",(data:Boolean,loc:Concrete(span:(start:24,end:28,),\
-            file:(0),),),),loc:Concrete(span:(start:16,end:29,),file:(0),),),]",
+            "[(data:Array(10,(data:Boolean,loc:Concrete(span:(start:9,end:13),\
+            file:(0)))),loc:Concrete(span:(start:1,end:14),file:(0))),\
+            (data:Array(10,(data:Boolean,loc:Concrete(span:(start:24,end:28),\
+            file:(0)))),loc:Concrete(span:(start:16,end:29),file:(0)))]",
         ),
     ];
 
@@ -571,20 +583,20 @@ fn strings() {
 
 #[test]
 fn functions_ast() {
-    let expected = "Function((data:(decorators:[],attrs:[(data:Visibility(FileLocal),loc:Concrete(span:(start:9,end:19,),\
-        file:(0),),),],name:(key:1,),args:[],returns:(data:Infer,loc:Concrete(span:(start:9,end:19,),file:(0),),),body:[],),loc:\
-        Concrete(span:(start:9,end:30,),file:(0),),))";
+    let expected = "Function((data:(decorators:[],attrs:[(data:Visibility(FileLocal),loc:Concrete(span:(start:9,end:19),\
+        file:(0)))],name:(key:1),args:[],returns:(data:Infer,loc:Concrete(span:(start:9,end:19),file:(0))),body:[]),loc:Concrete\
+        (span:(start:9,end:30),file:(0))))";
     let src = "
         fn test()
         end";
     let func = eval!(@ast src);
     assert_eq!(func, expected);
 
-    let expected = "Function((data:(decorators:[(data:(name:(data:(key:1,),loc:Concrete(span:(start:10,end:16,),file:(0),),),\
-        args:[],),loc:Concrete(span:(start:9,end:16,),file:(0),),),(data:(name:(data:(key:1,),loc:Concrete(span:(start:26,end:32,),\
-        file:(0),),),args:[],),loc:Concrete(span:(start:25,end:32,),file:(0),),),],attrs:[(data:Visibility(FileLocal),loc:Concrete(\
-        span:(start:41,end:51,),file:(0),),),],name:(key:2,),args:[],returns:(data:Infer,loc:Concrete(span:(start:41,end:51,),\
-        file:(0),),),body:[],),loc:Concrete(span:(start:41,end:62,),file:(0),),))";
+    let expected = "Function((data:(decorators:[(data:(name:(data:(key:1),loc:Concrete(span:(start:10,end:16),file:(0))),args:[]),\
+        loc:Concrete(span:(start:9,end:16),file:(0))),(data:(name:(data:(key:1),loc:Concrete(span:(start:26,end:32),file:(0))),args:[]),\
+        loc:Concrete(span:(start:25,end:32),file:(0)))],attrs:[(data:Visibility(FileLocal),loc:Concrete(span:(start:41,end:51),file:(0)))],\
+        name:(key:2),args:[],returns:(data:Infer,loc:Concrete(span:(start:41,end:51),file:(0))),body:[]),loc:Concrete(span:(start:41,end:62),\
+        file:(0))))";
     let src = "
         @inline
         @inline
@@ -593,13 +605,12 @@ fn functions_ast() {
     let func = eval!(@ast src);
     assert_eq!(func, expected);
 
-    let expected = "Function((data:(decorators:[],attrs:[(data:Visibility(Exposed),loc:Concrete(span:(start:9,end:16,),file:(0),),),],\
-        name:(key:1,),args:[(data:(name:(data:(key:2,),loc:Concrete(span:(start:25,end:26,),file:(0),),),ty:(data:ItemPath(([(key:2,),])),\
-        loc:Concrete(span:(start:28,end:29,),file:(0),),),comptime:false,),loc:Concrete(span:(start:25,end:29,),file:(0),),),(data:(name:\
-        (data:(key:3,),loc:Concrete(span:(start:31,end:32,),file:(0),),),ty:(data:ItemPath(([(key:3,),])),loc:Concrete(span:(start:34,\
-        end:35,),file:(0),),),comptime:false,),loc:Concrete(span:(start:31,end:35,),file:(0),),),],returns:(data:Boolean,loc:Concrete\
-        (span:(start:40,end:44,),file:(0),),),body:[Expression(FunctionCall(caller:Variable((key:4,)),arguments:[Literal(Integer((\
-        sign:Positive,bits:\"1\",))),],)),],),loc:Concrete(span:(start:17,end:79,),file:(0),),))";
+    let expected = "Function((data:(decorators:[],attrs:[(data:Visibility(Exposed),loc:Concrete(span:(start:9,end:16),file:(0)))],name:(key:1),\
+        args:[(data:(name:(data:(key:2),loc:Concrete(span:(start:25,end:26),file:(0))),ty:(data:ItemPath(([(key:2)])),loc:Concrete(span:(start:28,end:29),\
+        file:(0))),comptime:false),loc:Concrete(span:(start:25,end:29),file:(0))),(data:(name:(data:(key:3),loc:Concrete(span:(start:31,end:32),file:(0))),\
+        ty:(data:ItemPath(([(key:3)])),loc:Concrete(span:(start:34,end:35),file:(0))),comptime:false),loc:Concrete(span:(start:31,end:35),file:(0)))],returns:\
+        (data:Boolean,loc:Concrete(span:(start:40,end:44),file:(0))),body:[Expression(FunctionCall(caller:Variable((key:4)),arguments:[Literal(Integer((sign:\
+        Positive,bits:1)))]))]),loc:Concrete(span:(start:17,end:79),file:(0))))";
     let src = "
         exposed fn test(a: a, b: b) -> bool
             println(1)
@@ -624,14 +635,15 @@ fn extend_block() {
 
 #[test]
 fn loop_follows_if() {
-    let expected = "Function((data:(decorators:[],attrs:[(data:Visibility(FileLocal),loc:Concrete(span:(start:9,end:19,),\
-        file:(0),),),],name:(key:1,),args:[],returns:(data:Infer,loc:Concrete(span:(start:9,end:19,),file:(0),),),body:[If(condition:\
-        Comparison(Variable((key:2,)),Equal,Literal(String(([(72),(101),(108),(108),(111),]))),),body:[Expression(FunctionCall(caller:\
-        Variable((key:3,)),arguments:[Literal(String(([(89),(111),(117),(32),(115),(97),(105),(100),(32),(104),(101),(108),(108),(111),\
-        ]))),],)),],clauses:[],else_clause:Some([Expression(FunctionCall(caller:Variable((key:3,)),arguments:[Literal(String(([(89),(111),\
-        (117),(32),(100),(105),(100),(110),(39),(116),(32),(115),(97),(121),(32),(104),(101),(108),(108),(111),(32),(58),(40),]))),],)),]),\
-        ),Loop(body:[Expression(FunctionCall(caller:Variable((key:3,)),arguments:[Literal(String(([(79),(118),(101),(114),(32),(97),(110),(100),\
-        (32),(111),(118),(101),(114),(32),(97),(103),(97),(105),(110),]))),],)),],then:None,),],),loc:Concrete(span:(start:9,end:272,),file:(0),),))";
+    let expected = "Function((data:(decorators:[],attrs:[(data:Visibility(FileLocal),loc:Concrete(span:(start:9,end:19),\
+        file:(0)))],name:(key:1),args:[],returns:(data:Infer,loc:Concrete(span:(start:9,end:19),file:(0))),body:[If(condition:\
+        Comparison(Variable((key:2)),Equal,Literal(String(([(72),(101),(108),(108),(111)])))),body:[Expression(FunctionCall(\
+        caller:Variable((key:3)),arguments:[Literal(String(([(89),(111),(117),(32),(115),(97),(105),(100),(32),(104),(101),(108),\
+        (108),(111)])))]))],clauses:[],else_clause:Some([Expression(FunctionCall(caller:Variable((key:3)),arguments:[Literal(String\
+        (([(89),(111),(117),(32),(100),(105),(100),(110),(39),(116),(32),(115),(97),(121),(32),(104),(101),(108),(108),(111),(32),\
+        (58),(40)])))]))])),Loop(body:[Expression(FunctionCall(caller:Variable((key:3)),arguments:[Literal(String(([(79),(118),(101),\
+        (114),(32),(97),(110),(100),(32),(111),(118),(101),(114),(32),(97),(103),(97),(105),(110)])))]))],then:None)]),loc:Concrete(span\
+        :(start:9,end:272),file:(0))))";
     let src = "
         fn test()
             if greeting == \"Hello\"

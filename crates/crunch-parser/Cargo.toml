@@ -81,7 +81,7 @@ version = "1.0.110"
 features = ["derive"]
 
 [dev-dependencies.ron]
-version = "0.5.1"
+version = "0.6.0"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies.proptest]
 version = "0.9.6"

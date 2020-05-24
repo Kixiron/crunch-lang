@@ -520,15 +520,7 @@ pub enum Type {
     Rune,
     Unit,
     Absurd,
-    Array(
-        // FIXME: Ron doesn't support u128s
-        #[cfg_attr(
-            test,
-            serde(serialize_with = "crate::parser::utils::serialize_u128_to_str")
-        )]
-        u128,
-        Box<Locatable<Type>>,
-    ),
+    Array(u128, Box<Locatable<Type>>),
     Slice(Box<Locatable<Type>>),
     Tuple(Vec<Locatable<Type>>),
 }

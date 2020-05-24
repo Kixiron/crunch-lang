@@ -304,12 +304,6 @@ impl fmt::Display for Rune {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Integer {
     pub sign: Sign,
-
-    // FIXME: Ron doesn't support u128s
-    #[cfg_attr(
-        test,
-        serde(serialize_with = "crate::parser::utils::serialize_u128_to_str")
-    )]
     pub bits: u128,
 }
 
