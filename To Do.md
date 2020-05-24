@@ -56,6 +56,7 @@
 - [ ] Closures `do (<param>*) \n <stmt>* \n end`
 - [ ] Use something more ergonomic for holding statements and expressions
   - [ ] Look at what rust does https://rustc-dev-guide.rust-lang.org/memory.html
+  - [ ] Possibly use `lasso` with arbitrary internment?
 - [ ] Reflection/Metaprogramming
 - [ ] String Formatting
   - [ ] Inlined string variables e.g. `"{var}"`
