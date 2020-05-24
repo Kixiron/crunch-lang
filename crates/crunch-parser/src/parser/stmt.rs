@@ -238,16 +238,12 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     ) -> ParseResult<Vec<Stmt<'stmt, 'expr>>> {
         let mut statements = Vec::with_capacity(capacity);
 
-        let mut peek = self.peek()?.ty();
-        while !breaks.contains(&peek) {
+        while let Ok(true) = self.peek().map(|p| !breaks.contains(&p.ty())) {
             let stmt = self.stmt()?;
             if let Some(stmt) = stmt {
                 statements.push(stmt);
             }
-
-            peek = self.peek()?.ty();
         }
-        statements.shrink_to_fit();
 
         Ok(statements)
     }
@@ -282,6 +278,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                     let body = self.statements(&[TokenType::End], 10)?;
 
                     else_clause = Some(body);
+                    self.eat(TokenType::End, [TokenType::Newline])?;
+
                     break;
                 }
 
@@ -290,7 +288,6 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 _ => unreachable!(),
             }
         }
-        self.eat(TokenType::End, [TokenType::Newline])?;
 
         let stmt = self.stmt_arena.store(Statement::If {
             condition,
