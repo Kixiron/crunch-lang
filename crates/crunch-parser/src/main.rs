@@ -2,7 +2,12 @@ use crunch_parser::{files::Files, CurrentFile, Interner};
 use std::{fs::File, io::Read};
 
 fn main() {
-    let mut file = File::open("crates/crunch-parser/test.crunch").unwrap();
+    let mut file = File::open(
+        std::env::args()
+            .next()
+            .expect("You must provide a file to be parsed"),
+    )
+    .unwrap();
     let mut buf = String::with_capacity(10000);
     file.read_to_string(&mut buf).unwrap();
 
