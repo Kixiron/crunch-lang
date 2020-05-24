@@ -44,6 +44,7 @@
       <keyword>let</keyword>
       <keyword>loop</keyword>
       <keyword>match</keyword>
+      <keyword>module</keyword>
       <keyword>mut</keyword>
       <keyword>pkg</keyword>
       <keyword>return</keyword>
