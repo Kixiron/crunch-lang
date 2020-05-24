@@ -62,6 +62,7 @@
   - [ ] Inlined string variables e.g. `"{var}"`
   - [ ] String format specifiers e.g. `"{:?}"`
 - [ ] Char escapes in char literals
+- [ ] Switch to `lexical-core` for all float parsing
 
 ## AST -> HIR
 
