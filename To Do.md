@@ -1,108 +1,101 @@
 # To Do
 
-- [ ] Graphing of ASTs
-- [ ] Else clauses for loops?
-- [ ] Fix if parsing
-- [ ] `Type is fields := val`
-- [ ] `struct Type is unit`
-- [ ] All are expressions
-- [ ] Match bindings are a `pattern`
-- [ ] `if let <pattern> = <expr>`
-- [ ] Postfix macros
-- [ ] Bit pattern matching a la http://erlang.org/doc/programming_examples/bit_syntax.html
-- [ ] Named arguments
-- [ ] Typed variadic args
-  - [ ] Limited to last parameter
-- [ ] Actor compiler
-- [ ] Utils module for parser to clean up stuff
-- [ ] Types as values
-- [ ] Actually implement precedence for types
-- [ ] Make imports `paths.like.this` instead of `'this.bullshit'`
-- [ ] Make an SMT solver
-- [ ] Make an LLVM wrapper
-- [ ] Unused field removal on a per-instance basis
-- [ ] Symbolic execution
-- [ ] Pattern matching
-- [ ] Destructure type choices (`&str | i32`) via matches e.g. `match val: &str | i32 string: &str => ..`
+## Syntax/Parser
+
+- [ ] Graphing ASTs
+- [ ] `loop` doesn't need `then` clauses
+- [ ] Else clause for loops that executes on breakage?
+- [x] Fix if parsing
+- [ ] Type construction `Type is \n field := val \n field2 := val2 \n end`
+  - [ ] Commas for fields
+- [ ] Declaring/constructing unit types with `struct Type is unit`
+- [ ] Make everything an expression
+  - [ ] Nested declarations
+- [ ] Add patterns for match bindings
+- [ ] `if let <pattern> = <expr>` for oneshot matches
+- [ ] Bit-level matching http://erlang.org/doc/programming_examples/bit_syntax.html
+- [ ] Named function arguments
+- [ ] Commas with enum decls
+- [ ] Commas with struct field decls
+- [ ] Typed variadic function arguments `fn t(variadic: ..i32)` (Either `..` or `...`)
+  - [ ] Sugar for slices
+  - [ ] Limited to the last function arg
+  - [ ] Add a "spread" operator (Reuse `..`, add `...`?) to allow passing slices to variadics
+  - [ ] Named args will also allow passing slices in a variadic position
+- [ ] Dependent typing
+  - [ ] Types as values
+- [ ] Change imports into `paths.like.this` instead of `"this.bullshit"`
 - [ ] Add reference types `&` and `&mut`
 - [x] Add mutability to decls `let mut Ident`
 - [x] Remove usages of `.data()` since `Deref` is implemented for `Locatable`
   - [x] Implement `DerefMut` for `Locatable`
   - [x] `AsRef` & `AsMut` for `Locatable`
-- [ ] Add all fields to the symbol table
-- [ ] Re-add function generics
-- [ ] Unions
+- [ ] Destructure anonymous enums (`&str | i32`) via matches e.g. `match val: &str | i32 string: &str => ..` or `if let`
+  - [ ] Part of patterns
 - [x] Macro for inserting stack frame counters
-- [ ] File checksums a la https://apenwarr.ca/log/20181113
-- [ ] Struct instantiation
-- [ ] Reflection/Metaprogramming
-- [ ] Pointer syntax
-- [ ] Blocks
-  - [ ] Async
-  - [ ] Const
-  - [ ] Scoped
-  - [ ] Closure
-  - [ ] Allocator blocks
-    - [ ] Pointers only valid within
-- [ ] Compiler Pipeline
-  - [x] Read file
-    - [ ] Make sure files aren't re-processed
-  - [x] Tokenize
-  - [ ] Parse into AST
-    - [ ] Uncoil the beast that is the parser
-      - [x] Pratt Parsing
-      - [x] Decide about decorator declarations, should they be a separate type of declaration?
-        - [ ] Allows declaration-only namespacing
-        - [ ] Allows greater freedom with system to allow codegen/macro type utilities
-      - [x] Unit type
-      - [x] Syntax highlighting
-      - [x] Throwing errors
-      - [x] Floats
-      - [x] Escape sequences
-      - [ ] String Formatting
-        - [ ] Use interleaved arrays
-        - [ ] Inlined string variables e.g. `"{var}"`
-        - [ ] String format specifiers e.g. `"{:?}"`
-  - [ ] Semantic Checking
-  - [ ] Generate HIR & Desugar
-  - [ ] Type Checking
-  - [ ] High-level Optimization
-  - [ ] Const folding
-  - [ ] Generate LLIR
-  - [ ] Resolve Stack and Register operations
-  - [ ] Optimization
-- [ ] Fully qualified HIR
-  - [ ] Desugared
-  - [ ] Type Methods are turned into stand-alone functions
-- [ ] Three-address representation for LLIR
-  - [ ] Rework, needs to be better thought out
-- [ ] Fix issue #36, issue in vice with range-related codegen
-  - [ ] `vice::vice::tests::range_test`
-  - [ ] `vice::vice::tests::fibonacci_iterative`
-  - [ ] Implement more real-world tests
-- [ ] Fix benchmarks, broken by move to new stdout system in Compactor
-- [ ] Start writing programs in Crunch
-  - [ ] Implement popular, easy or common problems
-  - [ ] Create large 'examples' directory with lots of source code
-  - [ ] Start writing std, even if it's not currently 100% usable
-- [ ] Fix printing tests
-- [ ] Break CrashReport into own crate & implement features requested in #35
-- [ ] Work on parallel compilation
-  - [ ] FIFO Queue for parsing files
-    - [ ] Stateless parser shared between threads
-  - [ ] Workers push new files to the queue
-    - [ ] Shared set of files already covered
-  - [ ] Workers Parse files and push the finished to somewhere
-  - [x] Concurrent String interner
-    - [x] Dashmap-based
-  - [x] Single-threaded string interner
-- [ ] `no_std` RwLock and Mutex implementations
-- [ ] Fast concurrent queue
+- [ ] Unique types, each instance is incompatible with any other
+- [ ] Postfix macros
+- [ ] Unions
+- [ ] Re-add function generics
+  - [ ] `fn t[T, E, F](t: T, e: E, f: F)`
+- [ ] Raw pointers
+  - [ ] `*mut T`/`*const T`?
+- [ ] Blocks `block \n <stmt>* \n end`
 - [ ] Async
+  - [ ] `async fn`
+  - [ ] `async do`
+  - [ ] `async block`
+- [ ] Const
+  - [ ] `const var: T = ...`
+  - [ ] `const do`
+  - [ ] `const block`
+- [ ] In-file modules `module <ident> \n <ast>* \n end`
+- [ ] With blocks `with <expr> as <ident> \n <stmt>* \n end`
+  - [ ] Sugar for a normal block
+  - [ ] Useful for scoped allocators, locks, etc.
+- [ ] Closures `do (<param>*) \n <stmt>* \n end`
+- [ ] Use something more ergonomic for holding statements and expressions
+  - [ ] Look at what rust does https://rustc-dev-guide.rust-lang.org/memory.html
+- [ ] Reflection/Metaprogramming
+- [ ] String Formatting
+  - [ ] Inlined string variables e.g. `"{var}"`
+  - [ ] String format specifiers e.g. `"{:?}"`
+- [ ] Char escapes in char literals
+
+## AST -> HIR
+
+- [ ] Separate namespace for variables and types/enums/traits/functions
+- [ ] Add all fields of structs and variants of enums to the symbol table
+
+## Backend
+
+- [ ] SMT Solver
+  - [ ] DYI or Z3?
+  - [ ] Could do double-duty for optimization and trait/type solving/inference
+- [ ] LLVM wrapper
+  - [ ] DIY?
+- [ ] File checksums for knowing what needs to be recompiled https://apenwarr.ca/log/20181113
+- [ ] Symbolic execution
+- [ ] No dependencies on crt or libc
+
+### Optimizations
+
+- [ ] Unused field removal on an instance basis
+
+## Architecture
+
+- [ ] Look into a query-based arch
+  - [ ] Enables incremental compilation
+  - [ ] Can reduce workload
+  - [ ] Makes concurrency easier
+    - [ ] With mutexes lock contention is incredibly high, requires more advanced data structures to be efficient (concurrent skiplist?)
+- [ ] Look into actor-based compiler
+  - [ ] Works well with query system
+  - [ ] Distributed compilation
+- [ ] Incremental compilation
+- [ ] Concurrent compilation
+- [ ] First-class async
   - [ ] Streams & Channels
   - [ ] Structured concurrency
-  - [ ] Green threading
-  - [ ] Executor trait for modularity
-- [ ] Flexible namespaces
-  - [ ] Types/enums/functions/traits within other types/enums/functions/traits
-- [ ] Pass types by value
+  - [ ] Std-provided runtime
+    - [ ] Executor/Stream/Future traits for modularity to allow seamless switching of runtimes
