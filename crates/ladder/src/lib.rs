@@ -12,7 +12,7 @@ fn test() {
 
     let source = r#"
     fn main()
-        let greeting := "Hello from Crunch!"
+        let mut greeting := "Hello from Crunch!"
         println(greeting)
 
         if greeting == "Hello"
@@ -159,28 +159,38 @@ impl Ladder {
             AstStmt::If {
                 condition,
                 body,
-                arm,
+                clauses,
+                else_clause,
             } => {
-                let mut arms = Vec::with_capacity(1 + arm.is_some() as usize);
-                arms.push(MatchArm {
-                    condition: Expr::Literal(Literal::Bool(true)),
-                    body: body
-                        .iter()
-                        .filter_map(|stmt| self.lower_statement(stmt))
-                        .collect(),
-                });
+                let mut arms =
+                    Vec::with_capacity(1 + clauses.len() + else_clause.is_some() as usize);
 
-                if let Some(arm) = arm {
+                if clauses.is_empty() {
                     arms.push(MatchArm {
-                        condition: Expr::Literal(Literal::Bool(false)),
-                        body: vec![self.lower_statement(arm).unwrap()],
+                        condition: Expr::Literal(Literal::Bool(true)),
+                        body: body
+                            .iter()
+                            .filter_map(|stmt| self.lower_statement(stmt))
+                            .collect(),
                     });
-                }
 
-                Stmt::Match(Match {
-                    condition: self.lower_expr(condition),
-                    arms,
-                })
+                    if let Some(body) = else_clause {
+                        arms.push(MatchArm {
+                            condition: Expr::Literal(Literal::Bool(false)),
+                            body: body
+                                .iter()
+                                .map(|s| self.lower_statement(s).unwrap())
+                                .collect(),
+                        });
+                    }
+
+                    Stmt::Match(Match {
+                        condition: self.lower_expr(condition),
+                        arms,
+                    })
+                } else {
+                    todo!()
+                }
             }
 
             AstStmt::Loop { body, then: _then } => {

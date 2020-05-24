@@ -862,7 +862,8 @@ impl<'expr, 'stmt> PrettyPrinter {
             Statement::If {
                 condition,
                 body,
-                arm,
+                clauses,
+                else_clause,
             } => {
                 write!(f, "if ")?;
                 self.print_expr(f, condition)?;
@@ -874,10 +875,30 @@ impl<'expr, 'stmt> PrettyPrinter {
                 }
                 self.indent_level -= 1;
 
+                for (cond, body) in clauses {
+                    self.print_indent(f)?;
+                    write!(f, "else if ")?;
+                    self.print_expr(f, cond)?;
+                    writeln!(f)?;
+
+                    self.indent_level += 1;
+                    for stmt in body {
+                        self.print_stmt(f, stmt)?;
+                    }
+                    self.indent_level -= 1;
+                }
+
                 self.print_indent(f)?;
-                if let Some(stmt) = arm {
+                if let Some(body) = else_clause {
                     write!(f, "else ")?;
-                    self.print_stmt(f, stmt)
+
+                    self.indent_level += 1;
+                    for stmt in body {
+                        self.print_stmt(f, stmt)?;
+                    }
+                    self.indent_level -= 1;
+
+                    Ok(())
                 } else {
                     writeln!(f, "end")
                 }

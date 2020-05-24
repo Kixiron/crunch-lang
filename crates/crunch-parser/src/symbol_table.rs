@@ -284,7 +284,8 @@ impl Graph<Scope, MaybeSym> {
             Statement::If {
                 condition,
                 body,
-                arm,
+                clauses,
+                else_clause,
             } => {
                 self.push_expr(parent, condition);
 
@@ -295,11 +296,24 @@ impl Graph<Scope, MaybeSym> {
                     self.push_stmt(parent, stmt);
                 }
 
-                if let Some(arm) = arm {
-                    let arm_scope = self.push(Scope::new());
-                    self.add_child(parent, arm_scope).unwrap();
+                for (condition, body) in clauses {
+                    self.push_expr(parent, condition);
 
-                    self.push_stmt(parent, arm);
+                    let else_scope = self.push(Scope::new());
+                    self.add_child(parent, else_scope).unwrap();
+
+                    for stmt in body {
+                        self.push_stmt(parent, stmt);
+                    }
+                }
+
+                if let Some(ref else_clause) = else_clause {
+                    let else_scope = self.push(Scope::new());
+                    self.add_child(parent, else_scope).unwrap();
+
+                    for stmt in else_clause {
+                        self.push_stmt(parent, stmt);
+                    }
                 }
             }
 

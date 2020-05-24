@@ -1,6 +1,6 @@
 use crate::{
     error::{Error, Locatable, Location, ParseResult, SemanticError, Span, SyntaxError},
-    parser::{Expr, Expression, Literal, Parser, Type},
+    parser::{Expr, Parser, Type},
     token::TokenType,
 };
 #[cfg(feature = "no-std")]
@@ -19,7 +19,8 @@ pub enum Statement<'expr, 'stmt> {
     If {
         condition: Expr<'expr>,
         body: Vec<Stmt<'stmt, 'expr>>,
-        arm: Option<Stmt<'stmt, 'expr>>,
+        clauses: Vec<(Expr<'expr>, Vec<Stmt<'stmt, 'expr>>)>,
+        else_clause: Option<Vec<Stmt<'stmt, 'expr>>>,
     },
     Expression(Expr<'expr>),
     VarDeclaration {
@@ -259,40 +260,43 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
         let body = self.statements(&[TokenType::End, TokenType::Else], 10)?;
 
-        let delimiter = self.eat_of([TokenType::Else, TokenType::End], [TokenType::Newline])?;
-        let arm = match delimiter.ty() {
-            TokenType::Else if self.peek()?.ty() == TokenType::If => {
-                let stmt = self.if_stmt()?;
+        let mut clauses = Vec::new();
+        let mut else_clause = None;
+        loop {
+            let delimiter = self.eat_of([TokenType::Else, TokenType::End], [TokenType::Newline])?;
 
-                self.eat(TokenType::End, [TokenType::Newline])?;
-                Some(stmt)
+            match delimiter.ty() {
+                TokenType::Else if self.peek()?.ty() == TokenType::If => {
+                    self.eat(TokenType::If, [])?;
+                    let condition = self.expr()?;
+                    self.eat(TokenType::Newline, [])?;
+
+                    let body = self.statements(&[TokenType::End, TokenType::Else], 10)?;
+                    self.eat(TokenType::End, [TokenType::Newline])?;
+
+                    clauses.push((condition, body));
+                }
+
+                TokenType::Else => {
+                    self.eat(TokenType::Newline, [])?;
+                    let body = self.statements(&[TokenType::End], 10)?;
+
+                    else_clause = Some(body);
+                    break;
+                }
+
+                TokenType::End => break,
+
+                _ => unreachable!(),
             }
-
-            TokenType::Else => {
-                self.eat(TokenType::Newline, [])?;
-
-                let body = self.statements(&[TokenType::End], 10)?;
-                let condition = self
-                    .expr_arena
-                    .store(Expression::Literal(Literal::Bool(true)));
-                let stmt = self.stmt_arena.store(Statement::If {
-                    condition,
-                    body,
-                    arm: None,
-                });
-
-                Some(stmt)
-            }
-
-            TokenType::End => None,
-
-            _ => unreachable!(),
-        };
+        }
+        self.eat(TokenType::End, [TokenType::Newline])?;
 
         let stmt = self.stmt_arena.store(Statement::If {
             condition,
             body,
-            arm,
+            clauses,
+            else_clause,
         });
 
         Ok(stmt)
