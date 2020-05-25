@@ -40,9 +40,9 @@ pub enum Statement<'expr, 'stmt> {
         else_clause: Option<Vec<Stmt<'stmt, 'expr>>>,
     },
     Loop {
-    	body: Vec<Stmt<'stmt, 'expr>>,
-    	else_clause: Option<Vec<Stmt<'stmt, 'expr>>>,
-	},
+        body: Vec<Stmt<'stmt, 'expr>>,
+        else_clause: Option<Vec<Stmt<'stmt, 'expr>>>,
+    },
     For {
         var: Expr<'expr>,
         condition: Expr<'expr>,
@@ -350,7 +350,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         let body = self.statements(&[TokenType::End, TokenType::Then], 10)?;
 
         let then = self.then_stmt()?;
-        
+
         let else_clause = self.else_stmt()?;
 
         self.eat(TokenType::End, [TokenType::Newline])?;
@@ -359,7 +359,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             condition,
             body,
             then,
-            else_clause
+            else_clause,
         });
 
         Ok(stmt)
@@ -371,7 +371,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         self.eat(TokenType::Newline, [])?;
 
         let body = self.statements(&[TokenType::End, TokenType::Then], 10)?;
-        
+
         let else_clause = self.else_stmt()?;
 
         self.eat(TokenType::End, [TokenType::Newline])?;
@@ -397,7 +397,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             condition,
             body,
             then,
-            else_clause
+            else_clause,
         });
 
         Ok(stmt)
