@@ -37,13 +37,18 @@ pub enum Statement<'expr, 'stmt> {
         condition: Expr<'expr>,
         body: Vec<Stmt<'stmt, 'expr>>,
         then: Option<Vec<Stmt<'stmt, 'expr>>>,
+        else_clause: Option<Vec<Stmt<'stmt, 'expr>>>,
     },
-    Loop(Vec<Stmt<'stmt, 'expr>>),
+    Loop {
+    	body: Vec<Stmt<'stmt, 'expr>>,
+    	else_clause: Option<Vec<Stmt<'stmt, 'expr>>>,
+	},
     For {
         var: Expr<'expr>,
         condition: Expr<'expr>,
         body: Vec<Stmt<'stmt, 'expr>>,
         then: Option<Vec<Stmt<'stmt, 'expr>>>,
+        else_clause: Option<Vec<Stmt<'stmt, 'expr>>>,
     },
     Match {
         var: Expr<'expr>,
@@ -345,6 +350,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         let body = self.statements(&[TokenType::End, TokenType::Then], 10)?;
 
         let then = self.then_stmt()?;
+        
+        let else_clause = self.else_stmt()?;
 
         self.eat(TokenType::End, [TokenType::Newline])?;
 
@@ -352,6 +359,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             condition,
             body,
             then,
+            else_clause
         });
 
         Ok(stmt)
@@ -363,10 +371,12 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         self.eat(TokenType::Newline, [])?;
 
         let body = self.statements(&[TokenType::End, TokenType::Then], 10)?;
+        
+        let else_clause = self.else_stmt()?;
 
         self.eat(TokenType::End, [TokenType::Newline])?;
 
-        let stmt = self.stmt_arena.store(Statement::Loop(body));
+        let stmt = self.stmt_arena.store(Statement::Loop { body, else_clause });
 
         Ok(stmt)
     }
@@ -381,11 +391,13 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
         let body = self.statements(&[TokenType::End, TokenType::Then], 10)?;
         let then = self.then_stmt()?;
+        let else_clause = self.else_stmt()?;
         let stmt = self.stmt_arena.store(Statement::For {
             var,
             condition,
             body,
             then,
+            else_clause
         });
 
         Ok(stmt)
@@ -397,9 +409,23 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             self.eat(TokenType::Then, [TokenType::Newline])?;
             self.eat(TokenType::Newline, [])?;
 
-            let then = self.statements(&[TokenType::End, TokenType::Then], 3)?;
+            let then = self.statements(&[TokenType::End, TokenType::Else], 3)?;
 
             Ok(Some(then))
+        } else {
+            Ok(None)
+        }
+    }
+
+    #[recursion_guard]
+    fn else_stmt(&mut self) -> ParseResult<Option<Vec<Stmt<'stmt, 'expr>>>> {
+        if self.peek()?.ty() == TokenType::Else {
+            self.eat(TokenType::Else, [TokenType::Newline])?;
+            self.eat(TokenType::Newline, [])?;
+
+            let else_clause = self.statements(&[TokenType::End], 3)?;
+
+            Ok(Some(else_clause))
         } else {
             Ok(None)
         }

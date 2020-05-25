@@ -752,7 +752,7 @@ impl<'expr, 'stmt> PrettyPrinter {
                 }
             }
 
-            Statement::Loop(body) => {
+            Statement::Loop { body, else_clause } => {
                 writeln!(f, "loop")?;
 
                 self.indent_level += 1;
@@ -760,6 +760,17 @@ impl<'expr, 'stmt> PrettyPrinter {
                     self.print_stmt(f, stmt)?
                 }
                 self.indent_level -= 1;
+                
+                if let Some(else_clause) = else_clause {
+                     self.print_indent(f)?;
+                     writeln!(f, "else")?;
+                     
+                     self.indent_level += 1;
+                     for stmt in else_clause {
+                         self.print_stmt(f, stmt)?
+                     }
+                     self.indent_level -= 1;
+                }
 
                 self.print_indent(f)?;
                 writeln!(f, "end")
@@ -769,6 +780,7 @@ impl<'expr, 'stmt> PrettyPrinter {
                 condition,
                 body,
                 then,
+                else_clause,
             } => {
                 write!(f, "while ")?;
                 self.print_expr(f, condition)?;
@@ -790,6 +802,17 @@ impl<'expr, 'stmt> PrettyPrinter {
                     }
                     self.indent_level -= 1;
                 }
+                
+                if let Some(else_clause) = else_clause {
+                     self.print_indent(f)?;
+                     writeln!(f, "else")?;
+                     
+                     self.indent_level += 1;
+                     for stmt in else_clause {
+                         self.print_stmt(f, stmt)?
+                     }
+                     self.indent_level -= 1;
+                }
 
                 self.print_indent(f)?;
                 writeln!(f, "end")
@@ -800,6 +823,7 @@ impl<'expr, 'stmt> PrettyPrinter {
                 condition,
                 body,
                 then,
+                else_clause,
             } => {
                 write!(f, "for ")?;
                 self.print_expr(f, var)?;
@@ -822,6 +846,17 @@ impl<'expr, 'stmt> PrettyPrinter {
                         self.print_stmt(f, stmt)?
                     }
                     self.indent_level -= 1;
+                }
+                
+                if let Some(else_clause) = else_clause {
+                     self.print_indent(f)?;
+                     writeln!(f, "else")?;
+                     
+                     self.indent_level += 1;
+                     for stmt in else_clause {
+                         self.print_stmt(f, stmt)?
+                     }
+                     self.indent_level -= 1;
                 }
 
                 self.print_indent(f)?;
