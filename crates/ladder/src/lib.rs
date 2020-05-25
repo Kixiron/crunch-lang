@@ -194,7 +194,10 @@ impl Ladder {
                 }
             }
 
-            AstStmt::Loop { body, _else_clause } => Stmt::Loop(
+            AstStmt::Loop {
+                body,
+                else_clause: _else,
+            } => Stmt::Loop(
                 body.iter()
                     .filter_map(|stmt| self.lower_statement(stmt))
                     .collect(),
