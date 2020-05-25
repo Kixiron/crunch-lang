@@ -732,24 +732,20 @@ impl<'expr, 'stmt> PrettyPrinter {
 
             Statement::Continue => writeln!(f, "continue"),
 
-            Statement::Return(ret) => {
-                if let Some(ret) = ret {
-                    f.write_str("return ")?;
-                    self.print_expr(f, ret)?;
-                    writeln!(f)
-                } else {
-                    writeln!(f, "return")
-                }
+            Statement::Return(None) => writeln!(f, "return"),
+
+            Statement::Return(Some(ret)) => {
+                f.write_str("return ")?;
+                self.print_expr(f, ret)?;
+                writeln!(f)
             }
 
-            Statement::Break(brk) => {
-                if let Some(brk) = brk {
-                    f.write_str("break ")?;
-                    self.print_expr(f, brk)?;
-                    writeln!(f)
-                } else {
-                    writeln!(f, "break")
-                }
+            Statement::Break(None) => writeln!(f, "break"),
+
+            Statement::Break(Some(brk)) => {
+                f.write_str("break ")?;
+                self.print_expr(f, brk)?;
+                writeln!(f)
             }
 
             Statement::Loop { body, else_clause } => {
