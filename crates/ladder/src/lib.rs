@@ -258,10 +258,10 @@ pub enum ItemVis {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function {
-    name: ItemPath,
-    visibility: ItemVis,
-    params: Vec<ItemPath>,
-    body: Vec<Stmt>,
+    pub name: ItemPath,
+    pub visibility: ItemVis,
+    pub params: Vec<ItemPath>,
+    pub body: Vec<Stmt>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -278,8 +278,8 @@ pub enum Stmt {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VarDecl {
-    name: ItemPath,
-    value: Expr,
+    pub name: ItemPath,
+    pub value: Expr,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -292,28 +292,28 @@ pub enum Expr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FuncCall {
-    func: ItemPath,
-    params: Vec<Expr>,
+    pub func: ItemPath,
+    pub params: Vec<Expr>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Match {
-    condition: Expr,
-    arms: Vec<MatchArm>,
+    pub condition: Expr,
+    pub arms: Vec<MatchArm>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MatchArm {
-    condition: Expr,
-    body: Vec<Stmt>,
+    pub condition: Expr,
+    pub body: Vec<Stmt>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Return {
-    val: Option<Expr>,
+    pub val: Option<Expr>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Break {
-    val: Option<Expr>,
+    pub val: Option<Expr>,
 }

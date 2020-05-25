@@ -10,9 +10,9 @@ Crunch is a strongly & statically typed systems level language focused on ease o
 
 ## Building Crunch
 
-First, have the nightly toolchains of [`rustup`] and `cargo` installed, then run the following commands
+First, have the nightly toolchains of [`rustup`](https://rustup.rs/) and `cargo` installed, then run the following commands
 
-```text
+```sh
 git clone https://github.com/Kixiron/crunch-lang
 cd crunch-lang
 cargo build
@@ -195,5 +195,3 @@ end
 In that example only `used_field` is used, so for the instance `instance`, `unused_field` would never be present in the final binary. This optimization is applied at a program-scale, so it only happens to an instance of a struct if it's extra fields are *never* used throughout the entire lifetime of the type.
 
 Crunch is not only a types-first language, however. It firmly believes that the future of computing lies in concurrency at scale, and strives for such with first-class asynchronous programming and structured concurrency. The standard library will not only have a default asynchronous runtime, but will also define traits for other custom runtimes to use so that users can freely use whatever runtime they wish with next to no change in their code.
-
-[`rustup`]: https://rustup.rs/

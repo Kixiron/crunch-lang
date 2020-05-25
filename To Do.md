@@ -11,7 +11,13 @@
 - [ ] Declaring/constructing unit types with `struct Type is unit`
 - [ ] Make everything an expression
   - [ ] Nested declarations
-- [ ] Add patterns for match bindings
+- [x] Add patterns for match bindings
+  - http://noamz.org/thesis.pdf
+  - [ ] Tuple patterns
+  - [ ] Slice patterns
+  - [ ] Destructure patterns
+  - [ ] Binding on patterns `<ident> @ <pattern>`
+  - [ ] Array patterns?
 - [ ] `if let <pattern> = <expr>` for oneshot matches
   - [ ] `while let <pattern> = <expr>`
 - [ ] Bit-level matching http://erlang.org/doc/programming_examples/bit_syntax.html
@@ -66,6 +72,7 @@
 - [ ] Switch to `lexical-core` for all float parsing
 - [ ] Allow one-liner match arms delimited by commas
 - [ ] Effects?
+- [ ] Annotate *all* parse functions with grammar rules
 
 ## AST -> HIR
 
@@ -82,6 +89,8 @@
 - [ ] File checksums for knowing what needs to be recompiled https://apenwarr.ca/log/20181113
 - [ ] Symbolic execution
 - [ ] No dependencies on crt or libc
+- [ ] MIR for majority of passes
+- [ ] SSA IR for compilation to LLVM
 
 ### Optimizations
 
