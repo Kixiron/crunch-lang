@@ -535,7 +535,7 @@ fn loop_stmt() {
     stmt_eq!(
         "loop\n    \
             println(true)\n\
-        then\n    \
+        else\n    \
             println(false)\n\
         end\n"
     );
