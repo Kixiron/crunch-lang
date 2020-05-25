@@ -38,10 +38,7 @@ pub enum Statement<'expr, 'stmt> {
         body: Vec<Stmt<'stmt, 'expr>>,
         then: Option<Vec<Stmt<'stmt, 'expr>>>,
     },
-    Loop {
-        body: Vec<Stmt<'stmt, 'expr>>,
-        then: Option<Vec<Stmt<'stmt, 'expr>>>,
-    },
+    Loop(Vec<Stmt<'stmt, 'expr>>),
     For {
         var: Expr<'expr>,
         condition: Expr<'expr>,
@@ -367,11 +364,9 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
         let body = self.statements(&[TokenType::End, TokenType::Then], 10)?;
 
-        let then = self.then_stmt()?;
-
         self.eat(TokenType::End, [TokenType::Newline])?;
 
-        let stmt = self.stmt_arena.store(Statement::Loop { body, then });
+        let stmt = self.stmt_arena.store(Statement::Loop(body));
 
         Ok(stmt)
     }

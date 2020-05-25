@@ -369,21 +369,12 @@ impl Graph<Scope, MaybeSym> {
                 }
             }
 
-            Statement::Loop { body, then } => {
+            Statement::Loop(body) => {
                 let body_scope = self.push(Scope::new());
                 self.add_child(parent, body_scope).unwrap();
 
                 for stmt in body {
                     self.push_stmt(parent, stmt);
-                }
-
-                if let Some(then) = then {
-                    let then_scope = self.push(Scope::new());
-                    self.add_child(parent, then_scope).unwrap();
-
-                    for stmt in then {
-                        self.push_stmt(parent, stmt);
-                    }
                 }
             }
 

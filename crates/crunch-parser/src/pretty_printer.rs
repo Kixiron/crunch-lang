@@ -752,7 +752,7 @@ impl<'expr, 'stmt> PrettyPrinter {
                 }
             }
 
-            Statement::Loop { body, then } => {
+            Statement::Loop(body) => {
                 writeln!(f, "loop")?;
 
                 self.indent_level += 1;
@@ -760,17 +760,6 @@ impl<'expr, 'stmt> PrettyPrinter {
                     self.print_stmt(f, stmt)?
                 }
                 self.indent_level -= 1;
-
-                if let Some(then) = then {
-                    self.print_indent(f)?;
-                    writeln!(f, "then")?;
-
-                    self.indent_level += 1;
-                    for stmt in then {
-                        self.print_stmt(f, stmt)?
-                    }
-                    self.indent_level -= 1;
-                }
 
                 self.print_indent(f)?;
                 writeln!(f, "end")
