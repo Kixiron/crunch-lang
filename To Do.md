@@ -13,6 +13,7 @@
   - [ ] Nested declarations
 - [ ] Add patterns for match bindings
 - [ ] `if let <pattern> = <expr>` for oneshot matches
+  - [ ] `while let <pattern> = <expr>`
 - [ ] Bit-level matching http://erlang.org/doc/programming_examples/bit_syntax.html
 - [ ] Named function arguments
 - [ ] Commas with enum decls
@@ -63,6 +64,8 @@
   - [ ] String format specifiers e.g. `"{:?}"`
 - [ ] Char escapes in char literals
 - [ ] Switch to `lexical-core` for all float parsing
+- [ ] Allow one-liner match arms delimited by commas
+- [ ] Effects?
 
 ## AST -> HIR
 
@@ -101,3 +104,4 @@
   - [ ] Structured concurrency
   - [ ] Std-provided runtime
     - [ ] Executor/Stream/Future traits for modularity to allow seamless switching of runtimes
+- [ ] Effects?

@@ -14,6 +14,7 @@ use core::{fmt, mem, num::NonZeroUsize};
 
 mod ast;
 mod expr;
+mod patterns;
 mod stmt;
 mod string_escapes;
 #[cfg(test)]
@@ -29,6 +30,7 @@ pub use expr::{
     AssignmentType, BinaryOperand, ComparisonOperand, Expr, Expression, Float, Integer, Literal,
     Rune, Sign, Text, UnaryOperand,
 };
+pub use patterns::{Binding, Pattern};
 pub use stmt::{Statement, Stmt};
 pub use types::{Signedness, Type};
 pub use utils::{CurrentFile, ItemPath, SyntaxTree};

@@ -141,19 +141,20 @@ impl Ladder {
                 value: self.lower_expr(val),
             }),
 
-            AstStmt::Match { var, arms } => Stmt::Match(Match {
+            AstStmt::Match { var, arms: _ } => Stmt::Match(Match {
                 condition: self.lower_expr(var),
-                arms: arms
-                    .iter()
-                    // TODO: Patterns with matches
-                    .map(|(var, _clause, body)| MatchArm {
-                        condition: self.lower_expr(&AstExpr::Variable(*var)),
-                        body: body
-                            .iter()
-                            .filter_map(|stmt| self.lower_statement(stmt))
-                            .collect(),
-                    })
-                    .collect(),
+                arms: Vec::new(),
+                // arms
+                // .iter()
+                // // TODO: Patterns with matches
+                // .map(|(var, _clause, body)| MatchArm {
+                //     condition: self.lower_expr(&AstExpr::Variable(*var)),
+                //     body: body
+                //         .iter()
+                //         .filter_map(|stmt| self.lower_statement(stmt))
+                //         .collect(),
+                // })
+                // .collect(),
             }),
 
             AstStmt::If {

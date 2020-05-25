@@ -1,6 +1,6 @@
 use crate::{
     error::{Error, Locatable, Location, ParseResult, SemanticError, Span, SyntaxError},
-    parser::{Expr, Parser, Type},
+    parser::{Binding, Expr, Parser, Type},
     token::TokenType,
 };
 #[cfg(feature = "no-std")]
@@ -50,7 +50,7 @@ pub enum Statement<'expr, 'stmt> {
     },
     Match {
         var: Expr<'expr>,
-        arms: Vec<(Spur, Option<Expr<'expr>>, Vec<Stmt<'stmt, 'expr>>)>,
+        arms: Vec<(Binding, Option<Expr<'expr>>, Vec<Stmt<'stmt, 'expr>>)>,
     },
     Empty,
 }
@@ -307,10 +307,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
         let mut arms = Vec::with_capacity(3);
         while self.peek()?.ty() != TokenType::End {
-            let capture = {
-                let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
-                self.string_interner.intern(ident.source())
-            };
+            let binding = self.binding()?;
 
             let guard = if self.peek()?.ty() == TokenType::Where {
                 self.eat(TokenType::Where, [TokenType::Newline])?;
@@ -328,9 +325,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             self.eat(TokenType::End, [TokenType::Newline])?;
             self.eat(TokenType::Newline, [])?;
 
-            arms.push((capture, guard, body));
+            arms.push((binding, guard, body));
         }
-        arms.shrink_to_fit();
 
         self.eat(TokenType::End, [TokenType::Newline])?;
 

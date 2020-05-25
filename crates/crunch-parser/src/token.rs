@@ -66,6 +66,8 @@ pub enum TokenType {
     Alias,
     #[token("mut")]
     Mut,
+    #[token("ref")]
+    Ref,
 
     #[token("in")]
     In,
@@ -262,6 +264,7 @@ impl TokenType {
             Self::With => "with",
             Self::Alias => "alias",
             Self::Mut => "mut",
+            Self::Ref => "ref",
 
             Self::Equal => "=",
             Self::AddAssign => "+=",

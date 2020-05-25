@@ -1,9 +1,9 @@
 use crate::{
     parser::{
-        Alias, AssignmentType, Ast, Attribute, BinaryOperand, ComparisonOperand, Decorator, Enum,
-        EnumVariant, Expr, Expression, ExtendBlock, Function, Import, ImportDest, ImportExposure,
-        Literal, Signedness, Statement, Stmt, Trait, Type, TypeDecl, TypeMember, UnaryOperand,
-        Visibility,
+        Alias, AssignmentType, Ast, Attribute, BinaryOperand, Binding, ComparisonOperand,
+        Decorator, Enum, EnumVariant, Expr, Expression, ExtendBlock, Function, Import, ImportDest,
+        ImportExposure, Literal, Pattern, Signedness, Statement, Stmt, Trait, Type, TypeDecl,
+        TypeMember, UnaryOperand, Visibility,
     },
     Interner,
 };
@@ -910,10 +910,10 @@ impl<'expr, 'stmt> PrettyPrinter {
                 writeln!(f)?;
 
                 self.indent_level += 1;
-                for (name, whre, body) in arms {
+                for (binding, whre, body) in arms {
                     self.print_indent(f)?;
 
-                    write!(f, "{} ", self.interner.resolve(name))?;
+                    self.print_binding(f, binding)?;
                     if let Some(whre) = whre {
                         write!(f, "where ")?;
                         self.print_expr(f, whre)?;
@@ -934,6 +934,53 @@ impl<'expr, 'stmt> PrettyPrinter {
 
                 self.print_indent(f)?;
                 writeln!(f, "end")
+            }
+        }
+    }
+
+    fn print_binding(
+        &mut self,
+        f: &mut dyn Write,
+        Binding {
+            reference,
+            mutable,
+            pattern,
+            ty,
+        }: &Binding,
+    ) -> Result {
+        if *reference {
+            write!(f, "ref ")?;
+        }
+        if *mutable {
+            write!(f, "mut ")?;
+        }
+
+        self.print_pattern(f, pattern)?;
+
+        if let Some(ty) = ty {
+            write!(f, ": ")?;
+            self.print_ty(f, ty)?;
+        }
+
+        Ok(())
+    }
+
+    fn print_pattern(&mut self, f: &mut dyn Write, pattern: &Pattern) -> Result {
+        match pattern {
+            Pattern::Literal(lit) => self.print_literal(f, lit),
+            Pattern::Ident(ident) => write!(f, "{} ", self.interner.resolve(ident)),
+            Pattern::ItemPath(path) => {
+                write!(
+                    f,
+                    "{}",
+                    (&&*path)
+                        .iter()
+                        .map(|s| self.interner.resolve(s))
+                        .collect::<Vec<&str>>()
+                        .join(".")
+                )?;
+
+                Ok(())
             }
         }
     }

@@ -416,14 +416,15 @@ impl Graph<Scope, MaybeSym> {
             Statement::Match { var, arms } => {
                 self.push_expr(parent, var);
 
-                for (bind, clause, body) in arms {
+                for (_bind, clause, body) in arms {
                     let arm = self.push(Scope::new());
                     self.add_child(parent, arm).unwrap();
 
-                    self.node_mut(arm)
-                        .unwrap()
-                        .vars_mut()
-                        .push((*bind, Type::Infer));
+                    // FIXME: Figure out Binding/Pattern's repr in HIR
+                    // self.node_mut(arm)
+                    //     .unwrap()
+                    //     .vars_mut()
+                    //     .push((*bind, Type::Infer));
 
                     if let Some(clause) = clause {
                         self.push_expr(arm, &*clause);
