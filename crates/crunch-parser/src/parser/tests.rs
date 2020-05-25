@@ -523,7 +523,7 @@ fn loop_stmt() {
     stmt_eq!(
         "loop\n    \
             println(true)\n\
-        else\n    \
+        then\n    \
             println(false)\n\
         end\n"
     );
@@ -631,7 +631,7 @@ fn loop_follows_if() {
         ]))),],)),],clauses:[],else_clause:Some([Expression(FunctionCall(caller:Variable((key:3,)),arguments:[Literal(String(([(89),(111),\
         (117),(32),(100),(105),(100),(110),(39),(116),(32),(115),(97),(121),(32),(104),(101),(108),(108),(111),(32),(58),(40),]))),],)),]),\
         ),Loop(body:[Expression(FunctionCall(caller:Variable((key:3,)),arguments:[Literal(String(([(79),(118),(101),(114),(32),(97),(110),(100),\
-        (32),(111),(118),(101),(114),(32),(97),(103),(97),(105),(110),]))),],)),],else_clause:None,),],),loc:Concrete(span:(start:9,end:272,),file:(0),),))";
+        (32),(111),(118),(101),(114),(32),(97),(103),(97),(105),(110),]))),],)),],then:None,),],),loc:Concrete(span:(start:9,end:272,),file:(0),),))";
     let src = "
         fn test()
             if greeting == \"Hello\"
