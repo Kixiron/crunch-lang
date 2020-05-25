@@ -760,16 +760,16 @@ impl<'expr, 'stmt> PrettyPrinter {
                     self.print_stmt(f, stmt)?
                 }
                 self.indent_level -= 1;
-                
+
                 if let Some(else_clause) = else_clause {
-                     self.print_indent(f)?;
-                     writeln!(f, "else")?;
-                     
-                     self.indent_level += 1;
-                     for stmt in else_clause {
-                         self.print_stmt(f, stmt)?
-                     }
-                     self.indent_level -= 1;
+                    self.print_indent(f)?;
+                    writeln!(f, "else")?;
+
+                    self.indent_level += 1;
+                    for stmt in else_clause {
+                        self.print_stmt(f, stmt)?
+                    }
+                    self.indent_level -= 1;
                 }
 
                 self.print_indent(f)?;
@@ -802,16 +802,16 @@ impl<'expr, 'stmt> PrettyPrinter {
                     }
                     self.indent_level -= 1;
                 }
-                
+
                 if let Some(else_clause) = else_clause {
-                     self.print_indent(f)?;
-                     writeln!(f, "else")?;
-                     
-                     self.indent_level += 1;
-                     for stmt in else_clause {
-                         self.print_stmt(f, stmt)?
-                     }
-                     self.indent_level -= 1;
+                    self.print_indent(f)?;
+                    writeln!(f, "else")?;
+
+                    self.indent_level += 1;
+                    for stmt in else_clause {
+                        self.print_stmt(f, stmt)?
+                    }
+                    self.indent_level -= 1;
                 }
 
                 self.print_indent(f)?;
@@ -847,16 +847,16 @@ impl<'expr, 'stmt> PrettyPrinter {
                     }
                     self.indent_level -= 1;
                 }
-                
+
                 if let Some(else_clause) = else_clause {
-                     self.print_indent(f)?;
-                     writeln!(f, "else")?;
-                     
-                     self.indent_level += 1;
-                     for stmt in else_clause {
-                         self.print_stmt(f, stmt)?
-                     }
-                     self.indent_level -= 1;
+                    self.print_indent(f)?;
+                    writeln!(f, "else")?;
+
+                    self.indent_level += 1;
+                    for stmt in else_clause {
+                        self.print_stmt(f, stmt)?
+                    }
+                    self.indent_level -= 1;
                 }
 
                 self.print_indent(f)?;

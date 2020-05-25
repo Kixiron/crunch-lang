@@ -370,13 +370,13 @@ impl Graph<Scope, MaybeSym> {
                 }
 
                 if let Some(else_clause) = else_clause {
-                     let else_scope = self.push(Scope::new());
-                     self.add_child(parent, else_scope).unwrap();
+                    let else_scope = self.push(Scope::new());
+                    self.add_child(parent, else_scope).unwrap();
 
-                     for stmt in else_clause {
-                         self.push_stmt(parent, stmt);
-                     }
-                 }
+                    for stmt in else_clause {
+                        self.push_stmt(parent, stmt);
+                    }
+                }
             }
 
             Statement::Loop { body, else_clause } => {
@@ -388,13 +388,13 @@ impl Graph<Scope, MaybeSym> {
                 }
 
                 if let Some(else_clause) = else_clause {
-                     let else_scope = self.push(Scope::new());
-                     self.add_child(parent, else_scope).unwrap();
+                    let else_scope = self.push(Scope::new());
+                    self.add_child(parent, else_scope).unwrap();
 
-                     for stmt in else_clause {
-                         self.push_stmt(parent, stmt);
-                     }
-                 }
+                    for stmt in else_clause {
+                        self.push_stmt(parent, stmt);
+                    }
+                }
             }
 
             Statement::For {
@@ -424,13 +424,13 @@ impl Graph<Scope, MaybeSym> {
                 }
 
                 if let Some(else_clause) = else_clause {
-                     let else_scope = self.push(Scope::new());
-                     self.add_child(parent, else_scope).unwrap();
+                    let else_scope = self.push(Scope::new());
+                    self.add_child(parent, else_scope).unwrap();
 
-                     for stmt in else_clause {
-                         self.push_stmt(parent, stmt);
-                     }
-                 }
+                    for stmt in else_clause {
+                        self.push_stmt(parent, stmt);
+                    }
+                }
             }
 
             Statement::Match { var, arms } => {
