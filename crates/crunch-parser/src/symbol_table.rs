@@ -349,6 +349,7 @@ impl Graph<Scope, MaybeSym> {
                 condition,
                 body,
                 then,
+                else_clause,
             } => {
                 self.push_expr(parent, condition);
 
@@ -367,9 +368,18 @@ impl Graph<Scope, MaybeSym> {
                         self.push_stmt(parent, &*stmt);
                     }
                 }
+
+                if let Some(else_clause) = else_clause {
+                    let else_scope = self.push(Scope::new());
+                    self.add_child(parent, else_scope).unwrap();
+
+                    for stmt in else_clause {
+                        self.push_stmt(parent, stmt);
+                    }
+                }
             }
 
-            Statement::Loop { body, then } => {
+            Statement::Loop { body, else_clause } => {
                 let body_scope = self.push(Scope::new());
                 self.add_child(parent, body_scope).unwrap();
 
@@ -377,11 +387,11 @@ impl Graph<Scope, MaybeSym> {
                     self.push_stmt(parent, stmt);
                 }
 
-                if let Some(then) = then {
-                    let then_scope = self.push(Scope::new());
-                    self.add_child(parent, then_scope).unwrap();
+                if let Some(else_clause) = else_clause {
+                    let else_scope = self.push(Scope::new());
+                    self.add_child(parent, else_scope).unwrap();
 
-                    for stmt in then {
+                    for stmt in else_clause {
                         self.push_stmt(parent, stmt);
                     }
                 }
@@ -392,6 +402,7 @@ impl Graph<Scope, MaybeSym> {
                 condition,
                 body,
                 then,
+                else_clause,
             } => {
                 self.push_expr(parent, var);
                 self.push_expr(parent, condition);
@@ -409,6 +420,15 @@ impl Graph<Scope, MaybeSym> {
 
                     for stmt in body {
                         self.push_stmt(parent, &*stmt);
+                    }
+                }
+
+                if let Some(else_clause) = else_clause {
+                    let else_scope = self.push(Scope::new());
+                    self.add_child(parent, else_scope).unwrap();
+
+                    for stmt in else_clause {
+                        self.push_stmt(parent, stmt);
                     }
                 }
             }

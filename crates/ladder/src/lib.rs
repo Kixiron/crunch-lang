@@ -194,14 +194,14 @@ impl Ladder {
                 }
             }
 
-            AstStmt::Loop { body, then: _then } => {
-                // TODO: Why in hell do `loop`s have `then`s?
-                Stmt::Loop(
-                    body.iter()
-                        .filter_map(|stmt| self.lower_statement(stmt))
-                        .collect(),
-                )
-            }
+            AstStmt::Loop {
+                body,
+                else_clause: _else,
+            } => Stmt::Loop(
+                body.iter()
+                    .filter_map(|stmt| self.lower_statement(stmt))
+                    .collect(),
+            ),
 
             AstStmt::Empty => return None,
 

@@ -60,11 +60,11 @@ impl<'expr, 'stmt> PrettyPrinter {
         }: &ExtendBlock,
     ) -> Result {
         self.print_indent(f)?;
-        write!(f, "extend ")?;
+        f.write_str("extend ")?;
         self.print_ty(f, target)?;
 
         if let Some(extender) = extender {
-            write!(f, " with ")?;
+            f.write_str(" with ")?;
             self.print_ty(f, extender)?;
         }
         writeln!(f)?;
@@ -98,9 +98,9 @@ impl<'expr, 'stmt> PrettyPrinter {
             self.print_attr(f, *attr.data())?;
         }
 
-        write!(f, "alias ")?;
+        f.write_str("alias ")?;
         self.print_ty(f, alias)?;
-        write!(f, " = ")?;
+        f.write_str(" = ")?;
         self.print_ty(f, actual)?;
         writeln!(f)
     }
@@ -126,10 +126,10 @@ impl<'expr, 'stmt> PrettyPrinter {
         )?;
 
         match exposes {
-            ImportExposure::All => write!(f, " exposing *")?,
+            ImportExposure::All => f.write_str(" exposing *")?,
             ImportExposure::None(name) => write!(f, " as {}", self.interner.resolve(name.data()))?,
             ImportExposure::Members(members) => {
-                write!(f, " exposing ")?;
+                f.write_str(" exposing ")?;
 
                 for (i, member) in members.iter().enumerate() {
                     write!(f, "{}", self.interner.resolve(&member.data().0))?;
@@ -139,7 +139,7 @@ impl<'expr, 'stmt> PrettyPrinter {
                     }
 
                     if i != members.len() - 1 {
-                        write!(f, ", ")?;
+                        f.write_str(", ")?;
                     }
                 }
             }
@@ -172,15 +172,15 @@ impl<'expr, 'stmt> PrettyPrinter {
         write!(f, "trait {}", self.interner.resolve(name))?;
 
         if !generics.is_empty() {
-            write!(f, "[")?;
+            f.write_str("[")?;
             for (i, gen) in generics.iter().enumerate() {
                 self.print_ty(f, gen.data())?;
 
                 if i != generics.len() - 1 {
-                    write!(f, ", ")?;
+                    f.write_str(", ")?;
                 }
             }
-            write!(f, "]")?;
+            f.write_str("]")?;
         }
         writeln!(f)?;
 
@@ -217,14 +217,14 @@ impl<'expr, 'stmt> PrettyPrinter {
         write!(f, "enum {}", self.interner.resolve(name))?;
 
         if !generics.is_empty() {
-            write!(f, "[")?;
+            f.write_str("[")?;
             for (i, gen) in generics.iter().enumerate() {
                 self.print_ty(f, gen.data())?;
                 if i != generics.len() - 1 {
-                    write!(f, ", ")?;
+                    f.write_str(", ")?;
                 }
             }
-            write!(f, "]")?;
+            f.write_str("]")?;
         }
         writeln!(f)?;
 
@@ -255,7 +255,7 @@ impl<'expr, 'stmt> PrettyPrinter {
                         self.print_ty(f, ty.data())?;
 
                         if i != elements.len() - 1 {
-                            write!(f, ", ")?;
+                            f.write_str(", ")?;
                         }
                     }
                     writeln!(f, ")")?;
@@ -291,15 +291,15 @@ impl<'expr, 'stmt> PrettyPrinter {
         write!(f, "type {}", self.interner.resolve(name))?;
 
         if !generics.is_empty() {
-            write!(f, "[")?;
+            f.write_str("[")?;
             for (i, gen) in generics.iter().enumerate() {
                 self.print_ty(f, gen.data())?;
 
                 if i != generics.len() - 1 {
-                    write!(f, ", ")?;
+                    f.write_str(", ")?;
                 }
             }
-            write!(f, "]")?;
+            f.write_str("]")?;
         }
         writeln!(f)?;
 
@@ -357,7 +357,7 @@ impl<'expr, 'stmt> PrettyPrinter {
         write!(f, "fn {}", self.interner.resolve(name))?;
 
         if !args.is_empty() {
-            write!(f, "(")?;
+            f.write_str("(")?;
 
             let args = args
                 .iter()
@@ -375,10 +375,10 @@ impl<'expr, 'stmt> PrettyPrinter {
                 .join(", ");
             write!(f, "{})", args)?;
         } else {
-            write!(f, "()")?;
+            f.write_str("()")?;
         }
 
-        write!(f, " -> ")?;
+        f.write_str(" -> ")?;
         self.print_ty(f, returns.data())?;
         writeln!(f)?;
 
@@ -401,10 +401,10 @@ impl<'expr, 'stmt> PrettyPrinter {
                 self.print_expr(f, arg)?;
 
                 if i != dec.args.len() - 1 {
-                    write!(f, ", ")?;
+                    f.write_str(", ")?;
                 }
             }
-            write!(f, ")")
+            f.write_str(")")
         } else {
             write!(f, "@{}", self.interner.resolve(&dec.name.data()))
         }
@@ -416,9 +416,9 @@ impl<'expr, 'stmt> PrettyPrinter {
 
             Expression::UnaryExpr(op, expr) => {
                 match op {
-                    UnaryOperand::Positive => write!(f, "+"),
-                    UnaryOperand::Negative => write!(f, "-"),
-                    UnaryOperand::Not => write!(f, "!"),
+                    UnaryOperand::Positive => f.write_str("+"),
+                    UnaryOperand::Negative => f.write_str("-"),
+                    UnaryOperand::Not => f.write_str("!"),
                 }?;
 
                 self.print_expr(f, expr)
@@ -452,34 +452,34 @@ impl<'expr, 'stmt> PrettyPrinter {
                 false_arm,
             } => {
                 self.print_expr(f, true_arm)?;
-                write!(f, " if ")?;
+                f.write_str(" if ")?;
                 self.print_expr(f, condition)?;
-                write!(f, " else ")?;
+                f.write_str(" else ")?;
                 self.print_expr(f, false_arm)
             }
 
             Expression::Parenthesised(expr) => {
-                write!(f, "(")?;
+                f.write_str("(")?;
                 self.print_expr(f, expr)?;
-                write!(f, ")")
+                f.write_str(")")
             }
 
             Expression::FunctionCall { caller, arguments } => {
                 self.print_expr(f, caller)?;
-                write!(f, "(")?;
+                f.write_str("(")?;
                 for (i, arg) in arguments.iter().enumerate() {
                     self.print_expr(f, arg)?;
 
                     if i != arguments.len() - 1 {
-                        write!(f, ", ")?;
+                        f.write_str(", ")?;
                     }
                 }
-                write!(f, ")")
+                f.write_str(")")
             }
 
             Expression::MemberFunctionCall { member, function } => {
                 self.print_expr(f, member)?;
-                write!(f, ".")?;
+                f.write_str(".")?;
                 self.print_expr(f, function)
             }
 
@@ -488,51 +488,51 @@ impl<'expr, 'stmt> PrettyPrinter {
             Expression::Comparison(left, comp, right) => {
                 self.print_expr(f, left)?;
                 match comp {
-                    ComparisonOperand::Greater => write!(f, " > "),
-                    ComparisonOperand::Less => write!(f, " < "),
-                    ComparisonOperand::GreaterEqual => write!(f, " >= "),
-                    ComparisonOperand::LessEqual => write!(f, " <= "),
-                    ComparisonOperand::Equal => write!(f, " == "),
-                    ComparisonOperand::NotEqual => write!(f, " != "),
+                    ComparisonOperand::Greater => f.write_str(" > "),
+                    ComparisonOperand::Less => f.write_str(" < "),
+                    ComparisonOperand::GreaterEqual => f.write_str(" >= "),
+                    ComparisonOperand::LessEqual => f.write_str(" <= "),
+                    ComparisonOperand::Equal => f.write_str(" == "),
+                    ComparisonOperand::NotEqual => f.write_str(" != "),
                 }?;
                 self.print_expr(f, right)
             }
 
             Expression::IndexArray { array, index } => {
                 self.print_expr(f, array)?;
-                write!(f, "[")?;
+                f.write_str("[")?;
                 self.print_expr(f, index)?;
-                write!(f, "]")
+                f.write_str("]")
             }
 
             Expression::Array(arr) => {
-                write!(f, "arr[")?;
+                f.write_str("arr[")?;
                 for (i, elm) in arr.iter().enumerate() {
                     self.print_expr(f, elm)?;
 
                     if i != arr.len() - 1 {
-                        write!(f, ", ")?;
+                        f.write_str(", ")?;
                     }
                 }
-                write!(f, "]")
+                f.write_str("]")
             }
 
             Expression::Tuple(tup) => {
-                write!(f, "tup[")?;
+                f.write_str("tup[")?;
                 for (i, elm) in tup.iter().enumerate() {
                     self.print_expr(f, elm)?;
 
                     if i != tup.len() - 1 {
-                        write!(f, ", ")?;
+                        f.write_str(", ")?;
                     }
                 }
-                write!(f, "]")
+                f.write_str("]")
             }
 
             Expression::Assignment(left, ty, right) => {
                 self.print_expr(f, left)?;
                 match ty {
-                    AssignmentType::Normal => write!(f, " := "),
+                    AssignmentType::Normal => f.write_str(" := "),
                     AssignmentType::BinaryOp(op) => write!(
                         f,
                         " {}= ",
@@ -556,7 +556,7 @@ impl<'expr, 'stmt> PrettyPrinter {
 
             Expression::Range(start, end) => {
                 self.print_expr(f, start)?;
-                write!(f, "..")?;
+                f.write_str("..")?;
                 self.print_expr(f, end)
             }
         }
@@ -569,15 +569,15 @@ impl<'expr, 'stmt> PrettyPrinter {
             Literal::String(s) => write!(f, "{:?}", s),
             Literal::Rune(r) => write!(f, "'{}'", r),
             Literal::Array(arr) => {
-                write!(f, "[")?;
+                f.write_str("[")?;
                 for (i, elm) in arr.iter().enumerate() {
                     self.print_literal(f, elm)?;
 
                     if i != arr.len() - 1 {
-                        write!(f, ", ")?;
+                        f.write_str(", ")?;
                     }
                 }
-                write!(f, "]")
+                f.write_str("]")
             }
             Literal::Float(fl) => write!(f, "{}", fl),
         }
@@ -585,12 +585,12 @@ impl<'expr, 'stmt> PrettyPrinter {
 
     fn print_ty(&mut self, f: &mut dyn Write, ty: &Type) -> Result {
         match ty {
-            Type::Infer => write!(f, "infer"),
+            Type::Infer => f.write_str("infer"),
             Type::Not(ty) => self.print_ty(f, ty.data()),
             Type::Parenthesised(ty) => {
-                write!(f, "(")?;
+                f.write_str("(")?;
                 self.print_ty(f, ty.data())?;
-                write!(f, ")")
+                f.write_str(")")
             }
             Type::Const(ident, ty) => {
                 write!(f, "const {}: ", self.interner.resolve(ident))?;
@@ -602,29 +602,29 @@ impl<'expr, 'stmt> PrettyPrinter {
                 self.print_ty(f, right.data())
             }
             Type::Function { params, returns } => {
-                write!(f, "fn(")?;
+                f.write_str("fn(")?;
                 for (i, param) in params.iter().enumerate() {
                     self.print_ty(f, param.data())?;
 
                     if i != params.len() - 1 {
-                        write!(f, ", ")?;
+                        f.write_str(", ")?;
                     }
                 }
-                write!(f, ") -> ")?;
+                f.write_str(") -> ")?;
                 self.print_ty(f, returns.data())
             }
             Type::TraitObj(traits) => {
                 if traits.is_empty() {
-                    write!(f, "type")
+                    f.write_str("type")
                 } else {
-                    write!(f, "type[")?;
+                    f.write_str("type[")?;
                     for (i, ty) in traits.iter().enumerate() {
                         self.print_ty(f, ty.data())?;
                         if i != traits.len() - 1 {
-                            write!(f, ", ")?;
+                            f.write_str(", ")?;
                         }
                     }
-                    write!(f, "]")
+                    f.write_str("]")
                 }
             }
             Type::Bounded { path, bounds } => {
@@ -640,10 +640,10 @@ impl<'expr, 'stmt> PrettyPrinter {
                     self.print_ty(f, ty.data())?;
 
                     if i != bounds.len() - 1 {
-                        write!(f, ", ")?;
+                        f.write_str(", ")?;
                     }
                 }
-                write!(f, "]")
+                f.write_str("]")
             }
             Type::Integer { sign, width } => write!(
                 f,
@@ -671,31 +671,31 @@ impl<'expr, 'stmt> PrettyPrinter {
                 },
             ),
             Type::Float { width } => write!(f, "f{}", width),
-            Type::Boolean => write!(f, "bool"),
-            Type::String => write!(f, "str"),
-            Type::Rune => write!(f, "rune"),
-            Type::Unit => write!(f, "unit"),
-            Type::Absurd => write!(f, "absurd"),
+            Type::Boolean => f.write_str("bool"),
+            Type::String => f.write_str("str"),
+            Type::Rune => f.write_str("rune"),
+            Type::Unit => f.write_str("unit"),
+            Type::Absurd => f.write_str("absurd"),
             Type::Array(len, ty) => {
                 write!(f, "arr[{}, ", len)?;
                 self.print_ty(f, ty.data())?;
-                write!(f, "]")
+                f.write_str("]")
             }
             Type::Slice(ty) => {
-                write!(f, "arr[")?;
+                f.write_str("arr[")?;
                 self.print_ty(f, ty.data())?;
-                write!(f, "]")
+                f.write_str("]")
             }
             Type::Tuple(types) => {
-                write!(f, "tup[")?;
+                f.write_str("tup[")?;
                 for (i, ty) in types.iter().enumerate() {
                     self.print_ty(f, ty.data())?;
 
                     if i != types.len() - 1 {
-                        write!(f, ", ")?;
+                        f.write_str(", ")?;
                     }
                 }
-                write!(f, "]")
+                f.write_str("]")
             }
             Type::ItemPath(path) => write!(
                 f,
@@ -711,11 +711,11 @@ impl<'expr, 'stmt> PrettyPrinter {
     fn print_attr(&mut self, f: &mut dyn Write, attr: Attribute) -> Result {
         match attr {
             Attribute::Visibility(vis) => match vis {
-                Visibility::Exposed => write!(f, "exposed "),
-                Visibility::Package => write!(f, "pkg "),
-                Visibility::FileLocal => write!(f, ""),
+                Visibility::Exposed => f.write_str("exposed "),
+                Visibility::Package => f.write_str("pkg "),
+                Visibility::FileLocal => f.write_str(""),
             },
-            Attribute::Const => write!(f, "const "),
+            Attribute::Const => f.write_str("const "),
         }
     }
 
@@ -732,28 +732,55 @@ impl<'expr, 'stmt> PrettyPrinter {
 
             Statement::Continue => writeln!(f, "continue"),
 
-            Statement::Return(ret) => {
-                if let Some(ret) = ret {
-                    write!(f, "return ")?;
-                    self.print_expr(f, ret)?;
-                    writeln!(f)
-                } else {
-                    writeln!(f, "return")
-                }
+            Statement::Return(None) => writeln!(f, "return"),
+
+            Statement::Return(Some(ret)) => {
+                f.write_str("return ")?;
+                self.print_expr(f, ret)?;
+                writeln!(f)
             }
 
-            Statement::Break(brk) => {
-                if let Some(brk) = brk {
-                    write!(f, "break ")?;
-                    self.print_expr(f, brk)?;
-                    writeln!(f)
-                } else {
-                    writeln!(f, "break")
-                }
+            Statement::Break(None) => writeln!(f, "break"),
+
+            Statement::Break(Some(brk)) => {
+                f.write_str("break ")?;
+                self.print_expr(f, brk)?;
+                writeln!(f)
             }
 
-            Statement::Loop { body, then } => {
+            Statement::Loop { body, else_clause } => {
                 writeln!(f, "loop")?;
+
+                self.indent_level += 1;
+                for stmt in body {
+                    self.print_stmt(f, stmt)?
+                }
+                self.indent_level -= 1;
+
+                if let Some(else_clause) = else_clause {
+                    self.print_indent(f)?;
+                    writeln!(f, "else")?;
+
+                    self.indent_level += 1;
+                    for stmt in else_clause {
+                        self.print_stmt(f, stmt)?
+                    }
+                    self.indent_level -= 1;
+                }
+
+                self.print_indent(f)?;
+                writeln!(f, "end")
+            }
+
+            Statement::While {
+                condition,
+                body,
+                then,
+                else_clause,
+            } => {
+                f.write_str("while ")?;
+                self.print_expr(f, condition)?;
+                writeln!(f)?;
 
                 self.indent_level += 1;
                 for stmt in body {
@@ -772,31 +799,12 @@ impl<'expr, 'stmt> PrettyPrinter {
                     self.indent_level -= 1;
                 }
 
-                self.print_indent(f)?;
-                writeln!(f, "end")
-            }
-
-            Statement::While {
-                condition,
-                body,
-                then,
-            } => {
-                write!(f, "while ")?;
-                self.print_expr(f, condition)?;
-                writeln!(f)?;
-
-                self.indent_level += 1;
-                for stmt in body {
-                    self.print_stmt(f, stmt)?
-                }
-                self.indent_level -= 1;
-
-                if let Some(then) = then {
+                if let Some(else_clause) = else_clause {
                     self.print_indent(f)?;
-                    writeln!(f, "then")?;
+                    writeln!(f, "else")?;
 
                     self.indent_level += 1;
-                    for stmt in then {
+                    for stmt in else_clause {
                         self.print_stmt(f, stmt)?
                     }
                     self.indent_level -= 1;
@@ -811,10 +819,11 @@ impl<'expr, 'stmt> PrettyPrinter {
                 condition,
                 body,
                 then,
+                else_clause,
             } => {
-                write!(f, "for ")?;
+                f.write_str("for ")?;
                 self.print_expr(f, var)?;
-                write!(f, " in ")?;
+                f.write_str(" in ")?;
                 self.print_expr(f, condition)?;
                 writeln!(f)?;
 
@@ -830,6 +839,17 @@ impl<'expr, 'stmt> PrettyPrinter {
 
                     self.indent_level += 1;
                     for stmt in then {
+                        self.print_stmt(f, stmt)?
+                    }
+                    self.indent_level -= 1;
+                }
+
+                if let Some(else_clause) = else_clause {
+                    self.print_indent(f)?;
+                    writeln!(f, "else")?;
+
+                    self.indent_level += 1;
+                    for stmt in else_clause {
                         self.print_stmt(f, stmt)?
                     }
                     self.indent_level -= 1;
@@ -854,7 +874,7 @@ impl<'expr, 'stmt> PrettyPrinter {
                     self.interner.resolve(name)
                 )?;
                 self.print_ty(f, ty.data())?;
-                write!(f, " := ")?;
+                f.write_str(" := ")?;
                 self.print_expr(f, val)?;
                 writeln!(f)
             }
@@ -865,7 +885,7 @@ impl<'expr, 'stmt> PrettyPrinter {
                 clauses,
                 else_clause,
             } => {
-                write!(f, "if ")?;
+                f.write_str("if ")?;
                 self.print_expr(f, condition)?;
                 writeln!(f)?;
 
@@ -877,7 +897,7 @@ impl<'expr, 'stmt> PrettyPrinter {
 
                 for (cond, body) in clauses {
                     self.print_indent(f)?;
-                    write!(f, "else if ")?;
+                    f.write_str("else if ")?;
                     self.print_expr(f, cond)?;
                     writeln!(f)?;
 
@@ -890,7 +910,7 @@ impl<'expr, 'stmt> PrettyPrinter {
 
                 self.print_indent(f)?;
                 if let Some(body) = else_clause {
-                    write!(f, "else ")?;
+                    f.write_str("else ")?;
 
                     self.indent_level += 1;
                     for stmt in body {
@@ -905,7 +925,7 @@ impl<'expr, 'stmt> PrettyPrinter {
             }
 
             Statement::Match { var, arms } => {
-                write!(f, "match ")?;
+                f.write_str("match ")?;
                 self.print_expr(f, var)?;
                 writeln!(f)?;
 
@@ -915,9 +935,9 @@ impl<'expr, 'stmt> PrettyPrinter {
 
                     self.print_binding(f, binding)?;
                     if let Some(whre) = whre {
-                        write!(f, "where ")?;
+                        f.write_str("where ")?;
                         self.print_expr(f, whre)?;
-                        write!(f, " ")?;
+                        f.write_str(" ")?;
                     }
                     writeln!(f, "=>")?;
 
