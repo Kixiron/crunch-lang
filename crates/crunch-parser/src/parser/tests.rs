@@ -535,7 +535,7 @@ fn loop_stmt() {
     stmt_eq!(
         "loop\n    \
             println(true)\n\
-        else\n    \
+        then\n    \
             println(false)\n\
         end\n"
     );
@@ -635,15 +635,14 @@ fn extend_block() {
 
 #[test]
 fn loop_follows_if() {
-    let expected = "Function((data:(decorators:[],attrs:[(data:Visibility(FileLocal),loc:Concrete(span:(start:9,end:19),\
-        file:(0)))],name:(key:1),args:[],returns:(data:Infer,loc:Concrete(span:(start:9,end:19),file:(0))),body:[If(condition:\
-        Comparison(Variable((key:2)),Equal,Literal(String(([(72),(101),(108),(108),(111)])))),body:[Expression(FunctionCall(\
-        caller:Variable((key:3)),arguments:[Literal(String(([(89),(111),(117),(32),(115),(97),(105),(100),(32),(104),(101),(108),\
-        (108),(111)])))]))],clauses:[],else_clause:Some([Expression(FunctionCall(caller:Variable((key:3)),arguments:[Literal(String\
-        (([(89),(111),(117),(32),(100),(105),(100),(110),(39),(116),(32),(115),(97),(121),(32),(104),(101),(108),(108),(111),(32),\
-        (58),(40)])))]))])),Loop(body:[Expression(FunctionCall(caller:Variable((key:3)),arguments:[Literal(String(([(79),(118),(101),\
-        (114),(32),(97),(110),(100),(32),(111),(118),(101),(114),(32),(97),(103),(97),(105),(110)])))]))],then:None)]),loc:Concrete(span\
-        :(start:9,end:272),file:(0))))";
+    let expected = "Function((data:(decorators:[],attrs:[(data:Visibility(FileLocal),loc:Concrete(span:(start:9,end:19,),\
+        file:(0),),),],name:(key:1,),args:[],returns:(data:Infer,loc:Concrete(span:(start:9,end:19,),file:(0),),),body:[If(condition:\
+        Comparison(Variable((key:2,)),Equal,Literal(String(([(72),(101),(108),(108),(111),]))),),body:[Expression(FunctionCall(caller:\
+        Variable((key:3,)),arguments:[Literal(String(([(89),(111),(117),(32),(115),(97),(105),(100),(32),(104),(101),(108),(108),(111),\
+        ]))),],)),],clauses:[],else_clause:Some([Expression(FunctionCall(caller:Variable((key:3,)),arguments:[Literal(String(([(89),(111),\
+        (117),(32),(100),(105),(100),(110),(39),(116),(32),(115),(97),(121),(32),(104),(101),(108),(108),(111),(32),(58),(40),]))),],)),]),\
+        ),Loop(body:[Expression(FunctionCall(caller:Variable((key:3,)),arguments:[Literal(String(([(79),(118),(101),(114),(32),(97),(110),(100),\
+        (32),(111),(118),(101),(114),(32),(97),(103),(97),(105),(110),]))),],)),],then:None,),],),loc:Concrete(span:(start:9,end:272,),file:(0),),))";
     let src = "
         fn test()
             if greeting == \"Hello\"
