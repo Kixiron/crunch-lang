@@ -1,21 +1,22 @@
 use super::*;
-use crate::{files::FileId, parser::types::Signedness, pretty_printer::PrettyPrinter};
+use crate::{
+    context::StrT, files::FileId, parser::types::Signedness, pretty_printer::PrettyPrinter,
+};
 #[cfg(feature = "no-std")]
 use alloc::{boxed::Box, string::String};
 use core::iter;
 
 fn format_expr(source: &str) -> String {
-    let interner = Interner::default();
+    let mut context = Context::default();
     let mut parser = Parser::new(
         source,
         CurrentFile::new(FileId::new(0), source.len()),
-        interner,
+        &mut context,
     );
     let expr = parser.expr().unwrap();
 
-    let interner = core::mem::take(&mut parser.string_interner);
     let mut string = String::new();
-    PrettyPrinter::new(interner)
+    PrettyPrinter::new(&context)
         .print_expr(&mut string, &expr)
         .unwrap();
 
@@ -29,17 +30,16 @@ macro_rules! expr_eq {
 }
 
 fn format_stmt(source: &str) -> String {
-    let interner = Interner::default();
+    let mut context = Context::default();
     let mut parser = Parser::new(
         source,
         CurrentFile::new(FileId::new(0), source.len()),
-        interner,
+        &mut context,
     );
     let stmt = parser.stmt().unwrap().unwrap();
 
-    let interner = core::mem::take(&mut parser.string_interner);
     let mut string = String::new();
-    PrettyPrinter::new(interner)
+    PrettyPrinter::new(&context)
         .print_stmt(&mut string, &stmt)
         .unwrap();
 
@@ -53,17 +53,16 @@ macro_rules! stmt_eq {
 }
 
 fn format_ast(source: &str) -> String {
-    let interner = Interner::default();
+    let mut context = Context::default();
     let mut parser = Parser::new(
         source,
         CurrentFile::new(FileId::new(0), source.len()),
-        interner,
+        &mut context,
     );
     let stmt = parser.ast().unwrap().unwrap();
 
-    let interner = core::mem::take(&mut parser.string_interner);
     let mut string = String::new();
-    PrettyPrinter::new(interner)
+    PrettyPrinter::new(&context)
         .print_ast(&mut string, &stmt)
         .unwrap();
 
@@ -79,11 +78,11 @@ macro_rules! ast_eq {
 macro_rules! eval {
     (@expr $expr:expr) => {{
         std::panic::catch_unwind(|| {
-            let interner = Interner::default();
+            let mut context = Context::default();
             let mut parser = Parser::new(
                 $expr,
                 CurrentFile::new(FileId::new(0), $expr.len()),
-                interner,
+                &mut context,
             );
             let expr = parser.expr().unwrap();
 
@@ -94,11 +93,11 @@ macro_rules! eval {
 
     (@generics $generics:expr) => {{
         std::panic::catch_unwind(|| {
-            let interner = Interner::default();
+            let mut context = Context::default();
             let mut parser = Parser::new(
                 $generics,
                 CurrentFile::new(FileId::new(0), $generics.len()),
-                interner,
+                &mut context,
             );
             let generics = parser.generics().unwrap();
 
@@ -109,9 +108,12 @@ macro_rules! eval {
 
     (@ast $ast:expr) => {{
         std::panic::catch_unwind(|| {
-            let interner = Interner::default();
-            let mut parser =
-                Parser::new($ast, CurrentFile::new(FileId::new(0), $ast.len()), interner);
+            let mut context = Context::default();
+            let mut parser = Parser::new(
+                $ast,
+                CurrentFile::new(FileId::new(0), $ast.len()),
+                &mut context,
+            );
             let ast = parser.ast().unwrap().unwrap();
 
             ron::ser::to_string(&ast).unwrap()
@@ -664,8 +666,6 @@ fn loop_follows_if() {
 
 #[test]
 fn types_ast() {
-    use lasso::Key;
-
     let builtins = [
         (
             "i128",
@@ -766,21 +766,21 @@ fn types_ast() {
         ),
         (
             "CustomThingy",
-            Type::ItemPath(ItemPath::new(vec![lasso::Spur::try_from_usize(0).unwrap()])),
+            Type::ItemPath(ItemPath::new(vec![StrT::new(0)])),
         ),
         (
             "Custom.Thingy.Pathed",
             Type::ItemPath(ItemPath::new(vec![
-                lasso::Spur::try_from_usize(0).unwrap(),
-                lasso::Spur::try_from_usize(1).unwrap(),
-                lasso::Spur::try_from_usize(2).unwrap(),
+                StrT::new(0),
+                StrT::new(1),
+                StrT::new(2),
             ])),
         ),
     ];
 
     for (src, ty) in builtins.iter() {
         assert_eq!(
-            &*Parser::new(src, CurrentFile::new(FileId(0), src.len()), Interner::new(),)
+            &*Parser::new(src, CurrentFile::new(FileId(0), src.len()), &Context::new())
                 .ascribed_type()
                 .unwrap(),
             &ty.clone(),
@@ -856,11 +856,11 @@ mod proptests {
     proptest! {
         #[test]
         fn strings(s in r#"b?"(\\.|[^\\"])*""#) {
-            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), Interner::default());
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &Context::default());
 
             let expr = parser.expr().map(|e| e.deref().clone());
             match expr {
-                Ok(Expression::Literal(Literal::String(..))) | Ok(Expression::Literal(Literal::Array(..))) => {},
+                Ok(Expr::Literal(Literal::String(..))) | Ok(Expr::Literal(Literal::Array(..))) => {},
 
                 Err(Locatable { data: _data @ Error::Syntax(SyntaxError::InvalidEscapeCharacters(..)), .. })
                 | Err(Locatable { data: _data @ Error::Syntax(SyntaxError::UnrecognizedEscapeSeq(..)), .. })
@@ -873,11 +873,11 @@ mod proptests {
 
         #[test]
         fn runes(s in "b?'[^']*'") {
-            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), Interner::default());
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &Context::default());
 
             let expr = parser.expr().map(|e| e.deref().clone());
             match expr {
-                Ok(Expression::Literal(Literal::Rune(..))) | Ok(Expression::Literal(Literal::Integer(..))) => {},
+                Ok(Expr::Literal(Literal::Rune(..))) | Ok(Expr::Literal(Literal::Integer(..))) => {},
 
                 Err(Locatable { data: _data @ Error::Syntax(SyntaxError::TooManyRunes), .. })
                 | Err(Locatable { data: _data @ Error::Syntax(SyntaxError::UnrecognizedEscapeSeq(..)), .. })
@@ -890,49 +890,49 @@ mod proptests {
 
         #[test]
         fn base10_int(s in "[+-]?[0-9][0-9_]*") {
-            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), Interner::default());
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &Context::default());
 
             let expr = parser.expr().map(|e| e.deref().clone());
-            let cond = matches!(expr, Ok(Expression::Literal(Literal::Integer { .. })));
+            let cond = matches!(expr, Ok(Expr::Literal(Literal::Integer { .. })));
             prop_assert!(cond);
         }
 
         #[test]
         fn base16_int(s in "[+-]?0x[0-9a-fA-F][0-9a-fA-F_]*") {
-            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), Interner::default());
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &Context::default());
 
             let expr = parser.expr().map(|e| e.deref().clone());
-            let cond = matches!(expr, Ok(Expression::Literal(Literal::Integer(Integer { .. })))
+            let cond = matches!(expr, Ok(Expr::Literal(Literal::Integer(Integer { .. })))
                 | Err(Locatable { data: Error::Syntax(SyntaxError::LiteralOverflow(..)), .. }));
             prop_assert!(cond);
         }
 
         #[test]
         fn base2_int(s in "[+-]?0b[0-1][0-1_]*") {
-            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), Interner::default());
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &Context::default());
 
             let expr = parser.expr().map(|e| e.deref().clone());
-            let cond = matches!(expr, Ok(Expression::Literal(Literal::Integer(Integer { .. })))
+            let cond = matches!(expr, Ok(Expr::Literal(Literal::Integer(Integer { .. })))
                 | Err(Locatable { data: Error::Syntax(SyntaxError::LiteralOverflow(..)), .. }));
             prop_assert!(cond);
         }
 
         #[test]
         fn base10_float(s in "[+-]?[0-9][0-9_]*\\.[0-9][0-9_]*([eE][+-]?[0-9][0-9_]*)?") {
-            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), Interner::default());
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &Context::default());
 
             let expr = parser.expr().map(|e| e.deref().clone());
-            let cond = matches!(expr, Ok(Expression::Literal(Literal::Float(..)))
+            let cond = matches!(expr, Ok(Expr::Literal(Literal::Float(..)))
                 | Err(Locatable { data: Error::Syntax(SyntaxError::LiteralOverflow(..)), .. }));
             prop_assert!(cond);
         }
 
         #[test]
         fn base16_float(s in "[+-]?0x[0-9a-fA-F][0-9a-fA-F_]*\\.[0-9a-fA-F][0-9a-fA-F_]*([pP][+-]?[0-9][0-9_]?)?") {
-            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), Interner::default());
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &Context::default());
 
             let expr = parser.expr().map(|e| e.deref().clone());
-            let cond = matches!(expr, Ok(Expression::Literal(Literal::Float(..)))
+            let cond = matches!(expr, Ok(Expr::Literal(Literal::Float(..)))
                 | Err(Locatable { data: Error::Syntax(SyntaxError::LiteralOverflow(..)), .. }));
             prop_assert!(cond);
         }

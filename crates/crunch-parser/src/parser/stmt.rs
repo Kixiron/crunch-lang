@@ -1,4 +1,5 @@
 use crate::{
+    context::StrT,
     error::{Error, Locatable, Location, ParseResult, SemanticError, Span, SyntaxError},
     parser::{Binding, Expr, Parser, Type},
     token::TokenType,
@@ -6,53 +7,53 @@ use crate::{
 #[cfg(feature = "no-std")]
 use alloc::{format, vec::Vec};
 use crunch_proc::recursion_guard;
-use lasso::Spur;
 #[cfg(test)]
 use serde::Serialize;
-use stadium::Ticket;
-
-pub type Stmt<'expr, 'stmt> = Ticket<'stmt, Statement<'expr, 'stmt>>;
 
 #[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Clone, PartialEq)]
-pub enum Statement<'expr, 'stmt> {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Stmt<'ctx> {
     If {
-        condition: Expr<'expr>,
-        body: Vec<Stmt<'stmt, 'expr>>,
-        clauses: Vec<(Expr<'expr>, Vec<Stmt<'stmt, 'expr>>)>,
-        else_clause: Option<Vec<Stmt<'stmt, 'expr>>>,
+        condition: &'ctx Expr<'ctx>,
+        body: Vec<&'ctx Stmt<'ctx>>,
+        clauses: Vec<(&'ctx Expr<'ctx>, Vec<&'ctx Stmt<'ctx>>)>,
+        else_clause: Option<Vec<&'ctx Stmt<'ctx>>>,
     },
-    Expression(Expr<'expr>),
+    Expr(&'ctx Expr<'ctx>),
     VarDeclaration {
-        name: Spur,
-        ty: Locatable<Type>,
-        val: Expr<'expr>,
+        name: StrT,
+        ty: Locatable<&'ctx Type<'ctx>>,
+        val: &'ctx Expr<'ctx>,
         constant: bool,
         mutable: bool,
     },
-    Return(Option<Expr<'expr>>),
-    Break(Option<Expr<'expr>>),
+    Return(Option<&'ctx Expr<'ctx>>),
+    Break(Option<&'ctx Expr<'ctx>>),
     Continue,
     While {
-        condition: Expr<'expr>,
-        body: Vec<Stmt<'stmt, 'expr>>,
-        then: Option<Vec<Stmt<'stmt, 'expr>>>,
-        else_clause: Option<Vec<Stmt<'stmt, 'expr>>>,
+        condition: &'ctx Expr<'ctx>,
+        body: Vec<&'ctx Stmt<'ctx>>,
+        then: Option<Vec<&'ctx Stmt<'ctx>>>,
+        else_clause: Option<Vec<&'ctx Stmt<'ctx>>>,
     },
     Loop {
-        body: Vec<Stmt<'stmt, 'expr>>,
-        else_clause: Option<Vec<Stmt<'stmt, 'expr>>>,
+        body: Vec<&'ctx Stmt<'ctx>>,
+        else_clause: Option<Vec<&'ctx Stmt<'ctx>>>,
     },
     For {
-        var: Expr<'expr>,
-        condition: Expr<'expr>,
-        body: Vec<Stmt<'stmt, 'expr>>,
-        then: Option<Vec<Stmt<'stmt, 'expr>>>,
-        else_clause: Option<Vec<Stmt<'stmt, 'expr>>>,
+        var: &'ctx Expr<'ctx>,
+        condition: &'ctx Expr<'ctx>,
+        body: Vec<&'ctx Stmt<'ctx>>,
+        then: Option<Vec<&'ctx Stmt<'ctx>>>,
+        else_clause: Option<Vec<&'ctx Stmt<'ctx>>>,
     },
     Match {
-        var: Expr<'expr>,
-        arms: Vec<(Binding, Option<Expr<'expr>>, Vec<Stmt<'stmt, 'expr>>)>,
+        var: &'ctx Expr<'ctx>,
+        arms: Vec<(
+            Binding<'ctx>,
+            Option<&'ctx Expr<'ctx>>,
+            Vec<&'ctx Stmt<'ctx>>,
+        )>,
     },
     Empty,
 }
@@ -60,9 +61,9 @@ pub enum Statement<'expr, 'stmt> {
 // TODO: Type ascription
 
 /// Statement parsing
-impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
+impl<'src, 'ctx> Parser<'src, 'ctx> {
     #[recursion_guard]
-    pub fn stmt(&mut self) -> ParseResult<Option<Stmt<'stmt, 'expr>>> {
+    pub fn stmt(&'ctx mut self) -> ParseResult<Option<&'ctx Stmt<'ctx>>> {
         match self.peek()?.ty() {
             TokenType::If => {
                 let stmt = self.if_stmt()?;
@@ -86,7 +87,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
                 let (name, span) = {
                     let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
-                    (self.string_interner.intern(ident.source()), ident.span())
+                    (self.context.intern(ident.source()), ident.span())
                 };
 
                 self.eat(TokenType::Colon, [TokenType::Newline])?;
@@ -96,7 +97,10 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
                 let ty = if self.peek()?.ty() == TokenType::Equal {
                     self.eat(TokenType::Equal, [])?;
-                    Locatable::new(Type::default(), Location::implicit(span, self.current_file))
+                    Locatable::new(
+                        self.context.store(Type::default()),
+                        Location::implicit(span, self.current_file),
+                    )
                 } else {
                     let ty = self.ascribed_type()?;
                     self.eat(TokenType::Colon, [TokenType::Newline])?;
@@ -117,7 +121,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                     ));
                 }
 
-                let stmt = self.stmt_arena.store(Statement::VarDeclaration {
+                let stmt = self.context.store(Stmt::VarDeclaration {
                     name,
                     ty,
                     val,
@@ -154,13 +158,13 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
                 if self.peek()?.ty() == TokenType::Newline {
                     self.eat(TokenType::Newline, [])?;
-                    let stmt = self.stmt_arena.store(Statement::Return(None));
+                    let stmt = self.context.store(Stmt::Return(None));
 
                     Ok(Some(stmt))
                 } else {
                     let expr = self.expr()?;
                     self.eat(TokenType::Newline, [])?;
-                    let stmt = self.stmt_arena.store(Statement::Return(Some(expr)));
+                    let stmt = self.context.store(Stmt::Return(Some(expr)));
 
                     Ok(Some(stmt))
                 }
@@ -171,13 +175,13 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
                 if self.peek()?.ty() == TokenType::Newline {
                     self.eat(TokenType::Newline, [])?;
-                    let stmt = self.stmt_arena.store(Statement::Break(None));
+                    let stmt = self.context.store(Stmt::Break(None));
 
                     Ok(Some(stmt))
                 } else {
                     let expr = self.expr()?;
                     self.eat(TokenType::Newline, [])?;
-                    let stmt = self.stmt_arena.store(Statement::Break(Some(expr)));
+                    let stmt = self.context.store(Stmt::Break(Some(expr)));
 
                     Ok(Some(stmt))
                 }
@@ -187,7 +191,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 self.eat(TokenType::Continue, [TokenType::Newline])?;
                 self.eat(TokenType::Newline, [])?;
 
-                let stmt = self.stmt_arena.store(Statement::Continue);
+                let stmt = self.context.store(Stmt::Continue);
 
                 Ok(Some(stmt))
             }
@@ -196,12 +200,12 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 self.eat(TokenType::Empty, [TokenType::Newline])?;
                 self.eat(TokenType::Newline, [])?;
 
-                let stmt = self.stmt_arena.store(Statement::Empty);
+                let stmt = self.context.store(Stmt::Empty);
 
                 Ok(Some(stmt))
             }
 
-            // Expressions
+            // Exprs
             TokenType::Ident
             | TokenType::Int
             | TokenType::String
@@ -213,7 +217,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             | TokenType::LeftBrace => {
                 let expr = self.expr()?;
                 self.eat(TokenType::Newline, [])?;
-                let stmt = self.stmt_arena.store(Statement::Expression(expr));
+                let stmt = self.context.store(Stmt::Expr(expr));
 
                 Ok(Some(stmt))
             }
@@ -234,10 +238,10 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
     #[recursion_guard]
     fn statements(
-        &mut self,
+        &'ctx mut self,
         breaks: &[TokenType],
         capacity: usize,
-    ) -> ParseResult<Vec<Stmt<'stmt, 'expr>>> {
+    ) -> ParseResult<Vec<&'ctx Stmt<'ctx>>> {
         let mut statements = Vec::with_capacity(capacity);
 
         while let Ok(true) = self.peek().map(|p| !breaks.contains(&p.ty())) {
@@ -251,7 +255,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     }
 
     #[recursion_guard]
-    fn if_stmt(&mut self) -> ParseResult<Stmt<'stmt, 'expr>> {
+    fn if_stmt(&'ctx mut self) -> ParseResult<&'ctx Stmt<'ctx>> {
         self.eat(TokenType::If, [TokenType::Newline])?;
         let condition = self.expr()?;
         self.eat(TokenType::Newline, [])?;
@@ -291,7 +295,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             }
         }
 
-        let stmt = self.stmt_arena.store(Statement::If {
+        let stmt = self.context.store(Stmt::If {
             condition,
             body,
             clauses,
@@ -302,7 +306,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     }
 
     #[recursion_guard]
-    fn match_stmt(&mut self) -> ParseResult<Stmt<'stmt, 'expr>> {
+    fn match_stmt(&'ctx mut self) -> ParseResult<&'ctx Stmt<'ctx>> {
         self.eat(TokenType::Match, [TokenType::Newline])?;
         let var = self.expr()?;
         self.eat(TokenType::Newline, [])?;
@@ -332,13 +336,13 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
         self.eat(TokenType::End, [TokenType::Newline])?;
 
-        let stmt = self.stmt_arena.store(Statement::Match { var, arms });
+        let stmt = self.context.store(Stmt::Match { var, arms });
 
         Ok(stmt)
     }
 
     #[recursion_guard]
-    fn while_stmt(&mut self) -> ParseResult<Stmt<'stmt, 'expr>> {
+    fn while_stmt(&'ctx mut self) -> ParseResult<&'ctx Stmt<'ctx>> {
         self.eat(TokenType::While, [TokenType::Newline])?;
         let condition = self.expr()?;
         self.eat(TokenType::Newline, [])?;
@@ -351,7 +355,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
         self.eat(TokenType::End, [TokenType::Newline])?;
 
-        let stmt = self.stmt_arena.store(Statement::While {
+        let stmt = self.context.store(Stmt::While {
             condition,
             body,
             then,
@@ -362,7 +366,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     }
 
     #[recursion_guard]
-    fn loop_stmt(&mut self) -> ParseResult<Stmt<'stmt, 'expr>> {
+    fn loop_stmt(&'ctx mut self) -> ParseResult<&'ctx Stmt<'ctx>> {
         self.eat(TokenType::Loop, [TokenType::Newline])?;
         self.eat(TokenType::Newline, [])?;
 
@@ -372,13 +376,13 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
         self.eat(TokenType::End, [TokenType::Newline])?;
 
-        let stmt = self.stmt_arena.store(Statement::Loop { body, else_clause });
+        let stmt = self.context.store(Stmt::Loop { body, else_clause });
 
         Ok(stmt)
     }
 
     #[recursion_guard]
-    fn for_stmt(&mut self) -> ParseResult<Stmt<'stmt, 'expr>> {
+    fn for_stmt(&'ctx mut self) -> ParseResult<&'ctx Stmt<'ctx>> {
         self.eat(TokenType::For, [TokenType::Newline])?;
         let var = self.expr()?;
         self.eat(TokenType::In, [TokenType::Newline])?;
@@ -388,7 +392,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         let body = self.statements(&[TokenType::End, TokenType::Then], 10)?;
         let then = self.then_stmt()?;
         let else_clause = self.else_stmt()?;
-        let stmt = self.stmt_arena.store(Statement::For {
+        let stmt = self.context.store(Stmt::For {
             var,
             condition,
             body,
@@ -400,7 +404,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     }
 
     #[recursion_guard]
-    fn then_stmt(&mut self) -> ParseResult<Option<Vec<Stmt<'stmt, 'expr>>>> {
+    fn then_stmt(&'ctx mut self) -> ParseResult<Option<Vec<&'ctx Stmt<'ctx>>>> {
         if self.peek()?.ty() == TokenType::Then {
             self.eat(TokenType::Then, [TokenType::Newline])?;
             self.eat(TokenType::Newline, [])?;
@@ -414,7 +418,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     }
 
     #[recursion_guard]
-    fn else_stmt(&mut self) -> ParseResult<Option<Vec<Stmt<'stmt, 'expr>>>> {
+    fn else_stmt(&'ctx mut self) -> ParseResult<Option<Vec<&'ctx Stmt<'ctx>>>> {
         if self.peek()?.ty() == TokenType::Else {
             self.eat(TokenType::Else, [TokenType::Newline])?;
             self.eat(TokenType::Newline, [])?;

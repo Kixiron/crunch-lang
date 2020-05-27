@@ -1,16 +1,14 @@
 use crate::{
+    context::Context,
     error::{Error, ErrorHandler, Locatable, Location, ParseResult, SyntaxError},
-    interner::Interner,
     symbol_table::{Graph, MaybeSym, NodeId, Scope},
     token::{Token, TokenStream, TokenType},
 };
 
+use alloc::{format, vec::Vec};
+use core::mem;
 #[cfg(feature = "logging")]
 use log::{info, trace};
-use stadium::Stadium;
-
-use alloc::{format, vec::Vec};
-use core::{fmt, mem, num::NonZeroUsize};
 
 mod ast;
 mod expr;
@@ -27,46 +25,40 @@ pub use ast::{
     ImportDest, ImportExposure, Trait, TypeDecl, TypeMember, Visibility,
 };
 pub use expr::{
-    AssignmentType, BinaryOperand, ComparisonOperand, Expr, Expression, Float, Integer, Literal,
-    Rune, Sign, Text, UnaryOperand,
+    AssignmentType, BinaryOperand, ComparisonOperand, Expr, Float, Integer, Literal, Rune, Sign,
+    Text, UnaryOperand,
 };
 pub use patterns::{Binding, Pattern};
-pub use stmt::{Statement, Stmt};
+pub use stmt::Stmt;
 pub use types::{Signedness, Type};
-pub use utils::{CurrentFile, ItemPath, SyntaxTree};
+pub use utils::{CurrentFile, ItemPath};
 
 use utils::StackGuard;
 
-type ReturnData<'expr, 'stmt> = (
-    SyntaxTree<'expr, 'stmt>,
-    Interner,
-    ErrorHandler,
-    Graph<Scope, MaybeSym>,
-    NodeId,
-);
+type ReturnData<'ctx> = (ErrorHandler, Graph<Scope<'ctx>, MaybeSym>, NodeId);
 
 // TODO: Make the parser a little more lax, it's kinda strict about whitespace
 
-pub struct Parser<'src, 'expr, 'stmt> {
+#[derive(Debug)]
+pub struct Parser<'src, 'ctx> {
     token_stream: TokenStream<'src>,
     next: Option<Token<'src>>,
     peek: Option<Token<'src>>,
-
     error_handler: ErrorHandler,
     stack_frames: StackGuard,
     current_file: CurrentFile,
-
-    expr_arena: Stadium<'expr, Expression<'expr>>,
-    stmt_arena: Stadium<'stmt, Statement<'expr, 'stmt>>,
-
-    string_interner: Interner,
-    symbol_table: Graph<Scope, MaybeSym>,
+    context: &'ctx mut Context<'ctx>,
+    symbol_table: Graph<Scope<'ctx>, MaybeSym>,
     module_scope: NodeId,
 }
 
 /// Initialization and high-level usage
-impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
-    pub fn new(source: &'src str, current_file: CurrentFile, string_interner: Interner) -> Self {
+impl<'src, 'ctx> Parser<'src, 'ctx> {
+    pub fn new(
+        source: &'src str,
+        current_file: CurrentFile,
+        context: &'ctx mut Context<'ctx>,
+    ) -> Self {
         let (token_stream, next, peek) = Self::lex(source);
         let mut symbol_table = Graph::new();
         let module_scope = symbol_table
@@ -76,15 +68,10 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             token_stream,
             next,
             peek,
-
             error_handler: ErrorHandler::new(),
             stack_frames: StackGuard::new(),
             current_file,
-
-            expr_arena: Stadium::with_capacity(NonZeroUsize::new(512).unwrap()),
-            stmt_arena: Stadium::with_capacity(NonZeroUsize::new(512).unwrap()),
-
-            string_interner,
+            context,
             symbol_table,
             module_scope,
         }
@@ -95,7 +82,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         next: Option<Token<'src>>,
         peek: Option<Token<'src>>,
         current_file: CurrentFile,
-        string_interner: Interner,
+        context: &'ctx mut Context<'ctx>,
     ) -> Self {
         let mut symbol_table = Graph::new();
         let module_scope = symbol_table
@@ -105,21 +92,16 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             token_stream,
             next,
             peek,
-
             error_handler: ErrorHandler::new(),
             stack_frames: StackGuard::new(),
             current_file,
-
-            expr_arena: Stadium::with_capacity(NonZeroUsize::new(512).unwrap()),
-            stmt_arena: Stadium::with_capacity(NonZeroUsize::new(512).unwrap()),
-
-            string_interner,
+            context,
             symbol_table,
             module_scope,
         }
     }
 
-    pub fn parse(mut self) -> Result<ReturnData<'expr, 'stmt>, ErrorHandler> {
+    pub fn parse(&'ctx mut self) -> Result<ReturnData<'ctx>, ErrorHandler> {
         #[cfg(feature = "logging")]
         info!("Started parsing");
 
@@ -150,21 +132,9 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             }
         }
 
-        let ast = SyntaxTree {
-            ast,
-            __exprs: self.expr_arena,
-            __stmts: self.stmt_arena,
-        };
-
         #[cfg(feature = "logging")]
         info!("Finished parsing successfully");
-        Ok((
-            ast,
-            self.string_interner,
-            self.error_handler,
-            self.symbol_table,
-            self.module_scope,
-        ))
+        Ok((self.error_handler, self.symbol_table, self.module_scope))
     }
 
     pub fn lex(source: &'src str) -> (TokenStream<'src>, Option<Token<'src>>, Option<Token<'src>>) {
@@ -187,7 +157,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 }
 
 /// Utility functions
-impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
+impl<'src, 'ctx> Parser<'src, 'ctx> {
     #[inline(always)]
     fn next(&mut self) -> ParseResult<Token<'src>> {
         let mut next = self.token_stream.next_token();
@@ -318,19 +288,5 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         } else {
             Ok(guard)
         }
-    }
-}
-
-impl fmt::Debug for Parser<'_, '_, '_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Parser")
-            .field("token_stream", &self.token_stream)
-            .field("next", &self.next)
-            .field("peek", &self.peek)
-            .field("error_handler", &self.error_handler)
-            .field("stack_frames", &self.stack_frames)
-            .field("current_file", &self.current_file)
-            .field("string_interner", &self.string_interner)
-            .finish()
     }
 }

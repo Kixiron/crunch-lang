@@ -1,7 +1,7 @@
 use crate::{
+    context::StrT,
     error::Locatable,
-    interner::Spur,
-    parser::{Ast, EnumVariant, Expression, ItemPath, Statement, Type},
+    parser::{Ast, EnumVariant, Expr, ItemPath, Stmt, Type},
 };
 
 use alloc::vec::Vec;
@@ -23,41 +23,41 @@ cfg_if::cfg_if! {
 
 // TODO: Is `Type` actually resolvable?
 #[derive(Debug, Clone)]
-pub enum Scope {
+pub enum Scope<'ctx> {
     Type {
-        name: Spur,
-        members: HashMap<Spur, Type>,
+        name: StrT,
+        members: HashMap<StrT, &'ctx Type<'ctx>>,
     },
     Enum {
-        name: Spur,
-        variants: HashMap<Spur, Variant>,
+        name: StrT,
+        variants: HashMap<StrT, Variant<'ctx>>,
     },
     Alias {
-        alias: Type,
-        actual: Type,
+        alias: &'ctx Type<'ctx>,
+        actual: &'ctx Type<'ctx>,
     },
     Variable {
-        name: Spur,
-        ty: Type,
+        name: StrT,
+        ty: &'ctx Type<'ctx>,
     },
     Function {
-        name: Spur,
+        name: StrT,
         scope: NodeId,
-        params: Vec<(Spur, Type)>,
-        returns: Type,
+        params: Vec<(StrT, &'ctx Type<'ctx>)>,
+        returns: &'ctx Type<'ctx>,
     },
     Trait {
-        name: Spur,
-        methods: HashMap<Spur, MaybeSym>,
+        name: StrT,
+        methods: HashMap<StrT, MaybeSym>,
     },
     ExtendBlock {
-        target: Type,
-        extender: Option<Type>,
+        target: &'ctx Type<'ctx>,
+        extender: Option<&'ctx Type<'ctx>>,
     },
-    LocalScope(Vec<(Spur, Type)>, Vec<Scope>),
+    LocalScope(Vec<(StrT, &'ctx Type<'ctx>)>, Vec<Scope<'ctx>>),
 }
 
-impl Scope {
+impl<'ctx> Scope<'ctx> {
     pub const fn new() -> Self {
         Self::LocalScope(Vec::new(), Vec::new())
     }
@@ -66,14 +66,14 @@ impl Scope {
         Self::LocalScope(Vec::new(), Vec::with_capacity(capacity))
     }
 
-    pub fn name(&self) -> Spur {
+    pub fn name(&self) -> StrT {
         match self {
             Self::Function { name, .. } => *name,
             _ => todo!(),
         }
     }
 
-    pub fn vars_mut(&mut self) -> &mut Vec<(Spur, Type)> {
+    pub fn vars_mut<'a>(&'a mut self) -> &'a mut Vec<(StrT, &'ctx Type<'ctx>)> {
         if let Self::LocalScope(vars, ..) = self {
             vars
         } else {
@@ -82,14 +82,14 @@ impl Scope {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Variant {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Variant<'ctx> {
     Unit,
-    Tuple(Vec<Type>),
+    Tuple(Vec<&'ctx Type<'ctx>>),
 }
 
-impl From<&EnumVariant<'_>> for (Spur, Variant) {
-    fn from(variant: &EnumVariant) -> Self {
+impl<'ctx> From<&EnumVariant<'ctx>> for (StrT, Variant<'ctx>) {
+    fn from(variant: &EnumVariant<'ctx>) -> Self {
         match variant {
             EnumVariant::Unit { name, .. } => (*name, Variant::Unit),
             EnumVariant::Tuple { name, elements, .. } => (
@@ -100,8 +100,8 @@ impl From<&EnumVariant<'_>> for (Spur, Variant) {
     }
 }
 
-impl From<&Locatable<EnumVariant<'_>>> for (Spur, Variant) {
-    fn from(variant: &Locatable<EnumVariant<'_>>) -> Self {
+impl<'ctx> From<&Locatable<EnumVariant<'ctx>>> for (StrT, Variant<'ctx>) {
+    fn from(variant: &Locatable<EnumVariant<'ctx>>) -> Self {
         variant.deref().into()
     }
 }
@@ -109,7 +109,7 @@ impl From<&Locatable<EnumVariant<'_>>> for (Spur, Variant) {
 // TODO: Think this through a bit more
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum MaybeSym {
-    Unresolved(Spur),
+    Unresolved(StrT),
     Resolved(NodeId),
 }
 
@@ -119,8 +119,8 @@ impl From<NodeId> for MaybeSym {
     }
 }
 
-impl From<Spur> for MaybeSym {
-    fn from(name: Spur) -> Self {
+impl From<StrT> for MaybeSym {
+    fn from(name: StrT) -> Self {
         Self::Unresolved(name)
     }
 }
@@ -183,8 +183,8 @@ impl<T, L> Graph<T, L> {
     }
 }
 
-impl Graph<Scope, MaybeSym> {
-    pub fn push_ast(&mut self, id: NodeId, node: &Ast<'_, '_>) {
+impl<'ctx> Graph<Scope<'ctx>, MaybeSym> {
+    pub fn push_ast(&mut self, id: NodeId, node: &'ctx Ast<'ctx>) {
         match node {
             Ast::Function(func) => {
                 // TODO: All fields
@@ -226,7 +226,7 @@ impl Graph<Scope, MaybeSym> {
                 // TODO: All fields
                 let enum_scope = Scope::Enum {
                     name: enu.name,
-                    variants: HashMap::from_iter(enu.variants.iter().map(<(Spur, Variant)>::from)),
+                    variants: HashMap::from_iter(enu.variants.iter().map(<(StrT, Variant)>::from)),
                 };
 
                 let node = self.push(enum_scope);
@@ -259,8 +259,8 @@ impl Graph<Scope, MaybeSym> {
             // TODO: How do I connect these to their implementors?
             Ast::ExtendBlock(block) => {
                 let block_scope = Scope::ExtendBlock {
-                    target: block.target.deref().clone(),
-                    extender: block.extender.as_ref().map(|t| t.deref().clone()),
+                    target: block.target.deref(),
+                    extender: block.extender.map(|t| *t.deref()),
                 };
 
                 let node = self.push(block_scope);
@@ -269,8 +269,8 @@ impl Graph<Scope, MaybeSym> {
 
             Ast::Alias(alias) => {
                 let alias_scope = Scope::Alias {
-                    alias: alias.alias.deref().clone(),
-                    actual: alias.actual.deref().clone(),
+                    alias: alias.alias.deref(),
+                    actual: alias.actual.deref(),
                 };
 
                 let node = self.push(alias_scope);
@@ -279,9 +279,9 @@ impl Graph<Scope, MaybeSym> {
         }
     }
 
-    fn push_stmt(&mut self, parent: NodeId, stmt: &Statement<'_, '_>) {
+    fn push_stmt(&mut self, parent: NodeId, stmt: &'ctx Stmt<'ctx>) {
         match stmt {
-            Statement::If {
+            Stmt::If {
                 condition,
                 body,
                 clauses,
@@ -317,9 +317,9 @@ impl Graph<Scope, MaybeSym> {
                 }
             }
 
-            Statement::Expression(expr) => self.push_expr(parent, expr),
+            Stmt::Expr(expr) => self.push_expr(parent, expr),
 
-            Statement::VarDeclaration {
+            Stmt::VarDeclaration {
                 name,
                 ty,
                 val,
@@ -332,20 +332,20 @@ impl Graph<Scope, MaybeSym> {
                 self.push_expr(parent, val);
             }
 
-            Statement::Return(ret) => {
+            Stmt::Return(ret) => {
                 if let Some(ret) = ret {
                     self.push_expr(parent, &*ret);
                 }
             }
-            Statement::Break(brk) => {
+            Stmt::Break(brk) => {
                 if let Some(brk) = brk {
                     self.push_expr(parent, &brk);
                 }
             }
-            Statement::Continue => {}
-            Statement::Empty => {}
+            Stmt::Continue => {}
+            Stmt::Empty => {}
 
-            Statement::While {
+            Stmt::While {
                 condition,
                 body,
                 then,
@@ -379,7 +379,7 @@ impl Graph<Scope, MaybeSym> {
                 }
             }
 
-            Statement::Loop { body, else_clause } => {
+            Stmt::Loop { body, else_clause } => {
                 let body_scope = self.push(Scope::new());
                 self.add_child(parent, body_scope).unwrap();
 
@@ -397,7 +397,7 @@ impl Graph<Scope, MaybeSym> {
                 }
             }
 
-            Statement::For {
+            Stmt::For {
                 var,
                 condition,
                 body,
@@ -433,7 +433,7 @@ impl Graph<Scope, MaybeSym> {
                 }
             }
 
-            Statement::Match { var, arms } => {
+            Stmt::Match { var, arms } => {
                 self.push_expr(parent, var);
 
                 for (_bind, clause, body) in arms {
@@ -458,7 +458,7 @@ impl Graph<Scope, MaybeSym> {
         }
     }
 
-    fn push_expr(&mut self, _parent: NodeId, _expr: &Expression<'_>) {}
+    fn push_expr(&mut self, _parent: NodeId, _expr: &'ctx Expr<'ctx>) {}
 }
 
 impl<T: fmt::Debug, L: fmt::Debug> fmt::Debug for Graph<T, L> {
@@ -528,8 +528,8 @@ impl<T, L> Node<T, L> {
     }
 }
 
-impl Node<Scope, MaybeSym> {
-    pub fn resolve(&self, graph: &Graph<Scope, MaybeSym>, name: Spur) -> Option<ItemPath> {
+impl<'ctx> Node<Scope<'ctx>, MaybeSym> {
+    pub fn resolve(&self, graph: &Graph<Scope, MaybeSym>, name: StrT) -> Option<ItemPath> {
         if let Some(item) = self
             .children
             .iter()

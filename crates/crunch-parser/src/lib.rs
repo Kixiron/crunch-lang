@@ -10,9 +10,9 @@
 
 extern crate alloc;
 
+mod context;
 pub mod error;
 pub mod files;
-mod interner;
 pub mod parser;
 mod pretty_printer;
 pub mod symbol_table;
@@ -20,9 +20,9 @@ pub mod symbol_table;
 mod tests;
 mod token;
 
+pub use context::{Context, StrT};
 pub use error::ErrorHandler;
 pub use files::{FileId, Files};
-pub use interner::{Interner, Spur};
-pub use parser::{CurrentFile, Parser, SyntaxTree};
+pub use parser::{CurrentFile, Parser};
 pub use pretty_printer::PrettyPrinter;
 pub use symbol_table::{Graph, Node, NodeId, Scope};

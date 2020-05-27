@@ -1,22 +1,19 @@
 //! Regression tests for found crashes
 
-use super::{CurrentFile, ErrorHandler, FileId, Interner, Parser, SyntaxTree};
-use crate::symbol_table::{Graph, MaybeSym, NodeId, Scope};
+use super::{CurrentFile, ErrorHandler, FileId, Parser};
+use crate::{
+    symbol_table::{Graph, MaybeSym, NodeId, Scope},
+    Context,
+};
 
-fn run(
-    src: &str,
-) -> Result<
-    (
-        SyntaxTree,
-        Interner,
-        ErrorHandler,
-        Graph<Scope, MaybeSym>,
-        NodeId,
-    ),
-    ErrorHandler,
-> {
+fn run(src: &str) -> Result<(ErrorHandler, Graph<Scope, MaybeSym>, NodeId), ErrorHandler> {
     // let _ = simple_logger::init();
-    Parser::new(src, CurrentFile::new(FileId::new(0), 0), Interner::new()).parse()
+    Parser::new(
+        src,
+        CurrentFile::new(FileId::new(0), 0),
+        &mut Context::new(),
+    )
+    .parse()
 }
 
 #[test]

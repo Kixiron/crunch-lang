@@ -1,11 +1,10 @@
 use crate::{
+    context::{Context, StrT},
     error::{Error, Locatable, Location, ParseResult, Span, SyntaxError},
-    interner::Interner,
     parser::{CurrentFile, Integer, ItemPath, Literal, Parser},
     token::{Token, TokenType},
 };
 use alloc::{
-    boxed::Box,
     format,
     string::{String, ToString},
     vec,
@@ -13,24 +12,25 @@ use alloc::{
 };
 use core::{convert::TryFrom, fmt};
 use crunch_proc::recursion_guard;
-use lasso::Spur;
 #[cfg(test)]
 use serde::{Deserialize, Serialize};
 
-type PrefixParselet<'src, 'expr, 'stmt> =
-    fn(&mut Parser<'src, 'expr, 'stmt>, Token<'src>) -> ParseResult<Locatable<Type>>;
-type PostfixParselet<'src, 'expr, 'stmt> = fn(
-    &mut Parser<'src, 'expr, 'stmt>,
-    Token<'src>,
-    Locatable<Type>,
-) -> ParseResult<Locatable<Type>>;
-type InfixParselet<'src, 'expr, 'stmt> = fn(
-    &mut Parser<'src, 'expr, 'stmt>,
-    Token<'src>,
-    Locatable<Type>,
-) -> ParseResult<Locatable<Type>>;
+type PrefixParselet<'src, 'ctx> =
+    fn(&'ctx mut Parser<'src, 'ctx>, Token<'src>) -> ParseResult<Locatable<&'ctx Type<'ctx>>>;
 
-impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
+type PostfixParselet<'src, 'ctx> = fn(
+    &'ctx mut Parser<'src, 'ctx>,
+    Token<'src>,
+    Locatable<&'ctx Type<'ctx>>,
+) -> ParseResult<Locatable<&'ctx Type<'ctx>>>;
+
+type InfixParselet<'src, 'ctx> = fn(
+    &'ctx mut Parser<'src, 'ctx>,
+    Token<'src>,
+    Locatable<&'ctx Type<'ctx>>,
+) -> ParseResult<Locatable<&'ctx Type<'ctx>>>;
+
+impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// ```ebnf
     /// Type ::=
     ///     'str' | 'rune' | 'bool' | 'unit' | 'absurd'
@@ -51,7 +51,7 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
     /// ```
     // TODO: Decide about `Self` and `self`
     #[recursion_guard]
-    pub(super) fn ascribed_type(&mut self) -> ParseResult<Locatable<Type>> {
+    pub(super) fn ascribed_type(&'ctx mut self) -> ParseResult<Locatable<&'ctx Type<'ctx>>> {
         self.ascribed_type_internal(0)
     }
 
@@ -67,7 +67,10 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
     }
 
     #[recursion_guard]
-    fn ascribed_type_internal(&mut self, precedence: usize) -> ParseResult<Locatable<Type>> {
+    fn ascribed_type_internal(
+        &'ctx mut self,
+        precedence: usize,
+    ) -> ParseResult<Locatable<&'ctx Type<'ctx>>> {
         let mut token = self.next()?;
 
         let prefix = Self::type_prefix(token.ty());
@@ -105,7 +108,7 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
         }
     }
 
-    fn type_prefix(ty: TokenType) -> Option<PrefixParselet<'src, 'expr, 'stmt>> {
+    fn type_prefix(ty: TokenType) -> Option<PrefixParselet<'src, 'ctx>> {
         let prefix: PrefixParselet = match ty {
             // Types and builtins
             TokenType::Ident => |parser, token| {
@@ -162,7 +165,7 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
                             .eat(TokenType::RightBrace, [TokenType::Newline])?
                             .span();
 
-                        (Type::Array(len, Box::new(ty)), Some(end))
+                        (Type::Array(len, ty), Some(end))
                     }
 
                     "slice" => {
@@ -172,7 +175,7 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
                             .eat(TokenType::RightBrace, [TokenType::Newline])?
                             .span();
 
-                        (Type::Slice(Box::new(ty)), Some(end))
+                        (Type::Slice(ty), Some(end))
                     }
 
                     "tup" => {
@@ -269,7 +272,7 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
                     }
 
                     custom => {
-                        let custom = parser.string_interner.intern(custom);
+                        let custom = parser.context.intern(custom);
                         let path = parser.item_path(custom)?;
 
                         if parser.peek().map(|t| t.ty()) == Ok(TokenType::LeftBrace) {
@@ -301,6 +304,8 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
                     }
                 };
 
+                let ty = parser.context.store(ty);
+
                 Ok(Locatable::new(
                     ty,
                     Location::concrete(
@@ -314,11 +319,11 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
             TokenType::Bang => |parser, bang| {
                 let _frame = parser.add_stack_frame()?;
 
-                let ty = Box::new(parser.ascribed_type()?);
+                let ty = parser.ascribed_type()?;
                 let end = ty.span();
 
                 Ok(Locatable::new(
-                    Type::Not(ty),
+                    parser.context.store(Type::Not(ty)),
                     Location::concrete(Span::merge(bang.span(), end), parser.current_file),
                 ))
             },
@@ -327,7 +332,8 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
             TokenType::LeftParen => |parser, paren| {
                 let _frame = parser.add_stack_frame()?;
 
-                let ty = Type::Parenthesised(Box::new(parser.ascribed_type()?));
+                let ty = parser.ascribed_type()?;
+                let ty = parser.context.store(Type::Parenthesised(ty));
                 let end = parser
                     .eat(TokenType::RightParen, [TokenType::Newline])?
                     .span();
@@ -361,16 +367,16 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
                     parser.ascribed_type()?
                 } else {
                     Locatable::new(
-                        Type::Infer,
+                        parser.context.store(Type::Infer),
                         Location::implicit(Span::merge(func.span(), end), parser.current_file),
                     )
                 };
                 let end = returns.span();
 
-                let ty = Type::Function {
+                let ty = parser.context.store(Type::Function {
                     params,
-                    returns: Box::new(returns),
-                };
+                    returns: returns,
+                });
 
                 Ok(Locatable::new(
                     ty,
@@ -404,7 +410,7 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
                 let end = parser.eat(TokenType::RightBrace, [])?.span();
 
                 Ok(Locatable::new(
-                    Type::TraitObj(types),
+                    parser.context.store(Type::TraitObj(types)),
                     Location::concrete(Span::merge(ty.span(), end), parser.current_file),
                 ))
             },
@@ -414,7 +420,7 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
                 let _frame = parser.add_stack_frame()?;
 
                 let ident = parser.eat(TokenType::Ident, [TokenType::Newline])?;
-                let ident = parser.string_interner.intern(ident.source());
+                let ident = parser.context.intern(ident.source());
 
                 let ty = if parser.peek()?.ty() == TokenType::Colon {
                     parser.eat(TokenType::Colon, [])?;
@@ -422,14 +428,14 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
                     parser.ascribed_type()?
                 } else {
                     Locatable::new(
-                        Type::Infer,
+                        parser.context.store(Type::Infer),
                         Location::implicit(cons.span(), parser.current_file),
                     )
                 };
                 let end = ty.span();
 
                 Ok(Locatable::new(
-                    Type::Const(ident, Box::new(ty)),
+                    parser.context.store(Type::Const(ident, ty)),
                     Location::concrete(Span::merge(cons.span(), end), parser.current_file),
                 ))
             },
@@ -440,11 +446,11 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
         Some(prefix)
     }
 
-    fn type_postfix(_ty: TokenType) -> Option<PostfixParselet<'src, 'expr, 'stmt>> {
+    fn type_postfix(_ty: TokenType) -> Option<PostfixParselet<'src, 'ctx>> {
         None
     }
 
-    fn type_infix(ty: TokenType) -> Option<InfixParselet<'src, 'expr, 'stmt>> {
+    fn type_infix(ty: TokenType) -> Option<InfixParselet<'src, 'ctx>> {
         let infix: InfixParselet = match ty {
             TokenType::Ampersand | TokenType::Pipe => |parser, operand, left| {
                 let _frame = parser.add_stack_frame()?;
@@ -454,11 +460,11 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
                 let start = left.span();
                 let end = right.span();
 
-                let ty = Type::Operand(
-                    Box::new(left),
+                let ty = parser.context.store(Type::Operand(
+                    left,
                     TypeOperand::try_from((&operand, parser.current_file))?,
-                    Box::new(right),
-                );
+                    right,
+                ));
 
                 Ok(Locatable::new(
                     ty,
@@ -489,20 +495,24 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
 }
 
 #[cfg_attr(test, derive(Deserialize, Serialize))]
-#[derive(Debug, Clone, PartialEq)]
-pub enum Type {
-    Operand(Box<Locatable<Type>>, TypeOperand, Box<Locatable<Type>>),
-    Const(Spur, Box<Locatable<Type>>),
-    Not(Box<Locatable<Type>>),
-    Parenthesised(Box<Locatable<Type>>),
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Type<'ctx> {
+    Operand(
+        Locatable<&'ctx Type<'ctx>>,
+        TypeOperand,
+        Locatable<&'ctx Type<'ctx>>,
+    ),
+    Const(StrT, Locatable<&'ctx Type<'ctx>>),
+    Not(Locatable<&'ctx Type<'ctx>>),
+    Parenthesised(Locatable<&'ctx Type<'ctx>>),
     Function {
-        params: Vec<Locatable<Type>>,
-        returns: Box<Locatable<Type>>,
+        params: Vec<Locatable<&'ctx Type<'ctx>>>,
+        returns: Locatable<&'ctx Type<'ctx>>,
     },
-    TraitObj(Vec<Locatable<Type>>),
+    TraitObj(Vec<Locatable<&'ctx Type<'ctx>>>),
     Bounded {
         path: ItemPath,
-        bounds: Vec<Locatable<Type>>,
+        bounds: Vec<Locatable<&'ctx Type<'ctx>>>,
     },
     ItemPath(ItemPath),
     Infer,
@@ -520,12 +530,12 @@ pub enum Type {
     Rune,
     Unit,
     Absurd,
-    Array(u128, Box<Locatable<Type>>),
-    Slice(Box<Locatable<Type>>),
-    Tuple(Vec<Locatable<Type>>),
+    Array(u128, Locatable<&'ctx Type<'ctx>>),
+    Slice(Locatable<&'ctx Type<'ctx>>),
+    Tuple(Vec<Locatable<&'ctx Type<'ctx>>>),
 }
 
-impl Type {
+impl<'ctx> Type<'ctx> {
     pub fn internal_types(&self) -> Vec<ItemPath> {
         let mut buf = Vec::with_capacity(1);
         self.internal_types_inner(&mut buf);
@@ -570,54 +580,54 @@ impl Type {
         }
     }
 
-    pub fn to_string(&self, interner: &Interner) -> String {
+    pub fn to_string(&self, context: &'ctx Context<'ctx>) -> String {
         match self {
             Self::Infer => "infer".to_string(),
-            Self::Not(ty) => format!("!{}", ty.to_string(interner)),
-            Self::Parenthesised(ty) => format!("({})", ty.to_string(interner)),
+            Self::Not(ty) => format!("!{}", ty.to_string(context)),
+            Self::Parenthesised(ty) => format!("({})", ty.to_string(context)),
             Self::Const(ident, ty) => format!(
                 "const {}: {}",
-                interner.resolve(ident),
-                ty.to_string(interner)
+                context.resolve(*ident),
+                ty.to_string(context)
             ),
             Self::Operand(left, op, right) => format!(
                 "{} {} {}",
-                left.to_string(interner),
+                left.to_string(context),
                 op,
-                right.to_string(interner)
+                right.to_string(context)
             ),
             Self::Function { params, returns } => format!(
                 "fn({}) -> {}",
                 params
                     .iter()
-                    .map(|ty| ty.to_string(interner))
+                    .map(|ty| ty.to_string(context))
                     .collect::<Vec<String>>()
                     .join(", "),
-                returns.to_string(interner)
+                returns.to_string(context)
             ),
             Self::TraitObj(traits) => format!(
                 "type[{}]",
                 traits
                     .iter()
-                    .map(|ty| ty.to_string(interner))
+                    .map(|ty| ty.to_string(context))
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
             Self::Bounded { path, bounds } => format!(
                 "{}[{}]",
                 path.iter()
-                    .map(|seg| interner.resolve(seg))
+                    .map(|seg| context.resolve(*seg))
                     .collect::<Vec<&str>>()
                     .join("."),
                 bounds
                     .iter()
-                    .map(|ty| ty.to_string(interner))
+                    .map(|ty| ty.to_string(context))
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
             Self::ItemPath(path) => path
                 .iter()
-                .map(|seg| interner.resolve(seg))
+                .map(|seg| context.resolve(*seg))
                 .collect::<Vec<&str>>()
                 .join("."),
             Self::Integer { sign, width } => format!(
@@ -648,13 +658,13 @@ impl Type {
             Self::Rune => "rune".to_string(),
             Self::Unit => "unit".to_string(),
             Self::Absurd => "absurd".to_string(),
-            Self::Array(len, ty) => format!("arr[{}, {}]", len, ty.to_string(interner)),
-            Self::Slice(ty) => format!("slice{}]", ty.to_string(interner)),
+            Self::Array(len, ty) => format!("arr[{}, {}]", len, ty.to_string(context)),
+            Self::Slice(ty) => format!("slice{}]", ty.to_string(context)),
             Self::Tuple(types) => format!(
                 "tup[{}]",
                 types
                     .iter()
-                    .map(|ty| ty.to_string(interner))
+                    .map(|ty| ty.to_string(context))
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
@@ -662,14 +672,14 @@ impl Type {
     }
 }
 
-impl Default for Type {
+impl<'ctx> Default for Type<'ctx> {
     fn default() -> Self {
         Self::Infer
     }
 }
 
 #[cfg_attr(test, derive(Deserialize, Serialize))]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum TypeOperand {
     And,
     Or,
@@ -709,7 +719,7 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for TypeOperand {
 }
 
 #[cfg_attr(test, derive(Deserialize, Serialize))]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Signedness {
     Unsigned,
     Signed,
@@ -774,15 +784,15 @@ mod tests {
             ("uptr", Type::IntPtr(Signedness::Unsigned)),
             ("iptr", Type::IntPtr(Signedness::Signed)),
         ];
-        let string_interner = Interner::new();
+        let mut context = Context::new();
 
         for (src, correct) in types.iter() {
             let current_file = CurrentFile::new(FileId::new(0), src.len());
-            let ty = Parser::new(src, current_file, string_interner.clone())
+            let ty = Parser::new(src, current_file, &mut context)
                 .ascribed_type()
                 .unwrap();
 
-            assert_eq!(&*ty, correct);
+            assert_eq!(&*ty, &correct);
         }
     }
 
@@ -820,15 +830,15 @@ mod tests {
             ("f0", Type::Float { width: 0 }),
             ("f65535", Type::Float { width: 65535 }),
         ];
-        let string_interner = Interner::new();
+        let mut context = Context::new();
 
         for (src, correct) in types.iter() {
             let current_file = CurrentFile::new(FileId::new(0), src.len());
-            let ty = Parser::new(src, current_file, string_interner.clone())
+            let ty = Parser::new(src, current_file, &mut context)
                 .ascribed_type()
                 .unwrap();
 
-            assert_eq!(&*ty, correct);
+            assert_eq!(&*ty, &correct);
         }
     }
 
@@ -850,15 +860,15 @@ mod tests {
                 })),
             ),
         ];
-        let string_interner = Interner::new();
+        let mut context = Context::new();
 
         for (src, correct) in types.iter() {
             let current_file = CurrentFile::new(FileId::new(0), src.len());
-            let ty = Parser::new(src, current_file, string_interner.clone())
+            let ty = Parser::new(src, current_file, &mut context)
                 .ascribed_type()
                 .unwrap();
 
-            assert_eq!(&*ty, correct);
+            assert_eq!(&*ty, &correct);
         }
     }
 
@@ -880,59 +890,60 @@ mod tests {
                 })),
             ),
         ];
-        let string_interner = Interner::new();
+        let mut context = Context::new();
 
         for (src, correct) in types.iter() {
             let current_file = CurrentFile::new(FileId::new(0), src.len());
-            let ty = Parser::new(src, current_file, string_interner.clone())
+            let ty = Parser::new(src, current_file, &mut context)
                 .ascribed_type()
                 .unwrap();
 
-            assert_eq!(&*ty, correct);
+            assert_eq!(&*ty, &correct);
         }
     }
 
     #[test]
     fn operands() {
+        let mut context = Context::new();
+
         let types = [
             (
                 "str & rune",
                 Type::Operand(
-                    Box::new(Locatable {
-                        data: Type::String,
+                    Locatable {
+                        data: context.store(Type::String),
                         loc: Location::concrete(Span::from(0..3), FileId::new(0)),
-                    }),
+                    },
                     TypeOperand::And,
-                    Box::new(Locatable {
-                        data: Type::Rune,
+                    Locatable {
+                        data: context.store(Type::Rune),
                         loc: Location::concrete(Span::from(6..10), FileId::new(0)),
-                    }),
+                    },
                 ),
             ),
             (
                 "str | rune",
                 Type::Operand(
-                    Box::new(Locatable {
-                        data: Type::String,
+                    Locatable {
+                        data: context.store(Type::String),
                         loc: Location::concrete(Span::from(0..3), FileId::new(0)),
-                    }),
+                    },
                     TypeOperand::Or,
-                    Box::new(Locatable {
-                        data: Type::Rune,
+                    Locatable {
+                        data: context.store(Type::Rune),
                         loc: Location::concrete(Span::from(6..10), FileId::new(0)),
-                    }),
+                    },
                 ),
             ),
         ];
-        let string_interner = Interner::new();
 
         for (src, correct) in types.iter() {
             let current_file = CurrentFile::new(FileId::new(0), src.len());
-            let ty = Parser::new(src, current_file, string_interner.clone())
+            let ty = Parser::new(src, current_file, &mut context)
                 .ascribed_type()
                 .unwrap();
 
-            assert_eq!(&*ty, correct);
+            assert_eq!(&*ty, &correct);
         }
     }
 
@@ -944,7 +955,7 @@ mod tests {
         proptest! {
             #[test]
             fn int_types(s in r#"i[0-9]+"#) {
-                let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), Interner::default());
+                let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &mut Context::default());
 
                 let ty = parser.ascribed_type();
                 match ty.as_ref().map(|t| &**t) {
@@ -957,7 +968,7 @@ mod tests {
 
             #[test]
             fn uint_types(s in r#"u[0-9]+"#) {
-                let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), Interner::default());
+                let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &mut Context::default());
 
                 let ty = parser.ascribed_type();
                 match ty.as_ref().map(|t| &**t) {
@@ -970,7 +981,7 @@ mod tests {
 
             #[test]
             fn float(s in r#"f[0-9]+"#) {
-                let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), Interner::default());
+                let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &mut Context::default());
 
                 let ty = parser.ascribed_type();
                 match ty.as_ref().map(|t| &**t) {

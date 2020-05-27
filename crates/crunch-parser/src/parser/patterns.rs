@@ -1,4 +1,5 @@
 use crate::{
+    context::StrT,
     error::{Locatable, ParseResult},
     parser::{ItemPath, Literal, Parser, Type},
     token::TokenType,
@@ -6,17 +7,16 @@ use crate::{
 
 use core::convert::TryFrom;
 use crunch_proc::recursion_guard;
-use lasso::Spur;
 #[cfg(test)]
 use serde::Serialize;
 
-impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
+impl<'src, 'ctx> Parser<'src, 'ctx> {
     // TODO: Binding via patterns
     /// ```ebnf
     /// Binding ::= 'ref'? 'mut'? Pattern (':' Type)?
     /// ```
     #[recursion_guard]
-    pub(super) fn binding(&mut self) -> ParseResult<Binding> {
+    pub(super) fn binding(&'ctx mut self) -> ParseResult<Binding<'ctx>> {
         let (mut reference, mut mutable) = (false, false);
         match self.peek()?.ty() {
             TokenType::Ref => {
@@ -57,7 +57,7 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
     /// Pattern ::= Literal | Ident | ItemPath
     /// ```
     #[recursion_guard]
-    fn pattern(&mut self) -> ParseResult<Pattern> {
+    fn pattern(&'ctx mut self) -> ParseResult<Pattern> {
         let token = self.eat_of(
             [
                 TokenType::Ident,
@@ -78,7 +78,7 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
             | TokenType::Rune => Pattern::Literal(Literal::try_from((&token, self.current_file))?),
 
             TokenType::Ident => {
-                let ident = self.string_interner.intern(token.source);
+                let ident = self.context.intern(token.source);
 
                 if self.peek().map(|t| t.ty()) == Ok(TokenType::Dot) {
                     Pattern::ItemPath(self.item_path(ident)?)
@@ -95,20 +95,20 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
 }
 
 #[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Clone, PartialEq)]
-pub struct Binding {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Binding<'ctx> {
     // TODO: Enum for mutability/referential status?
     pub reference: bool,
     pub mutable: bool,
     pub pattern: Pattern,
-    pub ty: Option<Locatable<Type>>,
+    pub ty: Option<Locatable<&'ctx Type<'ctx>>>,
 }
 
 // TODO: More patterns
 #[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Pattern {
     Literal(Literal),
-    Ident(Spur),
+    Ident(StrT),
     ItemPath(ItemPath),
 }

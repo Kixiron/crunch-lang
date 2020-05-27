@@ -73,6 +73,7 @@
 - [ ] Allow one-liner match arms delimited by commas
 - [ ] Effects?
 - [ ] Annotate *all* parse functions with grammar rules
+- [ ] Split Pratt sub-functions into methods on `Parser`
 
 ## AST -> HIR
 

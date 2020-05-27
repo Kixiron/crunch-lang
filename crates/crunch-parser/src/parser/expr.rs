@@ -1,4 +1,5 @@
 use crate::{
+    context::StrT,
     error::{Error, Locatable, Location, ParseResult, SyntaxError},
     parser::{string_escapes, CurrentFile, Parser},
     token::{Token, TokenType},
@@ -10,47 +11,43 @@ use alloc::{
 };
 use core::{convert::TryFrom, fmt, iter::FromIterator};
 use crunch_proc::recursion_guard;
-use lasso::Spur;
 #[cfg(test)]
 use serde::Serialize;
-use stadium::Ticket;
-
-pub type Expr<'expr> = Ticket<'expr, Expression<'expr>>;
 
 #[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Clone, PartialEq)]
-pub enum Expression<'expr> {
-    Variable(Spur),
-    UnaryExpr(UnaryOperand, Expr<'expr>),
-    BinaryOp(Expr<'expr>, BinaryOperand, Expr<'expr>),
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Expr<'ctx> {
+    Variable(StrT),
+    UnaryExpr(UnaryOperand, &'ctx Expr<'ctx>),
+    BinaryOp(&'ctx Expr<'ctx>, BinaryOperand, &'ctx Expr<'ctx>),
     InlineConditional {
-        true_arm: Expr<'expr>,
-        condition: Expr<'expr>,
-        false_arm: Expr<'expr>,
+        true_arm: &'ctx Expr<'ctx>,
+        condition: &'ctx Expr<'ctx>,
+        false_arm: &'ctx Expr<'ctx>,
     },
-    Parenthesised(Expr<'expr>),
+    Parenthesised(&'ctx Expr<'ctx>),
     FunctionCall {
-        caller: Expr<'expr>,
-        arguments: Vec<Expr<'expr>>,
+        caller: &'ctx Expr<'ctx>,
+        arguments: Vec<&'ctx Expr<'ctx>>,
     },
     MemberFunctionCall {
-        member: Expr<'expr>,
-        function: Expr<'expr>,
+        member: &'ctx Expr<'ctx>,
+        function: &'ctx Expr<'ctx>,
     },
     Literal(Literal),
-    Comparison(Expr<'expr>, ComparisonOperand, Expr<'expr>),
+    Comparison(&'ctx Expr<'ctx>, ComparisonOperand, &'ctx Expr<'ctx>),
     IndexArray {
-        array: Expr<'expr>,
-        index: Expr<'expr>,
+        array: &'ctx Expr<'ctx>,
+        index: &'ctx Expr<'ctx>,
     },
-    Array(Vec<Expr<'expr>>),
-    Tuple(Vec<Expr<'expr>>),
-    Assignment(Expr<'expr>, AssignmentType, Expr<'expr>),
-    Range(Expr<'expr>, Expr<'expr>),
+    Array(Vec<&'ctx Expr<'ctx>>),
+    Tuple(Vec<&'ctx Expr<'ctx>>),
+    Assignment(&'ctx Expr<'ctx>, AssignmentType, &'ctx Expr<'ctx>),
+    Range(&'ctx Expr<'ctx>, &'ctx Expr<'ctx>),
 }
 
 #[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum AssignmentType {
     Normal,
     BinaryOp(BinaryOperand),
@@ -108,7 +105,7 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for AssignmentType {
 }
 
 #[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum ComparisonOperand {
     Equal,
     NotEqual,
@@ -158,7 +155,7 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for ComparisonOperand {
 }
 
 #[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Literal {
     Integer(Integer),
     Bool(bool),
@@ -199,7 +196,7 @@ impl fmt::Display for Literal {
 }
 
 #[cfg_attr(test, derive(Serialize))]
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct Text(Vec<Rune>);
 
@@ -248,7 +245,7 @@ impl From<&str> for Text {
 }
 
 #[cfg_attr(test, derive(Serialize))]
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct Rune(u32);
 
@@ -301,7 +298,7 @@ impl fmt::Display for Rune {
 }
 
 #[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Integer {
     pub sign: Sign,
     pub bits: u128,
@@ -314,7 +311,7 @@ impl fmt::Display for Integer {
 }
 
 #[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Sign {
     Positive,
     Negative,
@@ -340,18 +337,13 @@ impl fmt::Display for Sign {
 }
 
 #[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub enum Float {
-    F32(f32),
-    F64(f64),
-}
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub struct Float(u64);
 
 impl fmt::Display for Float {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::F32(fl) => write!(f, "{}", fl),
-            Self::F64(fl) => write!(f, "{}", fl),
-        }
+        write!(f, "{}", f64::from_bits(self.0))
     }
 }
 
@@ -366,9 +358,9 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for Literal {
         match token.ty() {
             TokenType::Float => {
                 if token.source() == "inf" {
-                    return Ok(Literal::Float(Float::F64(core::f64::INFINITY)));
+                    return Ok(Literal::Float(Float(f64::to_bits(core::f64::INFINITY))));
                 } else if token.source() == "NaN" {
-                    return Ok(Literal::Float(Float::F64(core::f64::NAN)));
+                    return Ok(Literal::Float(Float(f64::to_bits(core::f64::NAN))));
                 }
 
                 let negative = if chars.get(0).copied() == Some('-') {
@@ -439,7 +431,7 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for Literal {
                     float = -float;
                 }
 
-                Ok(Literal::Float(Float::F64(float)))
+                Ok(Literal::Float(Float(f64::to_bits(float))))
             }
 
             TokenType::Rune => {
@@ -607,7 +599,7 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for Literal {
 }
 
 #[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum BinaryOperand {
     Add,
     Sub,
@@ -653,7 +645,7 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for BinaryOperand {
 }
 
 #[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum UnaryOperand {
     Positive,
     Negative,
@@ -682,18 +674,24 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for UnaryOperand {
     }
 }
 
-type PrefixParselet<'src, 'expr, 'stmt> =
-    fn(&mut Parser<'src, 'expr, 'stmt>, Token<'src>) -> ParseResult<Expr<'expr>>;
-type PostfixParselet<'src, 'expr, 'stmt> =
-    fn(&mut Parser<'src, 'expr, 'stmt>, Token<'src>, Expr<'expr>) -> ParseResult<Expr<'expr>>;
-type InfixParselet<'src, 'expr, 'stmt> =
-    fn(&mut Parser<'src, 'expr, 'stmt>, Token<'src>, Expr<'expr>) -> ParseResult<Expr<'expr>>;
+type PrefixParselet<'src, 'ctx> =
+    fn(&'ctx mut Parser<'src, 'ctx>, Token<'src>) -> ParseResult<&'ctx Expr<'ctx>>;
+type PostfixParselet<'src, 'ctx> = fn(
+    &'ctx mut Parser<'src, 'ctx>,
+    Token<'src>,
+    &'ctx Expr<'ctx>,
+) -> ParseResult<&'ctx Expr<'ctx>>;
+type InfixParselet<'src, 'ctx> = fn(
+    &'ctx mut Parser<'src, 'ctx>,
+    Token<'src>,
+    &'ctx Expr<'ctx>,
+) -> ParseResult<&'ctx Expr<'ctx>>;
 
-/// Expression Parsing
-impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
+/// Expr Parsing
+impl<'src, 'ctx> Parser<'src, 'ctx> {
     #[recursion_guard]
-    pub fn expr(&mut self) -> ParseResult<Expr<'expr>> {
-        self.parse_expression(0)
+    pub fn expr(&'ctx mut self) -> ParseResult<&'ctx Expr<'ctx>> {
+        self.parse_expr(0)
     }
 
     #[inline(always)]
@@ -708,7 +706,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
     }
 
     #[recursion_guard]
-    fn parse_expression(&mut self, precedence: usize) -> ParseResult<Expr<'expr>> {
+    fn parse_expr(&'ctx mut self, precedence: usize) -> ParseResult<&'ctx Expr<'ctx>> {
         let mut token = self.next()?;
 
         let prefix = Self::expr_prefix(token);
@@ -746,7 +744,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         }
     }
 
-    fn expr_prefix(token: Token) -> Option<PrefixParselet<'src, 'expr, 'stmt>> {
+    fn expr_prefix(token: Token) -> Option<PrefixParselet<'src, 'ctx>> {
         let prefix: PrefixParselet = match token.ty() {
             // Array and tuple literals
             TokenType::Ident if token.source() == "arr" || token.source() == "tup" => {
@@ -771,11 +769,11 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                     parser.eat(TokenType::RightBrace, [TokenType::Newline])?;
 
                     let expr = if token.source() == "arr" {
-                        Expression::Array(elements)
+                        Expr::Array(elements)
                     } else {
-                        Expression::Tuple(elements)
+                        Expr::Tuple(elements)
                     };
-                    let expr = parser.expr_arena.store(expr);
+                    let expr = parser.context.store(expr);
 
                     Ok(expr)
                 }
@@ -795,8 +793,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                     _ => Cow::Owned(token.source().nfkc().collect()),
                 };
 
-                let ident = parser.string_interner.intern(&normalized);
-                let expr = parser.expr_arena.store(Expression::Variable(ident));
+                let ident = parser.context.intern(&normalized);
+                let expr = parser.context.store(Expr::Variable(ident));
 
                 Ok(expr)
             },
@@ -807,12 +805,10 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             | TokenType::Float
             | TokenType::String
             | TokenType::Rune => |parser, lit| {
-                let expr = parser
-                    .expr_arena
-                    .store(Expression::Literal(Literal::try_from((
-                        &lit,
-                        parser.current_file,
-                    ))?));
+                let expr = parser.context.store(Expr::Literal(Literal::try_from((
+                    &lit,
+                    parser.current_file,
+                ))?));
 
                 Ok(expr)
             },
@@ -821,7 +817,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             TokenType::Minus | TokenType::Bang | TokenType::Plus => |parser, token| {
                 let _frame = parser.add_stack_frame()?;
                 let operand = parser.expr()?;
-                let expr = parser.expr_arena.store(Expression::UnaryExpr(
+                let expr = parser.context.store(Expr::UnaryExpr(
                     UnaryOperand::try_from((&token, parser.current_file))?,
                     operand,
                 ));
@@ -835,7 +831,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
                 let expr = parser.expr()?;
                 parser.eat(TokenType::RightParen, [TokenType::Newline])?;
-                let expr = parser.expr_arena.store(Expression::Parenthesised(expr));
+                let expr = parser.context.store(Expr::Parenthesised(expr));
 
                 Ok(expr)
             },
@@ -846,7 +842,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         Some(prefix)
     }
 
-    fn expr_postfix(token: Token) -> Option<PostfixParselet<'src, 'expr, 'stmt>> {
+    fn expr_postfix(token: Token) -> Option<PostfixParselet<'src, 'ctx>> {
         let postfix: PostfixParselet = match token.ty() {
             // Function calls
             TokenType::LeftParen => |parser, _left_paren, caller| {
@@ -868,8 +864,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 arguments.shrink_to_fit();
                 parser.eat(TokenType::RightParen, [TokenType::Newline])?;
                 let expr = parser
-                    .expr_arena
-                    .store(Expression::FunctionCall { caller, arguments });
+                    .context
+                    .store(Expr::FunctionCall { caller, arguments });
 
                 Ok(expr)
             },
@@ -879,8 +875,8 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 let _frame = parser.add_stack_frame()?;
                 let function = parser.expr()?;
                 let expr = parser
-                    .expr_arena
-                    .store(Expression::MemberFunctionCall { member, function });
+                    .context
+                    .store(Expr::MemberFunctionCall { member, function });
 
                 Ok(expr)
             },
@@ -889,7 +885,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             TokenType::DoubleDot => |parser, _, start| {
                 let _frame = parser.add_stack_frame()?;
                 let end = parser.expr()?;
-                let expr = parser.expr_arena.store(Expression::Range(start, end));
+                let expr = parser.context.store(Expr::Range(start, end));
 
                 Ok(expr)
             },
@@ -913,9 +909,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
                 let assign = AssignmentType::try_from((&assign, parser.current_file))?;
                 let right = parser.expr()?;
-                let expr = parser
-                    .expr_arena
-                    .store(Expression::Assignment(left, assign, right));
+                let expr = parser.context.store(Expr::Assignment(left, assign, right));
 
                 Ok(expr)
             },
@@ -926,9 +920,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 let equal = parser.eat(TokenType::Equal, [TokenType::Newline])?;
                 let assign = AssignmentType::try_from((&equal, parser.current_file))?;
                 let right = parser.expr()?;
-                let expr = parser
-                    .expr_arena
-                    .store(Expression::Assignment(left, assign, right));
+                let expr = parser.context.store(Expr::Assignment(left, assign, right));
 
                 Ok(expr)
             },
@@ -939,7 +931,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
         Some(postfix)
     }
 
-    fn expr_infix(token: Token) -> Option<InfixParselet<'src, 'expr, 'stmt>> {
+    fn expr_infix(token: Token) -> Option<InfixParselet<'src, 'ctx>> {
         let infix: InfixParselet = match token.ty() {
             // Binary Operations
             TokenType::Plus
@@ -955,7 +947,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             | TokenType::Shr => |parser, operand, left| {
                 let _frame = parser.add_stack_frame()?;
                 let right = parser.expr()?;
-                let expr = parser.expr_arena.store(Expression::BinaryOp(
+                let expr = parser.context.store(Expr::BinaryOp(
                     left,
                     BinaryOperand::try_from((&operand, parser.current_file))?,
                     right,
@@ -973,7 +965,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
             | TokenType::IsNotEqual => |parser, comparison, left| {
                 let _frame = parser.add_stack_frame()?;
                 let right = parser.expr()?;
-                let expr = parser.expr_arena.store(Expression::Comparison(
+                let expr = parser.context.store(Expr::Comparison(
                     left,
                     ComparisonOperand::try_from((&comparison, parser.current_file))?,
                     right,
@@ -989,7 +981,7 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
                 let condition = parser.expr()?;
                 parser.eat(TokenType::Else, [TokenType::Newline])?;
                 let false_arm = parser.expr()?;
-                let expr = parser.expr_arena.store(Expression::InlineConditional {
+                let expr = parser.context.store(Expr::InlineConditional {
                     true_arm,
                     condition,
                     false_arm,
@@ -1009,15 +1001,13 @@ impl<'src, 'expr, 'stmt> Parser<'src, 'expr, 'stmt> {
 
     #[recursion_guard]
     fn index_array(
-        &mut self,
+        &'ctx mut self,
         _left_bracket: Token<'src>,
-        array: Expr<'expr>,
-    ) -> ParseResult<Expr<'expr>> {
+        array: &'ctx Expr<'ctx>,
+    ) -> ParseResult<&'ctx Expr<'ctx>> {
         let index = self.expr()?;
         self.eat(TokenType::RightBrace, [TokenType::Newline])?;
-        let expr = self
-            .expr_arena
-            .store(Expression::IndexArray { array, index });
+        let expr = self.context.store(Expr::IndexArray { array, index });
 
         Ok(expr)
     }

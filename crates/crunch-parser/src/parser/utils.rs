@@ -1,36 +1,15 @@
 use crate::{
+    context::StrT,
     error::{Location, ParseResult, Span},
     files::FileId,
-    parser::{Ast, Expression, Parser, Statement},
+    parser::Parser,
     token::TokenType,
 };
 use alloc::{rc::Rc, vec, vec::Vec};
-use core::{fmt, ops};
+use core::ops;
 use crunch_proc::recursion_guard;
-use lasso::Spur;
 #[cfg(test)]
 use serde::{Deserialize, Serialize};
-use stadium::Stadium;
-
-pub struct SyntaxTree<'expr, 'stmt> {
-    pub(crate) ast: Vec<Ast<'expr, 'stmt>>,
-    pub(crate) __exprs: Stadium<'expr, Expression<'expr>>,
-    pub(crate) __stmts: Stadium<'stmt, Statement<'expr, 'stmt>>,
-}
-
-impl<'expr, 'stmt> fmt::Debug for SyntaxTree<'expr, 'stmt> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_list().entries(&self.ast).finish()
-    }
-}
-
-impl<'expr, 'stmt> ops::Deref for SyntaxTree<'expr, 'stmt> {
-    type Target = [Ast<'expr, 'stmt>];
-
-    fn deref(&self) -> &Self::Target {
-        &self.ast
-    }
-}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct CurrentFile {
@@ -99,7 +78,7 @@ impl StackGuard {
 #[cfg_attr(test, derive(Deserialize, Serialize))]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
-pub struct ItemPath(Vec<Spur>);
+pub struct ItemPath(Vec<StrT>);
 
 impl ItemPath {
     pub fn new(path: impl Into<Self>) -> Self {
@@ -114,32 +93,32 @@ impl ItemPath {
     }
 }
 
-impl From<Spur> for ItemPath {
-    fn from(seg: Spur) -> Self {
+impl From<StrT> for ItemPath {
+    fn from(seg: StrT) -> Self {
         Self(vec![seg])
     }
 }
 
-impl From<Vec<Spur>> for ItemPath {
-    fn from(segs: Vec<Spur>) -> Self {
+impl From<Vec<StrT>> for ItemPath {
+    fn from(segs: Vec<StrT>) -> Self {
         Self(segs)
     }
 }
 
 impl ops::Deref for ItemPath {
-    type Target = [Spur];
+    type Target = [StrT];
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
+impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// ```ebnf
     /// ItemPath ::= Ident | Ident '.' Path
     /// ```
     #[recursion_guard]
-    pub(crate) fn item_path(&mut self, start: Spur) -> ParseResult<ItemPath> {
+    pub(crate) fn item_path(&mut self, start: StrT) -> ParseResult<ItemPath> {
         let mut path = vec![start];
 
         if matches!(self.peek().map(|t| t.ty()), Ok(TokenType::Dot)) {
@@ -151,7 +130,7 @@ impl<'src, 'stmt, 'expr> Parser<'src, 'stmt, 'expr> {
         if let Ok(peek) = self.peek() {
             while peek.ty() == TokenType::Ident {
                 let segment = self.eat(TokenType::Ident, [TokenType::Newline])?.source();
-                path.push(self.string_interner.intern(segment));
+                path.push(self.context.intern(segment));
 
                 if matches!(self.peek().map(|t| t.ty()), Ok(TokenType::Dot)) {
                     self.eat(TokenType::Dot, [TokenType::Newline])?;

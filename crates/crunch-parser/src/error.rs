@@ -19,6 +19,7 @@ use codespan_reporting::{
 };
 use core::{
     fmt,
+    hash::{Hash, Hasher},
     ops::{self, Range},
 };
 use derive_more::Display;
@@ -228,6 +229,15 @@ impl<T> ops::Deref for Locatable<T> {
 impl<T> ops::DerefMut for Locatable<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.data
+    }
+}
+
+impl<T> Hash for Locatable<T>
+where
+    T: Hash,
+{
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.data.hash(state)
     }
 }
 
