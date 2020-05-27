@@ -113,7 +113,7 @@ impl ops::Deref for ItemPath {
     }
 }
 
-impl<'src, 'ctx> Parser<'src, 'ctx> {
+impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
     /// ```ebnf
     /// ItemPath ::= Ident | Ident '.' Path
     /// ```

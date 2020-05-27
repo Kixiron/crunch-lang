@@ -70,12 +70,12 @@ fn main() -> rustyline::Result<()> {
                 let parser = crunch_parser::Parser::new(
                     &code,
                     crunch_parser::CurrentFile::new(crunch_parser::FileId::new(0), code.len()),
-                    crunch_parser::Interner::new(),
+                    &crunch_parser::Context::new(),
                 );
 
                 match eval_ty {
                     EvalType::None | EvalType::Ast => match parser.parse() {
-                        Ok((tree, interner, mut warns, graph, _module)) => {
+                        Ok((mut warns, graph, _module)) => {
                             crunch_semantics::SemanticAnalyzer::default()
                                 .analyze_all(&*tree, &graph, &interner, &mut warns);
 
@@ -90,9 +90,9 @@ fn main() -> rustyline::Result<()> {
                     },
 
                     EvalType::Symbol => match parser.parse() {
-                        Ok((tree, interner, mut warns, graph, _module)) => {
+                        Ok((mut warns, graph, _module)) => {
                             crunch_semantics::SemanticAnalyzer::default()
-                                .analyze_all(&*tree, &graph, &interner, &mut warns);
+                                .analyze_all(&*tree, &graph, &ctx, &mut warns);
                             warns.emit(&files);
 
                             if !warns.is_fatal() {
@@ -104,9 +104,9 @@ fn main() -> rustyline::Result<()> {
                     },
 
                     EvalType::Pretty => match parser.parse() {
-                        Ok((tree, interner, mut warns, graph, _module)) => {
+                        Ok((mut warns, graph, _module)) => {
                             crunch_semantics::SemanticAnalyzer::default()
-                                .analyze_all(&*tree, &graph, &interner, &mut warns);
+                                .analyze_all(&*tree, &graph, &ctx, &mut warns);
                             warns.emit(&files);
 
                             /*
@@ -172,7 +172,7 @@ fn main() -> rustyline::Result<()> {
                 let mut parser = crunch_parser::Parser::new(
                     &line,
                     crunch_parser::CurrentFile::new(crunch_parser::FileId::new(0), line.len()),
-                    crunch_parser::Interner::new(),
+                    &crunch_parser::Context::new(),
                 );
 
                 match parser.stmt() {
@@ -193,7 +193,7 @@ fn main() -> rustyline::Result<()> {
                 let mut parser = crunch_parser::Parser::new(
                     &line,
                     crunch_parser::CurrentFile::new(crunch_parser::FileId::new(0), line.len()),
-                    crunch_parser::Interner::new(),
+                    &crunch_parser::Context::new(),
                 );
 
                 match parser.expr() {

@@ -9,50 +9,51 @@ use alloc::{format, vec::Vec};
 use crunch_proc::recursion_guard;
 #[cfg(test)]
 use serde::Serialize;
+use stadium::Ticket;
 
 #[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Stmt<'ctx> {
     If {
-        condition: &'ctx Expr<'ctx>,
-        body: Vec<&'ctx Stmt<'ctx>>,
-        clauses: Vec<(&'ctx Expr<'ctx>, Vec<&'ctx Stmt<'ctx>>)>,
-        else_clause: Option<Vec<&'ctx Stmt<'ctx>>>,
+        condition: Ticket<'ctx, Expr<'ctx>>,
+        body: Vec<Ticket<'ctx, Stmt<'ctx>>>,
+        clauses: Vec<(Ticket<'ctx, Expr<'ctx>>, Vec<Ticket<'ctx, Stmt<'ctx>>>)>,
+        else_clause: Option<Vec<Ticket<'ctx, Stmt<'ctx>>>>,
     },
-    Expr(&'ctx Expr<'ctx>),
+    Expr(Ticket<'ctx, Expr<'ctx>>),
     VarDeclaration {
         name: StrT,
-        ty: Locatable<&'ctx Type<'ctx>>,
-        val: &'ctx Expr<'ctx>,
+        ty: Locatable<Ticket<'ctx, Type<'ctx>>>,
+        val: Ticket<'ctx, Expr<'ctx>>,
         constant: bool,
         mutable: bool,
     },
-    Return(Option<&'ctx Expr<'ctx>>),
-    Break(Option<&'ctx Expr<'ctx>>),
+    Return(Option<Ticket<'ctx, Expr<'ctx>>>),
+    Break(Option<Ticket<'ctx, Expr<'ctx>>>),
     Continue,
     While {
-        condition: &'ctx Expr<'ctx>,
-        body: Vec<&'ctx Stmt<'ctx>>,
-        then: Option<Vec<&'ctx Stmt<'ctx>>>,
-        else_clause: Option<Vec<&'ctx Stmt<'ctx>>>,
+        condition: Ticket<'ctx, Expr<'ctx>>,
+        body: Vec<Ticket<'ctx, Stmt<'ctx>>>,
+        then: Option<Vec<Ticket<'ctx, Stmt<'ctx>>>>,
+        else_clause: Option<Vec<Ticket<'ctx, Stmt<'ctx>>>>,
     },
     Loop {
-        body: Vec<&'ctx Stmt<'ctx>>,
-        else_clause: Option<Vec<&'ctx Stmt<'ctx>>>,
+        body: Vec<Ticket<'ctx, Stmt<'ctx>>>,
+        else_clause: Option<Vec<Ticket<'ctx, Stmt<'ctx>>>>,
     },
     For {
-        var: &'ctx Expr<'ctx>,
-        condition: &'ctx Expr<'ctx>,
-        body: Vec<&'ctx Stmt<'ctx>>,
-        then: Option<Vec<&'ctx Stmt<'ctx>>>,
-        else_clause: Option<Vec<&'ctx Stmt<'ctx>>>,
+        var: Ticket<'ctx, Expr<'ctx>>,
+        condition: Ticket<'ctx, Expr<'ctx>>,
+        body: Vec<Ticket<'ctx, Stmt<'ctx>>>,
+        then: Option<Vec<Ticket<'ctx, Stmt<'ctx>>>>,
+        else_clause: Option<Vec<Ticket<'ctx, Stmt<'ctx>>>>,
     },
     Match {
-        var: &'ctx Expr<'ctx>,
+        var: Ticket<'ctx, Expr<'ctx>>,
         arms: Vec<(
             Binding<'ctx>,
-            Option<&'ctx Expr<'ctx>>,
-            Vec<&'ctx Stmt<'ctx>>,
+            Option<Ticket<'ctx, Expr<'ctx>>>,
+            Vec<Ticket<'ctx, Stmt<'ctx>>>,
         )>,
     },
     Empty,
@@ -61,9 +62,9 @@ pub enum Stmt<'ctx> {
 // TODO: Type ascription
 
 /// Statement parsing
-impl<'src, 'ctx> Parser<'src, 'ctx> {
+impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
     #[recursion_guard]
-    pub fn stmt(&'ctx mut self) -> ParseResult<Option<&'ctx Stmt<'ctx>>> {
+    pub fn stmt(&mut self) -> ParseResult<Option<Ticket<'ctx, Stmt<'ctx>>>> {
         match self.peek()?.ty() {
             TokenType::If => {
                 let stmt = self.if_stmt()?;
@@ -238,10 +239,10 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
     #[recursion_guard]
     fn statements(
-        &'ctx mut self,
+        &mut self,
         breaks: &[TokenType],
         capacity: usize,
-    ) -> ParseResult<Vec<&'ctx Stmt<'ctx>>> {
+    ) -> ParseResult<Vec<Ticket<'ctx, Stmt<'ctx>>>> {
         let mut statements = Vec::with_capacity(capacity);
 
         while let Ok(true) = self.peek().map(|p| !breaks.contains(&p.ty())) {
@@ -255,7 +256,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     }
 
     #[recursion_guard]
-    fn if_stmt(&'ctx mut self) -> ParseResult<&'ctx Stmt<'ctx>> {
+    fn if_stmt(&mut self) -> ParseResult<Ticket<'ctx, Stmt<'ctx>>> {
         self.eat(TokenType::If, [TokenType::Newline])?;
         let condition = self.expr()?;
         self.eat(TokenType::Newline, [])?;
@@ -306,7 +307,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     }
 
     #[recursion_guard]
-    fn match_stmt(&'ctx mut self) -> ParseResult<&'ctx Stmt<'ctx>> {
+    fn match_stmt(&mut self) -> ParseResult<Ticket<'ctx, Stmt<'ctx>>> {
         self.eat(TokenType::Match, [TokenType::Newline])?;
         let var = self.expr()?;
         self.eat(TokenType::Newline, [])?;
@@ -342,7 +343,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     }
 
     #[recursion_guard]
-    fn while_stmt(&'ctx mut self) -> ParseResult<&'ctx Stmt<'ctx>> {
+    fn while_stmt(&mut self) -> ParseResult<Ticket<'ctx, Stmt<'ctx>>> {
         self.eat(TokenType::While, [TokenType::Newline])?;
         let condition = self.expr()?;
         self.eat(TokenType::Newline, [])?;
@@ -366,7 +367,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     }
 
     #[recursion_guard]
-    fn loop_stmt(&'ctx mut self) -> ParseResult<&'ctx Stmt<'ctx>> {
+    fn loop_stmt(&mut self) -> ParseResult<Ticket<'ctx, Stmt<'ctx>>> {
         self.eat(TokenType::Loop, [TokenType::Newline])?;
         self.eat(TokenType::Newline, [])?;
 
@@ -382,7 +383,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     }
 
     #[recursion_guard]
-    fn for_stmt(&'ctx mut self) -> ParseResult<&'ctx Stmt<'ctx>> {
+    fn for_stmt(&mut self) -> ParseResult<Ticket<'ctx, Stmt<'ctx>>> {
         self.eat(TokenType::For, [TokenType::Newline])?;
         let var = self.expr()?;
         self.eat(TokenType::In, [TokenType::Newline])?;
@@ -404,7 +405,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     }
 
     #[recursion_guard]
-    fn then_stmt(&'ctx mut self) -> ParseResult<Option<Vec<&'ctx Stmt<'ctx>>>> {
+    fn then_stmt(&mut self) -> ParseResult<Option<Vec<Ticket<'ctx, Stmt<'ctx>>>>> {
         if self.peek()?.ty() == TokenType::Then {
             self.eat(TokenType::Then, [TokenType::Newline])?;
             self.eat(TokenType::Newline, [])?;
@@ -418,7 +419,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     }
 
     #[recursion_guard]
-    fn else_stmt(&'ctx mut self) -> ParseResult<Option<Vec<&'ctx Stmt<'ctx>>>> {
+    fn else_stmt(&mut self) -> ParseResult<Option<Vec<Ticket<'ctx, Stmt<'ctx>>>>> {
         if self.peek()?.ty() == TokenType::Else {
             self.eat(TokenType::Else, [TokenType::Newline])?;
             self.eat(TokenType::Newline, [])?;

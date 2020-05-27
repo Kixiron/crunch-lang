@@ -3,21 +3,21 @@ use crate::{
     context::StrT, files::FileId, parser::types::Signedness, pretty_printer::PrettyPrinter,
 };
 #[cfg(feature = "no-std")]
-use alloc::{boxed::Box, string::String};
+use alloc::string::String;
 use core::iter;
 
 fn format_expr(source: &str) -> String {
-    let mut context = Context::default();
+    let context = Context::default();
     let mut parser = Parser::new(
         source,
         CurrentFile::new(FileId::new(0), source.len()),
-        &mut context,
+        &context,
     );
     let expr = parser.expr().unwrap();
 
     let mut string = String::new();
     PrettyPrinter::new(&context)
-        .print_expr(&mut string, &expr)
+        .print_expr(&mut string, expr)
         .unwrap();
 
     string
@@ -30,17 +30,17 @@ macro_rules! expr_eq {
 }
 
 fn format_stmt(source: &str) -> String {
-    let mut context = Context::default();
+    let context = Context::default();
     let mut parser = Parser::new(
         source,
         CurrentFile::new(FileId::new(0), source.len()),
-        &mut context,
+        &context,
     );
     let stmt = parser.stmt().unwrap().unwrap();
 
     let mut string = String::new();
     PrettyPrinter::new(&context)
-        .print_stmt(&mut string, &stmt)
+        .print_stmt(&mut string, stmt)
         .unwrap();
 
     string
@@ -63,7 +63,7 @@ fn format_ast(source: &str) -> String {
 
     let mut string = String::new();
     PrettyPrinter::new(&context)
-        .print_ast(&mut string, &stmt)
+        .print_ast(&mut string, stmt)
         .unwrap();
 
     string
@@ -666,6 +666,7 @@ fn loop_follows_if() {
 
 #[test]
 fn types_ast() {
+    let mut context = Context::new();
     let builtins = [
         (
             "i128",
@@ -729,37 +730,40 @@ fn types_ast() {
             "arr[100, infer]",
             Type::Array(
                 100,
-                Box::new(Locatable::new(
-                    Type::Infer,
+                Locatable::new(
+                    context.store(Type::Infer),
                     Location::implicit(9..14, FileId(0)),
-                )),
+                ),
             ),
         ),
         (
             "arr[1, str]",
             Type::Array(
                 1,
-                Box::new(Locatable::new(
-                    Type::String,
+                Locatable::new(
+                    context.store(Type::String),
                     Location::concrete(7..10, FileId(0)),
-                )),
+                ),
             ),
         ),
         (
             "tup[str, arr[5, i32]]",
             Type::Tuple(vec![
-                Locatable::new(Type::String, Location::concrete(4..7, FileId(0))),
                 Locatable::new(
-                    Type::Array(
+                    context.store(Type::String),
+                    Location::concrete(4..7, FileId(0)),
+                ),
+                Locatable::new(
+                    context.store(Type::Array(
                         5,
-                        Box::new(Locatable::new(
-                            Type::Integer {
+                        Locatable::new(
+                            context.store(Type::Integer {
                                 sign: Signedness::Signed,
                                 width: 32,
-                            },
+                            }),
                             Location::concrete(16..19, FileId(0)),
-                        )),
-                    ),
+                        ),
+                    )),
                     Location::concrete(9..20, FileId(0)),
                 ),
             ]),
@@ -780,7 +784,7 @@ fn types_ast() {
 
     for (src, ty) in builtins.iter() {
         assert_eq!(
-            &*Parser::new(src, CurrentFile::new(FileId(0), src.len()), &Context::new())
+            &*Parser::new(src, CurrentFile::new(FileId(0), src.len()), &mut context)
                 .ascribed_type()
                 .unwrap(),
             &ty.clone(),
@@ -856,7 +860,8 @@ mod proptests {
     proptest! {
         #[test]
         fn strings(s in r#"b?"(\\.|[^\\"])*""#) {
-            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &Context::default());
+            let context = Context::default();
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &context);
 
             let expr = parser.expr().map(|e| e.deref().clone());
             match expr {
@@ -873,7 +878,8 @@ mod proptests {
 
         #[test]
         fn runes(s in "b?'[^']*'") {
-            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &Context::default());
+            let context = Context::default();
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &context);
 
             let expr = parser.expr().map(|e| e.deref().clone());
             match expr {
@@ -890,7 +896,8 @@ mod proptests {
 
         #[test]
         fn base10_int(s in "[+-]?[0-9][0-9_]*") {
-            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &Context::default());
+            let context = Context::default();
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &context);
 
             let expr = parser.expr().map(|e| e.deref().clone());
             let cond = matches!(expr, Ok(Expr::Literal(Literal::Integer { .. })));
@@ -899,7 +906,8 @@ mod proptests {
 
         #[test]
         fn base16_int(s in "[+-]?0x[0-9a-fA-F][0-9a-fA-F_]*") {
-            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &Context::default());
+            let context = Context::default();
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &context);
 
             let expr = parser.expr().map(|e| e.deref().clone());
             let cond = matches!(expr, Ok(Expr::Literal(Literal::Integer(Integer { .. })))
@@ -909,7 +917,8 @@ mod proptests {
 
         #[test]
         fn base2_int(s in "[+-]?0b[0-1][0-1_]*") {
-            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &Context::default());
+            let context = Context::default();
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &context);
 
             let expr = parser.expr().map(|e| e.deref().clone());
             let cond = matches!(expr, Ok(Expr::Literal(Literal::Integer(Integer { .. })))
@@ -919,7 +928,8 @@ mod proptests {
 
         #[test]
         fn base10_float(s in "[+-]?[0-9][0-9_]*\\.[0-9][0-9_]*([eE][+-]?[0-9][0-9_]*)?") {
-            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &Context::default());
+            let context = Context::default();
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &context);
 
             let expr = parser.expr().map(|e| e.deref().clone());
             let cond = matches!(expr, Ok(Expr::Literal(Literal::Float(..)))
@@ -929,7 +939,8 @@ mod proptests {
 
         #[test]
         fn base16_float(s in "[+-]?0x[0-9a-fA-F][0-9a-fA-F_]*\\.[0-9a-fA-F][0-9a-fA-F_]*([pP][+-]?[0-9][0-9_]?)?") {
-            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &Context::default());
+            let context = Context::default();
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &context);
 
             let expr = parser.expr().map(|e| e.deref().clone());
             let cond = matches!(expr, Ok(Expr::Literal(Literal::Float(..)))

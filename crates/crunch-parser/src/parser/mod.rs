@@ -40,25 +40,21 @@ type ReturnData<'ctx> = (ErrorHandler, Graph<Scope<'ctx>, MaybeSym>, NodeId);
 // TODO: Make the parser a little more lax, it's kinda strict about whitespace
 
 #[derive(Debug)]
-pub struct Parser<'src, 'ctx> {
+pub struct Parser<'src, 'cxl, 'ctx> {
     token_stream: TokenStream<'src>,
     next: Option<Token<'src>>,
     peek: Option<Token<'src>>,
     error_handler: ErrorHandler,
     stack_frames: StackGuard,
     current_file: CurrentFile,
-    context: &'ctx mut Context<'ctx>,
+    context: &'cxl Context<'ctx>,
     symbol_table: Graph<Scope<'ctx>, MaybeSym>,
     module_scope: NodeId,
 }
 
 /// Initialization and high-level usage
-impl<'src, 'ctx> Parser<'src, 'ctx> {
-    pub fn new(
-        source: &'src str,
-        current_file: CurrentFile,
-        context: &'ctx mut Context<'ctx>,
-    ) -> Self {
+impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
+    pub fn new(source: &'src str, current_file: CurrentFile, context: &'cxl Context<'ctx>) -> Self {
         let (token_stream, next, peek) = Self::lex(source);
         let mut symbol_table = Graph::new();
         let module_scope = symbol_table
@@ -82,7 +78,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         next: Option<Token<'src>>,
         peek: Option<Token<'src>>,
         current_file: CurrentFile,
-        context: &'ctx mut Context<'ctx>,
+        context: &'cxl Context<'ctx>,
     ) -> Self {
         let mut symbol_table = Graph::new();
         let module_scope = symbol_table
@@ -101,7 +97,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         }
     }
 
-    pub fn parse(&'ctx mut self) -> Result<ReturnData<'ctx>, ErrorHandler> {
+    pub fn parse(mut self) -> Result<ReturnData<'ctx>, ErrorHandler> {
         #[cfg(feature = "logging")]
         info!("Started parsing");
 
@@ -157,7 +153,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 }
 
 /// Utility functions
-impl<'src, 'ctx> Parser<'src, 'ctx> {
+impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
     #[inline(always)]
     fn next(&mut self) -> ParseResult<Token<'src>> {
         let mut next = self.token_stream.next_token();

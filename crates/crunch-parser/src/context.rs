@@ -1,9 +1,15 @@
 use crate::parser::{Ast, Expr, Stmt, Type};
 
 use cfg_if::cfg_if;
-use core::{cell::RefCell, fmt, num::NonZeroUsize};
+use core::{
+    cell::RefCell,
+    fmt,
+    hash::{Hash, Hasher},
+    num::NonZeroUsize,
+    ops::Deref,
+};
 use lasso::Spur;
-use stadium::Stadium;
+use stadium::{Stadium, Ticket};
 
 cfg_if! {
     if #[cfg(feature = "concurrent")] {
@@ -86,7 +92,7 @@ impl<'ctx> Context<'ctx> {
         );
     }
 
-    pub fn store<I: Internable<'ctx>>(&'ctx self, internable: I) -> &'ctx I {
+    pub fn store<I: Internable<'ctx>>(&self, internable: I) -> Ticket<'ctx, I> {
         internable.intern(self)
     }
 }
@@ -103,12 +109,50 @@ impl<'ctx> fmt::Debug for Arenas<'ctx> {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+enum HashRef<'a, T> {
+    Ptr(Ticket<'a, T>),
+    Ref(&'a T),
+}
+
+impl<'a, T> HashRef<'a, T> {
+    fn into_ptr(&self) -> Ticket<'a, T> {
+        if let Self::Ptr(ptr) = self {
+            *ptr
+        } else {
+            unreachable!("Internal error, only pointers can be stored");
+        }
+    }
+}
+
+impl<'a, T: PartialEq> PartialEq for HashRef<'a, T> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Ptr(l), Self::Ptr(r)) => **l == **r,
+            (Self::Ref(l), Self::Ref(r)) => l == r,
+            (Self::Ptr(l), Self::Ref(r)) => l.deref() == *r,
+            (Self::Ref(l), Self::Ptr(r)) => *l == r.deref(),
+        }
+    }
+}
+
+impl<'a, T: Eq> Eq for HashRef<'a, T> {}
+
+impl<'a, T: Hash> Hash for HashRef<'a, T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match *self {
+            Self::Ptr(ptr) => ptr.deref().hash(state),
+            Self::Ref(refer) => refer.hash(state),
+        }
+    }
+}
+
 #[derive(Debug)]
 struct Interners<'ctx> {
-    stmt: HashSet<&'ctx Stmt<'ctx>>,
-    expr: HashSet<&'ctx Expr<'ctx>>,
-    types: HashSet<&'ctx Type<'ctx>>,
-    ast: HashSet<&'ctx Ast<'ctx>>,
+    stmt: HashSet<HashRef<'ctx, Stmt<'ctx>>>,
+    expr: HashSet<HashRef<'ctx, Expr<'ctx>>>,
+    types: HashSet<HashRef<'ctx, Type<'ctx>>>,
+    ast: HashSet<HashRef<'ctx, Ast<'ctx>>>,
 }
 
 impl<'ctx> Interners<'ctx> {
@@ -141,18 +185,20 @@ impl<'ctx> Arenas<'ctx> {
 }
 
 pub trait Internable<'ctx> {
-    fn intern(self, ctx: &'ctx Context<'ctx>) -> &'ctx Self;
+    fn intern(self, ctx: &Context<'ctx>) -> Ticket<'ctx, Self>;
 }
 
 impl<'ctx> Internable<'ctx> for Ast<'ctx> {
-    fn intern(self, ctx: &'ctx Context<'ctx>) -> &'ctx Self {
-        if let Some(interned) = ctx.interners.borrow().ast.get(&self) {
-            *interned
+    fn intern(self, ctx: &Context<'ctx>) -> Ticket<'ctx, Self> {
+        if let Some(interned) = ctx.interners.borrow().ast.get(&HashRef::Ref(&self)) {
+            // FIXME: FML
+            unsafe { core::mem::transmute(interned.into_ptr()) }
         } else {
-            // TODO: FML
-            let allocated =
-                unsafe { core::mem::transmute(&*ctx.arenas.borrow_mut().ast.store(self)) };
-            ctx.interners.borrow_mut().ast.insert(allocated);
+            let allocated = ctx.arenas.borrow_mut().ast.store(self);
+            ctx.interners
+                .borrow_mut()
+                .ast
+                .insert(HashRef::Ptr(allocated));
 
             allocated
         }
@@ -160,14 +206,16 @@ impl<'ctx> Internable<'ctx> for Ast<'ctx> {
 }
 
 impl<'ctx> Internable<'ctx> for Stmt<'ctx> {
-    fn intern(self, ctx: &'ctx Context<'ctx>) -> &'ctx Self {
-        if let Some(interned) = ctx.interners.borrow().stmt.get(&self) {
-            *interned
+    fn intern(self, ctx: &Context<'ctx>) -> Ticket<'ctx, Self> {
+        if let Some(interned) = ctx.interners.borrow().stmt.get(&HashRef::Ref(&self)) {
+            // FIXME: FML
+            unsafe { core::mem::transmute(interned.into_ptr()) }
         } else {
-            // TODO: FML
-            let allocated =
-                unsafe { core::mem::transmute(&*ctx.arenas.borrow_mut().stmt.store(self)) };
-            ctx.interners.borrow_mut().stmt.insert(allocated);
+            let allocated = ctx.arenas.borrow_mut().stmt.store(self);
+            ctx.interners
+                .borrow_mut()
+                .stmt
+                .insert(HashRef::Ptr(allocated));
 
             allocated
         }
@@ -175,14 +223,16 @@ impl<'ctx> Internable<'ctx> for Stmt<'ctx> {
 }
 
 impl<'ctx> Internable<'ctx> for Expr<'ctx> {
-    fn intern(self, ctx: &'ctx Context<'ctx>) -> &'ctx Self {
-        if let Some(interned) = ctx.interners.borrow().expr.get(&self) {
-            *interned
+    fn intern(self, ctx: &Context<'ctx>) -> Ticket<'ctx, Self> {
+        if let Some(interned) = ctx.interners.borrow().expr.get(&HashRef::Ref(&self)) {
+            // FIXME: FML
+            unsafe { core::mem::transmute(interned.into_ptr()) }
         } else {
-            // TODO: FML
-            let allocated =
-                unsafe { core::mem::transmute(&*ctx.arenas.borrow_mut().expr.store(self)) };
-            ctx.interners.borrow_mut().expr.insert(allocated);
+            let allocated = ctx.arenas.borrow_mut().expr.store(self);
+            ctx.interners
+                .borrow_mut()
+                .expr
+                .insert(HashRef::Ptr(allocated));
 
             allocated
         }
@@ -190,14 +240,16 @@ impl<'ctx> Internable<'ctx> for Expr<'ctx> {
 }
 
 impl<'ctx> Internable<'ctx> for Type<'ctx> {
-    fn intern(self, ctx: &'ctx Context<'ctx>) -> &'ctx Self {
-        if let Some(interned) = ctx.interners.borrow().types.get(&self) {
-            *interned
+    fn intern(self, ctx: &Context<'ctx>) -> Ticket<'ctx, Self> {
+        if let Some(interned) = ctx.interners.borrow().types.get(&HashRef::Ref(&self)) {
+            // FIXME: FML
+            unsafe { core::mem::transmute(interned.into_ptr()) }
         } else {
-            // TODO: FML
-            let allocated =
-                unsafe { core::mem::transmute(&*ctx.arenas.borrow_mut().types.store(self)) };
-            ctx.interners.borrow_mut().types.insert(allocated);
+            let allocated = ctx.arenas.borrow_mut().types.store(self);
+            ctx.interners
+                .borrow_mut()
+                .types
+                .insert(HashRef::Ptr(allocated));
 
             allocated
         }

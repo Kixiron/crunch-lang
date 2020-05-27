@@ -1,14 +1,14 @@
 use crunch_parser::{
     parser::{
-        Ast, ComparisonOperand, Expression as AstExpr, Function as AstFunction, ItemPath, Literal,
-        Statement as AstStmt,
+        Ast, ComparisonOperand, Expr as AstExpr, Function as AstFunction, ItemPath, Literal,
+        Stmt as AstStmt,
     },
     symbol_table::{Graph, MaybeSym, NodeId, Scope},
 };
 
 #[test]
 fn test() {
-    use crunch_parser::{CurrentFile, FileId, Interner, Parser};
+    use crunch_parser::{Context, CurrentFile, FileId, Parser};
 
     let source = r#"
     fn main()
@@ -37,29 +37,23 @@ fn test() {
     end
     "#;
 
-    let interner = Interner::default();
+    let ctx = Context::default();
     let mut files = crunch_parser::Files::new();
     files.add("<test>", source);
 
-    match Parser::new(
-        source,
-        CurrentFile::new(FileId::new(0), source.len()),
-        interner,
-    )
-    .parse()
-    {
-        Ok((tree, mut interner, mut warnings, module_table, module_scope)) => {
+    match Parser::new(source, CurrentFile::new(FileId::new(0), source.len()), &ctx).parse() {
+        Ok((mut warnings, module_table, module_scope)) => {
             warnings.emit(&files);
 
             println!("{:#?}", &module_scope);
 
-            let ladder = Ladder::new(
+            let _ladder = Ladder::new(
                 module_table,
                 module_scope,
-                ItemPath::new(interner.intern("package")),
+                ItemPath::new(ctx.intern("package")),
             );
 
-            println!("{:#?}", ladder.lower(&*tree));
+            // println!("{:#?}", ladder.lower());
         }
 
         Err(mut err) => {
@@ -68,15 +62,15 @@ fn test() {
     }
 }
 
-pub struct Ladder {
-    module_table: Graph<Scope, MaybeSym>,
+pub struct Ladder<'ctx> {
+    module_table: Graph<Scope<'ctx>, MaybeSym>,
     module_scope: NodeId,
     module_path: ItemPath,
 }
 
-impl Ladder {
+impl<'ctx> Ladder<'ctx> {
     pub fn new(
-        module_table: Graph<Scope, MaybeSym>,
+        module_table: Graph<Scope<'ctx>, MaybeSym>,
         module_scope: NodeId,
         module_path: ItemPath,
     ) -> Self {
@@ -87,14 +81,14 @@ impl Ladder {
         }
     }
 
-    pub fn lower(&self, nodes: &[Ast<'_, '_>]) -> Vec<Hir> {
+    pub fn lower(&self, nodes: &[Ast<'_>]) -> Vec<Hir> {
         nodes
             .iter()
             .filter_map(|node| self.lower_node(node))
             .collect()
     }
 
-    pub fn lower_node(&self, node: &Ast<'_, '_>) -> Option<Hir> {
+    pub fn lower_node(&self, node: &Ast<'_>) -> Option<Hir> {
         match node {
             Ast::Function(function) => Some(self.lower_function(function)),
             Ast::Type(_type_decl) => todo!(),
@@ -106,7 +100,7 @@ impl Ladder {
         }
     }
 
-    fn lower_function(&self, function: &AstFunction<'_, '_>) -> Hir {
+    fn lower_function(&self, function: &AstFunction<'_>) -> Hir {
         let func = Function {
             name: self.module_path.join(function.name),
             // TODO: Parse this out
@@ -132,9 +126,9 @@ impl Ladder {
         Hir::Function(func)
     }
 
-    fn lower_statement(&self, stmt: &AstStmt<'_, '_>) -> Option<Stmt> {
+    fn lower_statement(&self, stmt: &AstStmt<'_>) -> Option<Stmt> {
         let stmt = match stmt {
-            AstStmt::Expression(expr) => Stmt::Expr(self.lower_expr(expr)),
+            AstStmt::Expr(expr) => Stmt::Expr(self.lower_expr(expr)),
 
             AstStmt::VarDeclaration { name, val, .. } => Stmt::VarDecl(VarDecl {
                 name: ItemPath::new(*name),

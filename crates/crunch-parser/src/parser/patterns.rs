@@ -9,14 +9,15 @@ use core::convert::TryFrom;
 use crunch_proc::recursion_guard;
 #[cfg(test)]
 use serde::Serialize;
+use stadium::Ticket;
 
-impl<'src, 'ctx> Parser<'src, 'ctx> {
+impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
     // TODO: Binding via patterns
     /// ```ebnf
     /// Binding ::= 'ref'? 'mut'? Pattern (':' Type)?
     /// ```
     #[recursion_guard]
-    pub(super) fn binding(&'ctx mut self) -> ParseResult<Binding<'ctx>> {
+    pub(super) fn binding(&mut self) -> ParseResult<Binding<'ctx>> {
         let (mut reference, mut mutable) = (false, false);
         match self.peek()?.ty() {
             TokenType::Ref => {
@@ -57,7 +58,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// Pattern ::= Literal | Ident | ItemPath
     /// ```
     #[recursion_guard]
-    fn pattern(&'ctx mut self) -> ParseResult<Pattern> {
+    fn pattern(&mut self) -> ParseResult<Pattern> {
         let token = self.eat_of(
             [
                 TokenType::Ident,
@@ -101,7 +102,7 @@ pub struct Binding<'ctx> {
     pub reference: bool,
     pub mutable: bool,
     pub pattern: Pattern,
-    pub ty: Option<Locatable<&'ctx Type<'ctx>>>,
+    pub ty: Option<Locatable<Ticket<'ctx, Type<'ctx>>>>,
 }
 
 // TODO: More patterns

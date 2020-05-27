@@ -12,6 +12,7 @@ use core::{
     num::NonZeroU32,
     ops::{self, Deref},
 };
+use stadium::Ticket;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "no-std")] {
@@ -26,35 +27,35 @@ cfg_if::cfg_if! {
 pub enum Scope<'ctx> {
     Type {
         name: StrT,
-        members: HashMap<StrT, &'ctx Type<'ctx>>,
+        members: HashMap<StrT, Ticket<'ctx, Type<'ctx>>>,
     },
     Enum {
         name: StrT,
         variants: HashMap<StrT, Variant<'ctx>>,
     },
     Alias {
-        alias: &'ctx Type<'ctx>,
-        actual: &'ctx Type<'ctx>,
+        alias: Ticket<'ctx, Type<'ctx>>,
+        actual: Ticket<'ctx, Type<'ctx>>,
     },
     Variable {
         name: StrT,
-        ty: &'ctx Type<'ctx>,
+        ty: Ticket<'ctx, Type<'ctx>>,
     },
     Function {
         name: StrT,
         scope: NodeId,
-        params: Vec<(StrT, &'ctx Type<'ctx>)>,
-        returns: &'ctx Type<'ctx>,
+        params: Vec<(StrT, Ticket<'ctx, Type<'ctx>>)>,
+        returns: Ticket<'ctx, Type<'ctx>>,
     },
     Trait {
         name: StrT,
         methods: HashMap<StrT, MaybeSym>,
     },
     ExtendBlock {
-        target: &'ctx Type<'ctx>,
-        extender: Option<&'ctx Type<'ctx>>,
+        target: Ticket<'ctx, Type<'ctx>>,
+        extender: Option<Ticket<'ctx, Type<'ctx>>>,
     },
-    LocalScope(Vec<(StrT, &'ctx Type<'ctx>)>, Vec<Scope<'ctx>>),
+    LocalScope(Vec<(StrT, Ticket<'ctx, Type<'ctx>>)>, Vec<Scope<'ctx>>),
 }
 
 impl<'ctx> Scope<'ctx> {
@@ -73,7 +74,7 @@ impl<'ctx> Scope<'ctx> {
         }
     }
 
-    pub fn vars_mut<'a>(&'a mut self) -> &'a mut Vec<(StrT, &'ctx Type<'ctx>)> {
+    pub fn vars_mut<'a>(&'a mut self) -> &'a mut Vec<(StrT, Ticket<'ctx, Type<'ctx>>)> {
         if let Self::LocalScope(vars, ..) = self {
             vars
         } else {
@@ -85,7 +86,7 @@ impl<'ctx> Scope<'ctx> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Variant<'ctx> {
     Unit,
-    Tuple(Vec<&'ctx Type<'ctx>>),
+    Tuple(Vec<Ticket<'ctx, Type<'ctx>>>),
 }
 
 impl<'ctx> From<&EnumVariant<'ctx>> for (StrT, Variant<'ctx>) {
@@ -184,8 +185,8 @@ impl<T, L> Graph<T, L> {
 }
 
 impl<'ctx> Graph<Scope<'ctx>, MaybeSym> {
-    pub fn push_ast(&mut self, id: NodeId, node: &'ctx Ast<'ctx>) {
-        match node {
+    pub fn push_ast(&mut self, id: NodeId, node: Ticket<'ctx, Ast<'ctx>>) {
+        match &*node {
             Ast::Function(func) => {
                 // TODO: All fields
                 let scope = self.push(Scope::new());
@@ -201,7 +202,7 @@ impl<'ctx> Graph<Scope<'ctx>, MaybeSym> {
                 };
 
                 for stmt in func.body.iter() {
-                    self.push_stmt(scope, &*stmt);
+                    self.push_stmt(scope, *stmt);
                 }
 
                 let node = self.push(function_scope);
@@ -259,8 +260,8 @@ impl<'ctx> Graph<Scope<'ctx>, MaybeSym> {
             // TODO: How do I connect these to their implementors?
             Ast::ExtendBlock(block) => {
                 let block_scope = Scope::ExtendBlock {
-                    target: block.target.deref(),
-                    extender: block.extender.map(|t| *t.deref()),
+                    target: block.target.deref().clone(),
+                    extender: block.extender.as_ref().map(|t| t.deref().clone()),
                 };
 
                 let node = self.push(block_scope);
@@ -269,8 +270,8 @@ impl<'ctx> Graph<Scope<'ctx>, MaybeSym> {
 
             Ast::Alias(alias) => {
                 let alias_scope = Scope::Alias {
-                    alias: alias.alias.deref(),
-                    actual: alias.actual.deref(),
+                    alias: alias.alias.deref().clone(),
+                    actual: alias.actual.deref().clone(),
                 };
 
                 let node = self.push(alias_scope);
@@ -279,31 +280,31 @@ impl<'ctx> Graph<Scope<'ctx>, MaybeSym> {
         }
     }
 
-    fn push_stmt(&mut self, parent: NodeId, stmt: &'ctx Stmt<'ctx>) {
-        match stmt {
+    fn push_stmt(&mut self, parent: NodeId, stmt: Ticket<'ctx, Stmt<'ctx>>) {
+        match &*stmt {
             Stmt::If {
                 condition,
                 body,
                 clauses,
                 else_clause,
             } => {
-                self.push_expr(parent, condition);
+                self.push_expr(parent, *condition);
 
                 let body_scope = self.push(Scope::new());
                 self.add_child(parent, body_scope).unwrap();
 
                 for stmt in body {
-                    self.push_stmt(parent, stmt);
+                    self.push_stmt(parent, *stmt);
                 }
 
                 for (condition, body) in clauses {
-                    self.push_expr(parent, condition);
+                    self.push_expr(parent, *condition);
 
                     let else_scope = self.push(Scope::new());
                     self.add_child(parent, else_scope).unwrap();
 
                     for stmt in body {
-                        self.push_stmt(parent, stmt);
+                        self.push_stmt(parent, *stmt);
                     }
                 }
 
@@ -312,12 +313,12 @@ impl<'ctx> Graph<Scope<'ctx>, MaybeSym> {
                     self.add_child(parent, else_scope).unwrap();
 
                     for stmt in else_clause {
-                        self.push_stmt(parent, stmt);
+                        self.push_stmt(parent, *stmt);
                     }
                 }
             }
 
-            Stmt::Expr(expr) => self.push_expr(parent, expr),
+            Stmt::Expr(expr) => self.push_expr(parent, *expr),
 
             Stmt::VarDeclaration {
                 name,
@@ -329,17 +330,17 @@ impl<'ctx> Graph<Scope<'ctx>, MaybeSym> {
                 let scope = self.node_mut(parent).unwrap();
                 scope.vars_mut().push((*name, ty.deref().clone()));
 
-                self.push_expr(parent, val);
+                self.push_expr(parent, *val);
             }
 
             Stmt::Return(ret) => {
                 if let Some(ret) = ret {
-                    self.push_expr(parent, &*ret);
+                    self.push_expr(parent, *ret);
                 }
             }
             Stmt::Break(brk) => {
                 if let Some(brk) = brk {
-                    self.push_expr(parent, &brk);
+                    self.push_expr(parent, *brk);
                 }
             }
             Stmt::Continue => {}
@@ -351,13 +352,13 @@ impl<'ctx> Graph<Scope<'ctx>, MaybeSym> {
                 then,
                 else_clause,
             } => {
-                self.push_expr(parent, condition);
+                self.push_expr(parent, *condition);
 
                 let body_scope = self.push(Scope::new());
                 self.add_child(parent, body_scope).unwrap();
 
                 for stmt in body {
-                    self.push_stmt(parent, stmt);
+                    self.push_stmt(parent, *stmt);
                 }
 
                 if let Some(body) = then {
@@ -365,7 +366,7 @@ impl<'ctx> Graph<Scope<'ctx>, MaybeSym> {
                     self.add_child(parent, then_scope).unwrap();
 
                     for stmt in body {
-                        self.push_stmt(parent, &*stmt);
+                        self.push_stmt(parent, *stmt);
                     }
                 }
 
@@ -374,7 +375,7 @@ impl<'ctx> Graph<Scope<'ctx>, MaybeSym> {
                     self.add_child(parent, else_scope).unwrap();
 
                     for stmt in else_clause {
-                        self.push_stmt(parent, stmt);
+                        self.push_stmt(parent, *stmt);
                     }
                 }
             }
@@ -384,7 +385,7 @@ impl<'ctx> Graph<Scope<'ctx>, MaybeSym> {
                 self.add_child(parent, body_scope).unwrap();
 
                 for stmt in body {
-                    self.push_stmt(parent, stmt);
+                    self.push_stmt(parent, *stmt);
                 }
 
                 if let Some(else_clause) = else_clause {
@@ -392,7 +393,7 @@ impl<'ctx> Graph<Scope<'ctx>, MaybeSym> {
                     self.add_child(parent, else_scope).unwrap();
 
                     for stmt in else_clause {
-                        self.push_stmt(parent, stmt);
+                        self.push_stmt(parent, *stmt);
                     }
                 }
             }
@@ -404,14 +405,14 @@ impl<'ctx> Graph<Scope<'ctx>, MaybeSym> {
                 then,
                 else_clause,
             } => {
-                self.push_expr(parent, var);
-                self.push_expr(parent, condition);
+                self.push_expr(parent, *var);
+                self.push_expr(parent, *condition);
 
                 let body_scope = self.push(Scope::new());
                 self.add_child(parent, body_scope).unwrap();
 
                 for stmt in body {
-                    self.push_stmt(body_scope, stmt);
+                    self.push_stmt(body_scope, *stmt);
                 }
 
                 if let Some(body) = then {
@@ -419,7 +420,7 @@ impl<'ctx> Graph<Scope<'ctx>, MaybeSym> {
                     self.add_child(parent, then_scope).unwrap();
 
                     for stmt in body {
-                        self.push_stmt(parent, &*stmt);
+                        self.push_stmt(parent, *stmt);
                     }
                 }
 
@@ -428,13 +429,13 @@ impl<'ctx> Graph<Scope<'ctx>, MaybeSym> {
                     self.add_child(parent, else_scope).unwrap();
 
                     for stmt in else_clause {
-                        self.push_stmt(parent, stmt);
+                        self.push_stmt(parent, *stmt);
                     }
                 }
             }
 
             Stmt::Match { var, arms } => {
-                self.push_expr(parent, var);
+                self.push_expr(parent, *var);
 
                 for (_bind, clause, body) in arms {
                     let arm = self.push(Scope::new());
@@ -447,18 +448,18 @@ impl<'ctx> Graph<Scope<'ctx>, MaybeSym> {
                     //     .push((*bind, Type::Infer));
 
                     if let Some(clause) = clause {
-                        self.push_expr(arm, &*clause);
+                        self.push_expr(arm, *clause);
                     }
 
                     for stmt in body {
-                        self.push_stmt(arm, stmt);
+                        self.push_stmt(arm, *stmt);
                     }
                 }
             }
         }
     }
 
-    fn push_expr(&mut self, _parent: NodeId, _expr: &'ctx Expr<'ctx>) {}
+    fn push_expr(&mut self, _parent: NodeId, _expr: Ticket<'ctx, Expr<'ctx>>) {}
 }
 
 impl<T: fmt::Debug, L: fmt::Debug> fmt::Debug for Graph<T, L> {

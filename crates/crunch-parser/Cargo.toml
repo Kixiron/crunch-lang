@@ -33,7 +33,7 @@ optional = true
 
 # Concurrent hashmap for symbol table
 [dependencies.dashmap]
-version = "3.11.1"
+version = "3.11.2"
 optional = true
 
 # Pretty error reporting

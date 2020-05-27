@@ -14,23 +14,26 @@ use core::{convert::TryFrom, fmt};
 use crunch_proc::recursion_guard;
 #[cfg(test)]
 use serde::{Deserialize, Serialize};
+use stadium::Ticket;
 
-type PrefixParselet<'src, 'ctx> =
-    fn(&'ctx mut Parser<'src, 'ctx>, Token<'src>) -> ParseResult<Locatable<&'ctx Type<'ctx>>>;
-
-type PostfixParselet<'src, 'ctx> = fn(
-    &'ctx mut Parser<'src, 'ctx>,
+type PrefixParselet<'src, 'cxl, 'ctx> = fn(
+    &mut Parser<'src, 'cxl, 'ctx>,
     Token<'src>,
-    Locatable<&'ctx Type<'ctx>>,
-) -> ParseResult<Locatable<&'ctx Type<'ctx>>>;
+) -> ParseResult<Locatable<Ticket<'ctx, Type<'ctx>>>>;
 
-type InfixParselet<'src, 'ctx> = fn(
-    &'ctx mut Parser<'src, 'ctx>,
+type PostfixParselet<'src, 'cxl, 'ctx> = fn(
+    &mut Parser<'src, 'cxl, 'ctx>,
     Token<'src>,
-    Locatable<&'ctx Type<'ctx>>,
-) -> ParseResult<Locatable<&'ctx Type<'ctx>>>;
+    Locatable<Ticket<'ctx, Type<'ctx>>>,
+) -> ParseResult<Locatable<Ticket<'ctx, Type<'ctx>>>>;
 
-impl<'src, 'ctx> Parser<'src, 'ctx> {
+type InfixParselet<'src, 'cxl, 'ctx> = fn(
+    &mut Parser<'src, 'cxl, 'ctx>,
+    Token<'src>,
+    Locatable<Ticket<'ctx, Type<'ctx>>>,
+) -> ParseResult<Locatable<Ticket<'ctx, Type<'ctx>>>>;
+
+impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
     /// ```ebnf
     /// Type ::=
     ///     'str' | 'rune' | 'bool' | 'unit' | 'absurd'
@@ -51,7 +54,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// ```
     // TODO: Decide about `Self` and `self`
     #[recursion_guard]
-    pub(super) fn ascribed_type(&'ctx mut self) -> ParseResult<Locatable<&'ctx Type<'ctx>>> {
+    pub(super) fn ascribed_type(&mut self) -> ParseResult<Locatable<Ticket<'ctx, Type<'ctx>>>> {
         self.ascribed_type_internal(0)
     }
 
@@ -68,9 +71,9 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
     #[recursion_guard]
     fn ascribed_type_internal(
-        &'ctx mut self,
+        &mut self,
         precedence: usize,
-    ) -> ParseResult<Locatable<&'ctx Type<'ctx>>> {
+    ) -> ParseResult<Locatable<Ticket<'ctx, Type<'ctx>>>> {
         let mut token = self.next()?;
 
         let prefix = Self::type_prefix(token.ty());
@@ -108,7 +111,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         }
     }
 
-    fn type_prefix(ty: TokenType) -> Option<PrefixParselet<'src, 'ctx>> {
+    fn type_prefix(ty: TokenType) -> Option<PrefixParselet<'src, 'cxl, 'ctx>> {
         let prefix: PrefixParselet = match ty {
             // Types and builtins
             TokenType::Ident => |parser, token| {
@@ -446,11 +449,11 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         Some(prefix)
     }
 
-    fn type_postfix(_ty: TokenType) -> Option<PostfixParselet<'src, 'ctx>> {
+    fn type_postfix(_ty: TokenType) -> Option<PostfixParselet<'src, 'cxl, 'ctx>> {
         None
     }
 
-    fn type_infix(ty: TokenType) -> Option<InfixParselet<'src, 'ctx>> {
+    fn type_infix(ty: TokenType) -> Option<InfixParselet<'src, 'cxl, 'ctx>> {
         let infix: InfixParselet = match ty {
             TokenType::Ampersand | TokenType::Pipe => |parser, operand, left| {
                 let _frame = parser.add_stack_frame()?;
@@ -494,25 +497,25 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     }
 }
 
-#[cfg_attr(test, derive(Deserialize, Serialize))]
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type<'ctx> {
     Operand(
-        Locatable<&'ctx Type<'ctx>>,
+        Locatable<Ticket<'ctx, Type<'ctx>>>,
         TypeOperand,
-        Locatable<&'ctx Type<'ctx>>,
+        Locatable<Ticket<'ctx, Type<'ctx>>>,
     ),
-    Const(StrT, Locatable<&'ctx Type<'ctx>>),
-    Not(Locatable<&'ctx Type<'ctx>>),
-    Parenthesised(Locatable<&'ctx Type<'ctx>>),
+    Const(StrT, Locatable<Ticket<'ctx, Type<'ctx>>>),
+    Not(Locatable<Ticket<'ctx, Type<'ctx>>>),
+    Parenthesised(Locatable<Ticket<'ctx, Type<'ctx>>>),
     Function {
-        params: Vec<Locatable<&'ctx Type<'ctx>>>,
-        returns: Locatable<&'ctx Type<'ctx>>,
+        params: Vec<Locatable<Ticket<'ctx, Type<'ctx>>>>,
+        returns: Locatable<Ticket<'ctx, Type<'ctx>>>,
     },
-    TraitObj(Vec<Locatable<&'ctx Type<'ctx>>>),
+    TraitObj(Vec<Locatable<Ticket<'ctx, Type<'ctx>>>>),
     Bounded {
         path: ItemPath,
-        bounds: Vec<Locatable<&'ctx Type<'ctx>>>,
+        bounds: Vec<Locatable<Ticket<'ctx, Type<'ctx>>>>,
     },
     ItemPath(ItemPath),
     Infer,
@@ -530,9 +533,9 @@ pub enum Type<'ctx> {
     Rune,
     Unit,
     Absurd,
-    Array(u128, Locatable<&'ctx Type<'ctx>>),
-    Slice(Locatable<&'ctx Type<'ctx>>),
-    Tuple(Vec<Locatable<&'ctx Type<'ctx>>>),
+    Array(u128, Locatable<Ticket<'ctx, Type<'ctx>>>),
+    Slice(Locatable<Ticket<'ctx, Type<'ctx>>>),
+    Tuple(Vec<Locatable<Ticket<'ctx, Type<'ctx>>>>),
 }
 
 impl<'ctx> Type<'ctx> {
@@ -580,7 +583,7 @@ impl<'ctx> Type<'ctx> {
         }
     }
 
-    pub fn to_string(&self, context: &'ctx Context<'ctx>) -> String {
+    pub fn to_string(&self, context: &Context<'ctx>) -> String {
         match self {
             Self::Infer => "infer".to_string(),
             Self::Not(ty) => format!("!{}", ty.to_string(context)),
@@ -792,7 +795,7 @@ mod tests {
                 .ascribed_type()
                 .unwrap();
 
-            assert_eq!(&*ty, &correct);
+            assert_eq!(&**ty, correct);
         }
     }
 
@@ -838,29 +841,29 @@ mod tests {
                 .ascribed_type()
                 .unwrap();
 
-            assert_eq!(&*ty, &correct);
+            assert_eq!(&**ty, correct);
         }
     }
 
     #[test]
     fn not() {
+        let mut context = Context::new();
         let types = [
             (
                 "!str",
-                Type::Not(Box::new(Locatable {
-                    data: Type::String,
+                Type::Not(Locatable {
+                    data: context.store(Type::String),
                     loc: Location::concrete(Span::from(1..4), FileId::new(0)),
-                })),
+                }),
             ),
             (
                 "!rune",
-                Type::Not(Box::new(Locatable {
-                    data: Type::Rune,
+                Type::Not(Locatable {
+                    data: context.store(Type::Rune),
                     loc: Location::concrete(Span::from(1..5), FileId::new(0)),
-                })),
+                }),
             ),
         ];
-        let mut context = Context::new();
 
         for (src, correct) in types.iter() {
             let current_file = CurrentFile::new(FileId::new(0), src.len());
@@ -868,29 +871,29 @@ mod tests {
                 .ascribed_type()
                 .unwrap();
 
-            assert_eq!(&*ty, &correct);
+            assert_eq!(&**ty, correct);
         }
     }
 
     #[test]
     fn paren() {
+        let mut context = Context::new();
         let types = [
             (
                 "(str)",
-                Type::Parenthesised(Box::new(Locatable {
-                    data: Type::String,
+                Type::Parenthesised(Locatable {
+                    data: context.store(Type::String),
                     loc: Location::concrete(Span::from(1..4), FileId::new(0)),
-                })),
+                }),
             ),
             (
                 "(rune)",
-                Type::Parenthesised(Box::new(Locatable {
-                    data: Type::Rune,
+                Type::Parenthesised(Locatable {
+                    data: context.store(Type::Rune),
                     loc: Location::concrete(Span::from(1..5), FileId::new(0)),
-                })),
+                }),
             ),
         ];
-        let mut context = Context::new();
 
         for (src, correct) in types.iter() {
             let current_file = CurrentFile::new(FileId::new(0), src.len());
@@ -898,7 +901,7 @@ mod tests {
                 .ascribed_type()
                 .unwrap();
 
-            assert_eq!(&*ty, &correct);
+            assert_eq!(&**ty, correct);
         }
     }
 
@@ -943,7 +946,7 @@ mod tests {
                 .ascribed_type()
                 .unwrap();
 
-            assert_eq!(&*ty, &correct);
+            assert_eq!(&**ty, correct);
         }
     }
 
@@ -955,10 +958,11 @@ mod tests {
         proptest! {
             #[test]
             fn int_types(s in r#"i[0-9]+"#) {
-                let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &mut Context::default());
+                let context = Context::default();
+                let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &context);
 
                 let ty = parser.ascribed_type();
-                match ty.as_ref().map(|t| &**t) {
+                match ty.as_ref().map(|t| &***t) {
                     Ok(Type::Integer { sign: Signedness::Signed, .. }) => {},
                     Err(Locatable { data: _data @ Error::Syntax(SyntaxError::Generic(..)), .. }) => {}
 
@@ -968,10 +972,11 @@ mod tests {
 
             #[test]
             fn uint_types(s in r#"u[0-9]+"#) {
-                let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &mut Context::default());
+                let context = Context::default();
+                let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &context);
 
                 let ty = parser.ascribed_type();
-                match ty.as_ref().map(|t| &**t) {
+                match ty.as_ref().map(|t| &***t) {
                     Ok(Type::Integer { sign: Signedness::Unsigned, .. }) => {},
                     Err(Locatable { data: _data @ Error::Syntax(SyntaxError::Generic(..)), .. }) => {}
 
@@ -981,10 +986,11 @@ mod tests {
 
             #[test]
             fn float(s in r#"f[0-9]+"#) {
-                let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &mut Context::default());
+                let context = Context::default();
+                let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &context);
 
                 let ty = parser.ascribed_type();
-                match ty.as_ref().map(|t| &**t) {
+                match ty.as_ref().map(|t| &***t) {
                     Ok(Type::Float { .. }) => {},
                     Err(Locatable { data: _data @ Error::Syntax(SyntaxError::Generic(..)), .. }) => {}
 

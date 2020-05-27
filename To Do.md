@@ -74,6 +74,8 @@
 - [ ] Effects?
 - [ ] Annotate *all* parse functions with grammar rules
 - [ ] Split Pratt sub-functions into methods on `Parser`
+- [ ] {De}serializable arena
+- [ ] Stop using `.deref()`, instead use `*`
 
 ## AST -> HIR
 

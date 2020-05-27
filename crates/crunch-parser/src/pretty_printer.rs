@@ -11,24 +11,25 @@ use crate::{
 #[cfg(feature = "no-std")]
 use alloc::{format, vec::Vec};
 use core::fmt::{Result, Write};
+use stadium::Ticket;
 
 #[derive(Debug)]
-pub struct PrettyPrinter<'ctx> {
+pub struct PrettyPrinter<'cxl, 'ctx> {
     indent_level: usize,
-    context: &'ctx Context<'ctx>,
+    context: &'cxl Context<'ctx>,
 }
 
-impl<'ctx> PrettyPrinter<'ctx> {
-    pub fn new(context: &'ctx Context<'ctx>) -> Self {
+impl<'cxl, 'ctx> PrettyPrinter<'cxl, 'ctx> {
+    pub fn new(context: &'cxl Context<'ctx>) -> Self {
         Self {
             indent_level: 0,
             context,
         }
     }
 
-    pub fn pretty_print(&mut self, f: &mut dyn Write, ast: &'ctx [Ast<'ctx>]) -> Result {
+    pub fn pretty_print(&mut self, f: &mut dyn Write, ast: &[Ticket<'_, Ast<'_>>]) -> Result {
         for node in ast {
-            self.print_ast(f, node)?;
+            self.print_ast(f, *node)?;
         }
 
         Ok(())
@@ -38,9 +39,9 @@ impl<'ctx> PrettyPrinter<'ctx> {
         write!(f, "{}", "    ".repeat(self.indent_level))
     }
 
-    pub(crate) fn print_ast(&mut self, f: &mut dyn Write, node: &'ctx Ast<'ctx>) -> Result {
-        match node {
-            Ast::Function(func) => self.print_func(f, func.data()),
+    pub(crate) fn print_ast(&mut self, f: &mut dyn Write, node: Ticket<'_, Ast<'_>>) -> Result {
+        match (*node).clone() {
+            Ast::Function(func) => self.print_func(f, (*func).clone()),
             Ast::Type(ty) => self.print_type(f, ty.data()),
             Ast::Enum(enum_decl) => self.print_enum(f, enum_decl.data()),
             Ast::Trait(trait_decl) => self.print_trait(f, trait_decl.data()),
@@ -57,21 +58,21 @@ impl<'ctx> PrettyPrinter<'ctx> {
             target,
             extender,
             nodes,
-        }: &'ctx ExtendBlock,
+        }: &ExtendBlock,
     ) -> Result {
         self.print_indent(f)?;
         f.write_str("extend ")?;
-        self.print_ty(f, target)?;
+        self.print_ty(f, **target)?;
 
         if let Some(extender) = extender {
             f.write_str(" with ")?;
-            self.print_ty(f, extender)?;
+            self.print_ty(f, **extender)?;
         }
         writeln!(f)?;
 
         self.indent_level += 1;
         for node in nodes {
-            self.print_ast(f, node)?;
+            self.print_ast(f, *node)?;
         }
         self.indent_level -= 1;
 
@@ -86,22 +87,22 @@ impl<'ctx> PrettyPrinter<'ctx> {
             actual,
             decorators,
             attrs,
-        }: &'ctx Alias,
+        }: &Alias,
     ) -> Result {
         self.print_indent(f)?;
         for dec in decorators {
-            self.print_decorator(f, dec.data())?;
+            self.print_decorator(f, (**dec).clone())?;
             writeln!(f)?;
         }
 
         for attr in attrs {
-            self.print_attr(f, *attr.data())?;
+            self.print_attr(f, **attr)?;
         }
 
         f.write_str("alias ")?;
-        self.print_ty(f, alias)?;
+        self.print_ty(f, **alias)?;
         f.write_str(" = ")?;
-        self.print_ty(f, actual)?;
+        self.print_ty(f, **actual)?;
         writeln!(f)
     }
 
@@ -157,16 +158,16 @@ impl<'ctx> PrettyPrinter<'ctx> {
             name,
             generics,
             methods,
-        }: &'ctx Trait,
+        }: &Trait,
     ) -> Result {
         for dec in decorators {
-            self.print_decorator(f, dec.data())?;
+            self.print_decorator(f, (**dec).clone())?;
             writeln!(f)?;
         }
 
         self.print_indent(f)?;
         for attr in attrs {
-            self.print_attr(f, *attr.data())?;
+            self.print_attr(f, **attr)?;
         }
 
         write!(f, "trait {}", self.context.resolve(*name))?;
@@ -174,7 +175,7 @@ impl<'ctx> PrettyPrinter<'ctx> {
         if !generics.is_empty() {
             f.write_str("[")?;
             for (i, gen) in generics.iter().enumerate() {
-                self.print_ty(f, gen.data())?;
+                self.print_ty(f, **gen)?;
 
                 if i != generics.len() - 1 {
                     f.write_str(", ")?;
@@ -186,7 +187,7 @@ impl<'ctx> PrettyPrinter<'ctx> {
 
         self.indent_level += 1;
         for method in methods {
-            self.print_func(f, method.data())?;
+            self.print_func(f, (**method).clone())?;
         }
         self.indent_level -= 1;
 
@@ -202,16 +203,16 @@ impl<'ctx> PrettyPrinter<'ctx> {
             name,
             generics,
             variants,
-        }: &'ctx Enum,
+        }: &Enum,
     ) -> Result {
         for dec in decorators {
-            self.print_decorator(f, dec.data())?;
+            self.print_decorator(f, (**dec).clone())?;
             writeln!(f)?;
         }
 
         self.print_indent(f)?;
         for attr in attrs {
-            self.print_attr(f, *attr.data())?;
+            self.print_attr(f, **attr)?;
         }
 
         write!(f, "enum {}", self.context.resolve(*name))?;
@@ -219,7 +220,7 @@ impl<'ctx> PrettyPrinter<'ctx> {
         if !generics.is_empty() {
             f.write_str("[")?;
             for (i, gen) in generics.iter().enumerate() {
-                self.print_ty(f, gen.data())?;
+                self.print_ty(f, **gen)?;
                 if i != generics.len() - 1 {
                     f.write_str(", ")?;
                 }
@@ -230,14 +231,14 @@ impl<'ctx> PrettyPrinter<'ctx> {
 
         self.indent_level += 1;
         for variant in variants {
-            match variant.data() {
+            match (**variant).clone() {
                 EnumVariant::Unit { name, decorators } => {
                     for dec in decorators {
-                        self.print_decorator(f, dec.data())?;
+                        self.print_decorator(f, (*dec).clone())?;
                         writeln!(f)?;
                     }
                     self.print_indent(f)?;
-                    writeln!(f, "{}", self.context.resolve(*name))?;
+                    writeln!(f, "{}", self.context.resolve(name))?;
                 }
 
                 EnumVariant::Tuple {
@@ -246,13 +247,13 @@ impl<'ctx> PrettyPrinter<'ctx> {
                     decorators,
                 } => {
                     for dec in decorators {
-                        self.print_decorator(f, dec.data())?;
+                        self.print_decorator(f, (*dec).clone())?;
                         writeln!(f)?;
                     }
                     self.print_indent(f)?;
-                    write!(f, "{}(", self.context.resolve(*name))?;
+                    write!(f, "{}(", self.context.resolve(name))?;
                     for (i, ty) in elements.iter().enumerate() {
-                        self.print_ty(f, ty.data())?;
+                        self.print_ty(f, **ty)?;
 
                         if i != elements.len() - 1 {
                             f.write_str(", ")?;
@@ -276,16 +277,16 @@ impl<'ctx> PrettyPrinter<'ctx> {
             name,
             generics,
             members,
-        }: &'ctx TypeDecl,
+        }: &TypeDecl,
     ) -> Result {
         for dec in decorators {
-            self.print_decorator(f, dec.data())?;
+            self.print_decorator(f, (**dec).clone())?;
             writeln!(f)?;
         }
 
         self.print_indent(f)?;
         for attr in attrs {
-            self.print_attr(f, *attr.data())?;
+            self.print_attr(f, **attr)?;
         }
 
         write!(f, "type {}", self.context.resolve(*name))?;
@@ -293,7 +294,7 @@ impl<'ctx> PrettyPrinter<'ctx> {
         if !generics.is_empty() {
             f.write_str("[")?;
             for (i, gen) in generics.iter().enumerate() {
-                self.print_ty(f, gen.data())?;
+                self.print_ty(f, **gen)?;
 
                 if i != generics.len() - 1 {
                     f.write_str(", ")?;
@@ -310,20 +311,20 @@ impl<'ctx> PrettyPrinter<'ctx> {
                 attrs,
                 name,
                 ty,
-            } = member.data();
+            } = (**member).clone();
 
             for dec in decorators {
-                self.print_decorator(f, dec.data())?;
+                self.print_decorator(f, (*dec).clone())?;
                 writeln!(f)?;
             }
 
             self.print_indent(f)?;
             for attr in attrs {
-                self.print_attr(f, *attr.data())?;
+                self.print_attr(f, *attr)?;
             }
 
-            write!(f, "{}: ", self.context.resolve(*name))?;
-            self.print_ty(f, ty.data())?;
+            write!(f, "{}: ", self.context.resolve(name))?;
+            self.print_ty(f, *ty)?;
             writeln!(f)?;
         }
         self.indent_level -= 1;
@@ -331,7 +332,7 @@ impl<'ctx> PrettyPrinter<'ctx> {
         writeln!(f, "end")
     }
 
-    fn print_func(
+    fn print_func<'a>(
         &mut self,
         f: &mut dyn Write,
         Function {
@@ -342,19 +343,19 @@ impl<'ctx> PrettyPrinter<'ctx> {
             returns,
             body,
             ..
-        }: &'ctx Function,
+        }: Function,
     ) -> Result {
         for dec in decorators {
-            self.print_decorator(f, dec.data())?;
+            self.print_decorator(f, (*dec).clone())?;
             writeln!(f)?;
         }
 
         self.print_indent(f)?;
         for attr in attrs {
-            self.print_attr(f, *attr.data())?;
+            self.print_attr(f, *attr)?;
         }
 
-        write!(f, "fn {}", self.context.resolve(*name))?;
+        write!(f, "fn {}", self.context.resolve(name))?;
 
         if !args.is_empty() {
             f.write_str("(")?;
@@ -365,9 +366,9 @@ impl<'ctx> PrettyPrinter<'ctx> {
                     let mut param = format!(
                         "{}{}: ",
                         if arg.data().comptime { "comptime " } else { "" },
-                        self.context.resolve(*arg.data().name.data())
+                        self.context.resolve(*arg.data().name)
                     );
-                    self.print_ty(&mut param, arg.data().ty.data()).unwrap();
+                    self.print_ty(&mut param, *arg.data().ty).unwrap();
 
                     param
                 })
@@ -379,7 +380,7 @@ impl<'ctx> PrettyPrinter<'ctx> {
         }
 
         f.write_str(" -> ")?;
-        self.print_ty(f, returns.data())?;
+        self.print_ty(f, *returns)?;
         writeln!(f)?;
 
         self.indent_level += 1;
@@ -392,13 +393,13 @@ impl<'ctx> PrettyPrinter<'ctx> {
         writeln!(f, "end")
     }
 
-    fn print_decorator(&mut self, f: &mut dyn Write, dec: &'ctx Decorator<'ctx>) -> Result {
+    fn print_decorator(&mut self, f: &mut dyn Write, dec: Decorator<'_>) -> Result {
         self.print_indent(f)?;
 
         if !dec.args.is_empty() {
             write!(f, "@{}(", self.context.resolve(*dec.name.data()))?;
             for (i, arg) in dec.args.iter().enumerate() {
-                self.print_expr(f, arg)?;
+                self.print_expr(f, *arg)?;
 
                 if i != dec.args.len() - 1 {
                     f.write_str(", ")?;
@@ -410,9 +411,9 @@ impl<'ctx> PrettyPrinter<'ctx> {
         }
     }
 
-    pub(crate) fn print_expr(&mut self, f: &mut dyn Write, expr: &Expr<'ctx>) -> Result {
-        match &*expr {
-            Expr::Variable(v) => write!(f, "{}", self.context.resolve(*v)),
+    pub(crate) fn print_expr(&mut self, f: &mut dyn Write, expr: Ticket<'_, Expr<'_>>) -> Result {
+        match (*expr).clone() {
+            Expr::Variable(v) => write!(f, "{}", self.context.resolve(v)),
 
             Expr::UnaryExpr(op, expr) => {
                 match op {
@@ -468,7 +469,7 @@ impl<'ctx> PrettyPrinter<'ctx> {
                 self.print_expr(f, caller)?;
                 f.write_str("(")?;
                 for (i, arg) in arguments.iter().enumerate() {
-                    self.print_expr(f, arg)?;
+                    self.print_expr(f, *arg)?;
 
                     if i != arguments.len() - 1 {
                         f.write_str(", ")?;
@@ -508,7 +509,7 @@ impl<'ctx> PrettyPrinter<'ctx> {
             Expr::Array(arr) => {
                 f.write_str("arr[")?;
                 for (i, elm) in arr.iter().enumerate() {
-                    self.print_expr(f, elm)?;
+                    self.print_expr(f, *elm)?;
 
                     if i != arr.len() - 1 {
                         f.write_str(", ")?;
@@ -520,7 +521,7 @@ impl<'ctx> PrettyPrinter<'ctx> {
             Expr::Tuple(tup) => {
                 f.write_str("tup[")?;
                 for (i, elm) in tup.iter().enumerate() {
-                    self.print_expr(f, elm)?;
+                    self.print_expr(f, *elm)?;
 
                     if i != tup.len() - 1 {
                         f.write_str(", ")?;
@@ -562,7 +563,7 @@ impl<'ctx> PrettyPrinter<'ctx> {
         }
     }
 
-    fn print_literal(&mut self, f: &mut dyn Write, literal: &Literal) -> Result {
+    fn print_literal(&mut self, f: &mut dyn Write, literal: Literal) -> Result {
         match literal {
             Literal::Integer(i) => write!(f, "{}", i),
             Literal::Bool(b) => write!(f, "{}", b),
@@ -571,7 +572,7 @@ impl<'ctx> PrettyPrinter<'ctx> {
             Literal::Array(arr) => {
                 f.write_str("[")?;
                 for (i, elm) in arr.iter().enumerate() {
-                    self.print_literal(f, elm)?;
+                    self.print_literal(f, (*elm).clone())?;
 
                     if i != arr.len() - 1 {
                         f.write_str(", ")?;
@@ -583,35 +584,35 @@ impl<'ctx> PrettyPrinter<'ctx> {
         }
     }
 
-    fn print_ty(&mut self, f: &mut dyn Write, ty: &Type) -> Result {
-        match ty {
+    fn print_ty(&mut self, f: &mut dyn Write, ty: Ticket<'_, Type>) -> Result {
+        match (*ty).clone() {
             Type::Infer => f.write_str("infer"),
-            Type::Not(ty) => self.print_ty(f, ty.data()),
+            Type::Not(ty) => self.print_ty(f, *ty),
             Type::Parenthesised(ty) => {
                 f.write_str("(")?;
-                self.print_ty(f, ty.data())?;
+                self.print_ty(f, *ty)?;
                 f.write_str(")")
             }
             Type::Const(ident, ty) => {
-                write!(f, "const {}: ", self.context.resolve(*ident))?;
-                self.print_ty(f, ty.data())
+                write!(f, "const {}: ", self.context.resolve(ident))?;
+                self.print_ty(f, *ty)
             }
             Type::Operand(left, op, right) => {
-                self.print_ty(f, left.data())?;
+                self.print_ty(f, *left)?;
                 write!(f, "{}", op)?;
-                self.print_ty(f, right.data())
+                self.print_ty(f, *right)
             }
             Type::Function { params, returns } => {
                 f.write_str("fn(")?;
                 for (i, param) in params.iter().enumerate() {
-                    self.print_ty(f, param.data())?;
+                    self.print_ty(f, **param)?;
 
                     if i != params.len() - 1 {
                         f.write_str(", ")?;
                     }
                 }
                 f.write_str(") -> ")?;
-                self.print_ty(f, returns.data())
+                self.print_ty(f, *returns)
             }
             Type::TraitObj(traits) => {
                 if traits.is_empty() {
@@ -619,7 +620,7 @@ impl<'ctx> PrettyPrinter<'ctx> {
                 } else {
                     f.write_str("type[")?;
                     for (i, ty) in traits.iter().enumerate() {
-                        self.print_ty(f, ty.data())?;
+                        self.print_ty(f, **ty)?;
                         if i != traits.len() - 1 {
                             f.write_str(", ")?;
                         }
@@ -637,7 +638,7 @@ impl<'ctx> PrettyPrinter<'ctx> {
                         .join(".")
                 )?;
                 for (i, ty) in bounds.iter().enumerate() {
-                    self.print_ty(f, ty.data())?;
+                    self.print_ty(f, **ty)?;
 
                     if i != bounds.len() - 1 {
                         f.write_str(", ")?;
@@ -678,18 +679,18 @@ impl<'ctx> PrettyPrinter<'ctx> {
             Type::Absurd => f.write_str("absurd"),
             Type::Array(len, ty) => {
                 write!(f, "arr[{}, ", len)?;
-                self.print_ty(f, ty.data())?;
+                self.print_ty(f, *ty)?;
                 f.write_str("]")
             }
             Type::Slice(ty) => {
                 f.write_str("arr[")?;
-                self.print_ty(f, ty.data())?;
+                self.print_ty(f, *ty)?;
                 f.write_str("]")
             }
             Type::Tuple(types) => {
                 f.write_str("tup[")?;
                 for (i, ty) in types.iter().enumerate() {
-                    self.print_ty(f, ty.data())?;
+                    self.print_ty(f, **ty)?;
 
                     if i != types.len() - 1 {
                         f.write_str(", ")?;
@@ -719,10 +720,10 @@ impl<'ctx> PrettyPrinter<'ctx> {
         }
     }
 
-    pub(crate) fn print_stmt(&mut self, f: &mut dyn Write, stmt: &'ctx Stmt<'ctx>) -> Result {
+    pub(crate) fn print_stmt(&mut self, f: &mut dyn Write, stmt: Ticket<'_, Stmt<'_>>) -> Result {
         self.print_indent(f)?;
 
-        match &*stmt {
+        match (*stmt).clone() {
             Stmt::Expr(expr) => {
                 self.print_expr(f, expr)?;
                 writeln!(f)
@@ -869,11 +870,11 @@ impl<'ctx> PrettyPrinter<'ctx> {
                 write!(
                     f,
                     "{}{}{}: ",
-                    if *constant { "const" } else { "let" },
-                    if *mutable { " mut " } else { " " },
-                    self.context.resolve(*name)
+                    if constant { "const" } else { "let" },
+                    if mutable { " mut " } else { " " },
+                    self.context.resolve(name)
                 )?;
-                self.print_ty(f, ty.data())?;
+                self.print_ty(f, *ty)?;
                 f.write_str(" := ")?;
                 self.print_expr(f, val)?;
                 writeln!(f)
@@ -966,12 +967,12 @@ impl<'ctx> PrettyPrinter<'ctx> {
             mutable,
             pattern,
             ty,
-        }: &'ctx Binding<'ctx>,
+        }: Binding<'_>,
     ) -> Result {
-        if *reference {
+        if reference {
             write!(f, "ref ")?;
         }
-        if *mutable {
+        if mutable {
             write!(f, "mut ")?;
         }
 
@@ -979,16 +980,16 @@ impl<'ctx> PrettyPrinter<'ctx> {
 
         if let Some(ty) = ty {
             write!(f, ": ")?;
-            self.print_ty(f, ty)?;
+            self.print_ty(f, *ty)?;
         }
 
         Ok(())
     }
 
-    fn print_pattern(&mut self, f: &mut dyn Write, pattern: &Pattern) -> Result {
+    fn print_pattern(&mut self, f: &mut dyn Write, pattern: Pattern) -> Result {
         match pattern {
             Pattern::Literal(lit) => self.print_literal(f, lit),
-            Pattern::Ident(ident) => write!(f, "{} ", self.context.resolve(*ident)),
+            Pattern::Ident(ident) => write!(f, "{} ", self.context.resolve(ident)),
             Pattern::ItemPath(path) => {
                 write!(
                     f,

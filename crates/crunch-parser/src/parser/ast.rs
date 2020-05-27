@@ -10,6 +10,7 @@ use core::{convert::TryFrom, mem};
 use crunch_proc::recursion_guard;
 #[cfg(test)]
 use serde::Serialize;
+use stadium::Ticket;
 
 // TODO: Const blocks
 // TODO: Add back generics to funcs
@@ -21,15 +22,15 @@ pub struct Function<'ctx> {
     pub attrs: Vec<Locatable<Attribute>>,
     pub name: StrT,
     pub args: Vec<Locatable<FuncArg<'ctx>>>,
-    pub returns: Locatable<&'ctx Type<'ctx>>,
-    pub body: Vec<&'ctx Stmt<'ctx>>,
+    pub returns: Locatable<Ticket<'ctx, Type<'ctx>>>,
+    pub body: Vec<Ticket<'ctx, Stmt<'ctx>>>,
 }
 
 #[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FuncArg<'ctx> {
     pub name: Locatable<StrT>,
-    pub ty: Locatable<&'ctx Type<'ctx>>,
+    pub ty: Locatable<Ticket<'ctx, Type<'ctx>>>,
     pub comptime: bool,
 }
 
@@ -39,7 +40,7 @@ pub struct TypeDecl<'ctx> {
     pub decorators: Vec<Locatable<Decorator<'ctx>>>,
     pub attrs: Vec<Locatable<Attribute>>,
     pub name: StrT,
-    pub generics: Vec<Locatable<&'ctx Type<'ctx>>>,
+    pub generics: Vec<Locatable<Ticket<'ctx, Type<'ctx>>>>,
     pub members: Vec<Locatable<TypeMember<'ctx>>>,
 }
 
@@ -49,7 +50,7 @@ pub struct TypeMember<'ctx> {
     pub decorators: Vec<Locatable<Decorator<'ctx>>>,
     pub attrs: Vec<Locatable<Attribute>>,
     pub name: StrT,
-    pub ty: Locatable<&'ctx Type<'ctx>>,
+    pub ty: Locatable<Ticket<'ctx, Type<'ctx>>>,
 }
 
 #[cfg_attr(test, derive(Serialize))]
@@ -58,7 +59,7 @@ pub struct Enum<'ctx> {
     pub decorators: Vec<Locatable<Decorator<'ctx>>>,
     pub attrs: Vec<Locatable<Attribute>>,
     pub name: StrT,
-    pub generics: Vec<Locatable<&'ctx Type<'ctx>>>,
+    pub generics: Vec<Locatable<Ticket<'ctx, Type<'ctx>>>>,
     pub variants: Vec<Locatable<EnumVariant<'ctx>>>,
 }
 
@@ -72,7 +73,7 @@ pub enum EnumVariant<'ctx> {
 
     Tuple {
         name: StrT,
-        elements: Vec<Locatable<&'ctx Type<'ctx>>>,
+        elements: Vec<Locatable<Ticket<'ctx, Type<'ctx>>>>,
         decorators: Vec<Locatable<Decorator<'ctx>>>,
     },
 }
@@ -92,7 +93,7 @@ pub struct Trait<'ctx> {
     pub decorators: Vec<Locatable<Decorator<'ctx>>>,
     pub attrs: Vec<Locatable<Attribute>>,
     pub name: StrT,
-    pub generics: Vec<Locatable<&'ctx Type<'ctx>>>,
+    pub generics: Vec<Locatable<Ticket<'ctx, Type<'ctx>>>>,
     pub methods: Vec<Locatable<Function<'ctx>>>,
 }
 
@@ -107,9 +108,9 @@ pub struct Import {
 #[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ExtendBlock<'ctx> {
-    pub target: Locatable<&'ctx Type<'ctx>>,
-    pub extender: Option<Locatable<&'ctx Type<'ctx>>>,
-    pub nodes: Vec<&'ctx Ast<'ctx>>,
+    pub target: Locatable<Ticket<'ctx, Type<'ctx>>>,
+    pub extender: Option<Locatable<Ticket<'ctx, Type<'ctx>>>>,
+    pub nodes: Vec<Ticket<'ctx, Ast<'ctx>>>,
 }
 
 #[cfg_attr(test, derive(Serialize))]
@@ -117,8 +118,8 @@ pub struct ExtendBlock<'ctx> {
 pub struct Alias<'ctx> {
     pub decorators: Vec<Locatable<Decorator<'ctx>>>,
     pub attrs: Vec<Locatable<Attribute>>,
-    pub alias: Locatable<&'ctx Type<'ctx>>,
-    pub actual: Locatable<&'ctx Type<'ctx>>,
+    pub alias: Locatable<Ticket<'ctx, Type<'ctx>>>,
+    pub actual: Locatable<Ticket<'ctx, Type<'ctx>>>,
 }
 
 #[cfg_attr(test, derive(Serialize))]
@@ -199,7 +200,7 @@ impl Default for ImportDest {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Decorator<'ctx> {
     pub name: Locatable<StrT>,
-    pub args: Vec<&'ctx Expr<'ctx>>,
+    pub args: Vec<Ticket<'ctx, Expr<'ctx>>>,
 }
 
 #[cfg_attr(test, derive(Serialize))]
@@ -268,15 +269,15 @@ impl Visibility {
     }
 }
 
-impl<'src, 'ctx> Parser<'src, 'ctx> {
+impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
     #[recursion_guard]
-    pub(super) fn ast(&'ctx mut self) -> ParseResult<Option<&'ctx Ast<'ctx>>> {
+    pub(super) fn ast(&mut self) -> ParseResult<Option<Ticket<'ctx, Ast<'ctx>>>> {
         let (mut decorators, mut attributes) = (Vec::with_capacity(5), Vec::with_capacity(5));
 
         while self.peek().is_ok() {
             if let Some(node) = self.ast_impl(&mut decorators, &mut attributes)? {
                 let node = self.context.store(node);
-                self.symbol_table.push_ast(self.module_scope, node);
+                self.symbol_table.push_ast(self.module_scope, node.clone());
 
                 return Ok(Some(node));
             }
@@ -288,7 +289,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     // Returns None when the function should be re-called, usually because an attribute or decorator was parsed
     #[recursion_guard]
     fn ast_impl(
-        &'ctx mut self,
+        &mut self,
         decorators: &mut Vec<Locatable<Decorator<'ctx>>>,
         attributes: &mut Vec<Locatable<Attribute>>,
     ) -> ParseResult<Option<Ast<'ctx>>> {
@@ -521,7 +522,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
     #[recursion_guard]
     fn trait_decl(
-        &'ctx mut self,
+        &mut self,
         decorators: Vec<Locatable<Decorator<'ctx>>>,
         mut attrs: Vec<Locatable<Attribute>>,
     ) -> ParseResult<Ast<'ctx>> {
@@ -610,7 +611,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
     #[recursion_guard]
     fn enum_decl(
-        &'ctx mut self,
+        &mut self,
         decorators: Vec<Locatable<Decorator<'ctx>>>,
         mut attrs: Vec<Locatable<Attribute>>,
     ) -> ParseResult<Ast<'ctx>> {
@@ -713,10 +714,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     }
 
     #[recursion_guard]
-    fn decorator(
-        &'ctx mut self,
-        decorators: &mut Vec<Locatable<Decorator<'ctx>>>,
-    ) -> ParseResult<()> {
+    fn decorator(&mut self, decorators: &mut Vec<Locatable<Decorator<'ctx>>>) -> ParseResult<()> {
         let start = self.eat(TokenType::AtSign, [TokenType::Newline])?.span();
         let (name, name_span) = {
             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
@@ -773,7 +771,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// ```
     #[recursion_guard]
     fn type_decl(
-        &'ctx mut self,
+        &mut self,
         decorators: Vec<Locatable<Decorator<'ctx>>>,
         mut attrs: Vec<Locatable<Attribute>>,
     ) -> ParseResult<Ast<'ctx>> {
@@ -894,7 +892,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// ```
     #[recursion_guard]
     fn extend_block(
-        &'ctx mut self,
+        &mut self,
         _decorators: Vec<Locatable<Decorator<'ctx>>>,
         mut _attrs: Vec<Locatable<Attribute>>,
     ) -> ParseResult<Ast<'ctx>> {
@@ -945,7 +943,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// ```
     #[recursion_guard]
     fn alias(
-        &'ctx mut self,
+        &mut self,
         decorators: Vec<Locatable<Decorator<'ctx>>>,
         attrs: Vec<Locatable<Attribute>>,
     ) -> ParseResult<Ast<'ctx>> {
@@ -977,7 +975,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// ```
     #[recursion_guard]
     fn function(
-        &'ctx mut self,
+        &mut self,
         decorators: Vec<Locatable<Decorator<'ctx>>>,
         mut attrs: Vec<Locatable<Attribute>>,
     ) -> ParseResult<Ast<'ctx>> {
@@ -1045,7 +1043,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// Argument ::= Ident ':' Type
     /// ```
     #[recursion_guard]
-    fn function_args(&'ctx mut self) -> ParseResult<Vec<Locatable<FuncArg<'ctx>>>> {
+    fn function_args(&mut self) -> ParseResult<Vec<Locatable<FuncArg<'ctx>>>> {
         self.eat(TokenType::LeftParen, [TokenType::Newline])?;
 
         let mut args = Vec::with_capacity(7);
@@ -1102,7 +1100,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// GenericArgs ::= Type | Type ',' GenericArgs
     /// ```
     #[recursion_guard]
-    pub(super) fn generics(&'ctx mut self) -> ParseResult<Vec<Locatable<&'ctx Type<'ctx>>>> {
+    pub(super) fn generics(&mut self) -> ParseResult<Vec<Locatable<Ticket<'ctx, Type<'ctx>>>>> {
         let peek = if let Ok(peek) = self.peek() {
             peek
         } else {

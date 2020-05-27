@@ -13,37 +13,50 @@ use core::{convert::TryFrom, fmt, iter::FromIterator};
 use crunch_proc::recursion_guard;
 #[cfg(test)]
 use serde::Serialize;
+use stadium::Ticket;
 
 #[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Expr<'ctx> {
     Variable(StrT),
-    UnaryExpr(UnaryOperand, &'ctx Expr<'ctx>),
-    BinaryOp(&'ctx Expr<'ctx>, BinaryOperand, &'ctx Expr<'ctx>),
+    UnaryExpr(UnaryOperand, Ticket<'ctx, Expr<'ctx>>),
+    BinaryOp(
+        Ticket<'ctx, Expr<'ctx>>,
+        BinaryOperand,
+        Ticket<'ctx, Expr<'ctx>>,
+    ),
     InlineConditional {
-        true_arm: &'ctx Expr<'ctx>,
-        condition: &'ctx Expr<'ctx>,
-        false_arm: &'ctx Expr<'ctx>,
+        true_arm: Ticket<'ctx, Expr<'ctx>>,
+        condition: Ticket<'ctx, Expr<'ctx>>,
+        false_arm: Ticket<'ctx, Expr<'ctx>>,
     },
-    Parenthesised(&'ctx Expr<'ctx>),
+    Parenthesised(Ticket<'ctx, Expr<'ctx>>),
     FunctionCall {
-        caller: &'ctx Expr<'ctx>,
-        arguments: Vec<&'ctx Expr<'ctx>>,
+        caller: Ticket<'ctx, Expr<'ctx>>,
+        arguments: Vec<Ticket<'ctx, Expr<'ctx>>>,
     },
     MemberFunctionCall {
-        member: &'ctx Expr<'ctx>,
-        function: &'ctx Expr<'ctx>,
+        member: Ticket<'ctx, Expr<'ctx>>,
+        function: Ticket<'ctx, Expr<'ctx>>,
     },
     Literal(Literal),
-    Comparison(&'ctx Expr<'ctx>, ComparisonOperand, &'ctx Expr<'ctx>),
+    Comparison(
+        Ticket<'ctx, Expr<'ctx>>,
+        ComparisonOperand,
+        Ticket<'ctx, Expr<'ctx>>,
+    ),
     IndexArray {
-        array: &'ctx Expr<'ctx>,
-        index: &'ctx Expr<'ctx>,
+        array: Ticket<'ctx, Expr<'ctx>>,
+        index: Ticket<'ctx, Expr<'ctx>>,
     },
-    Array(Vec<&'ctx Expr<'ctx>>),
-    Tuple(Vec<&'ctx Expr<'ctx>>),
-    Assignment(&'ctx Expr<'ctx>, AssignmentType, &'ctx Expr<'ctx>),
-    Range(&'ctx Expr<'ctx>, &'ctx Expr<'ctx>),
+    Array(Vec<Ticket<'ctx, Expr<'ctx>>>),
+    Tuple(Vec<Ticket<'ctx, Expr<'ctx>>>),
+    Assignment(
+        Ticket<'ctx, Expr<'ctx>>,
+        AssignmentType,
+        Ticket<'ctx, Expr<'ctx>>,
+    ),
+    Range(Ticket<'ctx, Expr<'ctx>>, Ticket<'ctx, Expr<'ctx>>),
 }
 
 #[cfg_attr(test, derive(Serialize))]
@@ -674,23 +687,25 @@ impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for UnaryOperand {
     }
 }
 
-type PrefixParselet<'src, 'ctx> =
-    fn(&'ctx mut Parser<'src, 'ctx>, Token<'src>) -> ParseResult<&'ctx Expr<'ctx>>;
-type PostfixParselet<'src, 'ctx> = fn(
-    &'ctx mut Parser<'src, 'ctx>,
+type PrefixParselet<'src, 'cxl, 'ctx> =
+    fn(&mut Parser<'src, 'cxl, 'ctx>, Token<'src>) -> ParseResult<Ticket<'ctx, Expr<'ctx>>>;
+
+type PostfixParselet<'src, 'cxl, 'ctx> = fn(
+    &mut Parser<'src, 'cxl, 'ctx>,
     Token<'src>,
-    &'ctx Expr<'ctx>,
-) -> ParseResult<&'ctx Expr<'ctx>>;
-type InfixParselet<'src, 'ctx> = fn(
-    &'ctx mut Parser<'src, 'ctx>,
+    Ticket<'ctx, Expr<'ctx>>,
+) -> ParseResult<Ticket<'ctx, Expr<'ctx>>>;
+
+type InfixParselet<'src, 'cxl, 'ctx> = fn(
+    &mut Parser<'src, 'cxl, 'ctx>,
     Token<'src>,
-    &'ctx Expr<'ctx>,
-) -> ParseResult<&'ctx Expr<'ctx>>;
+    Ticket<'ctx, Expr<'ctx>>,
+) -> ParseResult<Ticket<'ctx, Expr<'ctx>>>;
 
 /// Expr Parsing
-impl<'src, 'ctx> Parser<'src, 'ctx> {
+impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
     #[recursion_guard]
-    pub fn expr(&'ctx mut self) -> ParseResult<&'ctx Expr<'ctx>> {
+    pub fn expr(&mut self) -> ParseResult<Ticket<'ctx, Expr<'ctx>>> {
         self.parse_expr(0)
     }
 
@@ -706,7 +721,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     }
 
     #[recursion_guard]
-    fn parse_expr(&'ctx mut self, precedence: usize) -> ParseResult<&'ctx Expr<'ctx>> {
+    fn parse_expr(&mut self, precedence: usize) -> ParseResult<Ticket<'ctx, Expr<'ctx>>> {
         let mut token = self.next()?;
 
         let prefix = Self::expr_prefix(token);
@@ -744,7 +759,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         }
     }
 
-    fn expr_prefix(token: Token) -> Option<PrefixParselet<'src, 'ctx>> {
+    fn expr_prefix(token: Token) -> Option<PrefixParselet<'src, 'cxl, 'ctx>> {
         let prefix: PrefixParselet = match token.ty() {
             // Array and tuple literals
             TokenType::Ident if token.source() == "arr" || token.source() == "tup" => {
@@ -842,7 +857,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         Some(prefix)
     }
 
-    fn expr_postfix(token: Token) -> Option<PostfixParselet<'src, 'ctx>> {
+    fn expr_postfix(token: Token) -> Option<PostfixParselet<'src, 'cxl, 'ctx>> {
         let postfix: PostfixParselet = match token.ty() {
             // Function calls
             TokenType::LeftParen => |parser, _left_paren, caller| {
@@ -931,7 +946,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         Some(postfix)
     }
 
-    fn expr_infix(token: Token) -> Option<InfixParselet<'src, 'ctx>> {
+    fn expr_infix(token: Token) -> Option<InfixParselet<'src, 'cxl, 'ctx>> {
         let infix: InfixParselet = match token.ty() {
             // Binary Operations
             TokenType::Plus
@@ -1001,10 +1016,10 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
     #[recursion_guard]
     fn index_array(
-        &'ctx mut self,
+        &mut self,
         _left_bracket: Token<'src>,
-        array: &'ctx Expr<'ctx>,
-    ) -> ParseResult<&'ctx Expr<'ctx>> {
+        array: Ticket<'ctx, Expr<'ctx>>,
+    ) -> ParseResult<Ticket<'ctx, Expr<'ctx>>> {
         let index = self.expr()?;
         self.eat(TokenType::RightBrace, [TokenType::Newline])?;
         let expr = self.context.store(Expr::IndexArray { array, index });
