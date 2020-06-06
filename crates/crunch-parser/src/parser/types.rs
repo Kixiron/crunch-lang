@@ -253,7 +253,7 @@ impl<'src> Parser<'src> {
                     }
 
                     custom => {
-                        let custom = parser.context.intern(custom);
+                        let custom = parser.context.strings.intern(custom);
                         let path = parser.item_path(custom)?;
 
                         if parser.peek().map(|t| t.ty()) == Ok(TokenType::LeftBrace) {
@@ -368,7 +368,7 @@ impl<'src> Parser<'src> {
                 let _frame = parser.add_stack_frame()?;
 
                 let ident = parser.eat(TokenType::Ident, [TokenType::Newline])?;
-                let ident = parser.context.intern(ident.source());
+                let ident = parser.context.strings.intern(ident.source());
 
                 let ty = if parser.peek()?.ty() == TokenType::Colon {
                     parser.eat(TokenType::Colon, [])?;
@@ -483,8 +483,8 @@ impl TryFrom<TokenType> for TypePrecedence {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::context::Context;
     use crunch_shared::{
+        context::Context,
         error::{Error, Locatable, SyntaxError},
         files::FileId,
     };

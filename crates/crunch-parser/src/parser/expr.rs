@@ -172,7 +172,7 @@ impl<'src> Parser<'src> {
                     _ => Cow::Owned(token.source().nfkc().collect()),
                 };
 
-                let ident = parser.context.intern(&normalized);
+                let ident = parser.context.strings.intern(&normalized);
                 let kind = ExprKind::Variable(ident);
 
                 Ok(Expr { kind })

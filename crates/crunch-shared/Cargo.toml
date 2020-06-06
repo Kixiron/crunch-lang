@@ -7,6 +7,16 @@ edition = "2018"
 [features]
 default = ["concurrent"]
 concurrent = ["lasso/multi-threaded"]
+no-std = ["hashbrown", "lasso/no-std"]
+logging = ["log"]
+
+[dependencies.hashbrown]
+version = "0.7.2"
+optional = true
+
+[dependencies.log]
+version = "0.4.8"
+optional = true
 
 [dependencies.serde]
 version = "1.0.111"

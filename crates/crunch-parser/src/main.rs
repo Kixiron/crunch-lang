@@ -1,5 +1,5 @@
-use crunch_parser::{Context, CurrentFile};
-use crunch_shared::files::Files;
+use crunch_parser::CurrentFile;
+use crunch_shared::{context::Context, files::Files};
 use std::{fs::File, io::Read};
 
 fn main() {

@@ -12,22 +12,13 @@ extern crate alloc;
 
 use alloc::{borrow::ToOwned, boxed::Box, vec::Vec};
 use core::{fmt, ops::Deref};
-use crunch_parser::{
-    symbol_table::{Graph, MaybeSym, Scope},
-    Context,
-};
 use crunch_shared::{
     ast::{Attribute, Expr, FuncArg, Item, ItemKind, Stmt, StmtKind, TypeMember, Variant},
+    context::Context,
     error::{Error, ErrorHandler, Locatable, Location, SemanticError, Warning},
+    symbol_table::{Graph, MaybeSym, NodeId, Scope},
+    utils::HashMap,
 };
-
-cfg_if::cfg_if! {
-    if #[cfg(feature = "no-std")] {
-        use hashbrown::HashMap;
-    } else {
-        use std::collections::HashMap;
-    }
-}
 
 pub struct SemanticAnalyzer {
     passes: Vec<Box<dyn SemanticPass>>,

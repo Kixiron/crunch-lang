@@ -10,9 +10,9 @@ name = "crunch-parser"
 
 [features]
 default = ["concurrent"]
-no-std = ["hashbrown", "dashmap/no_std"]
-logging = ["log"]
-concurrent = ["dashmap", "lasso/multi-threaded"]
+no-std = ["crunch-shared/no-std"]
+logging = ["crunch-shared/logging"]
+concurrent = ["crunch-shared/concurrent"]
 
 # Lexing
 [dependencies.logos]
@@ -23,44 +23,13 @@ version = "0.11.4"
 version = "0.3.0"
 default-features = false
 
+# Integer parsing
 [dependencies.lexical-core]
 version = "0.7.4"
-
-# no_std hashmap
-[dependencies.hashbrown]
-version = "0.7.2"
-optional = true
-
-# Concurrent hashmap for symbol table
-[dependencies.dashmap]
-version = "3.11.4"
-optional = true
-
-# Pretty error reporting
-[dependencies.codespan-reporting]
-version = "0.9.4"
 
 # NFKC Normalization
 [dependencies.unicode-normalization]
 version = "0.1.12"
-
-# Easier conditional compilation
-[dependencies.cfg-if]
-version = "0.1.10"
-
-# Logging
-[dependencies.log]
-version = "0.4.8"
-optional = true
-
-# Error enum display impl generation
-[dependencies.derive_more]
-version = "0.99.7"
-
-# String interning
-[dependencies.lasso]
-git = "https://github.com/Kixiron/lasso.git"
-features = ["serialize"]
 
 # Abstract Syntax Tree and Errors
 [dependencies.crunch-shared]
@@ -69,15 +38,6 @@ path = "../crunch-shared"
 # Tracking stack frames
 [dependencies.crunch-proc]
 path = "../crunch-proc"
-
-# Logging during tests
-[dev-dependencies.simple_logger]
-version = "1.6.0"
-default-features = false
-
-[dev-dependencies.serde]
-version = "1.0.111"
-features = ["derive"]
 
 [dev-dependencies.ron]
 version = "0.6.0"

@@ -1,5 +1,12 @@
 use crate::{error::Location, strings::StrT};
 use alloc::boxed::Box;
+#[cfg(feature = "no-std")]
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 use core::{
     fmt::{Debug, Display, Formatter, Result, Write},
     iter::FromIterator,
@@ -111,6 +118,7 @@ pub enum Attribute {
 }
 
 impl Display for Attribute {
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let pretty = match self {
             Self::Const => "const",
@@ -130,6 +138,7 @@ pub enum Vis {
 }
 
 impl Default for Vis {
+    #[inline]
     fn default() -> Self {
         Self::FileLocal
     }
@@ -258,6 +267,7 @@ pub enum Literal {
 }
 
 impl Literal {
+    #[inline]
     pub fn into_integer(self) -> Option<Integer> {
         if let Self::Integer(int) = self {
             Some(int)
@@ -268,6 +278,7 @@ impl Literal {
 }
 
 impl Display for Literal {
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Self::Integer(int) => write!(f, "{}", int),
@@ -292,16 +303,19 @@ impl Display for Literal {
 pub struct Text(Vec<Rune>);
 
 impl Text {
+    #[inline]
     pub fn new(runes: Vec<Rune>) -> Self {
         Self(runes)
     }
 
+    #[inline]
     pub fn to_bytes(&self) -> Vec<u8> {
         self.to_string().into_bytes()
     }
 }
 
 impl Debug for Text {
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -316,6 +330,7 @@ impl Debug for Text {
 }
 
 impl Display for Text {
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -330,6 +345,7 @@ impl Display for Text {
 }
 
 impl From<&str> for Text {
+    #[inline]
     fn from(string: &str) -> Self {
         Self(string.chars().map(Rune::from).collect())
     }
@@ -341,7 +357,7 @@ pub struct Rune(u32);
 
 impl Rune {
     #[inline]
-    pub fn as_u32(self) -> u32 {
+    pub const fn as_u32(self) -> u32 {
         self.0
     }
 
@@ -356,7 +372,7 @@ impl Rune {
     }
 
     #[inline]
-    pub fn from_char(i: char) -> Self {
+    pub const fn from_char(i: char) -> Self {
         Self(i as u32)
     }
 }
@@ -369,12 +385,14 @@ impl PartialEq<char> for Rune {
 }
 
 impl From<char> for Rune {
+    #[inline]
     fn from(c: char) -> Self {
         Self(c as u32)
     }
 }
 
 impl From<u32> for Rune {
+    #[inline]
     fn from(i: u32) -> Self {
         Self(i)
     }
@@ -400,6 +418,7 @@ pub struct Integer {
 }
 
 impl Display for Integer {
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}{}", &self.sign, &self.bits)
     }
@@ -412,12 +431,14 @@ pub enum Sign {
 }
 
 impl Sign {
+    #[inline]
     pub fn is_negative(self) -> bool {
         self == Self::Negative
     }
 }
 
 impl Display for Sign {
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -435,6 +456,7 @@ impl Display for Sign {
 pub struct Float(pub u64);
 
 impl Display for Float {
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}", f64::from_bits(self.0))
     }
@@ -466,6 +488,7 @@ pub enum Type {
 }
 
 impl Type {
+    #[inline]
     pub fn internal_types(&self) -> Vec<ItemPath> {
         let mut buf = Vec::with_capacity(1);
         self.internal_types_inner(&mut buf);
@@ -473,6 +496,7 @@ impl Type {
         buf
     }
 
+    #[inline]
     fn internal_types_inner(&self, buf: &mut Vec<ItemPath>) {
         match self {
             Self::Operand(Sided { rhs, op: _, lhs }) => {
@@ -511,6 +535,7 @@ impl Type {
     }
 
     /*
+    #[inline]
     pub fn to_string(&self, context: &Context<'ctx>) -> String {
         match self {
             Self::Infer => "infer".to_string(),
@@ -605,6 +630,7 @@ impl Type {
 }
 
 impl Default for Type {
+    #[inline]
     fn default() -> Self {
         Self::Infer
     }
@@ -617,11 +643,14 @@ pub enum TypeOp {
 }
 
 impl Display for TypeOp {
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            Self::And => write!(f, "&"),
-            Self::Or => write!(f, "|"),
-        }
+        let op = match self {
+            Self::And => '&',
+            Self::Or => '|',
+        };
+
+        f.write_char(op)
     }
 }
 
@@ -632,11 +661,14 @@ pub enum Signedness {
 }
 
 impl Display for Signedness {
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            Self::Unsigned => write!(f, "u"),
-            Self::Signed => write!(f, "i"),
-        }
+        let sign = match self {
+            Self::Unsigned => 'u',
+            Self::Signed => 'i',
+        };
+
+        f.write_char(sign)
     }
 }
 
@@ -705,6 +737,7 @@ pub struct Block {
 }
 
 impl Block {
+    #[inline]
     pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a Stmt> + 'a {
         self.stmts.iter()
     }
@@ -721,6 +754,7 @@ pub enum CompOp {
 }
 
 impl Display for CompOp {
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let pretty = match self {
             Self::Greater => ">",
@@ -742,6 +776,7 @@ pub enum AssignKind {
 }
 
 impl Display for AssignKind {
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Self::Normal => f.write_str(":="),
@@ -766,6 +801,7 @@ pub enum BinaryOp {
 }
 
 impl Display for BinaryOp {
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let pretty = match self {
             Self::Add => "+",
@@ -793,6 +829,7 @@ pub enum UnaryOp {
 }
 
 impl Display for UnaryOp {
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let pretty = match self {
             Self::Positive => '+',
@@ -822,6 +859,7 @@ impl<T> Ref<T> {
 }
 
 impl<T> AsRef<T> for Ref<T> {
+    #[inline]
     fn as_ref(&self) -> &T {
         &*self.0
     }
@@ -830,18 +868,21 @@ impl<T> AsRef<T> for Ref<T> {
 impl<T> Deref for Ref<T> {
     type Target = T;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &*self.0
     }
 }
 
 impl<T: Debug> Debug for Ref<T> {
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         Debug::fmt(&*self.0, f)
     }
 }
 
 impl<T: Display> Display for Ref<T> {
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         Display::fmt(&*self.0, f)
     }

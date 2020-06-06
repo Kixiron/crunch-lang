@@ -1,13 +1,13 @@
-use crate::{
-    context::Context,
-    symbol_table::{Graph, MaybeSym, NodeId, Scope},
-    token::{Token, TokenStream, TokenType},
-};
+use crate::token::{Token, TokenStream, TokenType};
 use alloc::{format, vec::Vec};
 use core::mem;
-use crunch_shared::error::{Error, ErrorHandler, Locatable, Location, ParseResult, SyntaxError};
-#[cfg(feature = "logging")]
-use log::{info, trace};
+use crunch_shared::{
+    context::Context,
+    error::{Error, ErrorHandler, Locatable, Location, ParseResult, SyntaxError},
+    info,
+    symbol_table::{Graph, MaybeSym, NodeId, Scope},
+    trace,
+};
 
 mod expr;
 mod item;
@@ -87,13 +87,11 @@ impl<'src> Parser<'src> {
     }
 
     pub fn parse(mut self) -> Result<ReturnData, ErrorHandler> {
-        #[cfg(feature = "logging")]
         info!("Started parsing");
 
         let mut items = Vec::with_capacity(20);
 
         while self.peek().is_ok() {
-            #[cfg(feature = "logging")]
             trace!("Parsing top-level token");
 
             match self.item() {
@@ -109,7 +107,6 @@ impl<'src> Parser<'src> {
                     if let Err(err) = self.stress_eat() {
                         self.error_handler.push_err(err);
 
-                        #[cfg(feature = "logging")]
                         info!("Finished parsing unsuccessfully");
                         return Err(self.error_handler);
                     }
@@ -117,7 +114,6 @@ impl<'src> Parser<'src> {
             }
         }
 
-        #[cfg(feature = "logging")]
         info!("Finished parsing successfully");
         Ok((
             items,
@@ -128,14 +124,12 @@ impl<'src> Parser<'src> {
     }
 
     pub fn lex(source: &'src str) -> (TokenStream<'src>, Option<Token<'src>>, Option<Token<'src>>) {
-        #[cfg(feature = "logging")]
         info!("Started lexing");
 
         let mut token_stream = TokenStream::new(source, true, true);
         let next = None;
         let peek = token_stream.next_token();
 
-        #[cfg(feature = "logging")]
         info!("Finished lexing");
         (token_stream, next, peek)
     }

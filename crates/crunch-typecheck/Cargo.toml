@@ -8,8 +8,5 @@ edition = "2018"
 [dependencies.ladder]
 path = "../ladder"
 
-[dependencies.crunch-parser]
-path = "../crunch-parser"
-
 [dependencies.crunch-shared]
 path = "../crunch-shared"

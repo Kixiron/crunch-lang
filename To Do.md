@@ -3,8 +3,8 @@
 ## Syntax/Parser
 
 - [ ] Graphing ASTs
-- [ ] `loop` doesn't need `then` clauses
-- [ ] Else clause for loops that executes on breakage?
+- [x] `loop` doesn't need `then` clauses
+- [x] Else clause for loops that executes on breakage?
 - [x] Fix if parsing
 - [ ] Type construction `Type is \n field := val \n field2 := val2 \n end`
   - [ ] Commas for fields
@@ -43,8 +43,8 @@
 - [ ] Unique types, each instance is incompatible with any other
 - [ ] Postfix macros
 - [ ] Unions
-- [ ] Re-add function generics
-  - [ ] `fn t[T, E, F](t: T, e: E, f: F)`
+- [x] Re-add function generics
+  - [x] `fn t[T, E, F](t: T, e: E, f: F)`
 - [ ] Raw pointers
   - [ ] `*mut T`/`*const T`?
 - [ ] Blocks `block \n <stmt>* \n end`
@@ -75,9 +75,10 @@
 - [ ] Annotate *all* parse functions with grammar rules
 - [ ] Split Pratt sub-functions into methods on `Parser`
 - [ ] {De}serializable arena
-- [ ] Stop using `.deref()`, instead use `*`
+- [x] Stop using `.deref()`, instead use `*`
 - [ ] Achievements
 - [ ] Bidirectional type checking
+- [ ] Switch tests to do two-way serialization, check equality structurally and not by strings
 
 ## AST -> HIR
 
@@ -89,6 +90,7 @@
 - [ ] SMT Solver
   - [ ] DYI or Z3?
   - [ ] Could do double-duty for optimization and trait/type solving/inference
+  - [ ] SIMD?
 - [ ] LLVM wrapper
   - [ ] DIY?
 - [ ] File checksums for knowing what needs to be recompiled https://apenwarr.ca/log/20181113

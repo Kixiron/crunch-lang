@@ -31,6 +31,7 @@ pub enum Location {
 }
 
 impl Location {
+    #[inline]
     pub fn concrete<S, F>(span: S, file: F) -> Self
     where
         S: Into<Span>,
@@ -42,6 +43,7 @@ impl Location {
         }
     }
 
+    #[inline]
     pub fn implicit<S, F>(span: S, file: F) -> Self
     where
         S: Into<Span>,
@@ -53,6 +55,7 @@ impl Location {
         }
     }
 
+    #[inline]
     pub fn span(&self) -> Span {
         match self {
             Self::Concrete { span, .. } => *span,
@@ -60,6 +63,7 @@ impl Location {
         }
     }
 
+    #[inline]
     pub fn file(&self) -> FileId {
         match self {
             Self::Concrete { file, .. } => *file,
@@ -67,6 +71,7 @@ impl Location {
         }
     }
 
+    #[inline]
     pub fn range(&self) -> Range<usize> {
         self.span().into()
     }
@@ -79,34 +84,41 @@ pub struct Span {
 }
 
 impl Span {
+    #[inline]
     pub const fn new(start: usize, end: usize) -> Self {
         Self { start, end }
     }
 
+    #[inline]
     pub const fn start(&self) -> usize {
         self.start
     }
 
+    #[inline]
     pub const fn end(&self) -> usize {
         self.end
     }
 
+    #[inline]
     pub const fn merge(start: Self, end: Self) -> Span {
         Self::new(start.start, end.end)
     }
 
+    #[inline]
     pub const fn width(&self) -> usize {
         self.end - self.start
     }
 }
 
 impl fmt::Debug for Span {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}..{}", self.start, self.end)
     }
 }
 
 impl From<Range<usize>> for Span {
+    #[inline]
     fn from(range: Range<usize>) -> Self {
         Self {
             start: range.start,
@@ -116,12 +128,14 @@ impl From<Range<usize>> for Span {
 }
 
 impl Into<Range<usize>> for Span {
+    #[inline]
     fn into(self) -> Range<usize> {
         self.start..self.end
     }
 }
 
 impl From<(usize, usize)> for Span {
+    #[inline]
     fn from(range: (usize, usize)) -> Self {
         Self {
             start: range.0,
@@ -131,12 +145,14 @@ impl From<(usize, usize)> for Span {
 }
 
 impl Into<(usize, usize)> for Span {
+    #[inline]
     fn into(self) -> (usize, usize) {
         (self.start, self.end)
     }
 }
 
 impl From<[usize; 2]> for Span {
+    #[inline]
     fn from(range: [usize; 2]) -> Self {
         Self {
             start: range[0],
@@ -146,6 +162,7 @@ impl From<[usize; 2]> for Span {
 }
 
 impl Into<[usize; 2]> for Span {
+    #[inline]
     fn into(self) -> [usize; 2] {
         [self.start, self.end]
     }
@@ -158,42 +175,51 @@ pub struct Locatable<T> {
 }
 
 impl<T> Locatable<T> {
+    #[inline]
     pub fn new(data: T, loc: Location) -> Self {
         Self { data, loc }
     }
 
+    #[inline]
     pub fn data(&self) -> &T {
         &self.data
     }
 
+    #[inline]
     pub fn into_data(self) -> T {
         self.data
     }
 
+    #[inline]
     pub fn loc(&self) -> Location {
         self.loc
     }
 
+    #[inline]
     pub fn span(&self) -> Span {
         self.loc.span()
     }
 
+    #[inline]
     pub fn file(&self) -> FileId {
         self.loc.file()
     }
 
+    #[inline]
     pub fn range(&self) -> Range<usize> {
         self.span().into()
     }
 }
 
 impl<T> AsRef<T> for Locatable<T> {
+    #[inline]
     fn as_ref(&self) -> &T {
         &self.data
     }
 }
 
 impl<T> AsMut<T> for Locatable<T> {
+    #[inline]
     fn as_mut(&mut self) -> &mut T {
         &mut self.data
     }
@@ -202,12 +228,14 @@ impl<T> AsMut<T> for Locatable<T> {
 impl<T> ops::Deref for Locatable<T> {
     type Target = T;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.data
     }
 }
 
 impl<T> ops::DerefMut for Locatable<T> {
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.data
     }
@@ -217,6 +245,7 @@ impl<T> Hash for Locatable<T>
 where
     T: Hash,
 {
+    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.data.hash(state)
     }
@@ -230,6 +259,7 @@ pub struct ErrorHandler {
 }
 
 impl ErrorHandler {
+    #[inline]
     pub fn new() -> Self {
         Self {
             errors: VecDeque::new(),
@@ -238,20 +268,24 @@ impl ErrorHandler {
         }
     }
 
+    #[inline]
     pub fn push_err(&mut self, err: Locatable<Error>) {
         self.fatal = true;
         self.errors.push_back(err);
     }
 
+    #[inline]
     pub fn push_warning(&mut self, warn: Locatable<Warning>) {
         self.warnings.push_back(warn);
     }
 
+    #[inline]
     pub fn is_fatal(&self) -> bool {
         self.fatal
     }
 
     /// Drain all errors and warnings from the current handler, emitting them
+    #[inline]
     pub fn emit<'a, F>(&mut self, files: &'a F)
     where
         F: codespan_reporting::files::Files<'a, FileId = FileId>,
@@ -279,6 +313,7 @@ impl ErrorHandler {
 }
 
 impl From<Locatable<Error>> for ErrorHandler {
+    #[inline]
     fn from(err: Locatable<Error>) -> Self {
         let mut handler = ErrorHandler::new();
         handler.push_err(err);
@@ -287,6 +322,7 @@ impl From<Locatable<Error>> for ErrorHandler {
 }
 
 impl Default for ErrorHandler {
+    #[inline]
     fn default() -> Self {
         Self::new()
     }
@@ -380,6 +416,7 @@ pub enum SyntaxError {
 }
 
 impl SyntaxError {
+    #[inline]
     fn emit(&self, file: FileId, span: Span, diag: &mut Vec<Diagnostic<FileId>>) {
         diag.push(
             Diagnostic::error()
@@ -431,6 +468,7 @@ pub enum SemanticError {
 }
 
 impl SemanticError {
+    #[inline]
     fn emit(&self, file: FileId, span: Span, diag: &mut Vec<Diagnostic<FileId>>) {
         match self {
             Self::Redefinition { first, second, .. } => {
@@ -480,6 +518,7 @@ impl SemanticError {
 pub enum TypeError {}
 
 impl TypeError {
+    #[inline]
     fn emit(&self, file: FileId, span: Span, diag: &mut Vec<Diagnostic<FileId>>) {
         diag.push(
             Diagnostic::error()
@@ -496,6 +535,7 @@ pub enum Warning {
 }
 
 impl Warning {
+    #[inline]
     fn emit(&self, file: FileId, span: Span, diag: &mut Vec<Diagnostic<FileId>>) {
         diag.push(
             Diagnostic::error()

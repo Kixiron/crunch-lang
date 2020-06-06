@@ -47,7 +47,7 @@ impl<'src> Parser<'src> {
         if let Ok(peek) = self.peek() {
             while peek.ty() == TokenType::Ident {
                 let segment = self.eat(TokenType::Ident, [TokenType::Newline])?.source();
-                path.push(self.context.intern(segment));
+                path.push(self.context.strings.intern(segment));
 
                 if matches!(self.peek().map(|t| t.ty()), Ok(TokenType::Dot)) {
                     self.eat(TokenType::Dot, [TokenType::Newline])?;

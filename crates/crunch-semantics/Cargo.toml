@@ -6,20 +6,10 @@ license = "Zlib"
 edition = "2018"
 
 [features]
-no-std = ["hashbrown"]
-
-[dependencies.crunch-parser]
-path = "../crunch-parser"
+no-std = ["crunch-shared/no-std"]
 
 [dependencies.crunch-shared]
 path = "../crunch-shared"
-
-[dependencies.hashbrown]
-version = "0.7.2"
-optional = true
-
-[dependencies.cfg-if]
-version = "0.1.10"
 
 [dependencies.Inflector]
 version = "0.11.4"

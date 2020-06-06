@@ -1,17 +1,18 @@
 //! Regression tests for found crashes
 
-use crate::{
-    parser::{CurrentFile, Parser},
+use crate::parser::{CurrentFile, Parser};
+use crunch_shared::{
+    ast::Item,
+    context::Context,
+    error::ErrorHandler,
+    files::FileId,
     symbol_table::{Graph, MaybeSym, NodeId, Scope},
-    Context,
 };
-use crunch_shared::{ast::Item, error::ErrorHandler, files::FileId};
 
 fn run(
     src: &str,
     ctx: Context,
 ) -> Result<(Vec<Item>, ErrorHandler, Graph<Scope, MaybeSym>, NodeId), ErrorHandler> {
-    // let _ = simple_logger::init();
     Parser::new(src, CurrentFile::new(FileId::new(0), 0), ctx).parse()
 }
 

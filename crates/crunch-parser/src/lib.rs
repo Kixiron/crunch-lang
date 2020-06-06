@@ -10,15 +10,11 @@
 
 extern crate alloc;
 
-mod context;
 pub mod parser;
 mod pretty_printer;
-pub mod symbol_table;
 #[cfg(test)]
 mod tests;
 mod token;
 
-pub use context::Context;
 pub use parser::{CurrentFile, Parser};
 pub use pretty_printer::PrettyPrinter;
-pub use symbol_table::{Graph, Node, NodeId, Scope};

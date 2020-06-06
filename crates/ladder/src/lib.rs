@@ -1,11 +1,13 @@
 use core::ops::Deref;
-use crunch_parser::symbol_table::{Graph, MaybeSym, NodeId, Scope};
-use crunch_shared::ast::{CompOp, Expr as ItemExpr, Item, ItemPath, Literal, Stmt as ItemStmt};
+use crunch_shared::{
+    ast::{CompOp, Expr as ItemExpr, Item, ItemPath, Literal, Stmt as ItemStmt},
+    symbol_table::{Graph, MaybeSym, NodeId, Scope},
+};
 
 #[test]
 fn test() {
-    use crunch_parser::{Context, CurrentFile, Parser};
-    use crunch_shared::files::FileId;
+    use crunch_parser::{CurrentFile, Parser};
+    use crunch_shared::{context::Context, files::FileId};
 
     let source = r#"
     fn main()
@@ -38,7 +40,13 @@ fn test() {
     let mut files = crunch_shared::files::Files::new();
     files.add("<test>", source);
 
-    match Parser::new(source, CurrentFile::new(FileId::new(0), source.len()), &ctx).parse() {
+    match Parser::new(
+        source,
+        CurrentFile::new(FileId::new(0), source.len()),
+        ctx.clone(),
+    )
+    .parse()
+    {
         Ok((ast, mut warnings, module_table, module_scope)) => {
             warnings.emit(&files);
 
@@ -48,7 +56,7 @@ fn test() {
             let ladder = Ladder::new(
                 module_table,
                 module_scope,
-                ItemPath::new(ctx.intern("package")),
+                ItemPath::new(ctx.strings.intern("package")),
             );
 
             println!("HIR: {:#?}", ladder.lower(&ast));
