@@ -3,9 +3,6 @@
 ## Syntax/Parser
 
 - [ ] Graphing ASTs
-- [x] `loop` doesn't need `then` clauses
-- [x] Else clause for loops that executes on breakage?
-- [x] Fix if parsing
 - [ ] Type construction `Type is \n field := val \n field2 := val2 \n end`
   - [ ] Commas for fields
 - [ ] Declaring/constructing unit types with `struct Type is unit`
@@ -18,6 +15,7 @@
   - [ ] Destructure patterns
   - [ ] Binding on patterns `<ident> @ <pattern>`
   - [ ] Array patterns?
+  - [ ] Type patterns
 - [ ] `if let <pattern> = <expr>` for oneshot matches
   - [ ] `while let <pattern> = <expr>`
 - [ ] Bit-level matching http://erlang.org/doc/programming_examples/bit_syntax.html
@@ -27,24 +25,16 @@
 - [ ] Typed variadic function arguments `fn t(variadic: ..i32)` (Either `..` or `...`)
   - [ ] Sugar for slices
   - [ ] Limited to the last function arg
-  - [ ] Add a "spread" operator (Reuse `..`, add `...`?) to allow passing slices to variadics
+  - [ ] Add a "spread" operator (Reuse `..`, add `...`?) to allow passing slices to variadics?
   - [ ] Named args will also allow passing slices in a variadic position
 - [ ] Dependent typing
   - [ ] Types as values
-- [ ] Change imports into `paths.like.this` instead of `"this.bullshit"`
 - [ ] Add reference types `&` and `&mut`
-- [x] Add mutability to decls `let mut Ident`
-- [x] Remove usages of `.data()` since `Deref` is implemented for `Locatable`
-  - [x] Implement `DerefMut` for `Locatable`
-  - [x] `AsRef` & `AsMut` for `Locatable`
 - [ ] Destructure anonymous enums (`&str | i32`) via matches e.g. `match val: &str | i32 string: &str => ..` or `if let`
   - [ ] Part of patterns
-- [x] Macro for inserting stack frame counters
 - [ ] Unique types, each instance is incompatible with any other
 - [ ] Postfix macros
 - [ ] Unions
-- [x] Re-add function generics
-  - [x] `fn t[T, E, F](t: T, e: E, f: F)`
 - [ ] Raw pointers
   - [ ] `*mut T`/`*const T`?
 - [ ] Blocks `block \n <stmt>* \n end`
@@ -75,10 +65,21 @@
 - [ ] Annotate *all* parse functions with grammar rules
 - [ ] Split Pratt sub-functions into methods on `Parser`
 - [ ] {De}serializable arena
-- [x] Stop using `.deref()`, instead use `*`
 - [ ] Achievements
 - [ ] Bidirectional type checking
 - [ ] Switch tests to do two-way serialization, check equality structurally and not by strings
+- [x] Stop using `.deref()`, instead use `*`
+- [x] Re-add function generics
+  - [x] `fn t[T, E, F](t: T, e: E, f: F)`
+- [x] Macro for inserting stack frame counters
+- [x] Add mutability to decls `let mut Ident`
+- [x] Remove usages of `.data()` since `Deref` is implemented for `Locatable`
+  - [x] Implement `DerefMut` for `Locatable`
+  - [x] `AsRef` & `AsMut` for `Locatable`
+- [x] Change imports into `paths.like.this` instead of `"this.bullshit"`
+- [x] `loop` doesn't need `then` clauses
+- [x] Else clause for loops that executes on breakage?
+- [x] Fix if parsing
 
 ## AST -> HIR
 
