@@ -11,6 +11,9 @@ no-std = ["hashbrown"]
 [dependencies.crunch-parser]
 path = "../crunch-parser"
 
+[dependencies.crunch-shared]
+path = "../crunch-shared"
+
 [dependencies.hashbrown]
 version = "0.7.2"
 optional = true

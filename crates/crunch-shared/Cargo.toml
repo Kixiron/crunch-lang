@@ -1,0 +1,23 @@
+[package]
+name = "crunch-shared"
+version = "0.1.0"
+authors = ["Chase Wilson <me@chasewilson.dev>"]
+edition = "2018"
+
+[features]
+default = ["concurrent"]
+concurrent = ["lasso/multi-threaded"]
+
+[dependencies.serde]
+version = "1.0.111"
+features = ["derive"]
+
+[dependencies.derive_more]
+version = "0.99.7"
+
+[dependencies.codespan-reporting]
+version = "0.9.4"
+
+[dependencies.lasso]
+git = "https://github.com/Kixiron/lasso.git"
+features = ["serialize"]

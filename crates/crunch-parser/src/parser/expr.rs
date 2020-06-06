@@ -1,711 +1,23 @@
 use crate::{
-    context::StrT,
-    error::{Error, Locatable, Location, ParseResult, SyntaxError},
-    parser::{string_escapes, CurrentFile, Parser},
+    parser::Parser,
     token::{Token, TokenType},
 };
-use alloc::{
-    format,
-    string::{String, ToString},
-    vec::Vec,
-};
-use core::{convert::TryFrom, fmt, iter::FromIterator};
+use alloc::{format, vec::Vec};
+use core::convert::TryFrom;
 use crunch_proc::recursion_guard;
-#[cfg(test)]
-use serde::Serialize;
-use stadium::Ticket;
-
-#[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Expr<'ctx> {
-    Variable(StrT),
-    UnaryExpr(UnaryOperand, Ticket<'ctx, Expr<'ctx>>),
-    BinaryOp(
-        Ticket<'ctx, Expr<'ctx>>,
-        BinaryOperand,
-        Ticket<'ctx, Expr<'ctx>>,
-    ),
-    InlineConditional {
-        true_arm: Ticket<'ctx, Expr<'ctx>>,
-        condition: Ticket<'ctx, Expr<'ctx>>,
-        false_arm: Ticket<'ctx, Expr<'ctx>>,
-    },
-    Parenthesised(Ticket<'ctx, Expr<'ctx>>),
-    FunctionCall {
-        caller: Ticket<'ctx, Expr<'ctx>>,
-        arguments: Vec<Ticket<'ctx, Expr<'ctx>>>,
-    },
-    MemberFunctionCall {
-        member: Ticket<'ctx, Expr<'ctx>>,
-        function: Ticket<'ctx, Expr<'ctx>>,
-    },
-    Literal(Literal),
-    Comparison(
-        Ticket<'ctx, Expr<'ctx>>,
-        ComparisonOperand,
-        Ticket<'ctx, Expr<'ctx>>,
-    ),
-    IndexArray {
-        array: Ticket<'ctx, Expr<'ctx>>,
-        index: Ticket<'ctx, Expr<'ctx>>,
-    },
-    Array(Vec<Ticket<'ctx, Expr<'ctx>>>),
-    Tuple(Vec<Ticket<'ctx, Expr<'ctx>>>),
-    Assignment(
-        Ticket<'ctx, Expr<'ctx>>,
-        AssignmentType,
-        Ticket<'ctx, Expr<'ctx>>,
-    ),
-    Range(Ticket<'ctx, Expr<'ctx>>, Ticket<'ctx, Expr<'ctx>>),
-}
-
-#[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum AssignmentType {
-    Normal,
-    BinaryOp(BinaryOperand),
-}
-
-impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for AssignmentType {
-    type Error = Locatable<Error>;
-
-    fn try_from((token, file): (&Token<'src>, CurrentFile)) -> Result<Self, Self::Error> {
-        const ASSIGN_TOKENS: &[TokenType] = &[
-            TokenType::Equal,
-            TokenType::AddAssign,
-            TokenType::SubAssign,
-            TokenType::MultAssign,
-            TokenType::DivAssign,
-            TokenType::ModAssign,
-            TokenType::PowAssign,
-            TokenType::ShlAssign,
-            TokenType::ShrAssign,
-            TokenType::OrAssign,
-            TokenType::AndAssign,
-            TokenType::XorAssign,
-        ];
-
-        Ok(match token.ty() {
-            TokenType::Equal => Self::Normal,
-            TokenType::AddAssign => Self::BinaryOp(BinaryOperand::Add),
-            TokenType::SubAssign => Self::BinaryOp(BinaryOperand::Sub),
-            TokenType::MultAssign => Self::BinaryOp(BinaryOperand::Mult),
-            TokenType::DivAssign => Self::BinaryOp(BinaryOperand::Div),
-            TokenType::ModAssign => Self::BinaryOp(BinaryOperand::Mod),
-            TokenType::PowAssign => Self::BinaryOp(BinaryOperand::Pow),
-            TokenType::ShlAssign => Self::BinaryOp(BinaryOperand::Shl),
-            TokenType::ShrAssign => Self::BinaryOp(BinaryOperand::Shr),
-            TokenType::OrAssign => Self::BinaryOp(BinaryOperand::BitOr),
-            TokenType::AndAssign => Self::BinaryOp(BinaryOperand::BitAnd),
-            TokenType::XorAssign => Self::BinaryOp(BinaryOperand::BitXor),
-
-            ty => {
-                return Err(Locatable::new(
-                    Error::Syntax(SyntaxError::Generic(format!(
-                        "Expected one of {}, got '{}'",
-                        ASSIGN_TOKENS
-                            .iter()
-                            .map(|t| t.to_str())
-                            .collect::<Vec<_>>()
-                            .join(", "),
-                        ty,
-                    ))),
-                    Location::concrete(token, file),
-                ));
-            }
-        })
-    }
-}
-
-#[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum ComparisonOperand {
-    Equal,
-    NotEqual,
-    Less,
-    Greater,
-    LessEqual,
-    GreaterEqual,
-}
-
-impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for ComparisonOperand {
-    type Error = Locatable<Error>;
-
-    fn try_from((token, file): (&Token<'src>, CurrentFile)) -> Result<Self, Self::Error> {
-        const COMPARE_TOKENS: &[TokenType] = &[
-            TokenType::RightCaret,
-            TokenType::LeftCaret,
-            TokenType::GreaterThanEqual,
-            TokenType::LessThanEqual,
-            TokenType::IsEqual,
-            TokenType::IsNotEqual,
-        ];
-
-        Ok(match token.ty() {
-            TokenType::RightCaret => Self::Greater,
-            TokenType::LeftCaret => Self::Less,
-            TokenType::GreaterThanEqual => Self::GreaterEqual,
-            TokenType::LessThanEqual => Self::LessEqual,
-            TokenType::IsEqual => Self::Equal,
-            TokenType::IsNotEqual => Self::NotEqual,
-
-            ty => {
-                return Err(Locatable::new(
-                    Error::Syntax(SyntaxError::Generic(format!(
-                        "Expected one of {}, got '{}'",
-                        COMPARE_TOKENS
-                            .iter()
-                            .map(|t| t.to_str())
-                            .collect::<Vec<_>>()
-                            .join(", "),
-                        ty,
-                    ))),
-                    Location::concrete(token, file),
-                ));
-            }
-        })
-    }
-}
-
-#[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Literal {
-    Integer(Integer),
-    Bool(bool),
-    String(Text),
-    Rune(Rune),
-    Float(Float),
-    Array(Vec<Literal>),
-}
-
-impl Literal {
-    pub fn into_integer(self) -> Option<Integer> {
-        if let Self::Integer(int) = self {
-            Some(int)
-        } else {
-            None
-        }
-    }
-}
-
-impl fmt::Display for Literal {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Integer(int) => write!(f, "{}", int),
-            Self::Bool(b) => write!(f, "{}", b),
-            Self::String(text) => write!(f, "{}", text),
-            Self::Rune(rune) => write!(f, "{}", rune),
-            Self::Float(float) => write!(f, "{}", float),
-            Self::Array(arr) => write!(
-                f,
-                "[{}]",
-                arr.iter()
-                    .map(|elm| format!("{}", elm))
-                    .collect::<Vec<String>>()
-                    .join(", ")
-            ),
-        }
-    }
-}
-
-#[cfg_attr(test, derive(Serialize))]
-#[derive(Clone, PartialEq, Eq, Hash)]
-#[repr(transparent)]
-pub struct Text(Vec<Rune>);
-
-impl Text {
-    pub fn new(runes: Vec<Rune>) -> Self {
-        Self(runes)
-    }
-
-    pub fn to_bytes(&self) -> Vec<u8> {
-        self.to_string().into_bytes()
-    }
-}
-
-impl fmt::Debug for Text {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{:?}",
-            &String::from_iter(
-                self.0
-                    .iter()
-                    .map(|r| core::char::from_u32(r.as_u32()).unwrap()),
-            )
-        )
-    }
-}
-
-impl fmt::Display for Text {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            String::from_iter(
-                self.0
-                    .iter()
-                    .map(|r| core::char::from_u32(r.as_u32()).unwrap())
-            )
-        )
-    }
-}
-
-impl From<&str> for Text {
-    fn from(string: &str) -> Self {
-        Self(string.chars().map(Rune::from).collect())
-    }
-}
-
-#[cfg_attr(test, derive(Serialize))]
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
-#[repr(transparent)]
-pub struct Rune(u32);
-
-impl Rune {
-    pub fn as_u32(self) -> u32 {
-        self.0
-    }
-
-    pub fn from_u32(i: u32) -> Option<Self> {
-        core::char::from_u32(i).map(|i| Self(i as u32))
-    }
-
-    pub fn as_char(self) -> char {
-        core::char::from_u32(self.0).unwrap()
-    }
-
-    pub fn from_char(i: char) -> Self {
-        Self(i as u32)
-    }
-}
-
-impl PartialEq<char> for Rune {
-    fn eq(&self, other: &char) -> bool {
-        self.as_u32() == *other as u32
-    }
-}
-
-impl From<char> for Rune {
-    fn from(c: char) -> Self {
-        Self(c as u32)
-    }
-}
-
-impl From<u32> for Rune {
-    fn from(i: u32) -> Self {
-        Self(i)
-    }
-}
-
-impl fmt::Debug for Rune {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", &self.as_char())
-    }
-}
-
-impl fmt::Display for Rune {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", &self.as_char())
-    }
-}
-
-#[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Integer {
-    pub sign: Sign,
-    pub bits: u128,
-}
-
-impl fmt::Display for Integer {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}{}", &self.sign, &self.bits)
-    }
-}
-
-#[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum Sign {
-    Positive,
-    Negative,
-}
-
-impl Sign {
-    pub fn is_negative(self) -> bool {
-        self == Self::Negative
-    }
-}
-
-impl fmt::Display for Sign {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Self::Positive => "",
-                Self::Negative => "-",
-            },
-        )
-    }
-}
-
-#[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[repr(transparent)]
-pub struct Float(u64);
-
-impl fmt::Display for Float {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", f64::from_bits(self.0))
-    }
-}
-
-// TODO: Actually make this throw useful errors
-// TODO: Make these errors actually helpful, and verify that the parsing matches with what is lexed
-impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for Literal {
-    type Error = Locatable<Error>;
-
-    fn try_from((token, file): (&Token<'src>, CurrentFile)) -> Result<Self, Self::Error> {
-        let mut chars: Vec<char> = token.source().chars().filter(|c| *c != '_').collect();
-
-        match token.ty() {
-            TokenType::Float => {
-                if token.source() == "inf" {
-                    return Ok(Literal::Float(Float(f64::to_bits(core::f64::INFINITY))));
-                } else if token.source() == "NaN" {
-                    return Ok(Literal::Float(Float(f64::to_bits(core::f64::NAN))));
-                }
-
-                let negative = if chars.get(0).copied() == Some('-') {
-                    chars.remove(0);
-                    true
-                } else if chars.get(0).copied() == Some('+') {
-                    chars.remove(0);
-                    false
-                } else {
-                    false
-                };
-
-                let mut float = if chars.get(..2) == Some(&['0', 'x']) {
-                    use hexponent::FloatLiteral;
-
-                    let float = chars
-                        .into_iter()
-                        .collect::<String>()
-                        .parse::<FloatLiteral>()
-                        .map_err(|err| {
-                            use hexponent::ParseErrorKind;
-
-                            match err.kind {
-                                ParseErrorKind::ExponentOverflow => Locatable::new(
-                                    Error::Syntax(SyntaxError::LiteralOverflow(
-                                        "float",
-                                        format!("'{}' is too large, only floats of up to 64 bits are supported", token.source()),
-                                    )),
-                                    Location::concrete(token, file),
-                                ),
-
-                                ParseErrorKind::MissingPrefix
-                                | ParseErrorKind::MissingDigits
-                                | ParseErrorKind::MissingExponent
-                                | ParseErrorKind::MissingEnd => unreachable!(),
-                            }
-                        })?;
-
-                    float.convert::<f64>().inner()
-                } else {
-                    let string = chars.into_iter().collect::<String>();
-
-                    lexical_core::parse(string.as_bytes()).map_err(|err| {
-                        use lexical_core::ErrorCode;
-
-                        match err.code {
-                            ErrorCode::Overflow => Locatable::new(
-                                Error::Syntax(SyntaxError::LiteralOverflow(
-                                    "float",
-                                    format!("'{}' is too large, only floats of up to 64 bits are supported", token.source()),
-                                )),
-                                Location::concrete(token, file),
-                            ),
-                            ErrorCode::Underflow => Locatable::new(
-                                Error::Syntax(SyntaxError::LiteralUnderflow(
-                                    "float",
-                                    format!("'{}' is too small, only floats of up to 64 bits are supported", token.source()),
-                                )),
-                                Location::concrete(token, file),
-                            ),
-
-                            err => unreachable!("Internal error: Failed to handle all float errors (Error: {:?})", err),
-                        }
-                    })?
-                };
-
-                if negative {
-                    float = -float;
-                }
-
-                Ok(Literal::Float(Float(f64::to_bits(float))))
-            }
-
-            TokenType::Rune => {
-                let byte_rune = if chars.get(0).copied() == Some('b') {
-                    chars.remove(0);
-                    true
-                } else {
-                    false
-                };
-
-                let rune = if let Some('\'') = chars.get(0) {
-                    chars.drain(..1).for_each(drop);
-                    chars.drain(chars.len() - 1..).for_each(drop);
-
-                    string_escapes::unescape_rune(chars).map_err(|(err, range)| {
-                        Locatable::new(
-                            err,
-                            Location::concrete(
-                                (
-                                    token.range().start + 3 + range.start,
-                                    token.range().start + 3 + range.end,
-                                ),
-                                file,
-                            ),
-                        )
-                    })?
-                } else {
-                    unreachable!()
-                };
-
-                if byte_rune {
-                    Ok(Literal::Integer(Integer {
-                        sign: Sign::Positive,
-                        bits: rune.as_u32() as u128,
-                    }))
-                } else {
-                    Ok(Literal::Rune(rune))
-                }
-            }
-
-            TokenType::String => {
-                let byte_str = if chars.get(0).copied() == Some('b') {
-                    chars.remove(0);
-                    true
-                } else {
-                    false
-                };
-
-                let string = match chars.get(0) {
-                    Some('"') if chars.get(..3) == Some(&['"', '"', '"']) => {
-                        chars.drain(..3).for_each(drop);
-                        chars.drain(chars.len() - 3..).for_each(drop);
-
-                        string_escapes::unescape_string(chars).map_err(|(err, range)| {
-                            Locatable::new(
-                                err,
-                                Location::concrete(
-                                    (
-                                        token.range().start + 3 + range.start,
-                                        token.range().start + 3 + range.end,
-                                    ),
-                                    file,
-                                ),
-                            )
-                        })?
-                    }
-
-                    Some('"') => {
-                        chars.drain(..1).for_each(drop);
-                        chars.drain(chars.len() - 1..).for_each(drop);
-
-                        string_escapes::unescape_string(chars).map_err(|(err, range)| {
-                            Locatable::new(
-                                err,
-                                Location::concrete(
-                                    (
-                                        token.range().start + 1 + range.start,
-                                        token.range().start + 1 + range.end,
-                                    ),
-                                    file,
-                                ),
-                            )
-                        })?
-                    }
-
-                    _ => unreachable!(),
-                };
-
-                if byte_str {
-                    Ok(Literal::Array(
-                        string
-                            .to_bytes()
-                            .into_iter()
-                            .map(|b| {
-                                Literal::Integer(Integer {
-                                    sign: Sign::Positive,
-                                    bits: b as u128,
-                                })
-                            })
-                            .collect(),
-                    ))
-                } else {
-                    Ok(Literal::String(string))
-                }
-            }
-
-            TokenType::Int => {
-                let sign = if chars.get(0).copied() == Some('-') {
-                    chars.remove(0);
-                    Sign::Negative
-                } else if chars.get(0).copied() == Some('+') {
-                    chars.remove(0);
-                    Sign::Positive
-                } else {
-                    Sign::Positive
-                };
-
-                let int = if chars.get(..2) == Some(&['0', 'x']) {
-                    let string = chars[2..].iter().collect::<String>();
-
-                    u128::from_str_radix(&string, 16).map_err(|_| {
-                        Locatable::new(
-                            Error::Syntax(SyntaxError::InvalidLiteral("int")),
-                            Location::concrete(token, file),
-                        )
-                    })?
-                } else if chars.get(..2) == Some(&['0', 'b']) {
-                    let string = chars[2..].iter().collect::<String>();
-
-                    u128::from_str_radix(&string, 2).map_err(|_| {
-                        Locatable::new(
-                            Error::Syntax(SyntaxError::InvalidLiteral("int")),
-                            Location::concrete(token, file),
-                        )
-                    })?
-                } else {
-                    let string = chars.into_iter().collect::<String>();
-
-                    u128::from_str_radix(&string, 10).map_err(|_| {
-                        Locatable::new(
-                            Error::Syntax(SyntaxError::InvalidLiteral("int")),
-                            Location::concrete(token, file),
-                        )
-                    })?
-                };
-
-                Ok(Literal::Integer(Integer { sign, bits: int }))
-            }
-
-            TokenType::Bool => Ok(Self::Bool(token.source().parse::<bool>().map_err(
-                |_| {
-                    Locatable::new(
-                        Error::Syntax(SyntaxError::InvalidLiteral("bool")),
-                        Location::concrete(token, file),
-                    )
-                },
-            )?)),
-
-            ty => Err(Locatable::new(
-                Error::Syntax(SyntaxError::Generic(format!("Invalid Literal: '{}'", ty))),
-                Location::concrete(token, file),
-            )),
-        }
-    }
-}
-
-#[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum BinaryOperand {
-    Add,
-    Sub,
-    Mult,
-    Div,
-    Mod,
-    Pow,
-    BitAnd,
-    BitOr,
-    BitXor,
-    Shl,
-    Shr,
-}
-
-impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for BinaryOperand {
-    type Error = Locatable<Error>;
-
-    fn try_from((token, file): (&Token<'src>, CurrentFile)) -> Result<Self, Self::Error> {
-        Ok(match token.ty() {
-            TokenType::Plus => Self::Add,
-            TokenType::Minus => Self::Sub,
-            TokenType::Star => Self::Mult,
-            TokenType::Divide => Self::Div,
-            TokenType::Modulo => Self::Mod,
-            TokenType::DoubleStar => Self::Pow,
-            TokenType::Ampersand => Self::BitAnd,
-            TokenType::Pipe => Self::BitOr,
-            TokenType::Caret => Self::BitXor,
-            TokenType::Shl => Self::Shl,
-            TokenType::Shr => Self::Shr,
-
-            ty => {
-                return Err(Locatable::new(
-                    Error::Syntax(SyntaxError::Generic(format!(
-                        "Expected a binary operand, got `{}`",
-                        ty
-                    ))),
-                    Location::concrete(token, file),
-                ));
-            }
-        })
-    }
-}
-
-#[cfg_attr(test, derive(Serialize))]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum UnaryOperand {
-    Positive,
-    Negative,
-    Not,
-}
-
-impl<'src> TryFrom<(&Token<'src>, CurrentFile)> for UnaryOperand {
-    type Error = Locatable<Error>;
-
-    fn try_from((token, file): (&Token<'src>, CurrentFile)) -> Result<Self, Self::Error> {
-        Ok(match token.ty() {
-            TokenType::Plus => Self::Positive,
-            TokenType::Minus => Self::Negative,
-            TokenType::Bang => Self::Not,
-
-            ty => {
-                return Err(Locatable::new(
-                    Error::Syntax(SyntaxError::Generic(format!(
-                        "Expected a unary operand, got `{}`",
-                        ty
-                    ))),
-                    Location::concrete(token, file),
-                ));
-            }
-        })
-    }
-}
-
-type PrefixParselet<'src, 'cxl, 'ctx> =
-    fn(&mut Parser<'src, 'cxl, 'ctx>, Token<'src>) -> ParseResult<Ticket<'ctx, Expr<'ctx>>>;
-
-type PostfixParselet<'src, 'cxl, 'ctx> = fn(
-    &mut Parser<'src, 'cxl, 'ctx>,
-    Token<'src>,
-    Ticket<'ctx, Expr<'ctx>>,
-) -> ParseResult<Ticket<'ctx, Expr<'ctx>>>;
-
-type InfixParselet<'src, 'cxl, 'ctx> = fn(
-    &mut Parser<'src, 'cxl, 'ctx>,
-    Token<'src>,
-    Ticket<'ctx, Expr<'ctx>>,
-) -> ParseResult<Ticket<'ctx, Expr<'ctx>>>;
+use crunch_shared::{
+    ast::{Arm, Block, Expr, ExprKind, For, If, IfCond, Loop, Match, Ref, Sided, While},
+    error::{Error, Locatable, Location, ParseResult, SyntaxError},
+};
+
+type PrefixParselet<'src> = fn(&mut Parser<'src>, Token<'src>) -> ParseResult<Expr>;
+type PostfixParselet<'src> = fn(&mut Parser<'src>, Token<'src>, Expr) -> ParseResult<Expr>;
+type InfixParselet<'src> = fn(&mut Parser<'src>, Token<'src>, Expr) -> ParseResult<Expr>;
 
 /// Expr Parsing
-impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
+impl<'src> Parser<'src> {
     #[recursion_guard]
-    pub fn expr(&mut self) -> ParseResult<Ticket<'ctx, Expr<'ctx>>> {
+    pub fn expr(&mut self) -> ParseResult<Expr> {
         self.parse_expr(0)
     }
 
@@ -721,7 +33,7 @@ impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
     }
 
     #[recursion_guard]
-    fn parse_expr(&mut self, precedence: usize) -> ParseResult<Ticket<'ctx, Expr<'ctx>>> {
+    fn parse_expr(&mut self, precedence: usize) -> ParseResult<Expr> {
         let mut token = self.next()?;
 
         let prefix = Self::expr_prefix(token);
@@ -759,7 +71,7 @@ impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
         }
     }
 
-    fn expr_prefix(token: Token) -> Option<PrefixParselet<'src, 'cxl, 'ctx>> {
+    fn expr_prefix(token: Token) -> Option<PrefixParselet<'src>> {
         let prefix: PrefixParselet = match token.ty() {
             // Array and tuple literals
             TokenType::Ident if token.source() == "arr" || token.source() == "tup" => {
@@ -780,19 +92,71 @@ impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
                         }
                     }
 
-                    elements.shrink_to_fit();
                     parser.eat(TokenType::RightBrace, [TokenType::Newline])?;
 
-                    let expr = if token.source() == "arr" {
-                        Expr::Array(elements)
+                    let kind = if token.source() == "arr" {
+                        ExprKind::Array(elements)
                     } else {
-                        Expr::Tuple(elements)
+                        ExprKind::Tuple(elements)
                     };
-                    let expr = parser.context.store(expr);
 
-                    Ok(expr)
+                    Ok(Expr { kind })
                 }
             }
+
+            TokenType::If => |parser, _token| Ok(parser.if_stmt()?),
+
+            TokenType::Match => |parser, _token| Ok(parser.match_stmt()?),
+
+            TokenType::While => |parser, _token| Ok(parser.while_stmt()?),
+
+            TokenType::Loop => |parser, _token| Ok(parser.loop_stmt()?),
+
+            TokenType::For => |parser, _token| Ok(parser.for_stmt()?),
+
+            TokenType::Return => |parser, _token| {
+                if parser.peek()?.ty() == TokenType::Newline {
+                    parser.eat(TokenType::Newline, [])?;
+
+                    Ok(Expr {
+                        kind: ExprKind::Return(None),
+                    })
+                } else {
+                    let expr = Ref::new(parser.expr()?);
+                    parser.eat(TokenType::Newline, [])?;
+
+                    Ok(Expr {
+                        kind: ExprKind::Return(Some(expr)),
+                    })
+                }
+            },
+
+            TokenType::Break => |parser, _token| {
+                if parser.peek()?.ty() == TokenType::Newline {
+                    parser.eat(TokenType::Newline, [])?;
+
+                    Ok(Expr {
+                        kind: ExprKind::Break(None),
+                    })
+                } else {
+                    let expr = Ref::new(parser.expr()?);
+                    parser.eat(TokenType::Newline, [])?;
+
+                    Ok(Expr {
+                        kind: ExprKind::Break(Some(expr)),
+                    })
+                }
+            },
+
+            TokenType::Continue => |parser, _token| {
+                parser.eat(TokenType::Newline, [])?;
+
+                let stmt = Expr {
+                    kind: ExprKind::Continue,
+                };
+
+                Ok(stmt)
+            },
 
             // Variables
             TokenType::Ident => |parser, token| {
@@ -809,9 +173,9 @@ impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
                 };
 
                 let ident = parser.context.intern(&normalized);
-                let expr = parser.context.store(Expr::Variable(ident));
+                let kind = ExprKind::Variable(ident);
 
-                Ok(expr)
+                Ok(Expr { kind })
             },
 
             // Literals
@@ -820,35 +184,33 @@ impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
             | TokenType::Float
             | TokenType::String
             | TokenType::Rune => |parser, lit| {
-                let expr = parser.context.store(Expr::Literal(Literal::try_from((
-                    &lit,
-                    parser.current_file,
-                ))?));
+                let _frame = parser.add_stack_frame()?;
 
-                Ok(expr)
+                let literal = ExprKind::Literal(parser.literal(&lit, parser.current_file)?);
+
+                Ok(Expr { kind: literal })
             },
 
             // Prefix Operators
             TokenType::Minus | TokenType::Bang | TokenType::Plus => |parser, token| {
                 let _frame = parser.add_stack_frame()?;
-                let operand = parser.expr()?;
-                let expr = parser.context.store(Expr::UnaryExpr(
-                    UnaryOperand::try_from((&token, parser.current_file))?,
-                    operand,
-                ));
 
-                Ok(expr)
+                let operand = Ref::new(parser.expr()?);
+                let kind =
+                    ExprKind::UnaryOp(parser.unary_op(&token, parser.current_file)?, operand);
+
+                Ok(Expr { kind })
             },
 
             // Grouping via parentheses
             TokenType::LeftParen => |parser, _paren| {
                 let _frame = parser.add_stack_frame()?;
 
-                let expr = parser.expr()?;
+                let expr = Ref::new(parser.expr()?);
                 parser.eat(TokenType::RightParen, [TokenType::Newline])?;
-                let expr = parser.context.store(Expr::Parenthesised(expr));
+                let kind = ExprKind::Paren(expr);
 
-                Ok(expr)
+                Ok(Expr { kind })
             },
 
             _ => return None,
@@ -857,17 +219,16 @@ impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
         Some(prefix)
     }
 
-    fn expr_postfix(token: Token) -> Option<PostfixParselet<'src, 'cxl, 'ctx>> {
+    fn expr_postfix(token: Token) -> Option<PostfixParselet<'src>> {
         let postfix: PostfixParselet = match token.ty() {
             // Function calls
             TokenType::LeftParen => |parser, _left_paren, caller| {
                 let _frame = parser.add_stack_frame()?;
 
-                let mut arguments = Vec::with_capacity(5);
-
+                let mut args = Vec::with_capacity(5);
                 while parser.peek()?.ty() != TokenType::RightParen {
                     let arg = parser.expr()?;
-                    arguments.push(arg);
+                    args.push(arg);
 
                     if parser.peek()?.ty() == TokenType::Comma {
                         parser.eat(TokenType::Comma, [TokenType::Newline])?;
@@ -876,33 +237,36 @@ impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
                     }
                 }
 
-                arguments.shrink_to_fit();
                 parser.eat(TokenType::RightParen, [TokenType::Newline])?;
-                let expr = parser
-                    .context
-                    .store(Expr::FunctionCall { caller, arguments });
+                let kind = ExprKind::FuncCall {
+                    caller: Ref::new(caller),
+                    args,
+                };
 
-                Ok(expr)
+                Ok(Expr { kind })
             },
 
             // Dotted function calls
             TokenType::Dot => |parser, _dot, member| {
                 let _frame = parser.add_stack_frame()?;
-                let function = parser.expr()?;
-                let expr = parser
-                    .context
-                    .store(Expr::MemberFunctionCall { member, function });
 
-                Ok(expr)
+                let func = Ref::new(parser.expr()?);
+                let kind = ExprKind::MemberFuncCall {
+                    member: Ref::new(member),
+                    func,
+                };
+
+                Ok(Expr { kind })
             },
 
             // Ranges
             TokenType::DoubleDot => |parser, _, start| {
                 let _frame = parser.add_stack_frame()?;
-                let end = parser.expr()?;
-                let expr = parser.context.store(Expr::Range(start, end));
 
-                Ok(expr)
+                let end = Ref::new(parser.expr()?);
+                let kind = ExprKind::Range(Ref::new(start), end);
+
+                Ok(Expr { kind })
             },
 
             // Array indexing
@@ -922,22 +286,30 @@ impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
             | TokenType::XorAssign => |parser, assign, left| {
                 let _frame = parser.add_stack_frame()?;
 
-                let assign = AssignmentType::try_from((&assign, parser.current_file))?;
-                let right = parser.expr()?;
-                let expr = parser.context.store(Expr::Assignment(left, assign, right));
+                let assign = parser.assign_kind(&assign, parser.current_file)?;
+                let rhs = Ref::new(parser.expr()?);
+                let kind = ExprKind::Assign(Sided {
+                    lhs: Ref::new(left),
+                    op: assign,
+                    rhs,
+                });
 
-                Ok(expr)
+                Ok(Expr { kind })
             },
 
             TokenType::Colon => |parser, _colon, left| {
                 let _frame = parser.add_stack_frame()?;
 
                 let equal = parser.eat(TokenType::Equal, [TokenType::Newline])?;
-                let assign = AssignmentType::try_from((&equal, parser.current_file))?;
-                let right = parser.expr()?;
-                let expr = parser.context.store(Expr::Assignment(left, assign, right));
+                let assign = parser.assign_kind(&equal, parser.current_file)?;
+                let rhs = Ref::new(parser.expr()?);
+                let kind = ExprKind::Assign(Sided {
+                    lhs: Ref::new(left),
+                    op: assign,
+                    rhs,
+                });
 
-                Ok(expr)
+                Ok(Expr { kind })
             },
 
             _ => return None,
@@ -946,7 +318,7 @@ impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
         Some(postfix)
     }
 
-    fn expr_infix(token: Token) -> Option<InfixParselet<'src, 'cxl, 'ctx>> {
+    fn expr_infix(token: Token) -> Option<InfixParselet<'src>> {
         let infix: InfixParselet = match token.ty() {
             // Binary Operations
             TokenType::Plus
@@ -961,14 +333,15 @@ impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
             | TokenType::Shl
             | TokenType::Shr => |parser, operand, left| {
                 let _frame = parser.add_stack_frame()?;
-                let right = parser.expr()?;
-                let expr = parser.context.store(Expr::BinaryOp(
-                    left,
-                    BinaryOperand::try_from((&operand, parser.current_file))?,
-                    right,
-                ));
 
-                Ok(expr)
+                let rhs = Ref::new(parser.expr()?);
+                let kind = ExprKind::BinaryOp(Sided {
+                    lhs: Ref::new(left),
+                    op: parser.bin_op(&operand, parser.current_file)?,
+                    rhs,
+                });
+
+                Ok(Expr { kind })
             },
 
             // Comparisons
@@ -979,30 +352,15 @@ impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
             | TokenType::IsEqual
             | TokenType::IsNotEqual => |parser, comparison, left| {
                 let _frame = parser.add_stack_frame()?;
-                let right = parser.expr()?;
-                let expr = parser.context.store(Expr::Comparison(
-                    left,
-                    ComparisonOperand::try_from((&comparison, parser.current_file))?,
-                    right,
-                ));
 
-                Ok(expr)
-            },
-
-            // <ret> if <cond> else <cond>
-            TokenType::If => |parser, _, true_arm| {
-                let _frame = parser.add_stack_frame()?;
-
-                let condition = parser.expr()?;
-                parser.eat(TokenType::Else, [TokenType::Newline])?;
-                let false_arm = parser.expr()?;
-                let expr = parser.context.store(Expr::InlineConditional {
-                    true_arm,
-                    condition,
-                    false_arm,
+                let rhs = Ref::new(parser.expr()?);
+                let kind = ExprKind::Comparison(Sided {
+                    lhs: Ref::new(left),
+                    op: parser.comp_op(&comparison, parser.current_file)?,
+                    rhs,
                 });
 
-                Ok(expr)
+                Ok(Expr { kind })
             },
 
             // Array indexing
@@ -1015,16 +373,194 @@ impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
     }
 
     #[recursion_guard]
-    fn index_array(
-        &mut self,
-        _left_bracket: Token<'src>,
-        array: Ticket<'ctx, Expr<'ctx>>,
-    ) -> ParseResult<Ticket<'ctx, Expr<'ctx>>> {
+    fn index_array(&mut self, _left_bracket: Token<'src>, var: Expr) -> ParseResult<Expr> {
         let index = self.expr()?;
         self.eat(TokenType::RightBrace, [TokenType::Newline])?;
-        let expr = self.context.store(Expr::IndexArray { array, index });
+
+        let expr = Expr {
+            kind: ExprKind::Index {
+                var: Ref::new(var),
+                index: Ref::new(index),
+            },
+        };
 
         Ok(expr)
+    }
+
+    #[recursion_guard]
+    fn if_stmt(&mut self) -> ParseResult<Expr> {
+        let cond = Ref::new(self.expr()?);
+        self.eat(TokenType::Newline, [])?;
+
+        let body = self.block(&[TokenType::End, TokenType::Else], 10)?;
+
+        let mut clauses = Vec::new();
+        let mut else_ = None;
+        loop {
+            let delimiter = self.eat_of([TokenType::Else, TokenType::End], [TokenType::Newline])?;
+
+            match delimiter.ty() {
+                TokenType::Else if self.peek()?.ty() == TokenType::If => {
+                    self.eat(TokenType::If, [])?;
+                    let cond = Ref::new(self.expr()?);
+                    self.eat(TokenType::Newline, [])?;
+
+                    let body = self.block(&[TokenType::End, TokenType::Else], 10)?;
+                    self.eat(TokenType::End, [TokenType::Newline])?;
+
+                    clauses.push(IfCond { cond, body });
+                }
+
+                TokenType::Else => {
+                    self.eat(TokenType::Newline, [])?;
+                    let body = self.block(&[TokenType::End], 10)?;
+
+                    else_ = Some(body);
+                    self.eat(TokenType::End, [TokenType::Newline])?;
+
+                    break;
+                }
+
+                TokenType::End => break,
+
+                _ => unreachable!(),
+            }
+        }
+
+        let kind = ExprKind::If(If {
+            cond: IfCond { cond, body },
+            clauses,
+            else_,
+        });
+
+        Ok(Expr { kind })
+    }
+
+    #[recursion_guard]
+    fn match_stmt(&mut self) -> ParseResult<Expr> {
+        let var = Ref::new(self.expr()?);
+        self.eat(TokenType::Newline, [])?;
+
+        let mut arms = Vec::with_capacity(3);
+        while self.peek()?.ty() != TokenType::End {
+            let bind = self.binding()?;
+
+            let guard = if self.peek()?.ty() == TokenType::Where {
+                self.eat(TokenType::Where, [TokenType::Newline])?;
+                let expr = Ref::new(self.expr()?);
+
+                Some(expr)
+            } else {
+                None
+            };
+            self.eat(TokenType::RightRocket, [TokenType::Newline])?;
+            self.eat(TokenType::Newline, [])?;
+
+            let body = self.block(&[TokenType::End], 5)?;
+
+            self.eat(TokenType::End, [TokenType::Newline])?;
+            self.eat(TokenType::Newline, [])?;
+
+            arms.push(Arm { bind, guard, body });
+        }
+
+        self.eat(TokenType::End, [TokenType::Newline])?;
+
+        let expr = Expr {
+            kind: ExprKind::Match(Match { var, arms }),
+        };
+
+        Ok(expr)
+    }
+
+    #[recursion_guard]
+    fn while_stmt(&mut self) -> ParseResult<Expr> {
+        let cond = Ref::new(self.expr()?);
+        self.eat(TokenType::Newline, [])?;
+
+        let body = self.block(&[TokenType::End, TokenType::Then], 10)?;
+        let then = self.then_stmt()?;
+        let else_ = self.else_stmt()?;
+
+        self.eat(TokenType::End, [TokenType::Newline])?;
+
+        let expr = Expr {
+            kind: ExprKind::While(While {
+                cond,
+                body,
+                then,
+                else_,
+            }),
+        };
+
+        Ok(expr)
+    }
+
+    #[recursion_guard]
+    fn loop_stmt(&mut self) -> ParseResult<Expr> {
+        self.eat(TokenType::Newline, [])?;
+
+        let body = self.block(&[TokenType::End, TokenType::Then], 10)?;
+        let else_ = self.else_stmt()?;
+        self.eat(TokenType::End, [TokenType::Newline])?;
+
+        let expr = Expr {
+            kind: ExprKind::Loop(Loop { body, else_ }),
+        };
+
+        Ok(expr)
+    }
+
+    #[recursion_guard]
+    fn for_stmt(&mut self) -> ParseResult<Expr> {
+        let var = Ref::new(self.expr()?);
+        self.eat(TokenType::In, [TokenType::Newline])?;
+        let cond = Ref::new(self.expr()?);
+        self.eat(TokenType::Newline, [])?;
+
+        let body = self.block(&[TokenType::End, TokenType::Then], 10)?;
+        let then = self.then_stmt()?;
+        let else_ = self.else_stmt()?;
+
+        let expr = Expr {
+            kind: ExprKind::For(For {
+                var,
+                cond,
+                body,
+                then,
+                else_,
+            }),
+        };
+
+        Ok(expr)
+    }
+
+    #[recursion_guard]
+    fn then_stmt(&mut self) -> ParseResult<Option<Block>> {
+        if self.peek()?.ty() == TokenType::Then {
+            self.eat(TokenType::Then, [TokenType::Newline])?;
+            self.eat(TokenType::Newline, [])?;
+
+            let then = self.block(&[TokenType::End, TokenType::Else], 3)?;
+
+            Ok(Some(then))
+        } else {
+            Ok(None)
+        }
+    }
+
+    #[recursion_guard]
+    fn else_stmt(&mut self) -> ParseResult<Option<Block>> {
+        if self.peek()?.ty() == TokenType::Else {
+            self.eat(TokenType::Else, [TokenType::Newline])?;
+            self.eat(TokenType::Newline, [])?;
+
+            let else_clause = self.block(&[TokenType::End], 3)?;
+
+            Ok(Some(else_clause))
+        } else {
+            Ok(None)
+        }
     }
 }
 

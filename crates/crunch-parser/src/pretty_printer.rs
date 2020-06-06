@@ -1,265 +1,326 @@
-use crate::{
-    context::Context,
-    parser::{
-        Alias, AssignmentType, Ast, Attribute, BinaryOperand, Binding, ComparisonOperand,
-        Decorator, Enum, EnumVariant, Expr, ExtendBlock, Function, Import, ImportDest,
-        ImportExposure, Literal, Pattern, Signedness, Stmt, Trait, Type, TypeDecl, TypeMember,
-        UnaryOperand, Visibility,
-    },
-};
-
+use crate::context::Context;
 #[cfg(feature = "no-std")]
 use alloc::{format, vec::Vec};
 use core::fmt::{Result, Write};
-use stadium::Ticket;
+use crunch_shared::{
+    ast::{
+        Arm, Binding, Block, Decorator, Dest, Exposure, Expr, ExprKind, For, FuncArg, If, IfCond,
+        Item, ItemKind, ItemPath, Literal, Loop, Match, Pattern, Sided, Stmt, StmtKind, Type,
+        TypeMember, VarDecl, Variant, Vis, While,
+    },
+    strings::StrT,
+};
 
 #[derive(Debug)]
-pub struct PrettyPrinter<'cxl, 'ctx> {
+pub struct PrettyPrinter {
     indent_level: usize,
-    context: &'cxl Context<'ctx>,
+    context: Context,
 }
 
-impl<'cxl, 'ctx> PrettyPrinter<'cxl, 'ctx> {
-    pub fn new(context: &'cxl Context<'ctx>) -> Self {
+impl PrettyPrinter {
+    pub fn new(context: Context) -> Self {
         Self {
             indent_level: 0,
             context,
         }
     }
 
-    pub fn pretty_print(&mut self, f: &mut dyn Write, ast: &[Ticket<'_, Ast<'_>>]) -> Result {
-        for node in ast {
-            self.print_ast(f, *node)?;
+    pub fn pretty_print(&mut self, f: &mut dyn Write, items: &[Item]) -> Result {
+        for item in items {
+            self.print_item(f, item)?;
         }
 
         Ok(())
     }
 
     fn print_indent(&self, f: &mut dyn Write) -> Result {
-        write!(f, "{}", "    ".repeat(self.indent_level))
+        f.write_str(&"    ".repeat(self.indent_level))
     }
 
-    pub(crate) fn print_ast(&mut self, f: &mut dyn Write, node: Ticket<'_, Ast<'_>>) -> Result {
-        match (*node).clone() {
-            Ast::Function(func) => self.print_func(f, (*func).clone()),
-            Ast::Type(ty) => self.print_type(f, ty.data()),
-            Ast::Enum(enum_decl) => self.print_enum(f, enum_decl.data()),
-            Ast::Trait(trait_decl) => self.print_trait(f, trait_decl.data()),
-            Ast::Import(import) => self.print_import(f, import.data()),
-            Ast::Alias(alias) => self.print_alias(f, &*alias),
-            Ast::ExtendBlock(block) => self.print_extend_block(f, &*block),
+    pub(crate) fn print_item(&mut self, f: &mut dyn Write, item: &Item) -> Result {
+        self.decorators(f, &item.decorators)?;
+
+        self.print_indent(f)?;
+        for attr in item.attrs.iter() {
+            write!(f, "{}", attr)?;
+        }
+
+        self.print_indent(f)?;
+        match &item.kind {
+            ItemKind::Func {
+                generics,
+                args,
+                body,
+                ret,
+            } => {
+                self.vis(f, item.vis.as_ref().unwrap())?;
+                write!(f, "fn {}", self.context.resolve(item.name.unwrap()))?;
+                self.print_func(f, generics, args, body, ret)
+            }
+
+            ItemKind::Type { generics, members } => {
+                self.vis(f, item.vis.as_ref().unwrap())?;
+                f.write_str("type ")?;
+                f.write_str(self.context.resolve(item.name.unwrap()))?;
+                self.print_type(f, generics, members)
+            }
+
+            ItemKind::Enum { generics, variants } => {
+                self.vis(f, item.vis.as_ref().unwrap())?;
+                f.write_str("enum ")?;
+                f.write_str(self.context.resolve(item.name.unwrap()))?;
+                self.print_enum(f, generics, variants)
+            }
+
+            ItemKind::Trait { generics, methods } => {
+                self.vis(f, item.vis.as_ref().unwrap())?;
+                f.write_str("trait ")?;
+                f.write_str(self.context.resolve(item.name.unwrap()))?;
+                self.print_trait(f, generics, methods)
+            }
+
+            ItemKind::Import {
+                file,
+                dest,
+                exposes,
+            } => self.print_import(f, file, dest, exposes),
+
+            ItemKind::Alias { alias, actual } => {
+                self.vis(f, item.vis.as_ref().unwrap())?;
+                f.write_str("alias ")?;
+                self.print_alias(f, alias, actual)
+            }
+
+            ItemKind::ExtendBlock {
+                target,
+                extender,
+                items,
+            } => {
+                f.write_str("extend ")?;
+                self.print_extend_block(f, target, extender.as_ref().map(|t| t.as_ref()), items)
+            }
         }
     }
 
     fn print_extend_block(
         &mut self,
         f: &mut dyn Write,
-        ExtendBlock {
-            target,
-            extender,
-            nodes,
-        }: &ExtendBlock,
+        target: &Type,
+        extender: Option<&Type>,
+        items: &[Item],
     ) -> Result {
-        self.print_indent(f)?;
-        f.write_str("extend ")?;
-        self.print_ty(f, **target)?;
+        self.print_ty(f, target)?;
 
         if let Some(extender) = extender {
             f.write_str(" with ")?;
-            self.print_ty(f, **extender)?;
+            self.print_ty(f, extender)?;
         }
-        writeln!(f)?;
+        f.write_char('\n')?;
 
         self.indent_level += 1;
-        for node in nodes {
-            self.print_ast(f, *node)?;
+        for item in items {
+            self.print_item(f, item)?;
         }
         self.indent_level -= 1;
 
-        writeln!(f, "end")
+        f.write_str("end\n")
     }
 
-    fn print_alias(
-        &mut self,
-        f: &mut dyn Write,
-        Alias {
-            alias,
-            actual,
-            decorators,
-            attrs,
-        }: &Alias,
-    ) -> Result {
-        self.print_indent(f)?;
-        for dec in decorators {
-            self.print_decorator(f, (**dec).clone())?;
-            writeln!(f)?;
-        }
-
-        for attr in attrs {
-            self.print_attr(f, **attr)?;
-        }
-
-        f.write_str("alias ")?;
-        self.print_ty(f, **alias)?;
+    fn print_alias(&mut self, f: &mut dyn Write, alias: &Type, actual: &Type) -> Result {
+        self.print_ty(f, alias)?;
         f.write_str(" = ")?;
-        self.print_ty(f, **actual)?;
-        writeln!(f)
+        self.print_ty(f, actual)?;
+        f.write_char('\n')
+    }
+
+    fn item_path(&mut self, f: &mut dyn Write, path: &ItemPath) -> Result {
+        let mut path = path.iter();
+        let last = path.next_back();
+
+        for segment in path {
+            f.write_str(self.context.resolve(*segment))?;
+            f.write_char('.')?;
+        }
+
+        if let Some(segment) = last {
+            f.write_str(self.context.resolve(*segment))?;
+        }
+
+        Ok(())
+    }
+
+    fn vis(&mut self, f: &mut dyn Write, vis: &Vis) -> Result {
+        if *vis != Vis::FileLocal {
+            match vis {
+                Vis::Package => f.write_str("pkg")?,
+                Vis::Exposed => f.write_str("exposed")?,
+                Vis::FileLocal => unreachable!(),
+            }
+        }
+
+        Ok(())
+    }
+
+    fn generics(&mut self, f: &mut dyn Write, generics: &[Type]) -> Result {
+        if !generics.is_empty() {
+            let mut generics = generics.iter();
+            let last = generics.next_back();
+
+            f.write_char('[')?;
+            for generic in generics {
+                self.print_ty(f, generic)?;
+                f.write_str(", ")?;
+            }
+
+            if let Some(generic) = last {
+                self.print_ty(f, generic)?;
+            }
+
+            f.write_str("] ")?;
+        }
+
+        Ok(())
+    }
+
+    fn decorators(&mut self, f: &mut dyn Write, decorators: &[Decorator]) -> Result {
+        for dec in decorators {
+            self.print_indent(f)?;
+            self.print_decorator(f, dec)?;
+            f.write_char('\n')?;
+        }
+
+        Ok(())
+    }
+
+    fn block(&mut self, f: &mut dyn Write, block: &Block) -> Result {
+        self.indent_level += 1;
+        for stmt in block.iter() {
+            self.print_stmt(f, stmt)?
+        }
+        self.indent_level -= 1;
+
+        Ok(())
+    }
+
+    fn loop_else(&mut self, f: &mut dyn Write, else_: &Option<Block>) -> Result {
+        if let Some(else_) = else_ {
+            self.print_indent(f)?;
+            f.write_str("else\n")?;
+            self.block(f, else_)?
+        }
+
+        Ok(())
+    }
+
+    fn loop_then(&mut self, f: &mut dyn Write, then: &Option<Block>) -> Result {
+        if let Some(then) = then {
+            self.print_indent(f)?;
+            f.write_str("else\n")?;
+            self.block(f, then)?
+        }
+
+        Ok(())
     }
 
     fn print_import(
         &mut self,
         f: &mut dyn Write,
-        Import {
-            file,
-            dest,
-            exposes,
-        }: &Import,
+        file: &ItemPath,
+        dest: &Dest,
+        exposes: &Exposure,
     ) -> Result {
         write!(
             f,
-            "import{} \"{}\"",
+            "import{} \"",
             match dest {
-                ImportDest::NativeLib => " lib",
-                ImportDest::Package => " pkg",
-                ImportDest::Relative => "",
-            },
-            self.context.resolve(*file.data())
+                Dest::NativeLib => " lib",
+                Dest::Package => " pkg",
+                Dest::Relative => "",
+            }
         )?;
+        self.item_path(f, file)?;
+        f.write_char('"')?;
 
         match exposes {
-            ImportExposure::All => f.write_str(" exposing *")?,
-            ImportExposure::None(name) => write!(f, " as {}", self.context.resolve(*name.data()))?,
-            ImportExposure::Members(members) => {
+            Exposure::All => f.write_str(" exposing *")?,
+            Exposure::None(name) => write!(f, " as {}", self.context.resolve(*name))?,
+            Exposure::Items(items) => {
+                let write_item =
+                    |fmt: &mut Self, f: &mut dyn Write, (name, alias): &(ItemPath, StrT)| {
+                        fmt.item_path(f, name)?;
+                        f.write_str(" as ")?;
+                        f.write_str(fmt.context.resolve(*alias))
+                    };
+
                 f.write_str(" exposing ")?;
+                let mut items = items.iter();
+                let last = items.next_back();
 
-                for (i, member) in members.iter().enumerate() {
-                    write!(f, "{}", self.context.resolve(member.data().0))?;
-
-                    if let Some(alias) = member.data().1 {
-                        write!(f, " as {}", self.context.resolve(alias))?;
-                    }
-
-                    if i != members.len() - 1 {
-                        f.write_str(", ")?;
-                    }
-                }
-            }
-        }
-
-        writeln!(f)
-    }
-
-    fn print_trait(
-        &mut self,
-        f: &mut dyn Write,
-        Trait {
-            decorators,
-            attrs,
-            name,
-            generics,
-            methods,
-        }: &Trait,
-    ) -> Result {
-        for dec in decorators {
-            self.print_decorator(f, (**dec).clone())?;
-            writeln!(f)?;
-        }
-
-        self.print_indent(f)?;
-        for attr in attrs {
-            self.print_attr(f, **attr)?;
-        }
-
-        write!(f, "trait {}", self.context.resolve(*name))?;
-
-        if !generics.is_empty() {
-            f.write_str("[")?;
-            for (i, gen) in generics.iter().enumerate() {
-                self.print_ty(f, **gen)?;
-
-                if i != generics.len() - 1 {
+                for item in items {
+                    write_item(self, f, item)?;
                     f.write_str(", ")?;
                 }
+
+                if let Some(last) = last {
+                    write_item(self, f, last)?;
+                }
             }
-            f.write_str("]")?;
         }
-        writeln!(f)?;
+
+        f.write_char('\n')
+    }
+
+    fn print_trait(&mut self, f: &mut dyn Write, generics: &[Type], items: &[Item]) -> Result {
+        self.generics(f, generics)?;
+        f.write_char('\n')?;
 
         self.indent_level += 1;
-        for method in methods {
-            self.print_func(f, (**method).clone())?;
+        for item in items {
+            self.print_item(f, item)?;
         }
         self.indent_level -= 1;
 
-        writeln!(f, "end")
+        f.write_str("end\n")
     }
 
-    fn print_enum(
-        &mut self,
-        f: &mut dyn Write,
-        Enum {
-            decorators,
-            attrs,
-            name,
-            generics,
-            variants,
-        }: &Enum,
-    ) -> Result {
-        for dec in decorators {
-            self.print_decorator(f, (**dec).clone())?;
-            writeln!(f)?;
-        }
-
-        self.print_indent(f)?;
-        for attr in attrs {
-            self.print_attr(f, **attr)?;
-        }
-
-        write!(f, "enum {}", self.context.resolve(*name))?;
-
-        if !generics.is_empty() {
-            f.write_str("[")?;
-            for (i, gen) in generics.iter().enumerate() {
-                self.print_ty(f, **gen)?;
-                if i != generics.len() - 1 {
-                    f.write_str(", ")?;
-                }
-            }
-            f.write_str("]")?;
-        }
-        writeln!(f)?;
+    fn print_enum(&mut self, f: &mut dyn Write, generics: &[Type], variants: &[Variant]) -> Result {
+        self.generics(f, generics)?;
 
         self.indent_level += 1;
         for variant in variants {
-            match (**variant).clone() {
-                EnumVariant::Unit { name, decorators } => {
-                    for dec in decorators {
-                        self.print_decorator(f, (*dec).clone())?;
-                        writeln!(f)?;
-                    }
+            match variant {
+                Variant::Unit { name, decorators } => {
+                    self.decorators(f, decorators)?;
+
                     self.print_indent(f)?;
-                    writeln!(f, "{}", self.context.resolve(name))?;
+                    f.write_str(self.context.resolve(*name))?;
+                    f.write_char('\n')?;
                 }
 
-                EnumVariant::Tuple {
+                Variant::Tuple {
                     name,
-                    elements,
+                    elms,
                     decorators,
                 } => {
-                    for dec in decorators {
-                        self.print_decorator(f, (*dec).clone())?;
-                        writeln!(f)?;
-                    }
-                    self.print_indent(f)?;
-                    write!(f, "{}(", self.context.resolve(name))?;
-                    for (i, ty) in elements.iter().enumerate() {
-                        self.print_ty(f, **ty)?;
+                    self.decorators(f, decorators)?;
 
-                        if i != elements.len() - 1 {
-                            f.write_str(", ")?;
-                        }
+                    self.print_indent(f)?;
+                    f.write_str(self.context.resolve(*name))?;
+                    f.write_char('(')?;
+
+                    let mut elms = elms.iter();
+                    let last = elms.next_back();
+
+                    for elm in elms {
+                        self.print_ty(f, elm)?;
+                        f.write_str(", ")?;
                     }
-                    writeln!(f, ")")?;
+
+                    if let Some(elm) = last {
+                        self.print_ty(f, elm)?;
+                    }
+
+                    f.write_str(")\n")?;
                 }
             }
         }
@@ -271,91 +332,47 @@ impl<'cxl, 'ctx> PrettyPrinter<'cxl, 'ctx> {
     fn print_type(
         &mut self,
         f: &mut dyn Write,
-        TypeDecl {
+        generics: &[Type],
+        members: &[TypeMember],
+    ) -> Result {
+        self.generics(f, generics)?;
+        f.write_char('\n')?;
+
+        self.indent_level += 1;
+        for TypeMember {
             decorators,
             attrs,
             name,
-            generics,
-            members,
-        }: &TypeDecl,
-    ) -> Result {
-        for dec in decorators {
-            self.print_decorator(f, (**dec).clone())?;
-            writeln!(f)?;
-        }
-
-        self.print_indent(f)?;
-        for attr in attrs {
-            self.print_attr(f, **attr)?;
-        }
-
-        write!(f, "type {}", self.context.resolve(*name))?;
-
-        if !generics.is_empty() {
-            f.write_str("[")?;
-            for (i, gen) in generics.iter().enumerate() {
-                self.print_ty(f, **gen)?;
-
-                if i != generics.len() - 1 {
-                    f.write_str(", ")?;
-                }
-            }
-            f.write_str("]")?;
-        }
-        writeln!(f)?;
-
-        self.indent_level += 1;
-        for member in members {
-            let TypeMember {
-                decorators,
-                attrs,
-                name,
-                ty,
-            } = (**member).clone();
-
-            for dec in decorators {
-                self.print_decorator(f, (*dec).clone())?;
-                writeln!(f)?;
-            }
+            ty,
+        } in members
+        {
+            self.decorators(f, decorators)?;
 
             self.print_indent(f)?;
             for attr in attrs {
-                self.print_attr(f, *attr)?;
+                write!(f, "{}", attr)?;
             }
 
-            write!(f, "{}: ", self.context.resolve(name))?;
-            self.print_ty(f, *ty)?;
-            writeln!(f)?;
+            f.write_str(self.context.resolve(*name))?;
+            f.write_str(": ")?;
+
+            self.print_ty(f, ty)?;
+            f.write_char('\n')?;
         }
         self.indent_level -= 1;
 
-        writeln!(f, "end")
+        f.write_str("end\n")
     }
 
     fn print_func<'a>(
         &mut self,
         f: &mut dyn Write,
-        Function {
-            decorators,
-            attrs,
-            name,
-            args,
-            returns,
-            body,
-            ..
-        }: Function,
+        generics: &[Type],
+        args: &[FuncArg],
+        body: &Block,
+        ret: &Type,
     ) -> Result {
-        for dec in decorators {
-            self.print_decorator(f, (*dec).clone())?;
-            writeln!(f)?;
-        }
-
-        self.print_indent(f)?;
-        for attr in attrs {
-            self.print_attr(f, *attr)?;
-        }
-
-        write!(f, "fn {}", self.context.resolve(name))?;
+        self.generics(f, generics)?;
 
         if !args.is_empty() {
             f.write_str("(")?;
@@ -363,12 +380,8 @@ impl<'cxl, 'ctx> PrettyPrinter<'cxl, 'ctx> {
             let args = args
                 .iter()
                 .map(|arg| {
-                    let mut param = format!(
-                        "{}{}: ",
-                        if arg.data().comptime { "comptime " } else { "" },
-                        self.context.resolve(*arg.data().name)
-                    );
-                    self.print_ty(&mut param, *arg.data().ty).unwrap();
+                    let mut param = format!("{}: ", self.context.resolve(arg.name));
+                    self.print_ty(&mut param, &arg.ty).unwrap();
 
                     param
                 })
@@ -380,581 +393,447 @@ impl<'cxl, 'ctx> PrettyPrinter<'cxl, 'ctx> {
         }
 
         f.write_str(" -> ")?;
-        self.print_ty(f, *returns)?;
-        writeln!(f)?;
+        self.print_ty(f, ret)?;
+        f.write_char('\n')?;
 
-        self.indent_level += 1;
-        for stmt in body {
-            self.print_stmt(f, stmt)?;
-        }
-        self.indent_level -= 1;
+        self.block(f, body)?;
 
         self.print_indent(f)?;
-        writeln!(f, "end")
+        f.write_str("end\n")
     }
 
-    fn print_decorator(&mut self, f: &mut dyn Write, dec: Decorator<'_>) -> Result {
+    fn print_decorator(&mut self, f: &mut dyn Write, dec: &Decorator) -> Result {
         self.print_indent(f)?;
 
         if !dec.args.is_empty() {
-            write!(f, "@{}(", self.context.resolve(*dec.name.data()))?;
-            for (i, arg) in dec.args.iter().enumerate() {
-                self.print_expr(f, *arg)?;
+            write!(f, "@{}(", self.context.resolve(dec.name))?;
 
-                if i != dec.args.len() - 1 {
-                    f.write_str(", ")?;
-                }
+            let mut args = dec.args.iter();
+            let last = args.next_back();
+
+            for arg in args {
+                self.print_expr(f, arg)?;
+                f.write_str(", ")?;
             }
-            f.write_str(")")
+
+            if let Some(arg) = last {
+                self.print_expr(f, arg)?;
+            }
+
+            f.write_char(')')
         } else {
-            write!(f, "@{}", self.context.resolve(*dec.name.data()))
+            write!(f, "@{}", self.context.resolve(dec.name))
         }
     }
 
-    pub(crate) fn print_expr(&mut self, f: &mut dyn Write, expr: Ticket<'_, Expr<'_>>) -> Result {
-        match (*expr).clone() {
-            Expr::Variable(v) => write!(f, "{}", self.context.resolve(v)),
+    pub(crate) fn print_expr(&mut self, f: &mut dyn Write, expr: &Expr) -> Result {
+        match &expr.kind {
+            ExprKind::Variable(name) => f.write_str(self.context.resolve(*name)),
 
-            Expr::UnaryExpr(op, expr) => {
-                match op {
-                    UnaryOperand::Positive => f.write_str("+"),
-                    UnaryOperand::Negative => f.write_str("-"),
-                    UnaryOperand::Not => f.write_str("!"),
-                }?;
-
+            ExprKind::UnaryOp(op, expr) => {
+                write!(f, "{}", op)?;
                 self.print_expr(f, expr)
             }
 
-            Expr::BinaryOp(left, op, right) => {
-                self.print_expr(f, left)?;
-                write!(
-                    f,
-                    " {} ",
-                    match op {
-                        BinaryOperand::Add => "+",
-                        BinaryOperand::Sub => "-",
-                        BinaryOperand::Mult => "*",
-                        BinaryOperand::Div => "/",
-                        BinaryOperand::Mod => "%",
-                        BinaryOperand::Pow => "**",
-                        BinaryOperand::BitAnd => "&",
-                        BinaryOperand::BitOr => "|",
-                        BinaryOperand::BitXor => "^",
-                        BinaryOperand::Shl => "<<",
-                        BinaryOperand::Shr => ">>",
-                    }
-                )?;
-                self.print_expr(f, right)
+            ExprKind::BinaryOp(Sided { lhs, op, rhs }) => {
+                self.print_expr(f, lhs)?;
+                write!(f, " {} ", op)?;
+                self.print_expr(f, rhs)
             }
 
-            Expr::InlineConditional {
-                true_arm,
-                condition,
-                false_arm,
-            } => {
-                self.print_expr(f, true_arm)?;
-                f.write_str(" if ")?;
-                self.print_expr(f, condition)?;
-                f.write_str(" else ")?;
-                self.print_expr(f, false_arm)
-            }
-
-            Expr::Parenthesised(expr) => {
-                f.write_str("(")?;
+            ExprKind::Paren(expr) => {
+                f.write_char('(')?;
                 self.print_expr(f, expr)?;
-                f.write_str(")")
+                f.write_char(')')
             }
 
-            Expr::FunctionCall { caller, arguments } => {
+            ExprKind::FuncCall { caller, args } => {
                 self.print_expr(f, caller)?;
-                f.write_str("(")?;
-                for (i, arg) in arguments.iter().enumerate() {
-                    self.print_expr(f, *arg)?;
+                f.write_char('(')?;
 
-                    if i != arguments.len() - 1 {
-                        f.write_str(", ")?;
-                    }
+                let mut args = args.iter();
+                let last = args.next_back();
+
+                for arg in args {
+                    self.print_expr(f, arg)?;
+                    f.write_str(", ")?;
                 }
-                f.write_str(")")
+
+                if let Some(arg) = last {
+                    self.print_expr(f, arg)?;
+                }
+
+                f.write_char(')')
             }
 
-            Expr::MemberFunctionCall { member, function } => {
+            ExprKind::MemberFuncCall { member, func } => {
                 self.print_expr(f, member)?;
-                f.write_str(".")?;
-                self.print_expr(f, function)
+                f.write_char('.')?;
+                self.print_expr(f, func)
             }
 
-            Expr::Literal(lit) => self.print_literal(f, lit),
+            ExprKind::Literal(lit) => self.print_literal(f, lit),
 
-            Expr::Comparison(left, comp, right) => {
-                self.print_expr(f, left)?;
-                match comp {
-                    ComparisonOperand::Greater => f.write_str(" > "),
-                    ComparisonOperand::Less => f.write_str(" < "),
-                    ComparisonOperand::GreaterEqual => f.write_str(" >= "),
-                    ComparisonOperand::LessEqual => f.write_str(" <= "),
-                    ComparisonOperand::Equal => f.write_str(" == "),
-                    ComparisonOperand::NotEqual => f.write_str(" != "),
-                }?;
-                self.print_expr(f, right)
+            ExprKind::Comparison(Sided { lhs, op, rhs }) => {
+                self.print_expr(f, lhs)?;
+                write!(f, " {} ", op)?;
+                self.print_expr(f, rhs)
             }
 
-            Expr::IndexArray { array, index } => {
-                self.print_expr(f, array)?;
-                f.write_str("[")?;
+            ExprKind::Index { var, index } => {
+                self.print_expr(f, var)?;
+                f.write_char('[')?;
                 self.print_expr(f, index)?;
-                f.write_str("]")
+                f.write_char(']')
             }
 
-            Expr::Array(arr) => {
+            ExprKind::Array(array) => {
                 f.write_str("arr[")?;
-                for (i, elm) in arr.iter().enumerate() {
-                    self.print_expr(f, *elm)?;
 
-                    if i != arr.len() - 1 {
-                        f.write_str(", ")?;
-                    }
+                let mut array = array.iter();
+                let last = array.next_back();
+
+                for elm in array {
+                    self.print_expr(f, elm)?;
+                    f.write_str(", ")?;
                 }
-                f.write_str("]")
+
+                if let Some(elm) = last {
+                    self.print_expr(f, elm)?;
+                }
+
+                f.write_char(']')
             }
 
-            Expr::Tuple(tup) => {
+            ExprKind::Tuple(tuple) => {
                 f.write_str("tup[")?;
-                for (i, elm) in tup.iter().enumerate() {
-                    self.print_expr(f, *elm)?;
 
-                    if i != tup.len() - 1 {
-                        f.write_str(", ")?;
-                    }
+                let mut tuple = tuple.iter();
+                let last = tuple.next_back();
+
+                for elm in tuple {
+                    self.print_expr(f, elm)?;
+                    f.write_str(", ")?;
                 }
-                f.write_str("]")
+
+                if let Some(elm) = last {
+                    self.print_expr(f, elm)?;
+                }
+
+                f.write_char(']')
             }
 
-            Expr::Assignment(left, ty, right) => {
-                self.print_expr(f, left)?;
-                match ty {
-                    AssignmentType::Normal => f.write_str(" := "),
-                    AssignmentType::BinaryOp(op) => write!(
-                        f,
-                        " {}= ",
-                        match op {
-                            BinaryOperand::Add => "+",
-                            BinaryOperand::Sub => "-",
-                            BinaryOperand::Mult => "*",
-                            BinaryOperand::Div => "/",
-                            BinaryOperand::Mod => "%",
-                            BinaryOperand::Pow => "**",
-                            BinaryOperand::BitAnd => "&",
-                            BinaryOperand::BitOr => "|",
-                            BinaryOperand::BitXor => "^",
-                            BinaryOperand::Shl => "<<",
-                            BinaryOperand::Shr => ">>",
-                        }
-                    ),
-                }?;
-                self.print_expr(f, right)
+            ExprKind::Assign(Sided { lhs, op, rhs }) => {
+                self.print_expr(f, lhs)?;
+                write!(f, " {} ", op)?;
+                self.print_expr(f, rhs)
             }
 
-            Expr::Range(start, end) => {
+            ExprKind::Range(start, end) => {
                 self.print_expr(f, start)?;
                 f.write_str("..")?;
                 self.print_expr(f, end)
             }
+
+            ExprKind::Continue => f.write_str("continue\n"),
+
+            ExprKind::Return(None) => f.write_str("return\n"),
+            ExprKind::Return(Some(ret)) => {
+                f.write_str("return ")?;
+                self.print_expr(f, ret)?;
+                f.write_char('\n')
+            }
+
+            ExprKind::Break(None) => f.write_str("break\n"),
+            ExprKind::Break(Some(brk)) => {
+                f.write_str("break ")?;
+                self.print_expr(f, brk)?;
+                f.write_char('\n')
+            }
+
+            ExprKind::Loop(Loop { body, else_ }) => {
+                f.write_str("loop\n")?;
+                self.block(f, body)?;
+                self.loop_else(f, else_)?;
+
+                self.print_indent(f)?;
+                f.write_str("end\n")
+            }
+
+            ExprKind::While(While {
+                cond,
+                body,
+                then,
+                else_,
+            }) => {
+                f.write_str("while ")?;
+                self.print_expr(f, cond)?;
+                f.write_char('\n')?;
+
+                self.block(f, body)?;
+                self.loop_then(f, then)?;
+                self.loop_else(f, else_)?;
+
+                self.print_indent(f)?;
+                f.write_str("end\n")
+            }
+
+            ExprKind::For(For {
+                var,
+                cond,
+                body,
+                then,
+                else_,
+            }) => {
+                f.write_str("for ")?;
+                self.print_expr(f, var)?;
+                f.write_str(" in ")?;
+                self.print_expr(f, cond)?;
+                f.write_char('\n')?;
+
+                self.block(f, body)?;
+                self.loop_then(f, then)?;
+                self.loop_else(f, else_)?;
+
+                self.print_indent(f)?;
+                f.write_str("end\n")
+            }
+
+            ExprKind::If(If {
+                cond: IfCond { cond, body },
+                clauses,
+                else_,
+            }) => {
+                f.write_str("if ")?;
+                self.print_expr(f, cond)?;
+                f.write_char('\n')?;
+                self.block(f, body)?;
+
+                for IfCond { cond, body } in clauses {
+                    self.print_indent(f)?;
+                    f.write_str("else if ")?;
+                    self.print_expr(f, cond)?;
+
+                    f.write_char('\n')?;
+                    self.block(f, body)?;
+                }
+
+                self.print_indent(f)?;
+                if let Some(body) = else_ {
+                    f.write_str("else ")?;
+                    self.block(f, body)?;
+
+                    Ok(())
+                } else {
+                    f.write_str("end\n")
+                }
+            }
+
+            ExprKind::Match(Match { var, arms }) => {
+                f.write_str("match ")?;
+                self.print_expr(f, var)?;
+                f.write_char('\n')?;
+
+                self.indent_level += 1;
+                for Arm { bind, guard, body } in arms {
+                    self.print_indent(f)?;
+
+                    self.print_binding(f, bind)?;
+                    if let Some(guard) = guard {
+                        f.write_str("where ")?;
+                        self.print_expr(f, guard)?;
+                        f.write_char(' ')?;
+                    }
+                    f.write_str("=>")?;
+
+                    self.block(f, body)?;
+
+                    self.print_indent(f)?;
+                    f.write_str("end\n")?;
+                }
+                self.indent_level -= 1;
+
+                self.print_indent(f)?;
+                f.write_str("end\n")
+            }
         }
     }
 
-    fn print_literal(&mut self, f: &mut dyn Write, literal: Literal) -> Result {
+    fn print_literal(&mut self, f: &mut dyn Write, literal: &Literal) -> Result {
         match literal {
             Literal::Integer(i) => write!(f, "{}", i),
             Literal::Bool(b) => write!(f, "{}", b),
             Literal::String(s) => write!(f, "{:?}", s),
             Literal::Rune(r) => write!(f, "'{}'", r),
-            Literal::Array(arr) => {
-                f.write_str("[")?;
-                for (i, elm) in arr.iter().enumerate() {
-                    self.print_literal(f, (*elm).clone())?;
+            Literal::Array(array) => {
+                f.write_str("arr[")?;
+                let mut array = array.iter();
+                let last = array.next_back();
 
-                    if i != arr.len() - 1 {
-                        f.write_str(", ")?;
-                    }
+                for elm in array {
+                    self.print_literal(f, elm)?;
+                    f.write_str(", ")?;
                 }
-                f.write_str("]")
+
+                if let Some(elm) = last {
+                    self.print_literal(f, elm)?;
+                }
+
+                f.write_char(']')
             }
             Literal::Float(fl) => write!(f, "{}", fl),
         }
     }
 
-    fn print_ty(&mut self, f: &mut dyn Write, ty: Ticket<'_, Type>) -> Result {
-        match (*ty).clone() {
+    fn print_ty(&mut self, f: &mut dyn Write, ty: &Type) -> Result {
+        match ty {
             Type::Infer => f.write_str("infer"),
-            Type::Not(ty) => self.print_ty(f, *ty),
-            Type::Parenthesised(ty) => {
-                f.write_str("(")?;
-                self.print_ty(f, *ty)?;
-                f.write_str(")")
+            Type::Not(ty) => self.print_ty(f, ty),
+            Type::Paren(ty) => {
+                f.write_char('(')?;
+                self.print_ty(f, ty)?;
+                f.write_char(')')
             }
             Type::Const(ident, ty) => {
-                write!(f, "const {}: ", self.context.resolve(ident))?;
-                self.print_ty(f, *ty)
+                write!(f, "const {}: ", self.context.resolve(*ident))?;
+                self.print_ty(f, ty)
             }
-            Type::Operand(left, op, right) => {
-                self.print_ty(f, *left)?;
-                write!(f, "{}", op)?;
-                self.print_ty(f, *right)
+            Type::Operand(Sided { lhs, op, rhs }) => {
+                self.print_ty(f, lhs)?;
+                write!(f, " {} ", op)?;
+                self.print_ty(f, rhs)
             }
-            Type::Function { params, returns } => {
+            Type::Func { params, ret } => {
                 f.write_str("fn(")?;
-                for (i, param) in params.iter().enumerate() {
-                    self.print_ty(f, **param)?;
 
-                    if i != params.len() - 1 {
-                        f.write_str(", ")?;
-                    }
+                let mut params = params.iter();
+                let last = params.next_back();
+
+                for param in params {
+                    self.print_ty(f, param)?;
+                    f.write_str(", ")?;
                 }
+
+                if let Some(param) = last {
+                    self.print_ty(f, param)?;
+                }
+
                 f.write_str(") -> ")?;
-                self.print_ty(f, *returns)
+                self.print_ty(f, ret)
             }
-            Type::TraitObj(traits) => {
+            Type::Trait(traits) => {
                 if traits.is_empty() {
                     f.write_str("type")
                 } else {
                     f.write_str("type[")?;
-                    for (i, ty) in traits.iter().enumerate() {
-                        self.print_ty(f, **ty)?;
-                        if i != traits.len() - 1 {
-                            f.write_str(", ")?;
-                        }
+
+                    let mut traits = traits.iter();
+                    let last = traits.next_back();
+
+                    for trait_ in traits {
+                        self.print_ty(f, trait_)?;
+                        f.write_str(", ")?;
                     }
-                    f.write_str("]")
+
+                    if let Some(trait_) = last {
+                        self.print_ty(f, trait_)?;
+                    }
+
+                    f.write_char(']')
                 }
             }
             Type::Bounded { path, bounds } => {
-                write!(
-                    f,
-                    "{}[",
-                    path.iter()
-                        .map(|seg| self.context.resolve(*seg))
-                        .collect::<Vec<&str>>()
-                        .join(".")
-                )?;
-                for (i, ty) in bounds.iter().enumerate() {
-                    self.print_ty(f, **ty)?;
+                self.item_path(f, path)?;
+                f.write_char('[')?;
 
-                    if i != bounds.len() - 1 {
-                        f.write_str(", ")?;
-                    }
+                let mut bounds = bounds.iter();
+                let last = bounds.next_back();
+
+                for bound in bounds {
+                    self.print_ty(f, bound)?;
+                    f.write_str(", ")?;
                 }
-                f.write_str("]")
+
+                if let Some(bound) = last {
+                    self.print_ty(f, bound)?;
+                }
+
+                f.write_char(']')
             }
-            Type::Integer { sign, width } => write!(
-                f,
-                "{}{}",
-                match sign {
-                    Signedness::Signed => "i",
-                    Signedness::Unsigned => "u",
-                },
-                width
-            ),
-            Type::IntPtr(sign) => write!(
-                f,
-                "{}ptr",
-                match sign {
-                    Signedness::Signed => "i",
-                    Signedness::Unsigned => "u",
-                },
-            ),
-            Type::IntReg(sign) => write!(
-                f,
-                "{}reg",
-                match sign {
-                    Signedness::Signed => "i",
-                    Signedness::Unsigned => "u",
-                },
-            ),
+            Type::Integer { sign, width } => write!(f, "{}{}", sign, width),
+            Type::IntPtr(sign) => write!(f, "{}ptr", sign),
+            Type::IntReg(sign) => write!(f, "{}reg", sign),
             Type::Float { width } => write!(f, "f{}", width),
-            Type::Boolean => f.write_str("bool"),
+            Type::Bool => f.write_str("bool"),
             Type::String => f.write_str("str"),
             Type::Rune => f.write_str("rune"),
             Type::Unit => f.write_str("unit"),
             Type::Absurd => f.write_str("absurd"),
             Type::Array(len, ty) => {
                 write!(f, "arr[{}, ", len)?;
-                self.print_ty(f, *ty)?;
-                f.write_str("]")
+                self.print_ty(f, ty)?;
+                f.write_char(']')
             }
             Type::Slice(ty) => {
                 f.write_str("arr[")?;
-                self.print_ty(f, *ty)?;
-                f.write_str("]")
+                self.print_ty(f, ty)?;
+                f.write_char(']')
             }
             Type::Tuple(types) => {
                 f.write_str("tup[")?;
                 for (i, ty) in types.iter().enumerate() {
-                    self.print_ty(f, **ty)?;
+                    self.print_ty(f, ty)?;
 
                     if i != types.len() - 1 {
                         f.write_str(", ")?;
                     }
                 }
-                f.write_str("]")
+
+                f.write_char(']')
             }
-            Type::ItemPath(path) => write!(
-                f,
-                "{}",
-                path.iter()
-                    .map(|seg| self.context.resolve(*seg))
-                    .collect::<Vec<&str>>()
-                    .join(".")
-            ),
+            Type::ItemPath(path) => self.item_path(f, path),
         }
     }
 
-    fn print_attr(&mut self, f: &mut dyn Write, attr: Attribute) -> Result {
-        match attr {
-            Attribute::Visibility(vis) => match vis {
-                Visibility::Exposed => f.write_str("exposed "),
-                Visibility::Package => f.write_str("pkg "),
-                Visibility::FileLocal => f.write_str(""),
-            },
-            Attribute::Const => f.write_str("const "),
-        }
-    }
+    pub(crate) fn print_stmt(&mut self, f: &mut dyn Write, stmt: &Stmt) -> Result {
+        match &stmt.kind {
+            StmtKind::Item(item) => self.print_item(f, item),
 
-    pub(crate) fn print_stmt(&mut self, f: &mut dyn Write, stmt: Ticket<'_, Stmt<'_>>) -> Result {
-        self.print_indent(f)?;
-
-        match (*stmt).clone() {
-            Stmt::Expr(expr) => {
-                self.print_expr(f, expr)?;
-                writeln!(f)
-            }
-
-            Stmt::Empty => writeln!(f, "empty"),
-
-            Stmt::Continue => writeln!(f, "continue"),
-
-            Stmt::Return(None) => writeln!(f, "return"),
-
-            Stmt::Return(Some(ret)) => {
-                f.write_str("return ")?;
-                self.print_expr(f, ret)?;
-                writeln!(f)
-            }
-
-            Stmt::Break(None) => writeln!(f, "break"),
-
-            Stmt::Break(Some(brk)) => {
-                f.write_str("break ")?;
-                self.print_expr(f, brk)?;
-                writeln!(f)
-            }
-
-            Stmt::Loop { body, else_clause } => {
-                writeln!(f, "loop")?;
-
-                self.indent_level += 1;
-                for stmt in body {
-                    self.print_stmt(f, stmt)?
-                }
-                self.indent_level -= 1;
-
-                if let Some(else_clause) = else_clause {
-                    self.print_indent(f)?;
-                    writeln!(f, "else")?;
-
-                    self.indent_level += 1;
-                    for stmt in else_clause {
-                        self.print_stmt(f, stmt)?
-                    }
-                    self.indent_level -= 1;
-                }
-
+            StmtKind::VarDecl(decl) => {
+                let VarDecl {
+                    name,
+                    ty,
+                    val,
+                    constant,
+                    mutable,
+                } = decl.as_ref();
                 self.print_indent(f)?;
-                writeln!(f, "end")
-            }
 
-            Stmt::While {
-                condition,
-                body,
-                then,
-                else_clause,
-            } => {
-                f.write_str("while ")?;
-                self.print_expr(f, condition)?;
-                writeln!(f)?;
-
-                self.indent_level += 1;
-                for stmt in body {
-                    self.print_stmt(f, stmt)?
-                }
-                self.indent_level -= 1;
-
-                if let Some(then) = then {
-                    self.print_indent(f)?;
-                    writeln!(f, "then")?;
-
-                    self.indent_level += 1;
-                    for stmt in then {
-                        self.print_stmt(f, stmt)?
-                    }
-                    self.indent_level -= 1;
-                }
-
-                if let Some(else_clause) = else_clause {
-                    self.print_indent(f)?;
-                    writeln!(f, "else")?;
-
-                    self.indent_level += 1;
-                    for stmt in else_clause {
-                        self.print_stmt(f, stmt)?
-                    }
-                    self.indent_level -= 1;
-                }
-
-                self.print_indent(f)?;
-                writeln!(f, "end")
-            }
-
-            Stmt::For {
-                var,
-                condition,
-                body,
-                then,
-                else_clause,
-            } => {
-                f.write_str("for ")?;
-                self.print_expr(f, var)?;
-                f.write_str(" in ")?;
-                self.print_expr(f, condition)?;
-                writeln!(f)?;
-
-                self.indent_level += 1;
-                for stmt in body {
-                    self.print_stmt(f, stmt)?
-                }
-                self.indent_level -= 1;
-
-                if let Some(then) = then {
-                    self.print_indent(f)?;
-                    writeln!(f, "then")?;
-
-                    self.indent_level += 1;
-                    for stmt in then {
-                        self.print_stmt(f, stmt)?
-                    }
-                    self.indent_level -= 1;
-                }
-
-                if let Some(else_clause) = else_clause {
-                    self.print_indent(f)?;
-                    writeln!(f, "else")?;
-
-                    self.indent_level += 1;
-                    for stmt in else_clause {
-                        self.print_stmt(f, stmt)?
-                    }
-                    self.indent_level -= 1;
-                }
-
-                self.print_indent(f)?;
-                writeln!(f, "end")
-            }
-
-            Stmt::VarDeclaration {
-                name,
-                ty,
-                val,
-                constant,
-                mutable,
-            } => {
                 write!(
                     f,
                     "{}{}{}: ",
-                    if constant { "const" } else { "let" },
-                    if mutable { " mut " } else { " " },
-                    self.context.resolve(name)
+                    if *constant { "const" } else { "let" },
+                    if *mutable { " mut " } else { " " },
+                    self.context.resolve(*name)
                 )?;
-                self.print_ty(f, *ty)?;
+
+                self.print_ty(f, ty)?;
                 f.write_str(" := ")?;
+
                 self.print_expr(f, val)?;
-                writeln!(f)
+                f.write_char('\n')
             }
 
-            Stmt::If {
-                condition,
-                body,
-                clauses,
-                else_clause,
-            } => {
-                f.write_str("if ")?;
-                self.print_expr(f, condition)?;
-                writeln!(f)?;
-
-                self.indent_level += 1;
-                for stmt in body {
-                    self.print_stmt(f, stmt)?;
-                }
-                self.indent_level -= 1;
-
-                for (cond, body) in clauses {
-                    self.print_indent(f)?;
-                    f.write_str("else if ")?;
-                    self.print_expr(f, cond)?;
-                    writeln!(f)?;
-
-                    self.indent_level += 1;
-                    for stmt in body {
-                        self.print_stmt(f, stmt)?;
-                    }
-                    self.indent_level -= 1;
-                }
-
+            StmtKind::Expr(expr) => {
                 self.print_indent(f)?;
-                if let Some(body) = else_clause {
-                    f.write_str("else ")?;
 
-                    self.indent_level += 1;
-                    for stmt in body {
-                        self.print_stmt(f, stmt)?;
-                    }
-                    self.indent_level -= 1;
-
-                    Ok(())
-                } else {
-                    writeln!(f, "end")
-                }
+                self.print_expr(f, expr)?;
+                f.write_char('\n')
             }
 
-            Stmt::Match { var, arms } => {
-                f.write_str("match ")?;
-                self.print_expr(f, var)?;
-                writeln!(f)?;
-
-                self.indent_level += 1;
-                for (binding, whre, body) in arms {
-                    self.print_indent(f)?;
-
-                    self.print_binding(f, binding)?;
-                    if let Some(whre) = whre {
-                        f.write_str("where ")?;
-                        self.print_expr(f, whre)?;
-                        f.write_str(" ")?;
-                    }
-                    writeln!(f, "=>")?;
-
-                    self.indent_level += 1;
-                    for stmt in body {
-                        self.print_stmt(f, stmt)?;
-                    }
-                    self.indent_level -= 1;
-
-                    self.print_indent(f)?;
-                    writeln!(f, "end")?
-                }
-                self.indent_level -= 1;
-
+            StmtKind::Empty => {
                 self.print_indent(f)?;
-                writeln!(f, "end")
+                f.write_str("empty\n")
             }
         }
     }
@@ -967,42 +846,30 @@ impl<'cxl, 'ctx> PrettyPrinter<'cxl, 'ctx> {
             mutable,
             pattern,
             ty,
-        }: Binding<'_>,
+        }: &Binding,
     ) -> Result {
-        if reference {
-            write!(f, "ref ")?;
+        if *reference {
+            f.write_str("ref ")?;
         }
-        if mutable {
-            write!(f, "mut ")?;
+        if *mutable {
+            f.write_str("mut ")?;
         }
 
         self.print_pattern(f, pattern)?;
 
         if let Some(ty) = ty {
-            write!(f, ": ")?;
-            self.print_ty(f, *ty)?;
+            f.write_str(": ")?;
+            self.print_ty(f, ty)?;
         }
 
         Ok(())
     }
 
-    fn print_pattern(&mut self, f: &mut dyn Write, pattern: Pattern) -> Result {
+    fn print_pattern(&mut self, f: &mut dyn Write, pattern: &Pattern) -> Result {
         match pattern {
             Pattern::Literal(lit) => self.print_literal(f, lit),
-            Pattern::Ident(ident) => write!(f, "{} ", self.context.resolve(ident)),
-            Pattern::ItemPath(path) => {
-                write!(
-                    f,
-                    "{}",
-                    (&&*path)
-                        .iter()
-                        .map(|s| self.context.resolve(*s))
-                        .collect::<Vec<&str>>()
-                        .join(".")
-                )?;
-
-                Ok(())
-            }
+            Pattern::Ident(ident) => f.write_str(self.context.resolve(*ident)),
+            Pattern::ItemPath(path) => self.item_path(f, path),
         }
     }
 }

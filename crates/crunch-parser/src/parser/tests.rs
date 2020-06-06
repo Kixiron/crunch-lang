@@ -1,23 +1,30 @@
 use super::*;
-use crate::{
-    context::StrT, files::FileId, parser::types::Signedness, pretty_printer::PrettyPrinter,
-};
+use crate::pretty_printer::PrettyPrinter;
 #[cfg(feature = "no-std")]
 use alloc::string::String;
 use core::iter;
+use crunch_shared::{
+    ast::{
+        AssignKind, BinaryOp, CompOp, ExprKind, Integer, ItemPath, Literal, Ref, Sign, Signedness,
+        Type,
+    },
+    error::{Error, Locatable, SyntaxError},
+    files::FileId,
+    strings::StrT,
+};
 
 fn format_expr(source: &str) -> String {
     let context = Context::default();
     let mut parser = Parser::new(
         source,
         CurrentFile::new(FileId::new(0), source.len()),
-        &context,
+        context.clone(),
     );
     let expr = parser.expr().unwrap();
 
     let mut string = String::new();
-    PrettyPrinter::new(&context)
-        .print_expr(&mut string, expr)
+    PrettyPrinter::new(context)
+        .print_expr(&mut string, &expr)
         .unwrap();
 
     string
@@ -34,13 +41,13 @@ fn format_stmt(source: &str) -> String {
     let mut parser = Parser::new(
         source,
         CurrentFile::new(FileId::new(0), source.len()),
-        &context,
+        context.clone(),
     );
     let stmt = parser.stmt().unwrap().unwrap();
 
     let mut string = String::new();
-    PrettyPrinter::new(&context)
-        .print_stmt(&mut string, stmt)
+    PrettyPrinter::new(context)
+        .print_stmt(&mut string, &stmt)
         .unwrap();
 
     string
@@ -52,18 +59,18 @@ macro_rules! stmt_eq {
     };
 }
 
-fn format_ast(source: &str) -> String {
-    let mut context = Context::default();
+fn format_item(source: &str) -> String {
+    let context = Context::default();
     let mut parser = Parser::new(
         source,
         CurrentFile::new(FileId::new(0), source.len()),
-        &mut context,
+        context.clone(),
     );
-    let stmt = parser.ast().unwrap().unwrap();
+    let item = parser.item().unwrap().unwrap();
 
     let mut string = String::new();
-    PrettyPrinter::new(&context)
-        .print_ast(&mut string, stmt)
+    PrettyPrinter::new(context)
+        .print_item(&mut string, &item)
         .unwrap();
 
     string
@@ -71,18 +78,18 @@ fn format_ast(source: &str) -> String {
 
 macro_rules! ast_eq {
     ($src:literal) => {
-        assert_eq!($src, format_ast($src));
+        assert_eq!($src, format_item($src));
     };
 }
 
 macro_rules! eval {
     (@expr $expr:expr) => {{
         std::panic::catch_unwind(|| {
-            let mut context = Context::default();
+            let context = Context::default();
             let mut parser = Parser::new(
                 $expr,
                 CurrentFile::new(FileId::new(0), $expr.len()),
-                &mut context,
+                context,
             );
             let expr = parser.expr().unwrap();
 
@@ -93,11 +100,11 @@ macro_rules! eval {
 
     (@generics $generics:expr) => {{
         std::panic::catch_unwind(|| {
-            let mut context = Context::default();
+            let context = Context::default();
             let mut parser = Parser::new(
                 $generics,
                 CurrentFile::new(FileId::new(0), $generics.len()),
-                &mut context,
+                context,
             );
             let generics = parser.generics().unwrap();
 
@@ -106,19 +113,19 @@ macro_rules! eval {
         .unwrap_or_else(|err| panic!("Error on the input {}: {:?}", $generics, err))
     }};
 
-    (@ast $ast:expr) => {{
+    (@item $item:expr) => {{
         std::panic::catch_unwind(|| {
-            let mut context = Context::default();
+            let context = Context::default();
             let mut parser = Parser::new(
-                $ast,
-                CurrentFile::new(FileId::new(0), $ast.len()),
-                &mut context,
+                $item,
+                CurrentFile::new(FileId::new(0), $item.len()),
+                context,
             );
-            let ast = parser.ast().unwrap().unwrap();
+            let item = parser.item().unwrap().unwrap();
 
-            ron::ser::to_string(&ast).unwrap()
+            ron::ser::to_string(&item).unwrap()
         })
-        .unwrap_or_else(|err| panic!("Error on the input {}: {:?}", $ast, err))
+        .unwrap_or_else(|err| panic!("Error on the input {}: {:?}", $item, err))
     }};
 }
 
@@ -277,13 +284,13 @@ fn comparison_operations() {
     let ten = "Literal(Integer((sign:Positive,bits:10)))";
     let zero = "Literal(Integer((sign:Positive,bits:0)))";
     #[rustfmt::skip]
-    let comparisons: Vec<(&str, (&str, ComparisonOperand, &str))> = vec![
-        ("10 == 0", (ten, ComparisonOperand::Equal,        zero)),
-        ("10 != 0", (ten, ComparisonOperand::NotEqual,     zero)),
-        ("10 < 0",  (ten, ComparisonOperand::Less,         zero)),
-        ("10 > 0",  (ten, ComparisonOperand::Greater,      zero)),
-        ("10 <= 0", (ten, ComparisonOperand::LessEqual,    zero)),
-        ("10 >= 0", (ten, ComparisonOperand::GreaterEqual, zero)),
+    let comparisons: Vec<(&str, (&str, CompOp, &str))> = vec![
+        ("10 == 0", (ten, CompOp::Equal,        zero)),
+        ("10 != 0", (ten, CompOp::NotEqual,     zero)),
+        ("10 < 0",  (ten, CompOp::Less,         zero)),
+        ("10 > 0",  (ten, CompOp::Greater,      zero)),
+        ("10 <= 0", (ten, CompOp::LessEqual,    zero)),
+        ("10 >= 0", (ten, CompOp::GreaterEqual, zero)),
     ];
 
     for (src, (lhs, op, rhs)) in comparisons {
@@ -304,19 +311,19 @@ fn assignments() {
     };
 
     #[rustfmt::skip]
-    let integers: Vec<(&str, AssignmentType)> = vec![
-        ("i := 100",  AssignmentType::Normal),
-        ("i += 100",  AssignmentType::BinaryOp(BinaryOperand::Add)),
-        ("i -= 100",  AssignmentType::BinaryOp(BinaryOperand::Sub)),
-        ("i *= 100",  AssignmentType::BinaryOp(BinaryOperand::Mult)),
-        ("i /= 100",  AssignmentType::BinaryOp(BinaryOperand::Div)),
-        ("i %= 100",  AssignmentType::BinaryOp(BinaryOperand::Mod)),
-        ("i **= 100", AssignmentType::BinaryOp(BinaryOperand::Pow)),
-        ("i &= 100",  AssignmentType::BinaryOp(BinaryOperand::BitAnd)),
-        ("i |= 100",  AssignmentType::BinaryOp(BinaryOperand::BitOr)),
-        ("i ^= 100",  AssignmentType::BinaryOp(BinaryOperand::BitXor)),
-        ("i >>= 100", AssignmentType::BinaryOp(BinaryOperand::Shr)),
-        ("i <<= 100", AssignmentType::BinaryOp(BinaryOperand::Shl)),
+    let integers: Vec<(&str, AssignKind)> = vec![
+        ("i := 100",  AssignKind::Normal),
+        ("i += 100",  AssignKind::BinaryOp(BinaryOp::Add)),
+        ("i -= 100",  AssignKind::BinaryOp(BinaryOp::Sub)),
+        ("i *= 100",  AssignKind::BinaryOp(BinaryOp::Mult)),
+        ("i /= 100",  AssignKind::BinaryOp(BinaryOp::Div)),
+        ("i %= 100",  AssignKind::BinaryOp(BinaryOp::Mod)),
+        ("i **= 100", AssignKind::BinaryOp(BinaryOp::Pow)),
+        ("i &= 100",  AssignKind::BinaryOp(BinaryOp::BitAnd)),
+        ("i |= 100",  AssignKind::BinaryOp(BinaryOp::BitOr)),
+        ("i ^= 100",  AssignKind::BinaryOp(BinaryOp::BitXor)),
+        ("i >>= 100", AssignKind::BinaryOp(BinaryOp::Shr)),
+        ("i <<= 100", AssignKind::BinaryOp(BinaryOp::Shl)),
     ];
 
     for (src, ty) in integers {
@@ -351,18 +358,18 @@ fn binary_ops() {
     };
 
     #[rustfmt::skip]
-    let integers: Vec<(&str, BinaryOperand)> = vec![
-        ("i + 100",  BinaryOperand::Add),
-        ("i - 100",  BinaryOperand::Sub),
-        ("i * 100",  BinaryOperand::Mult),
-        ("i / 100",  BinaryOperand::Div),
-        ("i % 100",  BinaryOperand::Mod),
-        ("i ** 100", BinaryOperand::Pow),
-        ("i & 100",  BinaryOperand::BitAnd),
-        ("i | 100",  BinaryOperand::BitOr),
-        ("i ^ 100",  BinaryOperand::BitXor),
-        ("i >> 100", BinaryOperand::Shr),
-        ("i << 100", BinaryOperand::Shl),
+    let integers: Vec<(&str, BinaryOp)> = vec![
+        ("i + 100",  BinaryOp::Add),
+        ("i - 100",  BinaryOp::Sub),
+        ("i * 100",  BinaryOp::Mult),
+        ("i / 100",  BinaryOp::Div),
+        ("i % 100",  BinaryOp::Mod),
+        ("i ** 100", BinaryOp::Pow),
+        ("i & 100",  BinaryOp::BitAnd),
+        ("i | 100",  BinaryOp::BitOr),
+        ("i ^ 100",  BinaryOp::BitXor),
+        ("i >> 100", BinaryOp::Shr),
+        ("i << 100", BinaryOp::Shl),
     ];
 
     for (src, ty) in integers {
@@ -591,7 +598,7 @@ fn functions_ast() {
     let src = "
         fn test()
         end";
-    let func = eval!(@ast src);
+    let func = eval!(@item src);
     assert_eq!(func, expected);
 
     let expected = "Function((data:(decorators:[(data:(name:(data:(key:1),loc:Concrete(span:(start:10,end:16),file:(0))),args:[]),\
@@ -604,7 +611,7 @@ fn functions_ast() {
         @inline
         fn test()
         end";
-    let func = eval!(@ast src);
+    let func = eval!(@item src);
     assert_eq!(func, expected);
 
     let expected = "Function((data:(decorators:[],attrs:[(data:Visibility(Exposed),loc:Concrete(span:(start:9,end:16),file:(0)))],name:(key:1),\
@@ -617,7 +624,7 @@ fn functions_ast() {
         exposed fn test(a: a, b: b) -> bool
             println(1)
         end";
-    let func = eval!(@ast src);
+    let func = eval!(@item src);
     assert_eq!(func, expected);
 }
 
@@ -625,7 +632,7 @@ fn functions_ast() {
 fn extend_block() {
     println!(
         "{:#?}",
-        format_ast(
+        format_item(
             "extend Struct
                 fn test()
                     println()
@@ -658,7 +665,7 @@ fn loop_follows_if() {
             end
         end";
 
-    let func = eval!(@ast src);
+    let func = eval!(@item src);
     assert_eq!(func, expected);
 }
 
@@ -666,7 +673,7 @@ fn loop_follows_if() {
 
 #[test]
 fn types_ast() {
-    let mut context = Context::new();
+    let context = Context::new();
     let builtins = [
         (
             "i128",
@@ -718,7 +725,7 @@ fn types_ast() {
         ),
         ("f32", Type::Float { width: 32 }),
         ("f1", Type::Float { width: 1 }),
-        ("bool", Type::Boolean),
+        ("bool", Type::Bool),
         ("unit", Type::Unit),
         ("str", Type::String),
         ("absurd", Type::Absurd),
@@ -726,45 +733,18 @@ fn types_ast() {
         ("iptr", Type::IntPtr(Signedness::Signed)),
         ("ureg", Type::IntReg(Signedness::Unsigned)),
         ("ireg", Type::IntReg(Signedness::Signed)),
-        (
-            "arr[100, infer]",
-            Type::Array(
-                100,
-                Locatable::new(
-                    context.store(Type::Infer),
-                    Location::implicit(9..14, FileId(0)),
-                ),
-            ),
-        ),
-        (
-            "arr[1, str]",
-            Type::Array(
-                1,
-                Locatable::new(
-                    context.store(Type::String),
-                    Location::concrete(7..10, FileId(0)),
-                ),
-            ),
-        ),
+        ("arr[100, infer]", Type::Array(100, Ref::new(Type::Infer))),
+        ("arr[1, str]", Type::Array(1, Ref::new(Type::String))),
         (
             "tup[str, arr[5, i32]]",
             Type::Tuple(vec![
-                Locatable::new(
-                    context.store(Type::String),
-                    Location::concrete(4..7, FileId(0)),
-                ),
-                Locatable::new(
-                    context.store(Type::Array(
-                        5,
-                        Locatable::new(
-                            context.store(Type::Integer {
-                                sign: Signedness::Signed,
-                                width: 32,
-                            }),
-                            Location::concrete(16..19, FileId(0)),
-                        ),
-                    )),
-                    Location::concrete(9..20, FileId(0)),
+                Type::String,
+                Type::Array(
+                    5,
+                    Ref::new(Type::Integer {
+                        sign: Signedness::Signed,
+                        width: 32,
+                    }),
                 ),
             ]),
         ),
@@ -782,13 +762,12 @@ fn types_ast() {
         ),
     ];
 
-    for (src, ty) in builtins.iter() {
-        assert_eq!(
-            &*Parser::new(src, CurrentFile::new(FileId(0), src.len()), &mut context)
-                .ascribed_type()
-                .unwrap(),
-            &ty.clone(),
-        );
+    for (src, expected) in builtins.iter() {
+        let ty = Parser::new(src, CurrentFile::new(FileId(0), src.len()), context.clone())
+            .ascribed_type()
+            .unwrap();
+
+        assert_eq!(&ty, expected,);
     }
 }
 
@@ -796,7 +775,7 @@ fn types_ast() {
 fn type_ast() {
     assert_eq!(
         "@inline\n@builtin\nexposed type test[A, B, C, D]\n    member: infer\n    @builtin\n    exposed another_member: bool\nend\n",
-        format_ast("@inline\n@builtin\nexposed type test[A, B, C, D]\nmember\n@builtin\nexposed another_member: bool\nend"),
+        format_item("@inline\n@builtin\nexposed type test[A, B, C, D]\nmember\n@builtin\nexposed another_member: bool\nend"),
     );
 }
 
@@ -804,7 +783,7 @@ fn type_ast() {
 fn enum_ast() {
     assert_eq!(
         "@derive(Debug)\npkg enum testme[A]\n    @no_construct\n    UnitType\n    TupleType(bool, int, tuplething)\nend\n",
-        format_ast("@derive(Debug)\npkg enum testme[A]\n@no_construct\nUnitType\nTupleType(bool, int, tuplething)\nend"),
+        format_item("@derive(Debug)\npkg enum testme[A]\n@no_construct\nUnitType\nTupleType(bool, int, tuplething)\nend"),
     );
 }
 
@@ -812,7 +791,7 @@ fn enum_ast() {
 fn trait_ast() {
     assert_eq!(
         "@traits\npkg trait Test[Classy]\n    @something(10)\n    fn be_classy() -> bool\n    end\nend\n",
-        format_ast(
+        format_item(
             "@traits pkg trait Test[Classy]\n@something(10)\nfn be_classy() -> bool\nend\nend"
         ),
     );
@@ -822,27 +801,27 @@ fn trait_ast() {
 fn import_ast() {
     assert_eq!(
         "import \"std.tests\" as tests\n",
-        format_ast("import \"std.tests\"\n")
+        format_item("import \"std.tests\"\n")
     );
 
     assert_eq!(
         "import \"std.tests\" as tester\n",
-        format_ast("import \"std.tests\" as tester\n"),
+        format_item("import \"std.tests\" as tester\n"),
     );
 
     assert_eq!(
         "import \"std.tests\" exposing *\n",
-        format_ast("import \"std.tests\" exposing *\n"),
+        format_item("import \"std.tests\" exposing *\n"),
     );
 
     assert_eq!(
         "import \"std.tests\" exposing Okthing, OkthingElse\n",
-        format_ast("import \"std.tests\" exposing Okthing, OkthingElse\n"),
+        format_item("import \"std.tests\" exposing Okthing, OkthingElse\n"),
     );
 
     assert_eq!(
         "import \"std.tests\" exposing Okthing as Weird, OkthingElse as Weirder\n",
-        format_ast("import \"std.tests\" exposing Okthing as Weird, OkthingElse as Weirder\n"),
+        format_item("import \"std.tests\" exposing Okthing as Weird, OkthingElse as Weirder\n"),
     );
 }
 
@@ -854,18 +833,17 @@ fn non_ascii_idents() {
 #[cfg(not(any(target_arch = "wasm32", miri)))]
 mod proptests {
     use super::*;
-    use core::ops::Deref;
     use proptest::prelude::*;
 
     proptest! {
         #[test]
         fn strings(s in r#"b?"(\\.|[^\\"])*""#) {
             let context = Context::default();
-            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &context);
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), context);
 
-            let expr = parser.expr().map(|e| e.deref().clone());
+            let expr = parser.expr().map(|e| e.kind);
             match expr {
-                Ok(Expr::Literal(Literal::String(..))) | Ok(Expr::Literal(Literal::Array(..))) => {},
+                Ok(ExprKind::Literal(Literal::String(..))) | Ok(ExprKind::Literal(Literal::Array(..))) => {},
 
                 Err(Locatable { data: _data @ Error::Syntax(SyntaxError::InvalidEscapeCharacters(..)), .. })
                 | Err(Locatable { data: _data @ Error::Syntax(SyntaxError::UnrecognizedEscapeSeq(..)), .. })
@@ -879,11 +857,11 @@ mod proptests {
         #[test]
         fn runes(s in "b?'[^']*'") {
             let context = Context::default();
-            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &context);
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), context);
 
-            let expr = parser.expr().map(|e| e.deref().clone());
+            let expr = parser.expr().map(|e| e.kind);
             match expr {
-                Ok(Expr::Literal(Literal::Rune(..))) | Ok(Expr::Literal(Literal::Integer(..))) => {},
+                Ok(ExprKind::Literal(Literal::Rune(..))) | Ok(ExprKind::Literal(Literal::Integer(..))) => {},
 
                 Err(Locatable { data: _data @ Error::Syntax(SyntaxError::TooManyRunes), .. })
                 | Err(Locatable { data: _data @ Error::Syntax(SyntaxError::UnrecognizedEscapeSeq(..)), .. })
@@ -897,20 +875,20 @@ mod proptests {
         #[test]
         fn base10_int(s in "[+-]?[0-9][0-9_]*") {
             let context = Context::default();
-            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &context);
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), context);
 
-            let expr = parser.expr().map(|e| e.deref().clone());
-            let cond = matches!(expr, Ok(Expr::Literal(Literal::Integer { .. })));
+            let expr = parser.expr().map(|e| e.kind);
+            let cond = matches!(expr, Ok(ExprKind::Literal(Literal::Integer { .. })));
             prop_assert!(cond);
         }
 
         #[test]
         fn base16_int(s in "[+-]?0x[0-9a-fA-F][0-9a-fA-F_]*") {
             let context = Context::default();
-            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &context);
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), context);
 
-            let expr = parser.expr().map(|e| e.deref().clone());
-            let cond = matches!(expr, Ok(Expr::Literal(Literal::Integer(Integer { .. })))
+            let expr = parser.expr().map(|e| e.kind);
+            let cond = matches!(expr, Ok(ExprKind::Literal(Literal::Integer(Integer { .. })))
                 | Err(Locatable { data: Error::Syntax(SyntaxError::LiteralOverflow(..)), .. }));
             prop_assert!(cond);
         }
@@ -918,10 +896,10 @@ mod proptests {
         #[test]
         fn base2_int(s in "[+-]?0b[0-1][0-1_]*") {
             let context = Context::default();
-            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &context);
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), context);
 
-            let expr = parser.expr().map(|e| e.deref().clone());
-            let cond = matches!(expr, Ok(Expr::Literal(Literal::Integer(Integer { .. })))
+            let expr = parser.expr().map(|e| e.kind);
+            let cond = matches!(expr, Ok(ExprKind::Literal(Literal::Integer(Integer { .. })))
                 | Err(Locatable { data: Error::Syntax(SyntaxError::LiteralOverflow(..)), .. }));
             prop_assert!(cond);
         }
@@ -929,10 +907,10 @@ mod proptests {
         #[test]
         fn base10_float(s in "[+-]?[0-9][0-9_]*\\.[0-9][0-9_]*([eE][+-]?[0-9][0-9_]*)?") {
             let context = Context::default();
-            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &context);
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), context);
 
-            let expr = parser.expr().map(|e| e.deref().clone());
-            let cond = matches!(expr, Ok(Expr::Literal(Literal::Float(..)))
+            let expr = parser.expr().map(|e| e.kind);
+            let cond = matches!(expr, Ok(ExprKind::Literal(Literal::Float(..)))
                 | Err(Locatable { data: Error::Syntax(SyntaxError::LiteralOverflow(..)), .. }));
             prop_assert!(cond);
         }
@@ -940,10 +918,10 @@ mod proptests {
         #[test]
         fn base16_float(s in "[+-]?0x[0-9a-fA-F][0-9a-fA-F_]*\\.[0-9a-fA-F][0-9a-fA-F_]*([pP][+-]?[0-9][0-9_]?)?") {
             let context = Context::default();
-            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), &context);
+            let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), context);
 
-            let expr = parser.expr().map(|e| e.deref().clone());
-            let cond = matches!(expr, Ok(Expr::Literal(Literal::Float(..)))
+            let expr = parser.expr().map(|e| e.kind);
+            let cond = matches!(expr, Ok(ExprKind::Literal(Literal::Float(..)))
                 | Err(Locatable { data: Error::Syntax(SyntaxError::LiteralOverflow(..)), .. }));
             prop_assert!(cond);
         }

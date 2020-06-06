@@ -76,6 +76,8 @@
 - [ ] Split Pratt sub-functions into methods on `Parser`
 - [ ] {De}serializable arena
 - [ ] Stop using `.deref()`, instead use `*`
+- [ ] Achievements
+- [ ] Bidirectional type checking
 
 ## AST -> HIR
 

@@ -11,15 +11,14 @@
 extern crate alloc;
 
 use alloc::{borrow::ToOwned, boxed::Box, vec::Vec};
-use core::fmt;
+use core::{fmt, ops::Deref};
 use crunch_parser::{
-    error::{Error, ErrorHandler, Locatable, Location, SemanticError, Warning},
-    parser::{
-        Ast, Attribute, Enum, EnumVariant, Expr, FuncArg, Function, Import, Stmt, Trait, TypeDecl,
-        TypeMember,
-    },
     symbol_table::{Graph, MaybeSym, Scope},
     Context,
+};
+use crunch_shared::{
+    ast::{Attribute, Expr, FuncArg, Item, ItemKind, Stmt, StmtKind, TypeMember, Variant},
+    error::{Error, ErrorHandler, Locatable, Location, SemanticError, Warning},
 };
 
 cfg_if::cfg_if! {
@@ -58,32 +57,32 @@ impl SemanticAnalyzer {
         self
     }
 
-    pub fn analyze<'ctx>(
+    pub fn analyze(
         &mut self,
-        node: &Ast<'ctx>,
+        node: &Item,
         symbol_table: &Graph<Scope, MaybeSym>,
-        ctx: &Context<'ctx>,
+        ctx: &Context,
         error_handler: &mut ErrorHandler,
     ) {
         for pass in self.passes.iter_mut() {
-            match node {
-                Ast::Function(func) => {
+            match &node.kind {
+                ItemKind::Function(func) => {
                     pass.analyze_function(&**func, func.loc(), symbol_table, ctx, error_handler)
                 }
 
-                Ast::Type(ty) => {
+                ItemKind::Type(ty) => {
                     pass.analyze_type(&**ty, ty.loc(), symbol_table, ctx, error_handler)
                 }
 
-                Ast::Enum(en) => {
+                ItemKind::Enum(en) => {
                     pass.analyze_enum(&**en, en.loc(), symbol_table, ctx, error_handler)
                 }
 
-                Ast::Trait(tr) => {
+                ItemKind::Trait(tr) => {
                     pass.analyze_trait(&**tr, tr.loc(), symbol_table, ctx, error_handler)
                 }
 
-                Ast::Import(import) => {
+                ItemKind::Import(import) => {
                     pass.analyze_import(&**import, import.loc(), symbol_table, ctx, error_handler)
                 }
 
@@ -92,11 +91,11 @@ impl SemanticAnalyzer {
         }
     }
 
-    pub fn analyze_all<'ctx>(
+    pub fn analyze_all(
         &mut self,
-        nodes: &[Ast<'ctx>],
+        nodes: &[impl Deref<Target = Item>],
+        ctx: &Context,
         symbol_table: &Graph<Scope, MaybeSym>,
-        ctx: &Context<'ctx>,
         error_handler: &mut ErrorHandler,
     ) {
         for node in nodes {
@@ -130,70 +129,70 @@ impl fmt::Debug for SemanticAnalyzer {
 pub trait SemanticPass {
     fn name(&self) -> &'static str;
 
-    fn analyze_function<'ctx>(
+    fn analyze_function(
         &mut self,
-        _func: &Function<'ctx>,
+        _func: &Function,
         _loc: Location,
         _local_symbol_table: &Graph<Scope, MaybeSym>,
-        _ctx: &Context<'ctx>,
+        _ctx: &Context,
         _error_handler: &mut ErrorHandler,
     ) {
     }
 
-    fn analyze_type<'ctx>(
+    fn analyze_type(
         &mut self,
-        _type: &TypeDecl<'ctx>,
+        _type: &TypeDecl,
         _loc: Location,
         _local_symbol_table: &Graph<Scope, MaybeSym>,
-        _ctx: &Context<'ctx>,
+        _ctx: &Context,
         _error_handler: &mut ErrorHandler,
     ) {
     }
 
-    fn analyze_enum<'ctx>(
+    fn analyze_enum(
         &mut self,
-        _enum: &Enum<'ctx>,
+        _enum: &Enum,
         _loc: Location,
         _local_symbol_table: &Graph<Scope, MaybeSym>,
-        _ctx: &Context<'ctx>,
+        _ctx: &Context,
         _error_handler: &mut ErrorHandler,
     ) {
     }
 
-    fn analyze_trait<'ctx>(
+    fn analyze_trait(
         &mut self,
-        _trait: &Trait<'ctx>,
+        _trait: &Trait,
         _loc: Location,
         _local_symbol_table: &Graph<Scope, MaybeSym>,
-        _ctx: &Context<'ctx>,
+        _ctx: &Context,
         _error_handler: &mut ErrorHandler,
     ) {
     }
 
-    fn analyze_import<'ctx>(
+    fn analyze_import(
         &mut self,
         _import: &Import,
         _loc: Location,
         _local_symbol_table: &Graph<Scope, MaybeSym>,
-        _ctx: &Context<'ctx>,
+        _ctx: &Context,
         _error_handler: &mut ErrorHandler,
     ) {
     }
 
-    fn analyze_stmt<'ctx>(
+    fn analyze_stmt(
         &mut self,
-        _stmt: &Stmt<'ctx>,
+        _stmt: &Stmt,
         _local_symbol_table: &Graph<Scope, MaybeSym>,
-        _ctx: &Context<'ctx>,
+        _ctx: &Context,
         _error_handler: &mut ErrorHandler,
     ) {
     }
 
-    fn analyze_expr<'ctx>(
+    fn analyze_expr(
         &mut self,
-        _expr: &Expr<'ctx>,
+        _expr: &Expr,
         _local_symbol_table: &Graph<Scope, MaybeSym>,
-        _ctx: &Context<'ctx>,
+        _ctx: &Context,
         _error_handler: &mut ErrorHandler,
     ) {
     }
@@ -281,12 +280,12 @@ impl SemanticPass for Correctness {
         "Correctness"
     }
 
-    fn analyze_function<'ctx>(
+    fn analyze_function(
         &mut self,
-        func: &Function<'ctx>,
+        func: &Function,
         func_loc: Location,
         local_symbol_table: &Graph<Scope, MaybeSym>,
-        ctx: &Context<'ctx>,
+        ctx: &Context,
         error_handler: &mut ErrorHandler,
     ) {
         // Errors for empty function bodies
@@ -319,12 +318,12 @@ impl SemanticPass for Correctness {
         }
     }
 
-    fn analyze_type<'ctx>(
+    fn analyze_type(
         &mut self,
-        ty: &TypeDecl<'ctx>,
+        ty: &TypeDecl,
         ty_loc: Location,
         _local_symbol_table: &Graph<Scope, MaybeSym>,
-        ctx: &Context<'ctx>,
+        ctx: &Context,
         error_handler: &mut ErrorHandler,
     ) {
         // Errors for empty type bodies
@@ -421,12 +420,12 @@ impl SemanticPass for Correctness {
         // }
     }
 
-    fn analyze_enum<'ctx>(
+    fn analyze_enum(
         &mut self,
-        en: &Enum<'ctx>,
+        en: &Enum,
         _loc: Location,
         _local_symbol_table: &Graph<Scope, MaybeSym>,
-        ctx: &Context<'ctx>,
+        ctx: &Context,
         error_handler: &mut ErrorHandler,
     ) {
         self.duplicated_attrs(error_handler, &en.attrs);
@@ -475,12 +474,12 @@ impl SemanticPass for Correctness {
     }
 
     // TODO: How do generics work here?
-    fn analyze_trait<'ctx>(
+    fn analyze_trait(
         &mut self,
-        tr: &Trait<'ctx>,
+        tr: &Trait,
         _loc: Location,
         local_symbol_table: &Graph<Scope, MaybeSym>,
-        ctx: &Context<'ctx>,
+        ctx: &Context,
         error_handler: &mut ErrorHandler,
     ) {
         self.duplicated_attrs(error_handler, &tr.attrs);
@@ -497,22 +496,22 @@ impl SemanticPass for Correctness {
         }
     }
 
-    fn analyze_import<'ctx>(
+    fn analyze_import(
         &mut self,
         _import: &Import,
         _loc: Location,
         _local_symbol_table: &Graph<Scope, MaybeSym>,
-        _ctx: &Context<'ctx>,
+        _ctx: &Context,
         _error_handler: &mut ErrorHandler,
     ) {
         // ???
     }
 
-    fn analyze_stmt<'ctx>(
+    fn analyze_stmt(
         &mut self,
-        stmt: &Stmt<'ctx>,
+        stmt: &Stmt,
         local_symbol_table: &Graph<Scope, MaybeSym>,
-        ctx: &Context<'ctx>,
+        ctx: &Context,
         error_handler: &mut ErrorHandler,
     ) {
         if let Stmt::Expr(expr) = stmt {
@@ -520,11 +519,11 @@ impl SemanticPass for Correctness {
         }
     }
 
-    fn analyze_expr<'ctx>(
+    fn analyze_expr(
         &mut self,
-        _expr: &Expr<'ctx>,
+        _expr: &Expr,
         _local_symbol_table: &Graph<Scope, MaybeSym>,
-        _ctx: &Context<'ctx>,
+        _ctx: &Context,
         _error_handler: &mut ErrorHandler,
     ) {
     }

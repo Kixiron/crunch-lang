@@ -1,14 +1,11 @@
-use crunch_parser::{
-    parser::{
-        Ast, ComparisonOperand, Expr as AstExpr, Function as AstFunction, ItemPath, Literal,
-        Stmt as AstStmt,
-    },
-    symbol_table::{Graph, MaybeSym, NodeId, Scope},
-};
+use core::ops::Deref;
+use crunch_parser::symbol_table::{Graph, MaybeSym, NodeId, Scope};
+use crunch_shared::ast::{CompOp, Expr as ItemExpr, Item, ItemPath, Literal, Stmt as ItemStmt};
 
 #[test]
 fn test() {
-    use crunch_parser::{Context, CurrentFile, FileId, Parser};
+    use crunch_parser::{Context, CurrentFile, Parser};
+    use crunch_shared::files::FileId;
 
     let source = r#"
     fn main()
@@ -38,22 +35,23 @@ fn test() {
     "#;
 
     let ctx = Context::default();
-    let mut files = crunch_parser::Files::new();
+    let mut files = crunch_shared::files::Files::new();
     files.add("<test>", source);
 
     match Parser::new(source, CurrentFile::new(FileId::new(0), source.len()), &ctx).parse() {
-        Ok((mut warnings, module_table, module_scope)) => {
+        Ok((ast, mut warnings, module_table, module_scope)) => {
             warnings.emit(&files);
 
-            println!("{:#?}", &module_scope);
+            println!("Nodes: {:#?}", &ast);
+            println!("Symbols: {:#?}", &module_scope);
 
-            let _ladder = Ladder::new(
+            let ladder = Ladder::new(
                 module_table,
                 module_scope,
                 ItemPath::new(ctx.intern("package")),
             );
 
-            // println!("{:#?}", ladder.lower());
+            println!("HIR: {:#?}", ladder.lower(&ast));
         }
 
         Err(mut err) => {
@@ -62,15 +60,15 @@ fn test() {
     }
 }
 
-pub struct Ladder<'ctx> {
-    module_table: Graph<Scope<'ctx>, MaybeSym>,
+pub struct Ladder {
+    module_table: Graph<Scope, MaybeSym>,
     module_scope: NodeId,
     module_path: ItemPath,
 }
 
-impl<'ctx> Ladder<'ctx> {
+impl Ladder {
     pub fn new(
-        module_table: Graph<Scope<'ctx>, MaybeSym>,
+        module_table: Graph<Scope, MaybeSym>,
         module_scope: NodeId,
         module_path: ItemPath,
     ) -> Self {
@@ -81,26 +79,21 @@ impl<'ctx> Ladder<'ctx> {
         }
     }
 
-    pub fn lower(&self, nodes: &[Ast<'_>]) -> Vec<Hir> {
+    pub fn lower(&self, nodes: &[impl Deref<Target = Item>]) -> Vec<Hir> {
         nodes
             .iter()
-            .filter_map(|node| self.lower_node(node))
+            .filter_map(|node| self.lower_node(&*node))
             .collect()
     }
 
-    pub fn lower_node(&self, node: &Ast<'_>) -> Option<Hir> {
+    pub fn lower_node(&self, node: &Item) -> Option<Hir> {
         match node {
-            Ast::Function(function) => Some(self.lower_function(function)),
-            Ast::Type(_type_decl) => todo!(),
-            Ast::Enum(_enumeration) => todo!(),
-            Ast::Trait(_trait_decl) => todo!(),
-            Ast::ExtendBlock(_extend_block) => todo!(),
-
-            Ast::Alias(..) | Ast::Import(..) => None,
+            ItemKind::Function(function) => Some(self.lower_function(function)),
+            _ => todo!(),
         }
     }
 
-    fn lower_function(&self, function: &AstFunction<'_>) -> Hir {
+    fn lower_function(&self, function: &ItemFunction) -> Hir {
         let func = Function {
             name: self.module_path.join(function.name),
             // TODO: Parse this out
@@ -109,11 +102,15 @@ impl<'ctx> Ladder<'ctx> {
                 .args
                 .iter()
                 .map(|arg| {
-                    self.module_table
+                    let name = self
+                        .module_table
                         .node(self.module_scope)
                         .unwrap()
                         .resolve(&self.module_table, *arg.name)
-                        .unwrap()
+                        .unwrap();
+                    let kind = TypeKind::from(&**arg.ty);
+
+                    TypeInfo { name, kind }
                 })
                 .collect(),
             body: function
@@ -121,37 +118,43 @@ impl<'ctx> Ladder<'ctx> {
                 .iter()
                 .filter_map(|stmt| self.lower_statement(stmt))
                 .collect(),
+            return_ty: TypeKind::from(&**function.returns),
         };
 
         Hir::Function(func)
     }
 
-    fn lower_statement(&self, stmt: &AstStmt<'_>) -> Option<Stmt> {
+    fn lower_statement(&self, stmt: &ItemStmt) -> Option<Stmt> {
         let stmt = match stmt {
-            AstStmt::Expr(expr) => Stmt::Expr(self.lower_expr(expr)),
+            ItemStmt::Expr(expr) => Stmt::Expr(self.lower_expr(expr)),
 
-            AstStmt::VarDeclaration { name, val, .. } => Stmt::VarDecl(VarDecl {
+            ItemStmt::VarDeclaration { name, val, .. } => Stmt::VarDecl(VarDecl {
                 name: ItemPath::new(*name),
                 value: self.lower_expr(val),
+                ty: TypeInfo {
+                    name: ItemPath::new(*name),
+                    kind: TypeKind::Infer,
+                },
             }),
 
-            AstStmt::Match { var, arms: _ } => Stmt::Match(Match {
+            ItemStmt::Match { var, arms: _ } => Stmt::Match(Match {
                 condition: self.lower_expr(var),
                 arms: Vec::new(),
                 // arms
                 // .iter()
                 // // TODO: Patterns with matches
                 // .map(|(var, _clause, body)| MatchArm {
-                //     condition: self.lower_expr(&AstExpr::Variable(*var)),
+                //     condition: self.lower_expr(&ItemExpr::Variable(*var)),
                 //     body: body
                 //         .iter()
                 //         .filter_map(|stmt| self.lower_statement(stmt))
                 //         .collect(),
                 // })
                 // .collect(),
+                ty: TypeKind::Infer,
             }),
 
-            AstStmt::If {
+            ItemStmt::If {
                 condition,
                 body,
                 clauses,
@@ -167,6 +170,7 @@ impl<'ctx> Ladder<'ctx> {
                             .iter()
                             .filter_map(|stmt| self.lower_statement(stmt))
                             .collect(),
+                        ty: TypeKind::Infer,
                     });
 
                     if let Some(body) = else_clause {
@@ -174,21 +178,23 @@ impl<'ctx> Ladder<'ctx> {
                             condition: Expr::Literal(Literal::Bool(false)),
                             body: body
                                 .iter()
-                                .map(|s| self.lower_statement(s).unwrap())
+                                .filter_map(|s| self.lower_statement(s))
                                 .collect(),
+                            ty: TypeKind::Infer,
                         });
                     }
 
                     Stmt::Match(Match {
                         condition: self.lower_expr(condition),
                         arms,
+                        ty: TypeKind::Infer,
                     })
                 } else {
                     todo!()
                 }
             }
 
-            AstStmt::Loop {
+            ItemStmt::Loop {
                 body,
                 else_clause: _else,
             } => Stmt::Loop(
@@ -197,17 +203,17 @@ impl<'ctx> Ladder<'ctx> {
                     .collect(),
             ),
 
-            AstStmt::Empty => return None,
+            ItemStmt::Empty => return None,
 
-            AstStmt::Return(val) => Stmt::Return(Return {
+            ItemStmt::Return(val) => Stmt::Return(Return {
                 val: val.as_ref().map(|expr| self.lower_expr(expr)),
             }),
 
-            AstStmt::Break(val) => Stmt::Break(Break {
+            ItemStmt::Break(val) => Stmt::Break(Break {
                 val: val.as_ref().map(|expr| self.lower_expr(expr)),
             }),
 
-            AstStmt::Continue => Stmt::Continue,
+            ItemStmt::Continue => Stmt::Continue,
 
             _ => todo!(),
         };
@@ -215,25 +221,59 @@ impl<'ctx> Ladder<'ctx> {
         Some(stmt)
     }
 
-    fn lower_expr(&self, expr: &AstExpr<'_>) -> Expr {
+    fn lower_expr(&self, expr: &ItemExpr) -> Expr {
         match expr {
-            AstExpr::Literal(lit) => Expr::Literal(lit.clone()),
-            AstExpr::FunctionCall { caller, arguments } => Expr::FnCall(FuncCall {
-                func: if let AstExpr::Variable(path) = **caller {
+            ItemExpr::Literal(lit) => Expr::Literal(lit.clone()),
+            ItemExpr::FunctionCall { caller, arguments } => Expr::FnCall(FuncCall {
+                func: if let ItemExpr::Variable(path) = **caller {
                     ItemPath::new(path)
                 } else {
                     todo!()
                 },
                 params: arguments.iter().map(|a| self.lower_expr(a)).collect(),
             }),
-            AstExpr::Variable(var) => Expr::Var(ItemPath::new(*var)),
-            AstExpr::Comparison(lhs, op, rhs) => Expr::Comparison(
+            ItemExpr::Variable(var) => Expr::Var(ItemPath::new(*var)),
+            ItemExpr::Comparison(lhs, op, rhs) => Expr::Comparison(
                 Box::new(self.lower_expr(lhs)),
                 *op,
                 Box::new(self.lower_expr(rhs)),
             ),
 
             e => todo!("{:#?}", e),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeInfo {
+    pub name: ItemPath,
+    pub kind: TypeKind,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum TypeKind {
+    Infer,
+    Integer,
+    String,
+    Bool,
+    Unit,
+}
+
+impl From<&crunch_shared::ast::Type> for TypeKind {
+    fn from(ty: &crunch_shared::ast::Type) -> Self {
+        use crunch_shared::ast::{Signedness, Type};
+
+        match ty {
+            Type::Infer => Self::Infer,
+            Type::Unit => Self::Unit,
+            Type::Bool => Self::Bool,
+            Type::String => Self::String,
+            Type::Integer {
+                sign: Signedness::Signed,
+                width: 32,
+            } => Self::Integer,
+
+            _ => todo!(),
         }
     }
 }
@@ -254,8 +294,9 @@ pub enum ItemVis {
 pub struct Function {
     pub name: ItemPath,
     pub visibility: ItemVis,
-    pub params: Vec<ItemPath>,
+    pub params: Vec<TypeInfo>,
     pub body: Vec<Stmt>,
+    pub return_ty: TypeKind,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -274,6 +315,7 @@ pub enum Stmt {
 pub struct VarDecl {
     pub name: ItemPath,
     pub value: Expr,
+    pub ty: TypeInfo,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -281,7 +323,7 @@ pub enum Expr {
     FnCall(FuncCall),
     Literal(Literal),
     Var(ItemPath),
-    Comparison(Box<Expr>, ComparisonOperand, Box<Expr>),
+    Comparison(Box<Expr>, CompOp, Box<Expr>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -294,12 +336,14 @@ pub struct FuncCall {
 pub struct Match {
     pub condition: Expr,
     pub arms: Vec<MatchArm>,
+    pub ty: TypeKind,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MatchArm {
     pub condition: Expr,
     pub body: Vec<Stmt>,
+    pub ty: TypeKind,
 }
 
 #[derive(Debug, Clone, PartialEq)]

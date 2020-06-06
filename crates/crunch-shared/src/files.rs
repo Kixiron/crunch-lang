@@ -1,10 +1,9 @@
 use alloc::{string::String, vec::Vec};
 use codespan_reporting::files;
 use core::ops::Range;
-#[cfg(test)]
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 struct File {
     name: String,
     source: String,
@@ -23,8 +22,7 @@ impl File {
     }
 }
 
-#[cfg_attr(test, derive(Deserialize, Serialize))]
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct FileId(pub u32);
 
 impl FileId {
@@ -33,7 +31,7 @@ impl FileId {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Files {
     files: Vec<File>,
 }
@@ -91,11 +89,5 @@ impl<'files> files::Files<'files> for Files {
         let next_line_start = file.line_start(line_index + 1)?;
 
         Some(line_start..next_line_start)
-    }
-}
-
-impl Default for Files {
-    fn default() -> Self {
-        Self::new()
     }
 }

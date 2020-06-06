@@ -6,3 +6,6 @@ edition = "2018"
 
 [dependencies.crunch-parser]
 path = "../crunch-parser"
+
+[dependencies.crunch-shared]
+path = "../crunch-shared"

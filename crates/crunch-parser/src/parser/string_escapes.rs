@@ -1,8 +1,9 @@
-use super::expr::{Rune, Text};
-use crate::error::{Error, SyntaxError};
-
-use alloc::{format, vec::IntoIter, vec::Vec};
+use alloc::{format, string::ToString, vec::IntoIter, vec::Vec};
 use core::{char, ops::Range};
+use crunch_shared::{
+    ast::{Rune, Text},
+    error::{Error, SyntaxError},
+};
 
 // TODO: Verify that these all work and are actually recognized by the parser/lexer and supported by
 //       the backends
@@ -113,7 +114,7 @@ fn unicode_16(
         } else {
             return Err((
                 Error::Syntax(SyntaxError::InvalidEscapeCharacters(
-                    "'0'..'9', 'a'..'f' and 'A'..'F'",
+                    "'0'..'9', 'a'..'f' and 'A'..'F'".to_string(),
                 )),
                 *index..*index,
             ));
@@ -158,7 +159,7 @@ fn unicode_32(
         } else {
             return Err((
                 Error::Syntax(SyntaxError::InvalidEscapeCharacters(
-                    "'0'..'9', 'a'..'f' and 'A'..'F'",
+                    "'0'..'9', 'a'..'f' and 'A'..'F'".to_string(),
                 )),
                 *index..*index,
             ));
@@ -199,7 +200,7 @@ fn byte(queue: &mut CharStream, index: &mut usize) -> Result<Rune, (Error, Range
         } else {
             return Err((
                 Error::Syntax(SyntaxError::InvalidEscapeCharacters(
-                    "'0'..'9', 'a'..'f' and 'A'..'F'",
+                    "'0'..'9', 'a'..'f' and 'A'..'F'".to_string(),
                 )),
                 *index..*index,
             ));
@@ -233,7 +234,7 @@ fn octal(
             digit -= '0' as u32;
         } else {
             return Err((
-                Error::Syntax(SyntaxError::InvalidEscapeCharacters("'0'..'7'")),
+                Error::Syntax(SyntaxError::InvalidEscapeCharacters("'0'..'7'".to_string())),
                 *index..*index,
             ));
         }
@@ -268,7 +269,7 @@ fn binary(queue: &mut CharStream, index: &mut usize) -> Result<Rune, (Error, Ran
             digit -= '0' as u32
         } else {
             return Err((
-                Error::Syntax(SyntaxError::InvalidEscapeCharacters("'0'..'1'")),
+                Error::Syntax(SyntaxError::InvalidEscapeCharacters("'0'..'1'".to_string())),
                 *index..*index,
             ));
         }

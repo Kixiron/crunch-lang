@@ -1,4 +1,5 @@
-use crunch_parser::{files::Files, Context, CurrentFile};
+use crunch_parser::{Context, CurrentFile};
+use crunch_shared::files::Files;
 use std::{fs::File, io::Read};
 
 fn main() {
@@ -14,16 +15,13 @@ fn main() {
     let mut files = Files::new();
     let id = files.add("<test file>", &buf).unwrap();
 
+    let context = Context::new();
+    match crunch_parser::Parser::new(&buf, CurrentFile::new(id, buf.len()), context.clone()).parse()
     {
-        let context = Context::new();
-        {
-            let mut warnings =
-                crunch_parser::Parser::new(&buf, CurrentFile::new(id, buf.len()), &context)
-                    .parse()
-                    .map_or_else(|warn| warn, |(warn, ..)| warn);
-            warnings.emit(&files);
+        Ok((ast, mut warn, ..)) => {
+            warn.emit(&files);
+            println!("{:#?}", ast);
         }
-
-        println!("{:#?}", context);
+        Err(mut warn) => warn.emit(&files),
     }
 }

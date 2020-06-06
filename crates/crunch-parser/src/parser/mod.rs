@@ -1,17 +1,16 @@
 use crate::{
     context::Context,
-    error::{Error, ErrorHandler, Locatable, Location, ParseResult, SyntaxError},
     symbol_table::{Graph, MaybeSym, NodeId, Scope},
     token::{Token, TokenStream, TokenType},
 };
-
 use alloc::{format, vec::Vec};
 use core::mem;
+use crunch_shared::error::{Error, ErrorHandler, Locatable, Location, ParseResult, SyntaxError};
 #[cfg(feature = "logging")]
 use log::{info, trace};
 
-mod ast;
 mod expr;
+mod item;
 mod patterns;
 mod stmt;
 mod string_escapes;
@@ -20,41 +19,31 @@ mod tests;
 mod types;
 mod utils;
 
-pub use ast::{
-    Alias, Ast, Attribute, Decorator, Enum, EnumVariant, ExtendBlock, FuncArg, Function, Import,
-    ImportDest, ImportExposure, Trait, TypeDecl, TypeMember, Visibility,
-};
-pub use expr::{
-    AssignmentType, BinaryOperand, ComparisonOperand, Expr, Float, Integer, Literal, Rune, Sign,
-    Text, UnaryOperand,
-};
-pub use patterns::{Binding, Pattern};
-pub use stmt::Stmt;
-pub use types::{Signedness, Type};
-pub use utils::{CurrentFile, ItemPath};
+pub use utils::CurrentFile;
 
+use crunch_shared::ast::Item;
 use utils::StackGuard;
 
-type ReturnData<'ctx> = (ErrorHandler, Graph<Scope<'ctx>, MaybeSym>, NodeId);
+type ReturnData = (Vec<Item>, ErrorHandler, Graph<Scope, MaybeSym>, NodeId);
 
 // TODO: Make the parser a little more lax, it's kinda strict about whitespace
 
 #[derive(Debug)]
-pub struct Parser<'src, 'cxl, 'ctx> {
+pub struct Parser<'src> {
     token_stream: TokenStream<'src>,
     next: Option<Token<'src>>,
     peek: Option<Token<'src>>,
     error_handler: ErrorHandler,
     stack_frames: StackGuard,
     current_file: CurrentFile,
-    context: &'cxl Context<'ctx>,
-    symbol_table: Graph<Scope<'ctx>, MaybeSym>,
+    context: Context,
+    symbol_table: Graph<Scope, MaybeSym>,
     module_scope: NodeId,
 }
 
 /// Initialization and high-level usage
-impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
-    pub fn new(source: &'src str, current_file: CurrentFile, context: &'cxl Context<'ctx>) -> Self {
+impl<'src> Parser<'src> {
+    pub fn new(source: &'src str, current_file: CurrentFile, context: Context) -> Self {
         let (token_stream, next, peek) = Self::lex(source);
         let mut symbol_table = Graph::new();
         let module_scope = symbol_table
@@ -78,7 +67,7 @@ impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
         next: Option<Token<'src>>,
         peek: Option<Token<'src>>,
         current_file: CurrentFile,
-        context: &'cxl Context<'ctx>,
+        context: Context,
     ) -> Self {
         let mut symbol_table = Graph::new();
         let module_scope = symbol_table
@@ -97,20 +86,20 @@ impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
         }
     }
 
-    pub fn parse(mut self) -> Result<ReturnData<'ctx>, ErrorHandler> {
+    pub fn parse(mut self) -> Result<ReturnData, ErrorHandler> {
         #[cfg(feature = "logging")]
         info!("Started parsing");
 
-        let mut ast = Vec::with_capacity(20);
+        let mut items = Vec::with_capacity(20);
 
         while self.peek().is_ok() {
             #[cfg(feature = "logging")]
             trace!("Parsing top-level token");
 
-            match self.ast() {
+            match self.item() {
                 Ok(node) => {
                     if let Some(node) = node {
-                        ast.push(node);
+                        items.push(node);
                     }
                 }
 
@@ -130,7 +119,12 @@ impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
 
         #[cfg(feature = "logging")]
         info!("Finished parsing successfully");
-        Ok((self.error_handler, self.symbol_table, self.module_scope))
+        Ok((
+            items,
+            self.error_handler,
+            self.symbol_table,
+            self.module_scope,
+        ))
     }
 
     pub fn lex(source: &'src str) -> (TokenStream<'src>, Option<Token<'src>>, Option<Token<'src>>) {
@@ -153,7 +147,7 @@ impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
 }
 
 /// Utility functions
-impl<'src, 'cxl, 'ctx> Parser<'src, 'cxl, 'ctx> {
+impl<'src> Parser<'src> {
     #[inline(always)]
     fn next(&mut self) -> ParseResult<Token<'src>> {
         let mut next = self.token_stream.next_token();

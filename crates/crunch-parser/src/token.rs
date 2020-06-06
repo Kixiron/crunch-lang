@@ -1,8 +1,7 @@
-use logos::{Lexer, Logos};
-
-use crate::error::Span;
 use alloc::vec::Vec;
 use core::{fmt, ops};
+use crunch_shared::error::Span;
+use logos::{Lexer, Logos};
 
 #[derive(Logos, Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum TokenType {
@@ -458,6 +457,18 @@ impl<'a> Token<'a> {
 
     pub const fn source(&self) -> &'a str {
         self.source
+    }
+}
+
+impl Into<Span> for Token<'_> {
+    fn into(self) -> Span {
+        self.span()
+    }
+}
+
+impl Into<Span> for &Token<'_> {
+    fn into(self) -> Span {
+        self.span()
     }
 }
 

@@ -1,4 +1,4 @@
-use crunch_parser::{parser::Literal, Interner};
+use crunch_parser::{parser::Literal, Context};
 use ladder::{Expr, Function, Hir, Stmt};
 use std::{fmt::Write as WriteFmt, io::Write};
 
@@ -15,18 +15,12 @@ fn test() {
     end
     "#;
 
-    let interner = Interner::default();
+    let ctx = Context::new();
     let mut files = crunch_parser::Files::new();
     files.add("<test>", source);
 
-    match Parser::new(
-        source,
-        CurrentFile::new(FileId::new(0), source.len()),
-        interner,
-    )
-    .parse()
-    {
-        Ok((tree, mut interner, mut warnings, module_table, module_scope)) => {
+    match Parser::new(source, CurrentFile::new(FileId::new(0), source.len()), &ctx).parse() {
+        Ok((tree, mut warnings, module_table, module_scope)) => {
             warnings.emit(&files);
 
             println!("{:#?}", &module_scope);
@@ -34,7 +28,7 @@ fn test() {
             let ladder = Ladder::new(
                 module_table,
                 module_scope,
-                ItemPath::new(interner.intern("package")),
+                ItemPath::new(ctx.intern("package")),
             );
 
             let hir = ladder.lower(&*tree);
@@ -42,7 +36,7 @@ fn test() {
 
             {
                 let mut file = BufWriter::new(std::fs::File::create("crunch.ll").unwrap());
-                let mut gen = Generator::new(&mut file, interner);
+                let mut gen = Generator::new(&mut file, &ctx);
                 gen.add_puts();
                 gen.from_hir(&hir[0]);
                 gen.finish();
@@ -64,17 +58,17 @@ fn test() {
     }
 }
 
-struct Generator<W: Write> {
+struct Generator<'ctx, 'clt, W: Write> {
     out: W,
-    interner: Interner,
+    ctx: &'clt Context<'ctx>,
     constants: String,
 }
 
-impl<W: Write> Generator<W> {
-    pub fn new(out: W, interner: Interner) -> Self {
+impl<'ctx, 'clt, W: Write> Generator<'ctx, 'clt, W> {
+    pub fn new(out: W, ctx: &'clt Context<'ctx>) -> Self {
         Self {
             out,
-            interner,
+            ctx,
             constants: String::new(),
         }
     }
@@ -113,7 +107,7 @@ impl<W: Write> Generator<W> {
                         "@.{} = ",
                         decl.name
                             .iter()
-                            .map(|s| self.interner.resolve(s))
+                            .map(|s| self.ctx.resolve(*s))
                             .collect::<Vec<&str>>()
                             .join(".")
                     ))
@@ -135,7 +129,7 @@ impl<W: Write> Generator<W> {
                 if func
                     .func
                     .iter()
-                    .map(|s| self.interner.resolve(s))
+                    .map(|s| self.ctx.resolve(*s))
                     .collect::<Vec<&str>>()
                     .join(".")
                     == "println"
@@ -145,7 +139,7 @@ impl<W: Write> Generator<W> {
                             "%cast210 = getelementptr [19 x i8], [19 x i8]* @.{}, i64 0, i64 0\n",
                             if let Expr::Var(var) = func.params.first().unwrap() {
                                 var.iter()
-                                    .map(|s| self.interner.resolve(s))
+                                    .map(|s| self.ctx.resolve(*s))
                                     .collect::<Vec<&str>>()
                                     .join(".")
                             } else {

@@ -1,18 +1,9 @@
-use crate::{
-    context::StrT,
-    error::Locatable,
-    parser::{Ast, EnumVariant, Expr, ItemPath, Stmt, Type},
-};
-
 use alloc::vec::Vec;
-use core::{
-    convert::TryInto,
-    fmt,
-    iter::FromIterator,
-    num::NonZeroU32,
-    ops::{self, Deref},
+use core::{convert::TryInto, fmt, iter::FromIterator, num::NonZeroU32, ops};
+use crunch_shared::{
+    ast::{Expr, Item, ItemKind, ItemPath, Stmt, StmtKind, Type, VarDecl, Variant as AstVariant},
+    strings::StrT,
 };
-use stadium::Ticket;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "no-std")] {
@@ -24,41 +15,41 @@ cfg_if::cfg_if! {
 
 // TODO: Is `Type` actually resolvable?
 #[derive(Debug, Clone)]
-pub enum Scope<'ctx> {
+pub enum Scope {
     Type {
         name: StrT,
-        members: HashMap<StrT, Ticket<'ctx, Type<'ctx>>>,
+        members: HashMap<StrT, Type>,
     },
     Enum {
         name: StrT,
-        variants: HashMap<StrT, Variant<'ctx>>,
+        variants: HashMap<StrT, Variant>,
     },
     Alias {
-        alias: Ticket<'ctx, Type<'ctx>>,
-        actual: Ticket<'ctx, Type<'ctx>>,
+        alias: Type,
+        actual: Type,
     },
     Variable {
         name: StrT,
-        ty: Ticket<'ctx, Type<'ctx>>,
+        ty: Type,
     },
     Function {
         name: StrT,
         scope: NodeId,
-        params: Vec<(StrT, Ticket<'ctx, Type<'ctx>>)>,
-        returns: Ticket<'ctx, Type<'ctx>>,
+        params: Vec<(StrT, Type)>,
+        returns: Type,
     },
     Trait {
         name: StrT,
         methods: HashMap<StrT, MaybeSym>,
     },
     ExtendBlock {
-        target: Ticket<'ctx, Type<'ctx>>,
-        extender: Option<Ticket<'ctx, Type<'ctx>>>,
+        target: Type,
+        extender: Option<Type>,
     },
-    LocalScope(Vec<(StrT, Ticket<'ctx, Type<'ctx>>)>, Vec<Scope<'ctx>>),
+    LocalScope(Vec<(StrT, Type)>, Vec<Scope>),
 }
 
-impl<'ctx> Scope<'ctx> {
+impl Scope {
     pub const fn new() -> Self {
         Self::LocalScope(Vec::new(), Vec::new())
     }
@@ -74,7 +65,7 @@ impl<'ctx> Scope<'ctx> {
         }
     }
 
-    pub fn vars_mut<'a>(&'a mut self) -> &'a mut Vec<(StrT, Ticket<'ctx, Type<'ctx>>)> {
+    pub fn vars_mut<'a>(&'a mut self) -> &'a mut Vec<(StrT, Type)> {
         if let Self::LocalScope(vars, ..) = self {
             vars
         } else {
@@ -84,26 +75,15 @@ impl<'ctx> Scope<'ctx> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Variant<'ctx> {
+pub enum Variant {
     Unit,
-    Tuple(Vec<Ticket<'ctx, Type<'ctx>>>),
+    Tuple(Vec<Type>),
 }
 
-impl<'ctx> From<&EnumVariant<'ctx>> for (StrT, Variant<'ctx>) {
-    fn from(variant: &EnumVariant<'ctx>) -> Self {
-        match variant {
-            EnumVariant::Unit { name, .. } => (*name, Variant::Unit),
-            EnumVariant::Tuple { name, elements, .. } => (
-                *name,
-                Variant::Tuple(elements.iter().map(|e| e.deref().clone()).collect()),
-            ),
-        }
-    }
-}
-
-impl<'ctx> From<&Locatable<EnumVariant<'ctx>>> for (StrT, Variant<'ctx>) {
-    fn from(variant: &Locatable<EnumVariant<'ctx>>) -> Self {
-        variant.deref().into()
+fn split_variant(variant: &AstVariant) -> (StrT, Variant) {
+    match variant {
+        AstVariant::Unit { name, .. } => (*name, Variant::Unit),
+        AstVariant::Tuple { name, elms, .. } => (*name, Variant::Tuple(elms.clone())),
     }
 }
 
@@ -180,29 +160,35 @@ impl<T, L> Graph<T, L> {
     pub fn add_child(&mut self, parent: NodeId, child: NodeId) -> Option<()> {
         self.node_mut(parent)?.children.push(child);
         self.node_mut(child)?.parent = Some(parent);
+
         Some(())
     }
 }
 
-impl<'ctx> Graph<Scope<'ctx>, MaybeSym> {
-    pub fn push_ast(&mut self, id: NodeId, node: Ticket<'ctx, Ast<'ctx>>) {
-        match &*node {
-            Ast::Function(func) => {
+impl Graph<Scope, MaybeSym> {
+    // TODO: General metadata & generics
+    pub fn push_item(&mut self, id: NodeId, item: &Item) {
+        match &item.kind {
+            ItemKind::Func {
+                generics: _,
+                args,
+                body,
+                ret,
+            } => {
                 // TODO: All fields
                 let scope = self.push(Scope::new());
                 let function_scope = Scope::Function {
-                    name: func.name,
+                    name: item.name.unwrap(),
                     scope,
-                    params: func
-                        .args
+                    params: args
                         .iter()
-                        .map(|a| (*a.name, a.ty.deref().clone()))
+                        .map(|arg| (arg.name, arg.ty.as_ref().clone()))
                         .collect(),
-                    returns: func.returns.deref().clone(),
+                    returns: ret.as_ref().clone(),
                 };
 
-                for stmt in func.body.iter() {
-                    self.push_stmt(scope, *stmt);
+                for stmt in body.iter() {
+                    self.push_stmt(scope, stmt);
                 }
 
                 let node = self.push(function_scope);
@@ -210,12 +196,15 @@ impl<'ctx> Graph<Scope<'ctx>, MaybeSym> {
                 self.add_child(node, scope).unwrap();
             }
 
-            Ast::Type(ty) => {
+            ItemKind::Type {
+                generics: _,
+                members,
+            } => {
                 // TODO: All fields
                 let type_scope = Scope::Type {
-                    name: ty.name,
+                    name: item.name.unwrap(),
                     members: HashMap::from_iter(
-                        ty.members.iter().map(|m| (m.name, m.ty.deref().clone())),
+                        members.iter().map(|m| (m.name, m.ty.as_ref().clone())),
                     ),
                 };
 
@@ -223,25 +212,31 @@ impl<'ctx> Graph<Scope<'ctx>, MaybeSym> {
                 self.add_child(id, node).unwrap();
             }
 
-            Ast::Enum(enu) => {
+            ItemKind::Enum {
+                generics: _,
+                variants,
+            } => {
                 // TODO: All fields
                 let enum_scope = Scope::Enum {
-                    name: enu.name,
-                    variants: HashMap::from_iter(enu.variants.iter().map(<(StrT, Variant)>::from)),
+                    name: item.name.unwrap(),
+                    variants: HashMap::from_iter(variants.iter().map(|v| split_variant(v))),
                 };
 
                 let node = self.push(enum_scope);
                 self.add_child(id, node).unwrap();
             }
 
-            Ast::Trait(tr) => {
+            ItemKind::Trait {
+                generics: _,
+                methods,
+            } => {
                 // TODO: All fields
                 let trait_scope = Scope::Trait {
-                    name: tr.name,
+                    name: item.name.unwrap(),
                     methods: HashMap::from_iter(
-                        tr.methods
+                        methods
                             .iter()
-                            .map(|f| (f.name, MaybeSym::Unresolved(f.name))),
+                            .map(|f| (f.name.unwrap(), MaybeSym::Unresolved(f.name.unwrap()))),
                     ),
                 };
 
@@ -250,28 +245,31 @@ impl<'ctx> Graph<Scope<'ctx>, MaybeSym> {
                 self.add_child(id, node).unwrap();
             }
 
-            Ast::Import(import) => {
-                self.node_mut(id)
-                    .unwrap()
-                    .links
-                    .push(MaybeSym::Unresolved(*import.file));
-            }
+            ItemKind::Import {
+                file: _,
+                dest: _,
+                exposes: _,
+            } => todo!(),
 
             // TODO: How do I connect these to their implementors?
-            Ast::ExtendBlock(block) => {
+            ItemKind::ExtendBlock {
+                target,
+                extender,
+                items: _,
+            } => {
                 let block_scope = Scope::ExtendBlock {
-                    target: block.target.deref().clone(),
-                    extender: block.extender.as_ref().map(|t| t.deref().clone()),
+                    target: target.as_ref().clone(),
+                    extender: extender.as_ref().map(|t| t.as_ref().clone()),
                 };
 
                 let node = self.push(block_scope);
                 self.add_child(id, node).unwrap();
             }
 
-            Ast::Alias(alias) => {
+            ItemKind::Alias { alias, actual } => {
                 let alias_scope = Scope::Alias {
-                    alias: alias.alias.deref().clone(),
-                    actual: alias.actual.deref().clone(),
+                    alias: alias.as_ref().clone(),
+                    actual: actual.as_ref().clone(),
                 };
 
                 let node = self.push(alias_scope);
@@ -280,9 +278,32 @@ impl<'ctx> Graph<Scope<'ctx>, MaybeSym> {
         }
     }
 
-    fn push_stmt(&mut self, parent: NodeId, stmt: Ticket<'ctx, Stmt<'ctx>>) {
-        match &*stmt {
-            Stmt::If {
+    fn push_stmt(&mut self, parent: NodeId, stmt: &Stmt) {
+        match &stmt.kind {
+            StmtKind::Empty => {}
+            StmtKind::Item(item) => self.push_item(parent, item),
+            StmtKind::Expr(expr) => self.push_expr(parent, expr),
+            StmtKind::VarDecl(decl) => {
+                let VarDecl {
+                    name,
+                    ty,
+                    val,
+                    constant: _,
+                    mutable: _,
+                } = &**decl;
+
+                let scope = self.node_mut(parent).unwrap();
+                scope.vars_mut().push((*name, ty.as_ref().clone()));
+
+                self.push_expr(parent, val);
+            }
+        }
+    }
+
+    // TODO: Expressions
+    fn push_expr(&mut self, _parent: NodeId, _expr: &Expr) {
+        /*
+            StmtKind::If {
                 condition,
                 body,
                 clauses,
@@ -318,33 +339,19 @@ impl<'ctx> Graph<Scope<'ctx>, MaybeSym> {
                 }
             }
 
-            Stmt::Expr(expr) => self.push_expr(parent, *expr),
-
-            Stmt::VarDeclaration {
-                name,
-                ty,
-                val,
-                constant: _,
-                mutable: _,
-            } => {
-                let scope = self.node_mut(parent).unwrap();
-                scope.vars_mut().push((*name, ty.deref().clone()));
-
-                self.push_expr(parent, *val);
-            }
-
             Stmt::Return(ret) => {
                 if let Some(ret) = ret {
                     self.push_expr(parent, *ret);
                 }
             }
+
             Stmt::Break(brk) => {
                 if let Some(brk) = brk {
                     self.push_expr(parent, *brk);
                 }
             }
+
             Stmt::Continue => {}
-            Stmt::Empty => {}
 
             Stmt::While {
                 condition,
@@ -456,10 +463,8 @@ impl<'ctx> Graph<Scope<'ctx>, MaybeSym> {
                     }
                 }
             }
-        }
+        */
     }
-
-    fn push_expr(&mut self, _parent: NodeId, _expr: Ticket<'ctx, Expr<'ctx>>) {}
 }
 
 impl<T: fmt::Debug, L: fmt::Debug> fmt::Debug for Graph<T, L> {
@@ -529,7 +534,7 @@ impl<T, L> Node<T, L> {
     }
 }
 
-impl<'ctx> Node<Scope<'ctx>, MaybeSym> {
+impl Node<Scope, MaybeSym> {
     pub fn resolve(&self, graph: &Graph<Scope, MaybeSym>, name: StrT) -> Option<ItemPath> {
         if let Some(item) = self
             .children

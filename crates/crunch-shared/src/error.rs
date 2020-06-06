@@ -1,7 +1,4 @@
-use crate::{
-    files::FileId,
-    token::{Token, TokenType},
-};
+use crate::files::FileId;
 
 use alloc::{
     collections::VecDeque,
@@ -23,13 +20,11 @@ use core::{
     ops::{self, Range},
 };
 use derive_more::Display;
-#[cfg(test)]
 use serde::{Deserialize, Serialize};
 
 pub type ParseResult<T> = Result<T, Locatable<Error>>;
 
-#[cfg_attr(test, derive(Deserialize, Serialize))]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Location {
     Concrete { span: Span, file: FileId },
     Implicit { span: Span, file: FileId },
@@ -77,8 +72,7 @@ impl Location {
     }
 }
 
-#[cfg_attr(test, derive(Deserialize, Serialize))]
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Span {
     start: usize,
     end: usize,
@@ -109,18 +103,6 @@ impl Span {
 impl fmt::Debug for Span {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}..{}", self.start, self.end)
-    }
-}
-
-impl<'a> From<&Token<'a>> for Span {
-    fn from(token: &Token<'a>) -> Self {
-        token.span()
-    }
-}
-
-impl<'a> From<Token<'a>> for Span {
-    fn from(token: Token<'a>) -> Self {
-        token.span()
     }
 }
 
@@ -169,8 +151,7 @@ impl Into<[usize; 2]> for Span {
     }
 }
 
-#[cfg_attr(test, derive(Deserialize, Serialize))]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Locatable<T> {
     pub data: T,
     pub loc: Location,
@@ -271,7 +252,10 @@ impl ErrorHandler {
     }
 
     /// Drain all errors and warnings from the current handler, emitting them
-    pub fn emit(&mut self, files: &crate::files::Files) {
+    pub fn emit<'a, F>(&mut self, files: &'a F)
+    where
+        F: codespan_reporting::files::Files<'a, FileId = FileId>,
+    {
         let writer = StandardStream::stderr(ColorChoice::Auto);
         let config = Config::default();
         let mut diag = Vec::with_capacity(5);
@@ -308,7 +292,7 @@ impl Default for ErrorHandler {
     }
 }
 
-#[derive(Clone, Debug, Display, PartialEq)]
+#[derive(Clone, Debug, Display, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Error {
     #[display(fmt = "Invalid Syntax: {}", _0)]
     Syntax(SyntaxError),
@@ -338,7 +322,7 @@ impl Error {
     }
 }
 
-#[derive(Clone, Debug, Display, PartialEq)]
+#[derive(Clone, Debug, Display, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SyntaxError {
     #[display(fmt = "{}", _0)]
     Generic(String),
@@ -350,7 +334,7 @@ pub enum SyntaxError {
     MissingEscapeBraces,
 
     #[display(fmt = "String escapes may only have the characters {}", _0)]
-    InvalidEscapeCharacters(&'static str),
+    InvalidEscapeCharacters(String),
 
     #[display(fmt = "Ran out of string escape specifiers")]
     MissingEscapeSpecifier,
@@ -359,13 +343,13 @@ pub enum SyntaxError {
     InvalidEscapeSeq(String),
 
     #[display(fmt = "Invalid {} literal", _0)]
-    InvalidLiteral(&'static str),
+    InvalidLiteral(String),
 
     #[display(fmt = "{} literal overflowed: {}", _0, _1)]
-    LiteralOverflow(&'static str, String),
+    LiteralOverflow(String, String),
 
     #[display(fmt = "{} literal underflowed: {}", _0, _1)]
-    LiteralUnderflow(&'static str, String),
+    LiteralUnderflow(String, String),
 
     #[display(fmt = "Rune literals may only contain one rune")]
     TooManyRunes,
@@ -374,13 +358,13 @@ pub enum SyntaxError {
     RecursionLimit(usize, usize),
 
     #[display(fmt = "Attributes are not allowed on an {} declaration", _0)]
-    NoAttributesAllowed(&'static str),
+    NoAttributesAllowed(String),
 
     #[display(fmt = "Decorators are not allowed on an {} declaration", _0)]
-    NoDecoratorsAllowed(&'static str),
+    NoDecoratorsAllowed(String),
 
     #[display(fmt = "Invalid top-level token: {}", _0)]
-    InvalidTopLevel(TokenType),
+    InvalidTopLevel(String),
 
     #[display(fmt = "You must give a file to import from in import declarations")]
     MissingImport,
@@ -405,7 +389,7 @@ impl SyntaxError {
     }
 }
 
-#[derive(Clone, Debug, Display, PartialEq)]
+#[derive(Clone, Debug, Display, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SemanticError {
     #[display(fmt = "{} was previously defined", name)]
     Redefinition {
@@ -491,7 +475,7 @@ impl SemanticError {
     }
 }
 
-#[derive(Clone, Debug, Display, PartialEq)]
+#[derive(Clone, Debug, Display, PartialEq, Eq, Serialize, Deserialize)]
 #[allow(missing_copy_implementations)]
 pub enum TypeError {}
 
@@ -505,7 +489,7 @@ impl TypeError {
     }
 }
 
-#[derive(Clone, Debug, Display, PartialEq)]
+#[derive(Clone, Debug, Display, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Warning {
     #[display(fmt = "The generic '{}' was not used", _0)]
     UnusedGeneric(String),

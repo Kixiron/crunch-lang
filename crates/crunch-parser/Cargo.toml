@@ -33,7 +33,7 @@ optional = true
 
 # Concurrent hashmap for symbol table
 [dependencies.dashmap]
-version = "3.11.2"
+version = "3.11.4"
 optional = true
 
 # Pretty error reporting
@@ -57,15 +57,14 @@ optional = true
 [dependencies.derive_more]
 version = "0.99.7"
 
-# Arena allocation
-[dependencies.stadium]
-git = "https://github.com/Kixiron/stadium.git"
-features = ["serialize"]
-
 # String interning
 [dependencies.lasso]
 git = "https://github.com/Kixiron/lasso.git"
 features = ["serialize"]
+
+# Abstract Syntax Tree and Errors
+[dependencies.crunch-shared]
+path = "../crunch-shared"
 
 # Tracking stack frames
 [dependencies.crunch-proc]
@@ -77,11 +76,11 @@ version = "1.6.0"
 default-features = false
 
 [dev-dependencies.serde]
-version = "1.0.110"
+version = "1.0.111"
 features = ["derive"]
 
 [dev-dependencies.ron]
 version = "0.6.0"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies.proptest]
-version = "0.9.6"
+version = "0.10.0"
