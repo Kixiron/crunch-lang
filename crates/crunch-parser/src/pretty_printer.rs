@@ -830,11 +830,6 @@ impl PrettyPrinter {
                 self.print_expr(f, expr)?;
                 f.write_char('\n')
             }
-
-            StmtKind::Empty => {
-                self.print_indent(f)?;
-                f.write_str("empty\n")
-            }
         }
     }
 

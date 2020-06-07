@@ -17,6 +17,7 @@ use codespan_reporting::{
 use core::{
     fmt,
     hash::{Hash, Hasher},
+    mem,
     ops::{self, Range},
 };
 use derive_more::Display;
@@ -309,6 +310,25 @@ impl ErrorHandler {
                 term::emit(&mut writer.lock(), &config, files, &diag).unwrap();
             }
         }
+    }
+
+    #[inline]
+    pub fn extend(&mut self, other: Self) {
+        self.fatal = self.fatal || other.fatal;
+        self.errors.extend(other.errors);
+        self.warnings.extend(other.warnings);
+    }
+
+    #[inline]
+    pub fn take(&mut self) -> Self {
+        let taken = Self {
+            fatal: self.fatal,
+            errors: mem::take(&mut self.errors),
+            warnings: mem::take(&mut self.warnings),
+        };
+        self.fatal = false;
+
+        taken
     }
 }
 

@@ -73,17 +73,6 @@ impl<'src> Parser<'src> {
                 Ok(Some(Stmt { kind }))
             }
 
-            TokenType::Empty => {
-                self.eat(TokenType::Empty, [TokenType::Newline])?;
-                self.eat(TokenType::Newline, [])?;
-
-                let stmt = Stmt {
-                    kind: StmtKind::Empty,
-                };
-
-                Ok(Some(stmt))
-            }
-
             // Exprs
             TokenType::Ident
             | TokenType::Int

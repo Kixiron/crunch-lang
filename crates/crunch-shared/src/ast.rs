@@ -1,4 +1,4 @@
-use crate::{error::Location, strings::StrT};
+use crate::{error::Location, strings::StrInterner, strings::StrT};
 use alloc::boxed::Box;
 #[cfg(feature = "no-std")]
 use alloc::{
@@ -67,6 +67,43 @@ pub enum ItemKind {
     },
 }
 
+impl ItemKind {
+    #[inline]
+    pub fn is_func(&self) -> bool {
+        matches!(self, Self::Func { .. })
+    }
+
+    #[inline]
+    pub fn is_type(&self) -> bool {
+        matches!(self, Self::Type { .. })
+    }
+
+    #[inline]
+    pub fn is_enum(&self) -> bool {
+        matches!(self, Self::Enum { .. })
+    }
+
+    #[inline]
+    pub fn is_trait(&self) -> bool {
+        matches!(self, Self::Trait { .. })
+    }
+
+    #[inline]
+    pub fn is_import(&self) -> bool {
+        matches!(self, Self::Import { .. })
+    }
+
+    #[inline]
+    pub fn is_extend_block(&self) -> bool {
+        matches!(self, Self::ExtendBlock { .. })
+    }
+
+    #[inline]
+    pub fn is_alias(&self) -> bool {
+        matches!(self, Self::Alias { .. })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub enum Exposure {
     None(StrT),
@@ -87,6 +124,7 @@ pub struct TypeMember {
     pub attrs: Vec<Attribute>,
     pub name: StrT,
     pub ty: Ref<Type>,
+    // pub loc: Location,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -148,6 +186,7 @@ impl Default for Vis {
 pub struct FuncArg {
     pub name: StrT,
     pub ty: Ref<Type>,
+    // pub loc: Location,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -161,7 +200,6 @@ pub enum StmtKind {
     VarDecl(Ref<VarDecl>),
     Item(Ref<Item>),
     Expr(Ref<Expr>),
-    Empty,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -200,6 +238,7 @@ pub enum ExprKind {
     Paren(Ref<Expr>),
     Array(Vec<Expr>),
     Tuple(Vec<Expr>),
+    // TODO: Add range kind (inclusive, exclusive, etc.)
     Range(Ref<Expr>, Ref<Expr>),
     Index { var: Ref<Expr>, index: Ref<Expr> },
     FuncCall { caller: Ref<Expr>, args: Vec<Expr> },
@@ -530,60 +569,55 @@ impl Type {
             }
             Self::ItemPath(path) => buf.push(path.clone()),
 
-            _ => {}
+            _ => todo!(),
         }
     }
 
-    /*
+    // TODO: Optimize by writing into a buffer
     #[inline]
-    pub fn to_string(&self, context: &Context<'ctx>) -> String {
+    pub fn to_string(&self, intern: &StrInterner) -> String {
         match self {
             Self::Infer => "infer".to_string(),
-            Self::Not(ty) => format!("!{}", ty.to_string(context)),
-            Self::Parenthesised(ty) => format!("({})", ty.to_string(context)),
-            Self::Const(ident, ty) => format!(
-                "const {}: {}",
-                context.resolve(*ident),
-                ty.to_string(context)
-            ),
-            Self::Operand(left, op, right) => format!(
-                "{} {} {}",
-                left.to_string(context),
-                op,
-                right.to_string(context)
-            ),
-            Self::Function { params, returns } => format!(
+            Self::Not(ty) => format!("!{}", ty.to_string(intern)),
+            Self::Paren(ty) => format!("({})", ty.to_string(intern)),
+            Self::Const(ident, ty) => {
+                format!("const {}: {}", intern.resolve(*ident), ty.to_string(intern),)
+            }
+            Self::Operand(Sided { lhs, op, rhs }) => {
+                format!("{} {} {}", lhs.to_string(intern), op, rhs.to_string(intern),)
+            }
+            Self::Func { params, ret } => format!(
                 "fn({}) -> {}",
                 params
                     .iter()
-                    .map(|ty| ty.to_string(context))
+                    .map(|ty| ty.to_string(intern))
                     .collect::<Vec<String>>()
                     .join(", "),
-                returns.to_string(context)
+                ret.to_string(intern)
             ),
-            Self::TraitObj(traits) => format!(
+            Self::Trait(traits) => format!(
                 "type[{}]",
                 traits
                     .iter()
-                    .map(|ty| ty.to_string(context))
+                    .map(|ty| ty.to_string(intern))
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
             Self::Bounded { path, bounds } => format!(
                 "{}[{}]",
                 path.iter()
-                    .map(|seg| context.resolve(*seg))
+                    .map(|seg| intern.resolve(*seg))
                     .collect::<Vec<&str>>()
                     .join("."),
                 bounds
                     .iter()
-                    .map(|ty| ty.to_string(context))
+                    .map(|ty| ty.to_string(intern))
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
             Self::ItemPath(path) => path
                 .iter()
-                .map(|seg| context.resolve(*seg))
+                .map(|seg| intern.resolve(*seg))
                 .collect::<Vec<&str>>()
                 .join("."),
             Self::Integer { sign, width } => format!(
@@ -609,24 +643,23 @@ impl Type {
                 },
             ),
             Self::Float { width } => format!("f{}", width),
-            Self::Boolean => "bool".to_string(),
+            Self::Bool => "bool".to_string(),
             Self::String => "str".to_string(),
             Self::Rune => "rune".to_string(),
             Self::Unit => "unit".to_string(),
             Self::Absurd => "absurd".to_string(),
-            Self::Array(len, ty) => format!("arr[{}, {}]", len, ty.to_string(context)),
-            Self::Slice(ty) => format!("slice{}]", ty.to_string(context)),
+            Self::Array(len, ty) => format!("arr[{}, {}]", len, ty.to_string(intern)),
+            Self::Slice(ty) => format!("slice[{}]", ty.to_string(intern)),
             Self::Tuple(types) => format!(
                 "tup[{}]",
                 types
                     .iter()
-                    .map(|ty| ty.to_string(context))
+                    .map(|ty| ty.to_string(intern))
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
         }
     }
-    */
 }
 
 impl Default for Type {
@@ -737,6 +770,16 @@ pub struct Block {
 }
 
 impl Block {
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.stmts.len()
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.stmts.is_empty()
+    }
+
     #[inline]
     pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a Stmt> + 'a {
         self.stmts.iter()

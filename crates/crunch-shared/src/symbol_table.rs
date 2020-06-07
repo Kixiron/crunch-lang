@@ -290,7 +290,6 @@ impl Graph<Scope, MaybeSym> {
     #[inline]
     fn push_stmt(&mut self, parent: NodeId, stmt: &Stmt) {
         match &stmt.kind {
-            StmtKind::Empty => {}
             StmtKind::Item(item) => self.push_item(parent, item),
             StmtKind::Expr(expr) => self.push_expr(parent, expr),
             StmtKind::VarDecl(decl) => {

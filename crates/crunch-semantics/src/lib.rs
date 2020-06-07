@@ -11,17 +11,25 @@
 extern crate alloc;
 
 use alloc::{borrow::ToOwned, boxed::Box, vec::Vec};
-use core::{fmt, ops::Deref};
+use core::fmt;
 use crunch_shared::{
-    ast::{Attribute, Expr, FuncArg, Item, ItemKind, Stmt, StmtKind, TypeMember, Variant},
+    ast::{FuncArg, Item, TypeMember, Variant},
     context::Context,
-    error::{Error, ErrorHandler, Locatable, Location, SemanticError, Warning},
-    symbol_table::{Graph, MaybeSym, NodeId, Scope},
+    error::{Error, ErrorHandler, Locatable, SemanticError, Warning},
+    strings::StrInterner,
     utils::HashMap,
+    visitors::AstVisitor,
 };
 
+// FIXME: Actual errors here
+pub trait Analyzer: AstVisitor {
+    fn name(&self) -> &str;
+    fn load(&mut self, error_handler: ErrorHandler, context: Context);
+    fn unload(&mut self) -> ErrorHandler;
+}
+
 pub struct SemanticAnalyzer {
-    passes: Vec<Box<dyn SemanticPass>>,
+    passes: Vec<Box<dyn Analyzer>>,
 }
 
 impl SemanticAnalyzer {
@@ -35,14 +43,14 @@ impl SemanticAnalyzer {
         }
     }
 
-    pub fn pass<T: SemanticPass + 'static>(mut self, pass: T) -> Self {
+    pub fn pass<T: Analyzer + 'static>(mut self, pass: T) -> Self {
         self.passes.push(Box::new(pass));
         self
     }
 
     pub fn passes<I>(mut self, passes: I) -> Self
     where
-        I: Iterator<Item = Box<dyn SemanticPass>>,
+        I: Iterator<Item = Box<dyn Analyzer>>,
     {
         self.passes.extend(passes);
         self
@@ -50,54 +58,20 @@ impl SemanticAnalyzer {
 
     pub fn analyze(
         &mut self,
-        node: &Item,
-        symbol_table: &Graph<Scope, MaybeSym>,
-        ctx: &Context,
-        error_handler: &mut ErrorHandler,
+        items: &[impl AsRef<Item>],
+        context: &Context,
+        errors: &mut ErrorHandler,
     ) {
         for pass in self.passes.iter_mut() {
-            match &node.kind {
-                ItemKind::Function(func) => {
-                    pass.analyze_function(&**func, func.loc(), symbol_table, ctx, error_handler)
-                }
+            pass.load(ErrorHandler::new(), context.clone());
 
-                ItemKind::Type(ty) => {
-                    pass.analyze_type(&**ty, ty.loc(), symbol_table, ctx, error_handler)
-                }
-
-                ItemKind::Enum(en) => {
-                    pass.analyze_enum(&**en, en.loc(), symbol_table, ctx, error_handler)
-                }
-
-                ItemKind::Trait(tr) => {
-                    pass.analyze_trait(&**tr, tr.loc(), symbol_table, ctx, error_handler)
-                }
-
-                ItemKind::Import(import) => {
-                    pass.analyze_import(&**import, import.loc(), symbol_table, ctx, error_handler)
-                }
-
-                _ => todo!(),
+            for item in items {
+                pass.visit_item(item.as_ref());
             }
-        }
-    }
 
-    pub fn analyze_all(
-        &mut self,
-        nodes: &[impl Deref<Target = Item>],
-        ctx: &Context,
-        symbol_table: &Graph<Scope, MaybeSym>,
-        error_handler: &mut ErrorHandler,
-    ) {
-        for node in nodes {
-            self.analyze(node, symbol_table, ctx, error_handler);
+            let err = pass.unload();
+            errors.extend(err);
         }
-    }
-}
-
-impl Default for SemanticAnalyzer {
-    fn default() -> Self {
-        Self::with_capacity(1).pass(Correctness::new())
     }
 }
 
@@ -116,247 +90,116 @@ impl fmt::Debug for SemanticAnalyzer {
     }
 }
 
-// TODO: Give access to other file's symbol tables
-pub trait SemanticPass {
-    fn name(&self) -> &'static str;
+#[derive(Debug, Default)]
+struct Correctness {
+    errors: ErrorHandler,
+    context: Context,
+}
 
-    fn analyze_function(
-        &mut self,
-        _func: &Function,
-        _loc: Location,
-        _local_symbol_table: &Graph<Scope, MaybeSym>,
-        _ctx: &Context,
-        _error_handler: &mut ErrorHandler,
-    ) {
+impl<'err> Correctness {
+    fn errors(&mut self) -> &mut ErrorHandler {
+        &mut self.errors
     }
 
-    fn analyze_type(
-        &mut self,
-        _type: &TypeDecl,
-        _loc: Location,
-        _local_symbol_table: &Graph<Scope, MaybeSym>,
-        _ctx: &Context,
-        _error_handler: &mut ErrorHandler,
-    ) {
-    }
-
-    fn analyze_enum(
-        &mut self,
-        _enum: &Enum,
-        _loc: Location,
-        _local_symbol_table: &Graph<Scope, MaybeSym>,
-        _ctx: &Context,
-        _error_handler: &mut ErrorHandler,
-    ) {
-    }
-
-    fn analyze_trait(
-        &mut self,
-        _trait: &Trait,
-        _loc: Location,
-        _local_symbol_table: &Graph<Scope, MaybeSym>,
-        _ctx: &Context,
-        _error_handler: &mut ErrorHandler,
-    ) {
-    }
-
-    fn analyze_import(
-        &mut self,
-        _import: &Import,
-        _loc: Location,
-        _local_symbol_table: &Graph<Scope, MaybeSym>,
-        _ctx: &Context,
-        _error_handler: &mut ErrorHandler,
-    ) {
-    }
-
-    fn analyze_stmt(
-        &mut self,
-        _stmt: &Stmt,
-        _local_symbol_table: &Graph<Scope, MaybeSym>,
-        _ctx: &Context,
-        _error_handler: &mut ErrorHandler,
-    ) {
-    }
-
-    fn analyze_expr(
-        &mut self,
-        _expr: &Expr,
-        _local_symbol_table: &Graph<Scope, MaybeSym>,
-        _ctx: &Context,
-        _error_handler: &mut ErrorHandler,
-    ) {
+    fn strings(&self) -> &StrInterner {
+        &self.context.strings
     }
 }
 
-struct Correctness {}
-
-impl Correctness {
-    pub fn new() -> Self {
-        Self {}
-    }
-
-    // TODO: Contradictory attributes
-    /// Check for duplicate attributes
-    fn duplicated_attrs(
-        &mut self,
-        error_handler: &mut ErrorHandler,
-        attrs: &[Locatable<Attribute>],
-    ) {
-        #[derive(PartialEq, Eq, PartialOrd, Ord)]
-        enum Attr {
-            Vis = 0,
-            Misc = 1,
-        }
-
-        let (mut seen, mut stage, mut vis) = (
-            HashMap::with_capacity(attrs.len()),
-            Attr::Vis,
-            Vec::with_capacity(1),
-        );
-        for attr in attrs.iter() {
-            let curr = match &**attr {
-                Attribute::Visibility(_) => {
-                    vis.push(attr);
-                    Attr::Vis
-                }
-                Attribute::Const => Attr::Misc,
-            };
-
-            // If the attributes are incorrectly ordered, emit an error
-            if curr < stage {
-                error_handler.push_err(Locatable::new(
-                    Error::Semantic(SemanticError::UnorderedAttrs),
-                    attr.loc(),
-                ));
-            } else {
-                stage = curr;
-            }
-
-            // If the attribute has already been seen, emit an error
-            if let Some(loc) = seen.insert(&**attr, attr.loc()) {
-                error_handler.push_err(Locatable::new(
-                    Error::Semantic(SemanticError::DuplicatedAttributes {
-                        attr: attr.as_str().to_owned(),
-                        first: loc,
-                        second: attr.loc(),
-                    }),
-                    attr.loc(),
-                ));
-            }
-        }
-
-        // Emit errors for conflicting attributes
-        if vis.len() > 1 {
-            let mut windows = vis.windows(2);
-
-            #[allow(clippy::while_let_on_iterator)]
-            while let Some([first, second]) = windows.next() {
-                error_handler.push_err(Locatable::new(
-                    Error::Semantic(SemanticError::ConflictingAttributes {
-                        attr1: first.as_str().to_owned(),
-                        attr2: second.as_str().to_owned(),
-                        first: first.loc(),
-                        second: second.loc(),
-                    }),
-                    second.loc(),
-                ));
-            }
-        }
-    }
-}
-
-impl SemanticPass for Correctness {
-    fn name(&self) -> &'static str {
+impl Analyzer for Correctness {
+    fn name(&self) -> &str {
         "Correctness"
     }
 
-    fn analyze_function(
+    fn load(&mut self, errors: ErrorHandler, context: Context) {
+        self.errors = errors;
+        self.context = context;
+    }
+
+    fn unload(&mut self) -> ErrorHandler {
+        self.errors.take()
+    }
+}
+
+// TODO: So much information skipped here
+impl AstVisitor for Correctness {
+    fn visit_func(
         &mut self,
-        func: &Function,
-        func_loc: Location,
-        local_symbol_table: &Graph<Scope, MaybeSym>,
-        ctx: &Context,
-        error_handler: &mut ErrorHandler,
+        item: &Item,
+        _generics: &[crunch_shared::ast::Type],
+        args: &[FuncArg],
+        body: &crunch_shared::ast::Block,
+        _ret: &crunch_shared::ast::Type,
     ) {
         // Errors for empty function bodies
-        if func.body.is_empty() {
-            error_handler.push_err(Locatable::new(
+        if body.is_empty() {
+            self.errors().push_err(Locatable::new(
                 Error::Semantic(SemanticError::EmptyFuncBody),
-                func_loc,
+                item.loc,
             ));
         }
 
-        self.duplicated_attrs(error_handler, &func.attrs);
-
         // Check for duplicated function arguments
-        let mut args = HashMap::with_capacity(func.args.len());
-        for FuncArg { name, .. } in func.args.iter().map(|arg| &**arg) {
-            if let Some(loc) = args.insert(**name, name.loc()) {
-                error_handler.push_err(Locatable::new(
+        let mut arg_map = HashMap::with_capacity(args.len());
+        for FuncArg { name, .. } in args.iter() {
+            if let Some(..) = arg_map.insert(name, name) {
+                let name = self.strings().resolve(*name).to_owned();
+                // FIXME: More locations
+                self.errors().push_err(Locatable::new(
                     Error::Semantic(SemanticError::Redefinition {
-                        name: ctx.resolve(**name).to_owned(),
-                        first: loc,
-                        second: name.loc(),
+                        name,
+                        first: item.loc,
+                        second: item.loc,
                     }),
-                    name.loc(),
+                    item.loc,
                 ));
             }
         }
 
-        for stmt in func.body.iter() {
-            self.analyze_stmt(&*stmt, local_symbol_table, ctx, error_handler);
+        for stmt in body.iter() {
+            self.visit_stmt(stmt);
         }
     }
 
-    fn analyze_type(
+    fn visit_type(
         &mut self,
-        ty: &TypeDecl,
-        ty_loc: Location,
-        _local_symbol_table: &Graph<Scope, MaybeSym>,
-        ctx: &Context,
-        error_handler: &mut ErrorHandler,
+        item: &Item,
+        generics: &[crunch_shared::ast::Type],
+        members: &[TypeMember],
     ) {
         // Errors for empty type bodies
-        if ty.members.is_empty() {
-            error_handler.push_err(Locatable::new(
+        if members.is_empty() {
+            self.errors().push_err(Locatable::new(
                 Error::Semantic(SemanticError::EmptyTypeBody),
-                ty_loc,
+                item.loc,
             ));
         }
 
-        self.duplicated_attrs(error_handler, &ty.attrs);
-
         // Check for duplicated members, unused generics and unused attributes
-        let mut members = HashMap::with_capacity(ty.members.len());
-        let mut generics: Vec<_> = ty.generics.iter().map(|g| (g, false)).collect();
-        for member in ty.members.iter() {
-            let TypeMember {
-                name,
-                ty: member,
-                attrs,
-                ..
-            } = &**member;
-
+        let mut member_map = HashMap::with_capacity(members.len());
+        let mut generics: Vec<_> = generics.iter().map(|g| (g, false)).collect();
+        for TypeMember {
+            name, ty: member, ..
+        } in members.iter()
+        {
             // If there's already a member by the same name, emit an error
-            if let Some(loc) = members.insert(name, member.loc()) {
-                error_handler.push_err(Locatable::new(
+            if let Some(loc) = member_map.insert(name, item.loc) {
+                let name = self.strings().resolve(*name).to_owned();
+                // FIXME: Location information
+                self.errors().push_err(Locatable::new(
                     Error::Semantic(SemanticError::Redefinition {
-                        name: ctx.resolve(*name).to_owned(),
+                        name,
                         first: loc,
-                        second: member.loc(),
+                        second: item.loc,
                     }),
-                    member.loc(),
+                    item.loc,
                 ));
             }
 
             // Mark the generic as used
-            if let Some((_, used)) = generics.iter_mut().find(|(g, _)| ***g == **member) {
+            if let Some((_, used)) = generics.iter_mut().find(|(g, _)| *g == &**member) {
                 *used = true;
             }
-
-            // Also check for unused attributes while we're here
-            self.duplicated_attrs(error_handler, &attrs);
         }
 
         // Do the actual check that all generics are used
@@ -364,10 +207,10 @@ impl SemanticPass for Correctness {
             .into_iter()
             .filter_map(|(g, used)| if used { Some(g) } else { None })
         {
-            error_handler.push_warning(Locatable::new(
-                Warning::UnusedGeneric(generic.to_string(ctx)),
-                generic.loc(),
-            ));
+            let msg = generic.to_string(&self.strings());
+            // FIXME: Err location
+            self.errors()
+                .push_warning(Locatable::new(Warning::UnusedGeneric(msg), item.loc));
         }
 
         // TODO: Re-add this once methods are resolved
@@ -411,41 +254,39 @@ impl SemanticPass for Correctness {
         // }
     }
 
-    fn analyze_enum(
+    fn visit_enum(
         &mut self,
-        en: &Enum,
-        _loc: Location,
-        _local_symbol_table: &Graph<Scope, MaybeSym>,
-        ctx: &Context,
-        error_handler: &mut ErrorHandler,
+        item: &Item,
+        generics: &[crunch_shared::ast::Type],
+        variants: &[Variant],
     ) {
-        self.duplicated_attrs(error_handler, &en.attrs);
-
         // Check for duplicated variants and unused generics
-        let mut variants = HashMap::with_capacity(en.variants.len());
-        let mut generics: Vec<_> = en.generics.iter().map(|g| (g, false)).collect();
-        for variant in en.variants.iter() {
-            let (name, elements) = match &**variant {
-                EnumVariant::Unit { name, .. } => (*name, None),
-                EnumVariant::Tuple { name, elements, .. } => (*name, Some(elements)),
+        let mut variant_map = HashMap::with_capacity(variants.len());
+        let mut generics: Vec<_> = generics.iter().map(|g| (g, false)).collect();
+        for variant in variants.iter() {
+            let (name, elements) = match variant {
+                Variant::Unit { name, .. } => (*name, None),
+                Variant::Tuple { name, elms, .. } => (*name, Some(elms)),
             };
 
             // If there's already a variant by the same name, emit an error
-            if let Some(loc) = variants.insert(name, variant.loc()) {
-                error_handler.push_err(Locatable::new(
+            // FIXME: Error locations
+            if let Some(loc) = variant_map.insert(name, item.loc) {
+                let name = self.strings().resolve(name).to_owned();
+                self.errors().push_err(Locatable::new(
                     Error::Semantic(SemanticError::Redefinition {
-                        name: ctx.resolve(name).to_owned(),
+                        name,
                         first: loc,
-                        second: variant.loc(),
+                        second: item.loc,
                     }),
-                    variant.loc(),
+                    item.loc,
                 ));
             }
 
             // Mark all used generics as used
             if let Some(elements) = elements {
                 for elm in elements {
-                    if let Some((_, used)) = generics.iter_mut().find(|(g, _)| ***g == **elm) {
+                    if let Some((_, used)) = generics.iter_mut().find(|(g, _)| *g == elm) {
                         *used = true;
                     }
                 }
@@ -457,65 +298,22 @@ impl SemanticPass for Correctness {
             .into_iter()
             .filter_map(|(g, used)| if used { Some(g) } else { None })
         {
-            error_handler.push_warning(Locatable::new(
-                Warning::UnusedGeneric(generic.to_string(ctx)),
-                generic.loc(),
-            ));
+            let msg = generic.to_string(self.strings());
+            // FIXME: Error location
+            self.errors()
+                .push_warning(Locatable::new(Warning::UnusedGeneric(msg), item.loc));
         }
     }
 
-    // TODO: How do generics work here?
-    fn analyze_trait(
+    fn visit_trait(
         &mut self,
-        tr: &Trait,
-        _loc: Location,
-        local_symbol_table: &Graph<Scope, MaybeSym>,
-        ctx: &Context,
-        error_handler: &mut ErrorHandler,
+        _item: &Item,
+        _generics: &[crunch_shared::ast::Type],
+        methods: &[Item],
     ) {
-        self.duplicated_attrs(error_handler, &tr.attrs);
-
         // Analyze all the methods
-        for method in tr.methods.iter() {
-            self.analyze_function(
-                &*method,
-                method.loc(),
-                local_symbol_table,
-                ctx,
-                error_handler,
-            );
+        for method in methods {
+            self.visit_item(method);
         }
-    }
-
-    fn analyze_import(
-        &mut self,
-        _import: &Import,
-        _loc: Location,
-        _local_symbol_table: &Graph<Scope, MaybeSym>,
-        _ctx: &Context,
-        _error_handler: &mut ErrorHandler,
-    ) {
-        // ???
-    }
-
-    fn analyze_stmt(
-        &mut self,
-        stmt: &Stmt,
-        local_symbol_table: &Graph<Scope, MaybeSym>,
-        ctx: &Context,
-        error_handler: &mut ErrorHandler,
-    ) {
-        if let Stmt::Expr(expr) = stmt {
-            self.analyze_expr(&*expr, local_symbol_table, ctx, error_handler);
-        }
-    }
-
-    fn analyze_expr(
-        &mut self,
-        _expr: &Expr,
-        _local_symbol_table: &Graph<Scope, MaybeSym>,
-        _ctx: &Context,
-        _error_handler: &mut ErrorHandler,
-    ) {
     }
 }

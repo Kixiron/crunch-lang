@@ -80,6 +80,11 @@
 - [x] `loop` doesn't need `then` clauses
 - [x] Else clause for loops that executes on breakage?
 - [x] Fix if parsing
+- [ ] AST Visitor
+  - [x] Trait
+  - [x] Semantic checker
+  - [ ] Ladder
+  - [ ] Symbol table
 
 ## AST -> HIR
 

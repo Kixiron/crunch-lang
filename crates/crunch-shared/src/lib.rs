@@ -12,3 +12,4 @@ pub mod files;
 pub mod strings;
 pub mod symbol_table;
 pub mod utils;
+pub mod visitors;
