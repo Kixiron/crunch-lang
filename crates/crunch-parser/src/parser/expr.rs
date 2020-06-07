@@ -7,7 +7,10 @@ use core::convert::TryFrom;
 use crunch_proc::recursion_guard;
 use crunch_shared::{
     error::{Error, Locatable, Location, ParseResult, SyntaxError},
-    trees::ast::{Arm, Block, Expr, ExprKind, For, If, IfCond, Loop, Match, Ref, Sided, While},
+    trees::{
+        ast::{Arm, Block, Expr, ExprKind, For, If, IfCond, Loop, Match, While},
+        Ref, Sided,
+    },
 };
 
 type PrefixParselet<'src> = fn(&mut Parser<'src>, Token<'src>) -> ParseResult<Expr>;

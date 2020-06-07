@@ -4,6 +4,7 @@ use core::mem;
 use crunch_shared::{
     context::Context,
     error::{Error, ErrorHandler, Locatable, Location, ParseResult, SyntaxError},
+    files::CurrentFile,
     info,
     symbol_table::{Graph, MaybeSym, NodeId, Scope},
     trace,
@@ -19,8 +20,6 @@ mod string_escapes;
 mod tests;
 mod types;
 mod utils;
-
-pub use utils::CurrentFile;
 
 use utils::StackGuard;
 

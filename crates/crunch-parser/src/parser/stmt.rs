@@ -3,8 +3,11 @@ use crate::{parser::Parser, token::TokenType};
 use alloc::{format, vec::Vec};
 use crunch_proc::recursion_guard;
 use crunch_shared::{
-    error::{Error, Locatable, Location, ParseResult, SemanticError, Span, SyntaxError},
-    trees::ast::{Block, Ref, Stmt, StmtKind, Type, VarDecl},
+    error::{Error, Locatable, Location, ParseResult, SemanticError, Span},
+    trees::{
+        ast::{Block, Stmt, StmtKind, Type, VarDecl},
+        Ref,
+    },
 };
 
 // TODO: Type ascription
@@ -73,33 +76,29 @@ impl<'src> Parser<'src> {
                 Ok(Some(Stmt { kind }))
             }
 
-            // Exprs
-            TokenType::Ident
-            | TokenType::Int
-            | TokenType::String
-            | TokenType::Float
-            | TokenType::Bool
-            | TokenType::Minus
-            | TokenType::Bang
-            | TokenType::Plus
-            | TokenType::LeftBrace => {
+            // Items
+            TokenType::AtSign
+            | TokenType::Exposed
+            | TokenType::Package
+            | TokenType::Function
+            | TokenType::Type
+            | TokenType::Extend
+            | TokenType::Trait
+            | TokenType::Import
+            | TokenType::Alias => {
+                let item = Ref::new(self.item()?.expect("An item should have been parsed"));
+                let kind = StmtKind::Item(item);
+
+                Ok(Some(Stmt { kind }))
+            }
+
+            // Expressions
+            _ => {
                 let expr = Ref::new(self.expr()?);
                 self.eat(TokenType::Newline, [])?;
                 let kind = StmtKind::Expr(expr);
 
                 Ok(Some(Stmt { kind }))
-            }
-
-            _ => {
-                let token = self.peek()?;
-
-                Err(Locatable::new(
-                    Error::Syntax(SyntaxError::Generic(format!(
-                        "Expected a statement, got a `{}`",
-                        token.ty(),
-                    ))),
-                    Location::concrete(&self.peek()?, self.current_file),
-                ))
             }
         }
     }

@@ -7,9 +7,12 @@ use core::mem;
 use crunch_proc::recursion_guard;
 use crunch_shared::{
     error::{Error, Locatable, Location, ParseResult, Span, SyntaxError},
-    trees::ast::{
-        Attribute, Decorator, Dest, Exposure, FuncArg, Item, ItemKind, Ref, Type, TypeMember,
-        Variant, Vis,
+    trees::{
+        ast::{
+            Attribute, Decorator, Dest, Exposure, FuncArg, Item, ItemKind, Type, TypeMember,
+            Variant, Vis,
+        },
+        Ref,
     },
 };
 

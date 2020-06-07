@@ -1,5 +1,9 @@
-use crate::{error::Location, strings::StrInterner, strings::StrT};
-use alloc::boxed::Box;
+use crate::{
+    error::Location,
+    strings::StrInterner,
+    strings::StrT,
+    trees::{Ref, Sided},
+};
 #[cfg(feature = "no-std")]
 use alloc::{
     format,
@@ -232,9 +236,9 @@ pub enum ExprKind {
     Variable(StrT),
     Literal(Literal),
     UnaryOp(UnaryOp, Ref<Expr>),
-    BinaryOp(Sided<BinaryOp>),
-    Comparison(Sided<CompOp>),
-    Assign(Sided<AssignKind>),
+    BinaryOp(Sided<BinaryOp, Ref<Expr>>),
+    Comparison(Sided<CompOp, Ref<Expr>>),
+    Assign(Sided<AssignKind, Ref<Expr>>),
     Paren(Ref<Expr>),
     Array(Vec<Expr>),
     Tuple(Vec<Expr>),
@@ -784,6 +788,11 @@ impl Block {
     pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a Stmt> + 'a {
         self.stmts.iter()
     }
+
+    #[inline]
+    pub fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut Stmt> + 'a {
+        self.stmts.iter_mut()
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -881,52 +890,5 @@ impl Display for UnaryOp {
         };
 
         f.write_char(pretty)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct Sided<T, S = Ref<Expr>> {
-    pub lhs: S,
-    pub op: T,
-    pub rhs: S,
-}
-
-#[derive(Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct Ref<T>(Box<T>);
-
-impl<T> Ref<T> {
-    #[inline]
-    pub fn new(val: T) -> Self {
-        Self(Box::new(val))
-    }
-}
-
-impl<T> AsRef<T> for Ref<T> {
-    #[inline]
-    fn as_ref(&self) -> &T {
-        &*self.0
-    }
-}
-
-impl<T> Deref for Ref<T> {
-    type Target = T;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &*self.0
-    }
-}
-
-impl<T: Debug> Debug for Ref<T> {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        Debug::fmt(&*self.0, f)
-    }
-}
-
-impl<T: Display> Display for Ref<T> {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        Display::fmt(&*self.0, f)
     }
 }

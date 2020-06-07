@@ -8,38 +8,19 @@
 )]
 
 use crunch_shared::{
+    strings::StrT,
     trees::hir::{
-        Expr, Function, Hir, ItemPath, Literal, Match, MatchArm, Stmt, Type, TypeKind, VarDecl,
+        Block, Break, CompOp, Expr, FuncArg, FuncCall, Function, Item, ItemPath, Literal, Match,
+        MatchArm, Return, Stmt, TypeKind, VarDecl,
     },
     utils::HashMap,
+    visitors::hir::{ExprVisitor, ItemVisitor, StmtVisitor},
 };
 
 type TypeId = usize;
 
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-enum TypeInfo {
-    Ref(TypeId),
-    Infer,
-    Integer,
-    String,
-    Bool,
-    Unit,
-}
-
-impl From<TypeKind> for TypeInfo {
-    fn from(kind: TypeKind) -> Self {
-        match kind {
-            TypeKind::Infer => TypeInfo::Infer,
-            TypeKind::Integer => TypeInfo::Integer,
-            TypeKind::String => TypeInfo::String,
-            TypeKind::Bool => TypeInfo::Bool,
-            TypeKind::Unit => TypeInfo::Unit,
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-struct Engine {
+pub struct Engine {
     id_counter: TypeId,
     types: HashMap<TypeId, TypeInfo>,
     ids: HashMap<ItemPath, TypeId>,
@@ -47,30 +28,30 @@ struct Engine {
 
 impl Engine {
     /// Create a new type term with whatever we have about its type
-    pub fn insert(&mut self, info: &Type) -> TypeId {
-        if let Some(&id) = self.ids.get(&info.name) {
-            self.types.insert(id, info.kind.into());
+    fn insert(&mut self, variable: &ItemPath, kind: &TypeKind) -> TypeId {
+        if let Some(&id) = self.ids.get(&variable) {
+            self.types.insert(id, kind.into());
 
             id
         } else {
             let id = self.id_counter;
             self.id_counter += 1;
 
-            self.types.insert(id, info.kind.into());
-            self.ids.insert(info.name.clone(), id);
+            self.types.insert(id, kind.into());
+            self.ids.insert(variable.clone(), id);
 
             id
         }
     }
 
-    pub fn get(&self, path: &ItemPath) -> Result<TypeId, String> {
+    fn get(&self, path: &ItemPath) -> Result<TypeId, String> {
         self.ids
             .get(path)
             .copied()
             .ok_or_else(|| "No variable by that name".to_string())
     }
 
-    pub fn insert_bare(&mut self, info: TypeInfo) -> TypeId {
+    fn insert_bare(&mut self, info: TypeInfo) -> TypeId {
         let id = self.id_counter;
         self.id_counter += 1;
 
@@ -81,7 +62,7 @@ impl Engine {
 
     /// Make the types of two type terms equivalent (or produce an error if
     /// there is a conflict between them)
-    pub fn unify(&mut self, a: TypeId, b: TypeId) -> Result<(), String> {
+    fn unify(&mut self, a: TypeId, b: TypeId) -> Result<(), String> {
         match (self.types[&a].clone(), self.types[&b].clone()) {
             // Follow any references
             (TypeInfo::Ref(a), _) => self.unify(a, b),
@@ -115,7 +96,7 @@ impl Engine {
     /// Attempt to reconstruct a concrete type from the given type term ID. This
     /// may fail if we don't yet have enough information to figure out what the
     /// type is.
-    pub fn reconstruct(&self, id: TypeId) -> Result<TypeKind, String> {
+    fn reconstruct(&self, id: TypeId) -> Result<TypeKind, String> {
         match self.types[&id].clone() {
             TypeInfo::Infer => Err(format!("Cannot infer")),
             TypeInfo::Ref(id) => self.reconstruct(id),
@@ -126,114 +107,14 @@ impl Engine {
         }
     }
 
-    pub fn walk(&mut self, hir: &mut [Hir]) -> Result<(), String> {
+    pub fn walk(&mut self, hir: &mut [Item]) -> Result<(), String> {
         for node in hir {
             match node {
-                Hir::Function(func) => self.func(func)?,
+                Item::Function(func) => self.visit_func(func)?,
             }
         }
 
         Ok(())
-    }
-
-    pub fn func(&mut self, func: &mut Function) -> Result<(), String> {
-        let params: Vec<_> = func.args.iter().map(|param| self.insert(param)).collect();
-
-        let mut ty = self.insert_bare(TypeInfo::Infer);
-        for stmt in func.body.iter_mut() {
-            ty = self.stmt(stmt)?;
-        }
-
-        let ret = self.insert(&ladder::TypeInfo {
-            name: ItemPath::default(),
-            kind: func.return_ty,
-        });
-        self.unify(ty, ret)?;
-        func.return_ty = self.reconstruct(ty)?;
-
-        for (i, param) in params.into_iter().enumerate() {
-            func.params[i].kind = self.reconstruct(param)?;
-        }
-
-        Ok(())
-    }
-
-    pub fn stmt(&mut self, stmt: &mut Stmt) -> Result<TypeId, String> {
-        Ok(match stmt {
-            Stmt::VarDecl(VarDecl { name: _, value, ty }) => {
-                let var = self.insert(ty);
-                let expr = self.expr(value)?;
-
-                self.unify(var, expr)?;
-                ty.kind = self.reconstruct(var)?;
-
-                self.insert_bare(TypeInfo::Unit)
-            }
-            Stmt::Expr(expr) => self.expr(expr)?,
-            Stmt::Match(Match {
-                condition,
-                arms,
-                ty,
-            }) => {
-                let cond = self.expr(condition)?;
-
-                let mut arm_types = Vec::new();
-                for MatchArm {
-                    condition,
-                    body,
-                    ty,
-                } in arms.iter_mut()
-                {
-                    let arm_ty = self.insert_bare(TypeInfo::from(*ty));
-                    let arm_cond = self.expr(condition)?;
-                    self.unify(cond, arm_cond)?;
-
-                    let arm_ret = body
-                        .iter_mut()
-                        .map(|s| self.stmt(s))
-                        .collect::<Result<Vec<TypeId>, String>>()?
-                        .get(0)
-                        .copied()
-                        .unwrap_or_else(|| self.insert_bare(TypeInfo::Unit));
-
-                    self.unify(arm_ty, arm_ret)?;
-                    *ty = self.reconstruct(arm_ty)?;
-
-                    arm_types.push(arm_ty);
-                }
-
-                let match_ty = self.insert_bare(TypeInfo::from(*ty));
-                for arm in arm_types {
-                    self.unify(match_ty, arm)?;
-                }
-                *ty = self.reconstruct(match_ty)?;
-
-                match_ty
-            }
-
-            _ => todo!(),
-        })
-    }
-
-    pub fn expr(&mut self, expr: &mut Expr) -> Result<TypeId, String> {
-        Ok(match expr {
-            Expr::Literal(lit) => match lit {
-                Literal::Integer(..) => self.insert_bare(TypeInfo::Integer),
-                Literal::Bool(..) => self.insert_bare(TypeInfo::Bool),
-                Literal::String(..) => self.insert_bare(TypeInfo::String),
-
-                _ => todo!(),
-            },
-            Expr::Var(path) => self.get(path)?,
-            Expr::Comparison(left, _op, right) => {
-                let (left, right) = (self.expr(left)?, self.expr(right)?);
-                self.unify(left, right)?;
-
-                self.insert_bare(TypeInfo::Bool)
-            }
-
-            _ => todo!(),
-        })
     }
 
     pub fn type_of(&self, var: &ItemPath) -> Option<TypeKind> {
@@ -241,10 +122,188 @@ impl Engine {
     }
 }
 
+impl ItemVisitor for Engine {
+    type Output = Result<(), String>;
+
+    fn visit_func(
+        &mut self,
+        Function {
+            args, body, ret, ..
+        }: &mut Function,
+    ) -> Self::Output {
+        let func_args: Vec<_> = args
+            .iter()
+            .map(|FuncArg { name, kind }| self.insert(name, kind))
+            .collect();
+
+        let mut ty = self.insert_bare(TypeInfo::Infer);
+        for stmt in body.iter_mut() {
+            ty = self.visit_stmt(stmt)?;
+        }
+
+        let ret_type = self.insert(&ItemPath::default(), &ret);
+        self.unify(ty, ret_type)?;
+        *ret = self.reconstruct(ty)?;
+
+        for (i, arg) in func_args.into_iter().enumerate() {
+            args[i].kind = self.reconstruct(arg)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl StmtVisitor for Engine {
+    type Output = Result<TypeId, String>;
+
+    #[inline]
+    fn visit_stmt(&mut self, stmt: &mut Stmt) -> <Self as StmtVisitor>::Output {
+        match stmt {
+            Stmt::VarDecl(decl) => self.visit_var_decl(decl),
+            Stmt::Item(item) => {
+                self.visit_item(item)?;
+
+                // FIXME: This is bad, very bad
+                Ok(0)
+            }
+            Stmt::Expr(expr) => self.visit_expr(expr),
+        }
+    }
+
+    fn visit_var_decl(
+        &mut self,
+        VarDecl { name, value, ty }: &mut VarDecl,
+    ) -> <Self as StmtVisitor>::Output {
+        let var = self.insert(name, &ty.kind);
+        let expr = self.visit_expr(value)?;
+
+        self.unify(var, expr)?;
+        ty.kind = self.reconstruct(var)?;
+
+        Ok(self.insert_bare(TypeInfo::Unit))
+    }
+}
+
+impl ExprVisitor for Engine {
+    type Output = Result<TypeId, String>;
+
+    fn visit_return(&mut self, _value: &mut Return) -> Self::Output {
+        todo!()
+    }
+
+    fn visit_break(&mut self, _value: &mut Break) -> Self::Output {
+        todo!()
+    }
+
+    fn visit_continue(&mut self) -> Self::Output {
+        todo!()
+    }
+
+    fn visit_loop(&mut self, _body: &mut Block<Stmt>) -> Self::Output {
+        todo!()
+    }
+
+    fn visit_match(&mut self, Match { cond, arms, ty }: &mut Match) -> Self::Output {
+        let match_cond = self.visit_expr(cond)?;
+
+        let mut arm_types = Vec::new();
+        for MatchArm { cond, body, ty } in arms.iter_mut() {
+            let arm_ty = self.insert_bare(TypeInfo::from(&*ty));
+            let arm_cond = self.visit_expr(cond)?;
+            self.unify(match_cond, arm_cond)?;
+
+            let arm_ret = body
+                .iter_mut()
+                .map(|s| self.visit_stmt(s))
+                .collect::<Result<Vec<TypeId>, String>>()?
+                .get(0)
+                .copied()
+                .unwrap_or_else(|| self.insert_bare(TypeInfo::Unit));
+
+            self.unify(arm_ty, arm_ret)?;
+            *ty = self.reconstruct(arm_ty)?;
+
+            arm_types.push(arm_ty);
+        }
+
+        let match_ty = self.insert_bare(TypeInfo::from(&*ty));
+        for arm in arm_types {
+            self.unify(match_ty, arm)?;
+        }
+        *ty = self.reconstruct(match_ty)?;
+
+        Ok(match_ty)
+    }
+
+    fn visit_variable(&mut self, var: StrT, _ty: &mut TypeKind) -> Self::Output {
+        self.get(&ItemPath::new(var))
+    }
+
+    fn visit_literal(&mut self, literal: &mut Literal) -> Self::Output {
+        let info = TypeInfo::from(&*literal);
+        let id = self.insert_bare(info);
+
+        Ok(id)
+    }
+
+    fn visit_scope(&mut self, _body: &mut Block<Stmt>) -> Self::Output {
+        todo!()
+    }
+
+    fn visit_func_call(&mut self, _call: &mut FuncCall) -> Self::Output {
+        todo!()
+    }
+
+    fn visit_comparison(&mut self, lhs: &mut Expr, _op: CompOp, rhs: &mut Expr) -> Self::Output {
+        let (left, right) = (self.visit_expr(lhs)?, self.visit_expr(rhs)?);
+        self.unify(left, right)?;
+
+        Ok(self.insert_bare(TypeInfo::Bool))
+    }
+}
+
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+enum TypeInfo {
+    Ref(TypeId),
+    Infer,
+    Integer,
+    String,
+    Bool,
+    Unit,
+}
+
+impl From<&Literal> for TypeInfo {
+    fn from(literal: &Literal) -> Self {
+        match literal {
+            Literal::Integer(..) => Self::Integer,
+            Literal::Bool(..) => Self::Bool,
+            Literal::String(..) => Self::String,
+
+            _ => todo!(),
+        }
+    }
+}
+
+impl From<&TypeKind> for TypeInfo {
+    fn from(kind: &TypeKind) -> Self {
+        match kind {
+            TypeKind::Infer => Self::Infer,
+            TypeKind::Integer => Self::Integer,
+            TypeKind::String => Self::String,
+            TypeKind::Bool => Self::Bool,
+            TypeKind::Unit => Self::Unit,
+        }
+    }
+}
+
 #[test]
 fn test() {
-    use crunch_parser::{Context, CurrentFile, Parser};
-    use crunch_shared::files::FileId;
+    use crunch_parser::Parser;
+    use crunch_shared::{
+        context::Context,
+        files::{CurrentFile, FileId, Files},
+    };
+    use ladder::Ladder;
 
     let source = r#"
     fn main()
@@ -270,20 +329,26 @@ fn test() {
     "#;
 
     let ctx = Context::default();
-    let mut files = crunch_shared::files::Files::new();
+    let mut files = Files::new();
     files.add("<test>", source);
 
-    match Parser::new(source, CurrentFile::new(FileId::new(0), source.len()), &ctx).parse() {
+    match Parser::new(
+        source,
+        CurrentFile::new(FileId::new(0), source.len()),
+        ctx.clone(),
+    )
+    .parse()
+    {
         Ok((ast, mut warnings, module_table, module_scope)) => {
             warnings.emit(&files);
 
             println!("Nodes: {:#?}", &ast);
             println!("Symbols: {:#?}", &module_scope);
 
-            let ladder = Ladder::new(
+            let mut ladder = Ladder::new(
                 module_table,
                 module_scope,
-                ItemPath::new(ctx.intern("package")),
+                ItemPath::new(ctx.strings.intern("package")),
             );
 
             let mut hir = ladder.lower(&ast);
@@ -296,7 +361,7 @@ fn test() {
             println!(
                 "Type of `greeting`: {:?}",
                 engine
-                    .type_of(&ItemPath::new(vec![ctx.intern("greeting")]))
+                    .type_of(&ItemPath::new(vec![ctx.strings.intern("greeting")]))
                     .unwrap(),
             );
         }

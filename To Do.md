@@ -83,7 +83,8 @@
 - [ ] AST Visitor
   - [x] Trait
   - [x] Semantic checker
-  - [ ] Ladder
+  - [x] Ladder
+  - [x] Typecheck
   - [ ] Symbol table
   - [ ] Pretty printer
     - [ ] Remove this entirely in favor of better methods?

@@ -1,3 +1,4 @@
+use crate::error::{Location, Span};
 use alloc::{string::String, vec::Vec};
 use codespan_reporting::files;
 use core::ops::Range;
@@ -100,5 +101,56 @@ impl<'files> files::Files<'files> for Files {
         let next_line_start = file.line_start(line_index + 1)?;
 
         Some(line_start..next_line_start)
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct CurrentFile {
+    file: FileId,
+    length: usize,
+    index: usize,
+}
+
+impl CurrentFile {
+    pub const fn new(file: FileId, length: usize) -> Self {
+        Self {
+            file,
+            length,
+            index: 0,
+        }
+    }
+
+    pub const fn file(&self) -> FileId {
+        self.file
+    }
+
+    pub const fn length(&self) -> usize {
+        self.length
+    }
+
+    pub const fn index(&self) -> usize {
+        self.index
+    }
+
+    pub fn eof(&self) -> Location {
+        Location::concrete(Span::new(self.length, self.length), self.file)
+    }
+
+    pub fn advance(&mut self, dist: usize) {
+        self.index += dist;
+    }
+
+    pub const fn index_span(&self) -> Span {
+        Span::new(self.index, self.index)
+    }
+
+    pub fn recursion(&self) -> Location {
+        Location::concrete(self.index_span(), self.file)
+    }
+}
+
+impl Into<FileId> for CurrentFile {
+    fn into(self) -> FileId {
+        self.file
     }
 }

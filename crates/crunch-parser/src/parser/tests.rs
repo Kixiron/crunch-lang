@@ -7,9 +7,12 @@ use crunch_shared::{
     error::{Error, Locatable, SyntaxError},
     files::FileId,
     strings::StrT,
-    trees::ast::{
-        AssignKind, BinaryOp, CompOp, ExprKind, Integer, ItemPath, Literal, Ref, Sign, Signedness,
-        Type,
+    trees::{
+        ast::{
+            AssignKind, BinaryOp, CompOp, ExprKind, Integer, ItemPath, Literal, Sign, Signedness,
+            Type,
+        },
+        Ref,
     },
 };
 

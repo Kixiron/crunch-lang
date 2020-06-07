@@ -1,9 +1,12 @@
 use crate::{
     strings::StrT,
-    trees::ast::{
-        AssignKind, BinaryOp, Block, CompOp, Dest, Exposure, Expr, ExprKind, For, FuncArg, If,
-        Item, ItemKind, ItemPath, Literal, Loop, Match, Sided, Stmt, StmtKind, Type, TypeMember,
-        UnaryOp, VarDecl, Variant, While,
+    trees::{
+        ast::{
+            AssignKind, BinaryOp, Block, CompOp, Dest, Exposure, Expr, ExprKind, For, FuncArg, If,
+            Item, ItemKind, ItemPath, Literal, Loop, Match, Stmt, StmtKind, Type, TypeMember,
+            UnaryOp, VarDecl, Variant, While,
+        },
+        Sided,
     },
 };
 

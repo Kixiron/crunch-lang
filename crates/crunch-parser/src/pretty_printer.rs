@@ -4,10 +4,13 @@ use core::fmt::{Result, Write};
 use crunch_shared::{
     context::Context,
     strings::StrT,
-    trees::ast::{
-        Arm, Binding, Block, Decorator, Dest, Exposure, Expr, ExprKind, For, FuncArg, If, IfCond,
-        Item, ItemKind, ItemPath, Literal, Loop, Match, Pattern, Sided, Stmt, StmtKind, Type,
-        TypeMember, VarDecl, Variant, Vis, While,
+    trees::{
+        ast::{
+            Arm, Binding, Block, Decorator, Dest, Exposure, Expr, ExprKind, For, FuncArg, If,
+            IfCond, Item, ItemKind, ItemPath, Literal, Loop, Match, Pattern, Stmt, StmtKind, Type,
+            TypeMember, VarDecl, Variant, Vis, While,
+        },
+        Sided,
     },
 };
 

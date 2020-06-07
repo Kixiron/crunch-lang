@@ -5,82 +5,19 @@ use crunch_shared::{
         ast::{
             AssignKind, BinaryOp, Block as AstBlock, CompOp, Dest as AstDest,
             Exposure as AstExposure, Expr as AstExpr, ExprKind as AstExprKind, For as AstFor,
-            FuncArg as AstFuncArg, If as AstIf, IfCond as AstIfCond, Item, ItemPath, Literal,
-            Loop as AstLoop, Match as AstMatch, Stmt as AstStmt, Type as AstType,
+            FuncArg as AstFuncArg, If as AstIf, IfCond as AstIfCond, Item as AstItem, ItemPath,
+            Literal, Loop as AstLoop, Match as AstMatch, Stmt as AstStmt, Type as AstType,
             TypeMember as AstTypeMember, UnaryOp, VarDecl as AstVarDecl, Variant as AstVariant,
             While as AstWhile,
         },
         hir::{
-            Break, Expr, FuncArg, FuncCall, Function, Hir, Match, MatchArm, Ref, Return, Stmt,
-            Type, TypeKind, VarDecl, Vis,
+            Break, Expr, FuncArg, FuncCall, Function, Item, Match, MatchArm, Return, Stmt, Type,
+            TypeKind, VarDecl, Vis,
         },
+        Ref, Sided,
     },
     visitors::ast::{ExprVisitor, ItemVisitor, StmtVisitor},
 };
-
-#[test]
-fn test() {
-    use crunch_parser::{CurrentFile, Parser};
-    use crunch_shared::{context::Context, files::FileId};
-
-    let source = r#"
-    fn main()
-        let mut greeting := "Hello from Crunch!"
-        println(greeting)
-
-        if greeting == "Hello"
-            println("You said hello")
-        else
-            println("You didn't say hello :(")
-        end
-
-        loop
-            println("Over and over again")
-        end
-
-        match greeting
-            string where string == "some string" =>
-                println("this can't happen")
-            end
-
-            greeting =>
-                println("{}", greeting)
-            end
-        end
-    end
-    "#;
-
-    let ctx = Context::default();
-    let mut files = crunch_shared::files::Files::new();
-    files.add("<test>", source);
-
-    match Parser::new(
-        source,
-        CurrentFile::new(FileId::new(0), source.len()),
-        ctx.clone(),
-    )
-    .parse()
-    {
-        Ok((ast, mut warnings, module_table, module_scope)) => {
-            warnings.emit(&files);
-
-            println!("Nodes: {:#?}", &ast);
-            println!("Symbols: {:#?}", &module_scope);
-
-            let mut ladder = Ladder::new(
-                module_table,
-                module_scope,
-                ItemPath::new(ctx.strings.intern("package")),
-            );
-
-            println!("HIR: {:#?}", ladder.lower(&ast));
-        }
-
-        Err(mut err) => {
-            err.emit(&files);
-        }
-    }
-}
 
 pub struct Ladder {
     module_table: Graph<Scope, MaybeSym>,
@@ -101,17 +38,17 @@ impl Ladder {
         }
     }
 
-    pub fn lower(&mut self, items: &[Item]) -> Vec<Hir> {
+    pub fn lower(&mut self, items: &[AstItem]) -> Vec<Item> {
         items.iter().map(|item| self.visit_item(item)).collect()
     }
 }
 
 impl ItemVisitor for Ladder {
-    type Output = Hir;
+    type Output = Item;
 
     fn visit_func(
         &mut self,
-        item: &Item,
+        item: &AstItem,
         _generics: &[AstType],
         args: &[AstFuncArg],
         body: &AstBlock,
@@ -139,18 +76,18 @@ impl ItemVisitor for Ladder {
         let func = Function {
             name,
             // TODO: Parse this out
-            visibility: Vis::FileLocal,
+            vis: Vis::FileLocal,
             args,
             body,
             ret: TypeKind::from(ret),
         };
 
-        Hir::Function(func)
+        Item::Function(func)
     }
 
     fn visit_type(
         &mut self,
-        _item: &Item,
+        _item: &AstItem,
         _generics: &[AstType],
         _members: &[AstTypeMember],
     ) -> Self::Output {
@@ -159,7 +96,7 @@ impl ItemVisitor for Ladder {
 
     fn visit_enum(
         &mut self,
-        _item: &Item,
+        _item: &AstItem,
         _generics: &[AstType],
         _variants: &[AstVariant],
     ) -> Self::Output {
@@ -168,16 +105,16 @@ impl ItemVisitor for Ladder {
 
     fn visit_trait(
         &mut self,
-        _item: &Item,
+        _item: &AstItem,
         _generics: &[AstType],
-        _methods: &[Item],
+        _methods: &[AstItem],
     ) -> Self::Output {
         todo!()
     }
 
     fn visit_import(
         &mut self,
-        _item: &Item,
+        _item: &AstItem,
         _file: &ItemPath,
         _dest: &AstDest,
         _exposes: &AstExposure,
@@ -187,15 +124,20 @@ impl ItemVisitor for Ladder {
 
     fn visit_extend_block(
         &mut self,
-        _item: &Item,
+        _item: &AstItem,
         _target: &AstType,
         _extender: Option<&AstType>,
-        _items: &[Item],
+        _items: &[AstItem],
     ) -> Self::Output {
         todo!()
     }
 
-    fn visit_alias(&mut self, _item: &Item, _alias: &AstType, _actual: &AstType) -> Self::Output {
+    fn visit_alias(
+        &mut self,
+        _item: &AstItem,
+        _alias: &AstType,
+        _actual: &AstType,
+    ) -> Self::Output {
         todo!()
     }
 }
@@ -308,7 +250,7 @@ impl ExprVisitor for Ladder {
     }
 
     fn visit_variable(&mut self, _expr: &AstExpr, var: StrT) -> Self::Output {
-        Expr::Var(ItemPath::new(var))
+        Expr::Variable(var, TypeKind::Infer)
     }
 
     fn visit_literal(&mut self, _expr: &AstExpr, literal: &Literal) -> Self::Output {
@@ -336,11 +278,11 @@ impl ExprVisitor for Ladder {
         op: CompOp,
         rhs: &AstExpr,
     ) -> Self::Output {
-        Expr::Comparison(
-            Ref::new(self.visit_expr(lhs)),
+        Expr::Comparison(Sided {
+            lhs: Ref::new(self.visit_expr(lhs)),
             op,
-            Ref::new(self.visit_expr(rhs)),
-        )
+            rhs: Ref::new(self.visit_expr(rhs)),
+        })
     }
 
     fn visit_assign(
@@ -396,5 +338,72 @@ impl ExprVisitor for Ladder {
         _func: &AstExpr,
     ) -> Self::Output {
         todo!()
+    }
+}
+
+#[test]
+fn test() {
+    use crunch_parser::Parser;
+    use crunch_shared::{
+        context::Context,
+        files::{CurrentFile, FileId},
+    };
+
+    let source = r#"
+    fn main()
+        let mut greeting := "Hello from Crunch!"
+        println(greeting)
+
+        if greeting == "Hello"
+            println("You said hello")
+        else
+            println("You didn't say hello :(")
+        end
+
+        loop
+            println("Over and over again")
+        end
+
+        match greeting
+            string where string == "some string" =>
+                println("this can't happen")
+            end
+
+            greeting =>
+                println("{}", greeting)
+            end
+        end
+    end
+    "#;
+
+    let ctx = Context::default();
+    let mut files = crunch_shared::files::Files::new();
+    files.add("<test>", source);
+
+    match Parser::new(
+        source,
+        CurrentFile::new(FileId::new(0), source.len()),
+        ctx.clone(),
+    )
+    .parse()
+    {
+        Ok((ast, mut warnings, module_table, module_scope)) => {
+            warnings.emit(&files);
+
+            println!("Nodes: {:#?}", &ast);
+            println!("Symbols: {:#?}", &module_scope);
+
+            let mut ladder = Ladder::new(
+                module_table,
+                module_scope,
+                ItemPath::new(ctx.strings.intern("package")),
+            );
+
+            println!("HIR: {:#?}", ladder.lower(&ast));
+        }
+
+        Err(mut err) => {
+            err.emit(&files);
+        }
     }
 }

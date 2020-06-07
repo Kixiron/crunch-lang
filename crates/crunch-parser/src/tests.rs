@@ -1,10 +1,10 @@
 //! Regression tests for found crashes
 
-use crate::parser::{CurrentFile, Parser};
+use crate::parser::Parser;
 use crunch_shared::{
     context::Context,
     error::ErrorHandler,
-    files::FileId,
+    files::{CurrentFile, FileId},
     symbol_table::{Graph, MaybeSym, NodeId, Scope},
     trees::ast::Item,
 };

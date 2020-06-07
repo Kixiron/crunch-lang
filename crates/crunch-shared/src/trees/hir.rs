@@ -1,21 +1,22 @@
-use core::{
-    fmt::{Debug, Display, Formatter, Result},
-    ops::Deref,
+use crate::{
+    strings::StrT,
+    trees::{Ref, Sided},
 };
+use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
 
 // TODO: Make equivalents of everything in HIR, even though it's duplicated code
 pub use super::ast::{CompOp, ItemPath, Literal, Vis};
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub enum Hir {
+pub enum Item {
     Function(Function),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Function {
     pub name: ItemPath,
-    pub visibility: Vis,
+    pub vis: Vis,
     pub args: Vec<FuncArg>,
     pub body: Block<Stmt>,
     pub ret: TypeKind,
@@ -29,15 +30,15 @@ pub struct FuncArg {
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum Stmt {
-    Hir(Hir),
+    Item(Item),
     Expr(Expr),
     VarDecl(VarDecl),
 }
 
-impl From<Hir> for Stmt {
+impl From<Item> for Stmt {
     #[inline]
-    fn from(hir: Hir) -> Self {
-        Self::Hir(hir)
+    fn from(item: Item) -> Self {
+        Self::Item(item)
     }
 }
 
@@ -58,8 +59,8 @@ pub enum Expr {
     Break(Break),
     FnCall(FuncCall),
     Literal(Literal),
-    Var(ItemPath),
-    Comparison(Ref<Expr>, CompOp, Ref<Expr>),
+    Comparison(Sided<CompOp, Ref<Expr>>),
+    Variable(StrT, TypeKind),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -119,6 +120,11 @@ impl<T> Block<T> {
     pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a T> + 'a {
         self.block.iter()
     }
+
+    #[inline]
+    pub fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut T> + 'a {
+        self.block.iter_mut()
+    }
 }
 
 impl<T> core::iter::FromIterator<T> for Block<T> {
@@ -165,45 +171,5 @@ impl From<&crate::trees::ast::Type> for TypeKind {
 
             _ => todo!(),
         }
-    }
-}
-
-#[derive(Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct Ref<T>(Box<T>);
-
-impl<T> Ref<T> {
-    #[inline]
-    pub fn new(val: T) -> Self {
-        Self(Box::new(val))
-    }
-}
-
-impl<T> AsRef<T> for Ref<T> {
-    #[inline]
-    fn as_ref(&self) -> &T {
-        &*self.0
-    }
-}
-
-impl<T> Deref for Ref<T> {
-    type Target = T;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &*self.0
-    }
-}
-
-impl<T: Debug> Debug for Ref<T> {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        Debug::fmt(&*self.0, f)
-    }
-}
-
-impl<T: Display> Display for Ref<T> {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        Display::fmt(&*self.0, f)
     }
 }

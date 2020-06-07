@@ -11,8 +11,8 @@ use alloc::{
 };
 use crunch_proc::recursion_guard;
 use crunch_shared::{
-    error::{Error, Locatable, Location, ParseResult, Span, SyntaxError},
-    files::FileId,
+    error::{Error, Locatable, Location, ParseResult, SyntaxError},
+    files::CurrentFile,
     strings::StrT,
     trees::ast::{AssignKind, BinaryOp, CompOp, Float, Integer, ItemPath, Literal, Sign, UnaryOp},
 };
@@ -446,56 +446,5 @@ impl<'src> Parser<'src> {
         };
 
         Ok(op)
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct CurrentFile {
-    file: FileId,
-    length: usize,
-    index: usize,
-}
-
-impl CurrentFile {
-    pub const fn new(file: FileId, length: usize) -> Self {
-        Self {
-            file,
-            length,
-            index: 0,
-        }
-    }
-
-    pub const fn file(&self) -> FileId {
-        self.file
-    }
-
-    pub const fn length(&self) -> usize {
-        self.length
-    }
-
-    pub const fn index(&self) -> usize {
-        self.index
-    }
-
-    pub fn eof(&self) -> Location {
-        Location::concrete(Span::new(self.length, self.length), self.file)
-    }
-
-    pub fn advance(&mut self, dist: usize) {
-        self.index += dist;
-    }
-
-    pub const fn index_span(&self) -> Span {
-        Span::new(self.index, self.index)
-    }
-
-    pub fn recursion(&self) -> Location {
-        Location::concrete(self.index_span(), self.file)
-    }
-}
-
-impl Into<FileId> for CurrentFile {
-    fn into(self) -> FileId {
-        self.file
     }
 }
