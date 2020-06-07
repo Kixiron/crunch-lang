@@ -148,7 +148,7 @@ pub struct Decorator {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub enum Attribute {
     Const,
     Async,
