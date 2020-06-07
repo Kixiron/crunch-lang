@@ -1,6 +1,8 @@
 use crate::{
-    ast::{Expr, Item, ItemKind, ItemPath, Stmt, StmtKind, Type, VarDecl, Variant as AstVariant},
     strings::StrT,
+    trees::ast::{
+        Expr, Item, ItemKind, ItemPath, Stmt, StmtKind, Type, VarDecl, Variant as AstVariant,
+    },
     utils::HashMap,
 };
 use alloc::vec::Vec;

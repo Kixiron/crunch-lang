@@ -13,23 +13,26 @@ extern crate alloc;
 use alloc::{borrow::ToOwned, boxed::Box, vec::Vec};
 use core::fmt;
 use crunch_shared::{
-    ast::{FuncArg, Item, TypeMember, Variant},
     context::Context,
     error::{Error, ErrorHandler, Locatable, SemanticError, Warning},
-    strings::StrInterner,
+    strings::{StrInterner, StrT},
+    trees::ast::{
+        AssignKind, BinaryOp, Block, CompOp, Dest, Exposure, Expr, For, FuncArg, If, Item,
+        ItemPath, Literal, Loop, Match, Stmt, Type, TypeMember, UnaryOp, VarDecl, Variant, While,
+    },
     utils::HashMap,
-    visitors::AstVisitor,
+    visitors::ast::{ExprVisitor, ItemVisitor, StmtVisitor},
 };
 
 // FIXME: Actual errors here
-pub trait Analyzer: AstVisitor {
+pub trait Analyzer: ItemVisitor {
     fn name(&self) -> &str;
     fn load(&mut self, error_handler: ErrorHandler, context: Context);
     fn unload(&mut self) -> ErrorHandler;
 }
 
 pub struct SemanticAnalyzer {
-    passes: Vec<Box<dyn Analyzer>>,
+    passes: Vec<Box<dyn Analyzer<Output = ()>>>,
 }
 
 impl SemanticAnalyzer {
@@ -43,14 +46,14 @@ impl SemanticAnalyzer {
         }
     }
 
-    pub fn pass<T: Analyzer + 'static>(mut self, pass: T) -> Self {
+    pub fn pass<T: Analyzer<Output = ()> + 'static>(mut self, pass: T) -> Self {
         self.passes.push(Box::new(pass));
         self
     }
 
     pub fn passes<I>(mut self, passes: I) -> Self
     where
-        I: Iterator<Item = Box<dyn Analyzer>>,
+        I: Iterator<Item = Box<dyn Analyzer<Output = ()>>>,
     {
         self.passes.extend(passes);
         self
@@ -122,14 +125,16 @@ impl Analyzer for Correctness {
 }
 
 // TODO: So much information skipped here
-impl AstVisitor for Correctness {
+impl ItemVisitor for Correctness {
+    type Output = ();
+
     fn visit_func(
         &mut self,
         item: &Item,
-        _generics: &[crunch_shared::ast::Type],
+        _generics: &[Type],
         args: &[FuncArg],
-        body: &crunch_shared::ast::Block,
-        _ret: &crunch_shared::ast::Type,
+        body: &Block,
+        _ret: &Type,
     ) {
         // Errors for empty function bodies
         if body.is_empty() {
@@ -161,12 +166,7 @@ impl AstVisitor for Correctness {
         }
     }
 
-    fn visit_type(
-        &mut self,
-        item: &Item,
-        generics: &[crunch_shared::ast::Type],
-        members: &[TypeMember],
-    ) {
+    fn visit_type(&mut self, item: &Item, generics: &[Type], members: &[TypeMember]) {
         // Errors for empty type bodies
         if members.is_empty() {
             self.errors().push_err(Locatable::new(
@@ -254,12 +254,7 @@ impl AstVisitor for Correctness {
         // }
     }
 
-    fn visit_enum(
-        &mut self,
-        item: &Item,
-        generics: &[crunch_shared::ast::Type],
-        variants: &[Variant],
-    ) {
+    fn visit_enum(&mut self, item: &Item, generics: &[Type], variants: &[Variant]) {
         // Check for duplicated variants and unused generics
         let mut variant_map = HashMap::with_capacity(variants.len());
         let mut generics: Vec<_> = generics.iter().map(|g| (g, false)).collect();
@@ -305,15 +300,53 @@ impl AstVisitor for Correctness {
         }
     }
 
-    fn visit_trait(
-        &mut self,
-        _item: &Item,
-        _generics: &[crunch_shared::ast::Type],
-        methods: &[Item],
-    ) {
+    fn visit_trait(&mut self, _item: &Item, _generics: &[Type], methods: &[Item]) {
         // Analyze all the methods
         for method in methods {
             self.visit_item(method);
         }
     }
+
+    fn visit_import(&mut self, _item: &Item, _file: &ItemPath, _dest: &Dest, _exposes: &Exposure) {}
+    fn visit_extend_block(
+        &mut self,
+        _item: &Item,
+        _target: &Type,
+        _extender: Option<&Type>,
+        _items: &[Item],
+    ) {
+    }
+    fn visit_alias(&mut self, _item: &Item, _alias: &Type, _actual: &Type) {}
+}
+
+impl StmtVisitor for Correctness {
+    type Output = <Self as ItemVisitor>::Output;
+
+    fn visit_var_decl(&mut self, _stmt: &Stmt, _var: &VarDecl) {}
+}
+
+impl ExprVisitor for Correctness {
+    type Output = <Self as ItemVisitor>::Output;
+
+    fn visit_if(&mut self, _expr: &Expr, _if_: &If) {}
+    fn visit_return(&mut self, _expr: &Expr, _value: Option<&Expr>) {}
+    fn visit_break(&mut self, _expr: &Expr, _value: Option<&Expr>) {}
+    fn visit_continue(&mut self, _expr: &Expr) {}
+    fn visit_while(&mut self, _expr: &Expr, _while_: &While) {}
+    fn visit_loop(&mut self, _expr: &Expr, _loop_: &Loop) {}
+    fn visit_for(&mut self, _expr: &Expr, _for_: &For) {}
+    fn visit_match(&mut self, _expr: &Expr, _match_: &Match) {}
+    fn visit_variable(&mut self, _expr: &Expr, _var: StrT) {}
+    fn visit_literal(&mut self, _expr: &Expr, _literal: &Literal) {}
+    fn visit_unary(&mut self, _expr: &Expr, _op: UnaryOp, _inner: &Expr) {}
+    fn visit_binary_op(&mut self, _expr: &Expr, _lhs: &Expr, _op: BinaryOp, _rhs: &Expr) {}
+    fn visit_comparison(&mut self, _expr: &Expr, _lhs: &Expr, _op: CompOp, _rhs: &Expr) {}
+    fn visit_assign(&mut self, _expr: &Expr, _lhs: &Expr, _op: AssignKind, _rhs: &Expr) {}
+    fn visit_paren(&mut self, _expr: &Expr, _inner: &Expr) {}
+    fn visit_array(&mut self, _expr: &Expr, _elements: &[Expr]) {}
+    fn visit_tuple(&mut self, _expr: &Expr, _elements: &[Expr]) {}
+    fn visit_range(&mut self, _expr: &Expr, _start: &Expr, _end: &Expr) {}
+    fn visit_index(&mut self, _expr: &Expr, _var: &Expr, _index: &Expr) {}
+    fn visit_func_call(&mut self, _expr: &Expr, _caller: &Expr, _args: &[Expr]) {}
+    fn visit_member_func_call(&mut self, _expr: &Expr, _member: &Expr, _func: &Expr) {}
 }

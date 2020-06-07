@@ -2,6 +2,7 @@
 name = "crunch-codegen"
 version = "0.1.0"
 authors = ["Chase Wilson <me@chasewilson.dev>"]
+license = "Zlib"
 edition = "2018"
 
 [dependencies.ladder]

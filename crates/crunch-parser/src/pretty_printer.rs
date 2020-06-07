@@ -2,13 +2,13 @@
 use alloc::{format, vec::Vec};
 use core::fmt::{Result, Write};
 use crunch_shared::{
-    ast::{
+    context::Context,
+    strings::StrT,
+    trees::ast::{
         Arm, Binding, Block, Decorator, Dest, Exposure, Expr, ExprKind, For, FuncArg, If, IfCond,
         Item, ItemKind, ItemPath, Literal, Loop, Match, Pattern, Sided, Stmt, StmtKind, Type,
         TypeMember, VarDecl, Variant, Vis, While,
     },
-    context::Context,
-    strings::StrT,
 };
 
 #[derive(Debug)]

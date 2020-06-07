@@ -1,16 +1,18 @@
 use crate::{
-    ast::{
+    strings::StrT,
+    trees::ast::{
         AssignKind, BinaryOp, Block, CompOp, Dest, Exposure, Expr, ExprKind, For, FuncArg, If,
         Item, ItemKind, ItemPath, Literal, Loop, Match, Sided, Stmt, StmtKind, Type, TypeMember,
         UnaryOp, VarDecl, Variant, While,
     },
-    strings::StrT,
 };
 
 #[allow(unused_variables)]
-pub trait AstVisitor {
+pub trait ItemVisitor {
+    type Output;
+
     #[inline]
-    fn visit_item(&mut self, item: &Item) {
+    fn visit_item(&mut self, item: &Item) -> Self::Output {
         match &item.kind {
             ItemKind::Func {
                 generics,
@@ -44,35 +46,56 @@ pub trait AstVisitor {
         args: &[FuncArg],
         body: &Block,
         ret: &Type,
-    ) {
-    }
-    fn visit_type(&mut self, item: &Item, generics: &[Type], members: &[TypeMember]) {}
-    fn visit_enum(&mut self, item: &Item, generics: &[Type], variants: &[Variant]) {}
-    fn visit_trait(&mut self, item: &Item, generics: &[Type], methods: &[Item]) {}
-    fn visit_import(&mut self, item: &Item, file: &ItemPath, dest: &Dest, exposes: &Exposure) {}
+    ) -> Self::Output;
+    fn visit_type(
+        &mut self,
+        item: &Item,
+        generics: &[Type],
+        members: &[TypeMember],
+    ) -> Self::Output;
+    fn visit_enum(&mut self, item: &Item, generics: &[Type], variants: &[Variant]) -> Self::Output;
+    fn visit_trait(&mut self, item: &Item, generics: &[Type], methods: &[Item]) -> Self::Output;
+    fn visit_import(
+        &mut self,
+        item: &Item,
+        file: &ItemPath,
+        dest: &Dest,
+        exposes: &Exposure,
+    ) -> Self::Output;
     fn visit_extend_block(
         &mut self,
         item: &Item,
         target: &Type,
         extender: Option<&Type>,
         items: &[Item],
-    ) {
-    }
-    fn visit_alias(&mut self, item: &Item, alias: &Type, actual: &Type) {}
+    ) -> Self::Output;
+    fn visit_alias(&mut self, item: &Item, alias: &Type, actual: &Type) -> Self::Output;
+}
+
+pub trait StmtVisitor: ItemVisitor + ExprVisitor
+where
+    <Self as ItemVisitor>::Output: Into<<Self as StmtVisitor>::Output>,
+    <Self as ExprVisitor>::Output: Into<<Self as StmtVisitor>::Output>,
+{
+    type Output;
 
     #[inline]
-    fn visit_stmt(&mut self, stmt: &Stmt) {
+    fn visit_stmt(&mut self, stmt: &Stmt) -> <Self as StmtVisitor>::Output {
         match &stmt.kind {
             StmtKind::VarDecl(decl) => self.visit_var_decl(stmt, decl),
-            StmtKind::Item(item) => self.visit_item(item),
-            StmtKind::Expr(expr) => self.visit_expr(expr),
+            StmtKind::Item(item) => self.visit_item(item).into(),
+            StmtKind::Expr(expr) => self.visit_expr(expr).into(),
         }
     }
 
-    fn visit_var_decl(&mut self, stmt: &Stmt, var: &VarDecl) {}
+    fn visit_var_decl(&mut self, stmt: &Stmt, var: &VarDecl) -> <Self as StmtVisitor>::Output;
+}
+
+pub trait ExprVisitor {
+    type Output;
 
     #[inline]
-    fn visit_expr(&mut self, expr: &Expr) {
+    fn visit_expr(&mut self, expr: &Expr) -> Self::Output {
         match &expr.kind {
             ExprKind::If(if_) => self.visit_if(expr, if_),
             ExprKind::Return(value) => self.visit_return(expr, value.as_ref().map(|e| e.as_ref())),
@@ -102,25 +125,33 @@ pub trait AstVisitor {
         }
     }
 
-    fn visit_if(&mut self, expr: &Expr, if_: &If) {}
-    fn visit_return(&mut self, expr: &Expr, value: Option<&Expr>) {}
-    fn visit_break(&mut self, expr: &Expr, value: Option<&Expr>) {}
-    fn visit_continue(&mut self, expr: &Expr) {}
-    fn visit_while(&mut self, expr: &Expr, while_: &While) {}
-    fn visit_loop(&mut self, expr: &Expr, loop_: &Loop) {}
-    fn visit_for(&mut self, expr: &Expr, for_: &For) {}
-    fn visit_match(&mut self, expr: &Expr, match_: &Match) {}
-    fn visit_variable(&mut self, expr: &Expr, var: StrT) {}
-    fn visit_literal(&mut self, expr: &Expr, literal: &Literal) {}
-    fn visit_unary(&mut self, expr: &Expr, op: UnaryOp, inner: &Expr) {}
-    fn visit_binary_op(&mut self, expr: &Expr, lhs: &Expr, op: BinaryOp, rhs: &Expr) {}
-    fn visit_comparison(&mut self, expr: &Expr, lhs: &Expr, op: CompOp, rhs: &Expr) {}
-    fn visit_assign(&mut self, expr: &Expr, lhs: &Expr, op: AssignKind, rhs: &Expr) {}
-    fn visit_paren(&mut self, expr: &Expr, inner: &Expr) {}
-    fn visit_array(&mut self, expr: &Expr, elements: &[Expr]) {}
-    fn visit_tuple(&mut self, expr: &Expr, elements: &[Expr]) {}
-    fn visit_range(&mut self, expr: &Expr, start: &Expr, end: &Expr) {}
-    fn visit_index(&mut self, expr: &Expr, var: &Expr, index: &Expr) {}
-    fn visit_func_call(&mut self, expr: &Expr, caller: &Expr, args: &[Expr]) {}
-    fn visit_member_func_call(&mut self, expr: &Expr, member: &Expr, func: &Expr) {}
+    fn visit_if(&mut self, expr: &Expr, if_: &If) -> Self::Output;
+    fn visit_return(&mut self, expr: &Expr, value: Option<&Expr>) -> Self::Output;
+    fn visit_break(&mut self, expr: &Expr, value: Option<&Expr>) -> Self::Output;
+    fn visit_continue(&mut self, expr: &Expr) -> Self::Output;
+    fn visit_while(&mut self, expr: &Expr, while_: &While) -> Self::Output;
+    fn visit_loop(&mut self, expr: &Expr, loop_: &Loop) -> Self::Output;
+    fn visit_for(&mut self, expr: &Expr, for_: &For) -> Self::Output;
+    fn visit_match(&mut self, expr: &Expr, match_: &Match) -> Self::Output;
+    fn visit_variable(&mut self, expr: &Expr, var: StrT) -> Self::Output;
+    fn visit_literal(&mut self, expr: &Expr, literal: &Literal) -> Self::Output;
+    fn visit_unary(&mut self, expr: &Expr, op: UnaryOp, inner: &Expr) -> Self::Output;
+    fn visit_binary_op(
+        &mut self,
+        expr: &Expr,
+        lhs: &Expr,
+        op: BinaryOp,
+        rhs: &Expr,
+    ) -> Self::Output;
+    fn visit_comparison(&mut self, expr: &Expr, lhs: &Expr, op: CompOp, rhs: &Expr)
+        -> Self::Output;
+    fn visit_assign(&mut self, expr: &Expr, lhs: &Expr, op: AssignKind, rhs: &Expr)
+        -> Self::Output;
+    fn visit_paren(&mut self, expr: &Expr, inner: &Expr) -> Self::Output;
+    fn visit_array(&mut self, expr: &Expr, elements: &[Expr]) -> Self::Output;
+    fn visit_tuple(&mut self, expr: &Expr, elements: &[Expr]) -> Self::Output;
+    fn visit_range(&mut self, expr: &Expr, start: &Expr, end: &Expr) -> Self::Output;
+    fn visit_index(&mut self, expr: &Expr, var: &Expr, index: &Expr) -> Self::Output;
+    fn visit_func_call(&mut self, expr: &Expr, caller: &Expr, args: &[Expr]) -> Self::Output;
+    fn visit_member_func_call(&mut self, expr: &Expr, member: &Expr, func: &Expr) -> Self::Output;
 }

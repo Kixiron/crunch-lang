@@ -4,13 +4,13 @@ use crate::pretty_printer::PrettyPrinter;
 use alloc::string::String;
 use core::iter;
 use crunch_shared::{
-    ast::{
-        AssignKind, BinaryOp, CompOp, ExprKind, Integer, ItemPath, Literal, Ref, Sign, Signedness,
-        Type,
-    },
     error::{Error, Locatable, SyntaxError},
     files::FileId,
     strings::StrT,
+    trees::ast::{
+        AssignKind, BinaryOp, CompOp, ExprKind, Integer, ItemPath, Literal, Ref, Sign, Signedness,
+        Type,
+    },
 };
 
 fn format_expr(source: &str) -> String {

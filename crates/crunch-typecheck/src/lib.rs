@@ -7,9 +7,12 @@
     clippy::shadow_unrelated
 )]
 
-use crunch_parser::parser::{ItemPath, Literal};
-use ladder::{Expr, Function, Hir, Ladder, Match, MatchArm, Stmt, TypeKind, VarDecl};
-use std::collections::HashMap;
+use crunch_shared::{
+    trees::hir::{
+        Expr, Function, Hir, ItemPath, Literal, Match, MatchArm, Stmt, Type, TypeKind, VarDecl,
+    },
+    utils::HashMap,
+};
 
 type TypeId = usize;
 
@@ -44,7 +47,7 @@ struct Engine {
 
 impl Engine {
     /// Create a new type term with whatever we have about its type
-    pub fn insert(&mut self, info: &ladder::TypeInfo) -> TypeId {
+    pub fn insert(&mut self, info: &Type) -> TypeId {
         if let Some(&id) = self.ids.get(&info.name) {
             self.types.insert(id, info.kind.into());
 
@@ -134,7 +137,7 @@ impl Engine {
     }
 
     pub fn func(&mut self, func: &mut Function) -> Result<(), String> {
-        let params: Vec<_> = func.params.iter().map(|param| self.insert(param)).collect();
+        let params: Vec<_> = func.args.iter().map(|param| self.insert(param)).collect();
 
         let mut ty = self.insert_bare(TypeInfo::Infer);
         for stmt in func.body.iter_mut() {

@@ -6,8 +6,8 @@ use alloc::{format, string::String, vec::Vec};
 use core::convert::TryFrom;
 use crunch_proc::recursion_guard;
 use crunch_shared::{
-    ast::{Integer, Ref, Sided, Signedness, Type, TypeOp},
     error::{Error, Locatable, Location, ParseResult, SyntaxError},
+    trees::ast::{Integer, Ref, Sided, Signedness, Type, TypeOp},
 };
 
 type PrefixParselet<'src> = fn(&mut Parser<'src>, Token<'src>) -> ParseResult<Type>;

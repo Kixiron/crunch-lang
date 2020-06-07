@@ -7,6 +7,7 @@ use crunch_shared::{
     info,
     symbol_table::{Graph, MaybeSym, NodeId, Scope},
     trace,
+    trees::ast::Item,
 };
 
 mod expr;
@@ -21,7 +22,6 @@ mod utils;
 
 pub use utils::CurrentFile;
 
-use crunch_shared::ast::Item;
 use utils::StackGuard;
 
 type ReturnData = (Vec<Item>, ErrorHandler, Graph<Scope, MaybeSym>, NodeId);

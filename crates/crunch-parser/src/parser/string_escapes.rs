@@ -1,8 +1,8 @@
 use alloc::{format, string::ToString, vec::IntoIter, vec::Vec};
 use core::{char, ops::Range};
 use crunch_shared::{
-    ast::{Rune, Text},
     error::{Error, SyntaxError},
+    trees::ast::{Rune, Text},
 };
 
 // TODO: Verify that these all work and are actually recognized by the parser/lexer and supported by

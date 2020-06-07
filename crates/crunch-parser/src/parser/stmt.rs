@@ -3,8 +3,8 @@ use crate::{parser::Parser, token::TokenType};
 use alloc::{format, vec::Vec};
 use crunch_proc::recursion_guard;
 use crunch_shared::{
-    ast::{Block, Ref, Stmt, StmtKind, Type, VarDecl},
     error::{Error, Locatable, Location, ParseResult, SemanticError, Span, SyntaxError},
+    trees::ast::{Block, Ref, Stmt, StmtKind, Type, VarDecl},
 };
 
 // TODO: Type ascription

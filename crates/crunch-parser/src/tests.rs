@@ -2,11 +2,11 @@
 
 use crate::parser::{CurrentFile, Parser};
 use crunch_shared::{
-    ast::Item,
     context::Context,
     error::ErrorHandler,
     files::FileId,
     symbol_table::{Graph, MaybeSym, NodeId, Scope},
+    trees::ast::Item,
 };
 
 fn run(

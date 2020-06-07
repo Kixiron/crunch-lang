@@ -11,10 +11,10 @@ use alloc::{
 };
 use crunch_proc::recursion_guard;
 use crunch_shared::{
-    ast::{AssignKind, BinaryOp, CompOp, Float, Integer, ItemPath, Literal, Sign, UnaryOp},
     error::{Error, Locatable, Location, ParseResult, Span, SyntaxError},
     files::FileId,
     strings::StrT,
+    trees::ast::{AssignKind, BinaryOp, CompOp, Float, Integer, ItemPath, Literal, Sign, UnaryOp},
 };
 
 #[derive(Debug, Clone)]

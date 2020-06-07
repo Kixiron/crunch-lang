@@ -1,8 +1,8 @@
 use crate::{parser::Parser, token::TokenType};
 use crunch_proc::recursion_guard;
 use crunch_shared::{
-    ast::{Binding, Pattern, Ref},
     error::ParseResult,
+    trees::ast::{Binding, Pattern, Ref},
 };
 
 impl<'src> Parser<'src> {

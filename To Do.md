@@ -85,6 +85,8 @@
   - [x] Semantic checker
   - [ ] Ladder
   - [ ] Symbol table
+  - [ ] Pretty printer
+    - [ ] Remove this entirely in favor of better methods?
 
 ## AST -> HIR
 
