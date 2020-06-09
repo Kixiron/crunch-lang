@@ -130,3 +130,7 @@
   - [ ] Std-provided runtime
     - [ ] Executor/Stream/Future traits for modularity to allow seamless switching of runtimes
 - [ ] Effects?
+  - http://ps.informatik.uni-tuebingen.de/publications/schuster19zero.pdf
+  - https://www.unisonweb.org/docs/language-reference
+  - https://github.com/pandaman64/effective-rust
+  - https://github.com/effect-handlers/effects-rosetta-stone

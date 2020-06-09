@@ -251,6 +251,7 @@ pub enum ExprKind {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct If {
+    // TODO: Move this into the `clauses` vec
     pub cond: IfCond,
     pub clauses: Vec<IfCond>,
     pub else_: Option<Block>,
