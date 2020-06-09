@@ -224,7 +224,12 @@ impl<'a> BasicBlock<'a> {
     }
 
     #[inline]
-    pub fn add(&self, lhs: Value<'a>, rhs: Value<'a>, name: &str) -> Result<Value<'a>> {
+    pub fn add(
+        &self,
+        lhs: impl Into<Value<'a>>,
+        rhs: impl Into<Value<'a>>,
+        name: &str,
+    ) -> Result<Value<'a>> {
         let cname = CString::new(name).expect("Rust strings cannot have null bytes");
         self.builder.move_to_end(self);
 
@@ -232,8 +237,8 @@ impl<'a> BasicBlock<'a> {
             unsafe {
                 LLVMBuildAdd(
                     self.builder.as_mut_ptr(),
-                    lhs.as_mut_ptr(),
-                    rhs.as_mut_ptr(),
+                    lhs.into().as_mut_ptr(),
+                    rhs.into().as_mut_ptr(),
                     cname.as_ptr(),
                 )
             },

@@ -20,10 +20,6 @@ use std::{
     marker::PhantomData,
 };
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(transparent)]
-pub struct BlockId(usize);
-
 #[derive(Debug)]
 pub struct FunctionBuilder<'a> {
     function: Function<'a>,
@@ -79,6 +75,14 @@ impl<'a> FunctionBuilder<'a> {
     #[inline]
     pub(crate) fn finish(self) -> Result<Function<'a>> {
         Ok(self.function)
+    }
+}
+
+impl<'a> std::ops::Index<usize> for FunctionBuilder<'a> {
+    type Output = FunctionArg<'a>;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.args()[index]
     }
 }
 
@@ -185,7 +189,7 @@ impl<'a> Function<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct FunctionArg<'a> {
     value: Value<'a>,
     ty: Type<'a>,
@@ -199,6 +203,18 @@ impl<'a> FunctionArg<'a> {
 
     #[inline]
     pub const fn ty(&self) -> Type<'a> {
+        self.ty
+    }
+}
+
+impl<'a> Into<Value<'a>> for FunctionArg<'a> {
+    fn into(self) -> Value<'a> {
+        self.value
+    }
+}
+
+impl<'a> Into<Type<'a>> for FunctionArg<'a> {
+    fn into(self) -> Type<'a> {
         self.ty
     }
 }
@@ -308,12 +324,7 @@ mod tests {
         let _function = module
             .build_function("function", &sig, |builder| {
                 let entry = builder.append_block("entry")?;
-
-                let add = entry.add(
-                    builder.args()[0].value(),
-                    builder.args()[1].value(),
-                    "sum.1",
-                )?;
+                let add = entry.add(builder[0], builder[1], "sum.1")?;
                 entry.ret(add)?;
 
                 let jump_to = builder.append_block("jump_to")?;
