@@ -1,4 +1,5 @@
 use crate::{
+    error::{Location, Span},
     strings::StrT,
     trees::{Ref, Sided},
 };
@@ -20,12 +21,14 @@ pub struct Function {
     pub args: Vec<FuncArg>,
     pub body: Block<Stmt>,
     pub ret: TypeKind,
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct FuncArg {
     pub name: ItemPath,
     pub kind: TypeKind,
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -50,7 +53,20 @@ impl From<Expr> for Stmt {
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub enum Expr {
+pub struct Expr {
+    pub kind: ExprKind,
+    pub loc: Location,
+}
+
+impl Expr {
+    #[inline]
+    pub const fn location(&self) -> Location {
+        self.loc
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub enum ExprKind {
     Match(Match),
     Scope(Block<Stmt>),
     Loop(Block<Stmt>),
@@ -68,6 +84,7 @@ pub struct VarDecl {
     pub name: ItemPath,
     pub value: Ref<Expr>,
     pub ty: Type,
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -103,9 +120,20 @@ pub struct Break {
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Block<T> {
     pub block: Vec<T>,
+    pub loc: Location,
 }
 
 impl<T> Block<T> {
+    #[inline]
+    pub fn location(&self) -> Location {
+        self.loc
+    }
+
+    #[inline]
+    pub fn span(&self) -> Span {
+        self.loc.span()
+    }
+
     #[inline]
     pub fn len(&self) -> usize {
         self.block.len()
@@ -125,17 +153,15 @@ impl<T> Block<T> {
     pub fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut T> + 'a {
         self.block.iter_mut()
     }
-}
 
-impl<T> core::iter::FromIterator<T> for Block<T> {
     #[inline]
-    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+    pub fn from_iter<I: IntoIterator<Item = T>>(loc: Location, iter: I) -> Self {
         let mut block = Vec::with_capacity(10);
         for item in iter {
             block.push(item);
         }
 
-        Self { block }
+        Self { block, loc }
     }
 }
 

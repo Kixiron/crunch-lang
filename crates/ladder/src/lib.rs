@@ -1,4 +1,5 @@
 use crunch_shared::{
+    end_timer, start_timer,
     strings::StrT,
     symbol_table::{Graph, MaybeSym, NodeId, Scope},
     trees::{
@@ -11,8 +12,8 @@ use crunch_shared::{
             While as AstWhile,
         },
         hir::{
-            Break, Expr, FuncArg, FuncCall, Function, Item, Match, MatchArm, Return, Stmt, Type,
-            TypeKind, VarDecl, Vis,
+            Block, Break, Expr, ExprKind, FuncArg, FuncCall, Function, Item, Match, MatchArm,
+            Return, Stmt, Type, TypeKind, VarDecl, Vis,
         },
         Ref, Sided,
     },
@@ -39,7 +40,12 @@ impl Ladder {
     }
 
     pub fn lower(&mut self, items: &[AstItem]) -> Vec<Item> {
-        items.iter().map(|item| self.visit_item(item)).collect()
+        let timer = start_timer!("hir lowering");
+
+        let lowered = items.iter().map(|item| self.visit_item(item)).collect();
+
+        end_timer!("hir lowering", timer);
+        lowered
     }
 }
 
@@ -67,11 +73,18 @@ impl ItemVisitor for Ladder {
 
                 let kind = TypeKind::from(&*arg.ty);
 
-                FuncArg { name, kind }
+                FuncArg {
+                    name,
+                    kind,
+                    loc: arg.location(),
+                }
             })
             .collect();
 
-        let body = body.iter().map(|stmt| self.visit_stmt(stmt)).collect();
+        let body = Block::from_iter(
+            body.location(),
+            body.iter().map(|stmt| self.visit_stmt(stmt)),
+        );
 
         let func = Function {
             name,
@@ -80,6 +93,7 @@ impl ItemVisitor for Ladder {
             args,
             body,
             ret: TypeKind::from(ret),
+            loc: item.location(),
         };
 
         Item::Function(func)
@@ -145,14 +159,15 @@ impl ItemVisitor for Ladder {
 impl StmtVisitor for Ladder {
     type Output = Stmt;
 
-    fn visit_var_decl(&mut self, _stmt: &AstStmt, var: &AstVarDecl) -> Stmt {
+    fn visit_var_decl(&mut self, stmt: &AstStmt, var: &AstVarDecl) -> Stmt {
         Stmt::VarDecl(VarDecl {
             name: ItemPath::new(var.name),
             value: Ref::new(self.visit_expr(&*var.val)),
             ty: Type {
                 name: ItemPath::new(var.name),
-                kind: TypeKind::Infer,
+                kind: TypeKind::from(&*var.ty),
             },
+            loc: stmt.location(),
         })
     }
 }
@@ -162,7 +177,7 @@ impl ExprVisitor for Ladder {
 
     fn visit_if(
         &mut self,
-        _expr: &AstExpr,
+        expr: &AstExpr,
         AstIf {
             cond: AstIfCond { cond, body },
             clauses,
@@ -173,88 +188,121 @@ impl ExprVisitor for Ladder {
 
         if clauses.is_empty() {
             arms.push(MatchArm {
-                cond: Ref::new(Expr::Literal(Literal::Bool(true))),
-                body: body.iter().map(|stmt| self.visit_stmt(stmt)).collect(),
+                cond: Ref::new(Expr {
+                    kind: ExprKind::Literal(Literal::Bool(true)),
+                    loc: expr.location(),
+                }),
+                body: Block::from_iter(
+                    body.location(),
+                    body.iter().map(|stmt| self.visit_stmt(stmt)),
+                ),
                 ty: TypeKind::Infer,
             });
 
             if let Some(body) = else_ {
                 arms.push(MatchArm {
-                    cond: Ref::new(Expr::Literal(Literal::Bool(false))),
-                    body: body.iter().map(|s| self.visit_stmt(s)).collect(),
+                    cond: Ref::new(Expr {
+                        kind: ExprKind::Literal(Literal::Bool(false)),
+                        loc: expr.location(),
+                    }),
+                    body: Block::from_iter(
+                        body.location(),
+                        body.iter().map(|s| self.visit_stmt(s)),
+                    ),
                     ty: TypeKind::Infer,
                 });
             }
 
-            Expr::Match(Match {
-                cond: Ref::new(self.visit_expr(cond)),
-                arms,
-                ty: TypeKind::Infer,
-            })
+            Expr {
+                kind: ExprKind::Match(Match {
+                    cond: Ref::new(self.visit_expr(cond)),
+                    arms,
+                    ty: TypeKind::Infer,
+                }),
+                loc: expr.location(),
+            }
         } else {
             todo!()
         }
     }
 
-    fn visit_return(&mut self, _expr: &AstExpr, value: Option<&AstExpr>) -> Self::Output {
-        Expr::Return(Return {
-            val: value.map(|expr| Ref::new(self.visit_expr(expr))),
-        })
+    fn visit_return(&mut self, expr: &AstExpr, value: Option<&AstExpr>) -> Self::Output {
+        Expr {
+            kind: ExprKind::Return(Return {
+                val: value.map(|expr| Ref::new(self.visit_expr(expr))),
+            }),
+            loc: expr.location(),
+        }
     }
 
-    fn visit_break(&mut self, _expr: &AstExpr, value: Option<&AstExpr>) -> Self::Output {
-        Expr::Break(Break {
-            val: value.map(|expr| Ref::new(self.visit_expr(expr))),
-        })
+    fn visit_break(&mut self, expr: &AstExpr, value: Option<&AstExpr>) -> Self::Output {
+        Expr {
+            kind: ExprKind::Break(Break {
+                val: value.map(|expr| Ref::new(self.visit_expr(expr))),
+            }),
+            loc: expr.location(),
+        }
     }
 
-    fn visit_continue(&mut self, _expr: &AstExpr) -> Self::Output {
-        Expr::Continue
+    fn visit_continue(&mut self, expr: &AstExpr) -> Self::Output {
+        Expr {
+            kind: ExprKind::Continue,
+            loc: expr.location(),
+        }
     }
 
     fn visit_while(&mut self, _expr: &AstExpr, _while_: &AstWhile) -> Self::Output {
         todo!()
     }
 
-    fn visit_loop(&mut self, _expr: &AstExpr, loop_: &AstLoop) -> Self::Output {
-        Expr::Loop(
-            loop_
-                .body
-                .iter()
-                .map(|stmt| self.visit_stmt(stmt))
-                .collect(),
-        )
+    fn visit_loop(&mut self, expr: &AstExpr, AstLoop { body, else_: _ }: &AstLoop) -> Self::Output {
+        Expr {
+            kind: ExprKind::Loop(Block::from_iter(
+                body.location(),
+                body.iter().map(|stmt| self.visit_stmt(stmt)),
+            )),
+            loc: expr.location(),
+        }
     }
 
     fn visit_for(&mut self, _expr: &AstExpr, _for_: &AstFor) -> Self::Output {
         todo!()
     }
 
-    fn visit_match(&mut self, _expr: &AstExpr, match_: &AstMatch) -> Self::Output {
-        Expr::Match(Match {
-            cond: Ref::new(self.visit_expr(&*match_.var)),
-            arms: Vec::new(),
-            // arms
-            // .iter()
-            // // TODO: Patterns with matches
-            // .map(|(var, _clause, body)| MatchArm {
-            //     condition: self.lower_expr(&AstExpr::Variable(*var)),
-            //     body: body
-            //         .iter()
-            //         .filter_map(|stmt| self.lower_statement(stmt))
-            //         .collect(),
-            // })
-            // .collect(),
-            ty: TypeKind::Infer,
-        })
+    fn visit_match(&mut self, expr: &AstExpr, match_: &AstMatch) -> Self::Output {
+        Expr {
+            kind: ExprKind::Match(Match {
+                cond: Ref::new(self.visit_expr(&*match_.var)),
+                arms: Vec::new(),
+                // arms
+                // .iter()
+                // // TODO: Patterns with matches
+                // .map(|(var, _clause, body)| MatchArm {
+                //     condition: self.lower_expr(&AstExpr::Variable(*var)),
+                //     body: body
+                //         .iter()
+                //         .filter_map(|stmt| self.lower_statement(stmt))
+                //         .collect(),
+                // })
+                // .collect(),
+                ty: TypeKind::Infer,
+            }),
+            loc: expr.location(),
+        }
     }
 
-    fn visit_variable(&mut self, _expr: &AstExpr, var: StrT) -> Self::Output {
-        Expr::Variable(var, TypeKind::Infer)
+    fn visit_variable(&mut self, expr: &AstExpr, var: StrT) -> Self::Output {
+        Expr {
+            kind: ExprKind::Variable(var, TypeKind::Infer),
+            loc: expr.location(),
+        }
     }
 
-    fn visit_literal(&mut self, _expr: &AstExpr, literal: &Literal) -> Self::Output {
-        Expr::Literal(literal.clone())
+    fn visit_literal(&mut self, expr: &AstExpr, literal: &Literal) -> Self::Output {
+        Expr {
+            kind: ExprKind::Literal(literal.clone()),
+            loc: expr.location(),
+        }
     }
 
     fn visit_unary(&mut self, _expr: &AstExpr, _op: UnaryOp, _inner: &AstExpr) -> Self::Output {
@@ -273,16 +321,19 @@ impl ExprVisitor for Ladder {
 
     fn visit_comparison(
         &mut self,
-        _expr: &AstExpr,
+        expr: &AstExpr,
         lhs: &AstExpr,
         op: CompOp,
         rhs: &AstExpr,
     ) -> Self::Output {
-        Expr::Comparison(Sided {
-            lhs: Ref::new(self.visit_expr(lhs)),
-            op,
-            rhs: Ref::new(self.visit_expr(rhs)),
-        })
+        Expr {
+            kind: ExprKind::Comparison(Sided {
+                lhs: Ref::new(self.visit_expr(lhs)),
+                op,
+                rhs: Ref::new(self.visit_expr(rhs)),
+            }),
+            loc: expr.location(),
+        }
     }
 
     fn visit_assign(
@@ -317,18 +368,21 @@ impl ExprVisitor for Ladder {
 
     fn visit_func_call(
         &mut self,
-        _expr: &AstExpr,
+        expr: &AstExpr,
         caller: &AstExpr,
         args: &[AstExpr],
     ) -> Self::Output {
-        Expr::FnCall(FuncCall {
-            func: if let AstExprKind::Variable(path) = caller.kind {
-                ItemPath::new(path)
-            } else {
-                todo!()
-            },
-            args: args.iter().map(|a| self.visit_expr(a)).collect(),
-        })
+        Expr {
+            kind: ExprKind::FnCall(FuncCall {
+                func: if let AstExprKind::Variable(path) = caller.kind {
+                    ItemPath::new(path)
+                } else {
+                    todo!()
+                },
+                args: args.iter().map(|a| self.visit_expr(a)).collect(),
+            }),
+            loc: expr.location(),
+        }
     }
 
     fn visit_member_func_call(

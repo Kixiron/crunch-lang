@@ -89,10 +89,18 @@
   - [ ] Pretty printer
     - [ ] Remove this entirely in favor of better methods?
 
-## AST -> HIR
+## AST -> HIR lowering
 
+- [ ] Propagate location information through AST & HIR
 - [ ] Separate namespace for variables and types/enums/traits/functions
 - [ ] Add all fields of structs and variants of enums to the symbol table
+- [ ] Make the HIR accept more ast constructs
+
+## Type checking
+
+- [ ] Make type errors better
+- [ ] Bidirectional checking
+- [ ] Infer structural sums automatically and verify w/ bidirectional checks
 
 ## Backend
 

@@ -53,18 +53,22 @@ impl<'src> Parser<'src> {
                 };
 
                 let val = Ref::new(self.expr()?);
-                let end_span = self.eat(TokenType::Newline, [])?.span();
+                self.eat(TokenType::Newline, [])?;
 
                 if constant && mutable {
                     return Err(Locatable::new(
                         Error::Semantic(SemanticError::MutableConstant),
                         Location::concrete(
-                            Span::merge(start_token.span(), end_span),
+                            Span::merge(start_token.span(), val.span()),
                             self.current_file,
                         ),
                     ));
                 }
 
+                let loc = Location::concrete(
+                    Span::merge(start_token.span(), val.span()),
+                    self.current_file,
+                );
                 let kind = StmtKind::VarDecl(Ref::new(VarDecl {
                     name,
                     ty: Ref::new(ty),
@@ -73,7 +77,7 @@ impl<'src> Parser<'src> {
                     mutable,
                 }));
 
-                Ok(Some(Stmt { kind }))
+                Ok(Some(Stmt { kind, loc }))
             }
 
             // Items
@@ -87,18 +91,22 @@ impl<'src> Parser<'src> {
             | TokenType::Import
             | TokenType::Alias => {
                 let item = Ref::new(self.item()?.expect("An item should have been parsed"));
+
+                let loc = item.location();
                 let kind = StmtKind::Item(item);
 
-                Ok(Some(Stmt { kind }))
+                Ok(Some(Stmt { kind, loc }))
             }
 
             // Expressions
             _ => {
                 let expr = Ref::new(self.expr()?);
-                self.eat(TokenType::Newline, [])?;
+                let end = self.eat(TokenType::Newline, [])?.span();
+
+                let loc = Location::concrete(Span::merge(expr.span(), end), self.current_file);
                 let kind = StmtKind::Expr(expr);
 
-                Ok(Some(Stmt { kind }))
+                Ok(Some(Stmt { kind, loc }))
             }
         }
     }
@@ -107,13 +115,22 @@ impl<'src> Parser<'src> {
     pub(super) fn block(&mut self, breaks: &[TokenType], capacity: usize) -> ParseResult<Block> {
         let mut stmts = Vec::with_capacity(capacity);
 
+        let (mut start, mut end) = (None, None);
         while let Ok(true) = self.peek().map(|p| !breaks.contains(&p.ty())) {
             let stmt = self.stmt()?;
+
             if let Some(stmt) = stmt {
+                start = start.or_else(|| Some(stmt.location().span()));
+                end = Some(stmt.location().span());
+
                 stmts.push(stmt);
             }
         }
 
-        Ok(Block { stmts })
+        Ok(Block {
+            stmts,
+            // FIXME: Unwraps bad
+            loc: Location::concrete(Span::merge(start.unwrap(), end.unwrap()), self.current_file),
+        })
     }
 }

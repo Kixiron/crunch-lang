@@ -14,7 +14,9 @@ use alloc::{borrow::ToOwned, boxed::Box, vec::Vec};
 use core::fmt;
 use crunch_shared::{
     context::Context,
+    end_timer,
     error::{Error, ErrorHandler, Locatable, SemanticError, Warning},
+    start_timer,
     strings::{StrInterner, StrT},
     trees::ast::{
         AssignKind, BinaryOp, Block, CompOp, Dest, Exposure, Expr, For, FuncArg, If, Item,
@@ -59,22 +61,25 @@ impl SemanticAnalyzer {
         self
     }
 
-    pub fn analyze(
-        &mut self,
-        items: &[impl AsRef<Item>],
-        context: &Context,
-        errors: &mut ErrorHandler,
-    ) {
+    pub fn analyze(&mut self, items: &[Item], context: &Context, errors: &mut ErrorHandler) {
+        let timer = start_timer!("semantic analysis");
+
         for pass in self.passes.iter_mut() {
+            let pass_name = format!("semantic analysis pass {}", pass.name());
+            let pass_timer = start_timer!(pass_name);
+
             pass.load(ErrorHandler::new(), context.clone());
 
             for item in items {
-                pass.visit_item(item.as_ref());
+                pass.visit_item(item);
             }
 
             let err = pass.unload();
             errors.extend(err);
+            end_timer!(pass_name, pass_timer);
         }
+
+        end_timer!("semantic analysis", timer);
     }
 }
 
@@ -94,18 +99,25 @@ impl fmt::Debug for SemanticAnalyzer {
 }
 
 #[derive(Debug, Default)]
-struct Correctness {
-    errors: ErrorHandler,
-    context: Context,
+pub struct Correctness {
+    errors: Option<ErrorHandler>,
+    context: Option<Context>,
 }
 
 impl<'err> Correctness {
+    pub fn new() -> Self {
+        Self {
+            errors: None,
+            context: None,
+        }
+    }
+
     fn errors(&mut self) -> &mut ErrorHandler {
-        &mut self.errors
+        self.errors.as_mut().unwrap()
     }
 
     fn strings(&self) -> &StrInterner {
-        &self.context.strings
+        &self.context.as_ref().unwrap().strings
     }
 }
 
@@ -115,12 +127,12 @@ impl Analyzer for Correctness {
     }
 
     fn load(&mut self, errors: ErrorHandler, context: Context) {
-        self.errors = errors;
-        self.context = context;
+        self.errors = Some(errors);
+        self.context = Some(context);
     }
 
     fn unload(&mut self) -> ErrorHandler {
-        self.errors.take()
+        self.errors.as_mut().unwrap().take()
     }
 }
 
@@ -308,6 +320,7 @@ impl ItemVisitor for Correctness {
     }
 
     fn visit_import(&mut self, _item: &Item, _file: &ItemPath, _dest: &Dest, _exposes: &Exposure) {}
+
     fn visit_extend_block(
         &mut self,
         _item: &Item,
@@ -316,6 +329,7 @@ impl ItemVisitor for Correctness {
         _items: &[Item],
     ) {
     }
+
     fn visit_alias(&mut self, _item: &Item, _alias: &Type, _actual: &Type) {}
 }
 

@@ -24,8 +24,9 @@ use derive_more::Display;
 use serde::{Deserialize, Serialize};
 
 pub type ParseResult<T> = Result<T, Locatable<Error>>;
+pub type TypeResult<T> = Result<T, Locatable<Error>>;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Location {
     Concrete { span: Span, file: FileId },
     Implicit { span: Span, file: FileId },
@@ -78,7 +79,7 @@ impl Location {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Span {
     start: usize,
     end: usize,
@@ -169,7 +170,7 @@ impl Into<[usize; 2]> for Span {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Locatable<T> {
     pub data: T,
     pub loc: Location,
@@ -252,7 +253,7 @@ where
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Default, Deserialize, Serialize)]
 pub struct ErrorHandler {
     errors: VecDeque<Locatable<Error>>,
     warnings: VecDeque<Locatable<Warning>>,
@@ -283,6 +284,16 @@ impl ErrorHandler {
     #[inline]
     pub fn is_fatal(&self) -> bool {
         self.fatal
+    }
+
+    #[inline]
+    pub fn err_len(&self) -> usize {
+        self.errors.len()
+    }
+
+    #[inline]
+    pub fn warn_len(&self) -> usize {
+        self.warnings.len()
     }
 
     /// Drain all errors and warnings from the current handler, emitting them
@@ -341,14 +352,7 @@ impl From<Locatable<Error>> for ErrorHandler {
     }
 }
 
-impl Default for ErrorHandler {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[derive(Clone, Debug, Display, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Error {
     #[display(fmt = "Invalid Syntax: {}", _0)]
     Syntax(SyntaxError),
@@ -378,7 +382,7 @@ impl Error {
     }
 }
 
-#[derive(Clone, Debug, Display, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum SyntaxError {
     #[display(fmt = "{}", _0)]
     Generic(String),
@@ -446,7 +450,13 @@ impl SyntaxError {
     }
 }
 
-#[derive(Clone, Debug, Display, PartialEq, Eq, Serialize, Deserialize)]
+impl Into<Error> for SyntaxError {
+    fn into(self) -> Error {
+        Error::Syntax(self)
+    }
+}
+
+#[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum SemanticError {
     #[display(fmt = "{} was previously defined", name)]
     Redefinition {
@@ -533,22 +543,58 @@ impl SemanticError {
     }
 }
 
-#[derive(Clone, Debug, Display, PartialEq, Eq, Serialize, Deserialize)]
+impl Into<Error> for SemanticError {
+    fn into(self) -> Error {
+        Error::Semantic(self)
+    }
+}
+
+#[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[allow(missing_copy_implementations)]
-pub enum TypeError {}
+pub enum TypeError {
+    #[display(fmt = "The variable '{}' was not found in this scope", _0)]
+    VarNotInScope(String),
+
+    #[display(fmt = "Type conflict between '{}' and '{}': {}", _0, _1, _2)]
+    TypeConflict(String, String, String, Vec<Location>),
+
+    #[display(fmt = "Failed to infer the type of '{}'", _0)]
+    FailedInfer(String),
+}
 
 impl TypeError {
     #[inline]
     fn emit(&self, file: FileId, span: Span, diag: &mut Vec<Diagnostic<FileId>>) {
-        diag.push(
-            Diagnostic::error()
-                .with_message(self.to_string())
-                .with_labels(vec![Label::primary(file, span)]),
-        )
+        match self {
+            Self::TypeConflict(_, _, _, locations) => {
+                diag.push(
+                    Diagnostic::error()
+                        .with_message(self.to_string())
+                        .with_labels(
+                            locations
+                                .iter()
+                                .map(|loc| Label::primary(file, loc.range()))
+                                .collect(),
+                        ),
+                );
+            }
+
+            _ => diag.push(
+                Diagnostic::error()
+                    .with_message(self.to_string())
+                    .with_labels(vec![Label::primary(file, span)]),
+            ),
+        }
     }
 }
 
-#[derive(Clone, Debug, Display, PartialEq, Eq, Serialize, Deserialize)]
+impl Into<Error> for TypeError {
+    fn into(self) -> Error {
+        Error::Type(self)
+    }
+}
+
+#[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Warning {
     #[display(fmt = "The generic '{}' was not used", _0)]
     UnusedGeneric(String),

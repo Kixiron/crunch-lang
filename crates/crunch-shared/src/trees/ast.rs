@@ -1,7 +1,6 @@
 use crate::{
-    error::Location,
-    strings::StrInterner,
-    strings::StrT,
+    error::{Location, Span},
+    strings::{StrInterner, StrT},
     trees::{Ref, Sided},
 };
 #[cfg(feature = "no-std")]
@@ -26,6 +25,18 @@ pub struct Item {
     pub loc: Location,
     pub name: Option<StrT>,
     pub vis: Option<Vis>,
+}
+
+impl Item {
+    #[inline]
+    pub const fn location(&self) -> Location {
+        self.loc
+    }
+
+    #[inline]
+    pub fn span(&self) -> Span {
+        self.loc.span()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -190,13 +201,37 @@ impl Default for Vis {
 pub struct FuncArg {
     pub name: StrT,
     pub ty: Ref<Type>,
-    // pub loc: Location,
+    pub loc: Location,
+}
+
+impl FuncArg {
+    #[inline]
+    pub const fn location(&self) -> Location {
+        self.loc
+    }
+
+    #[inline]
+    pub fn span(&self) -> Span {
+        self.loc.span()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct Stmt {
     pub kind: StmtKind,
-    // pub loc: Location,
+    pub loc: Location,
+}
+
+impl Stmt {
+    #[inline]
+    pub const fn location(&self) -> Location {
+        self.loc
+    }
+
+    #[inline]
+    pub fn span(&self) -> Span {
+        self.loc.span()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -219,8 +254,20 @@ pub struct VarDecl {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct Expr {
     pub kind: ExprKind,
-    // pub loc: Location,
-    // TODO: Type of expression?
+    pub loc: Location,
+    // TODO: Type of expression
+}
+
+impl Expr {
+    #[inline]
+    pub fn location(&self) -> Location {
+        self.loc
+    }
+
+    #[inline]
+    pub fn span(&self) -> Span {
+        self.loc.span()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -727,6 +774,23 @@ impl ItemPath {
 
         Self(new)
     }
+
+    pub fn to_string(&self, interner: &StrInterner) -> String {
+        let mut string = String::with_capacity(self.len() * 2);
+        let mut segments = self.0.iter();
+        let last = segments.next_back();
+
+        for seg in segments {
+            string.push_str(interner.resolve(*seg));
+            string.push('.');
+        }
+
+        if let Some(seg) = last {
+            string.push_str(interner.resolve(*seg));
+        }
+
+        string
+    }
 }
 
 impl From<StrT> for ItemPath {
@@ -771,10 +835,20 @@ pub enum Pattern {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct Block {
     pub stmts: Vec<Stmt>,
-    // pub loc: Location,
+    pub loc: Location,
 }
 
 impl Block {
+    #[inline]
+    pub const fn location(&self) -> Location {
+        self.loc
+    }
+
+    #[inline]
+    pub fn span(&self) -> Span {
+        self.loc.span()
+    }
+
     #[inline]
     pub fn len(&self) -> usize {
         self.stmts.len()

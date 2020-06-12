@@ -743,7 +743,9 @@ impl<'src> Parser<'src> {
             self.eat(TokenType::Colon, [TokenType::Newline])?;
             let ty = Ref::new(self.ascribed_type()?);
 
-            let arg = FuncArg { name, ty };
+            // FIXME: Type span
+            let loc = Location::concrete(name_span, self.current_file);
+            let arg = FuncArg { name, ty, loc };
             // FIXME: Span is off here
             let _arg_span = Span::merge(name_span, name_span);
 

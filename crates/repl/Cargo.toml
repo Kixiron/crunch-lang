@@ -12,8 +12,17 @@ path = "../crunch-parser"
 [dependencies.crunch-semantics]
 path = "../crunch-semantics"
 
+[dependencies.crunch-shared]
+path = "../crunch-shared"
+
+[dependencies.ladder]
+path = "../ladder"
+
+[dependencies.crunch-typecheck]
+path = "../crunch-typecheck"
+
 [dependencies.rustyline]
-version = "6.1.2"
+version = "6.2.0"
 
 [dependencies.rustyline-derive]
 version = "0.3.1"
