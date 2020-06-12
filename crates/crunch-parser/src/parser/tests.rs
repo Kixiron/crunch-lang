@@ -85,6 +85,28 @@ macro_rules! ast_eq {
     };
 }
 
+macro_rules! assert_expr_eq {
+    ($expr:expr, $expect:expr $(,)?) => {{
+        let expr = std::panic::catch_unwind(|| {
+            let context = Context::default();
+            let mut parser = Parser::new(
+                &$expr,
+                CurrentFile::new(FileId::new(0), $expr.len()),
+                context,
+            );
+
+            parser.expr().unwrap()
+        })
+        .unwrap_or_else(|err| panic!("Error on the input {}: {:?}", $expr, err));
+        println!(
+            "{}",
+            ron::ser::to_string_pretty(&expr, ron::ser::PrettyConfig::default()).unwrap()
+        );
+
+        assert_eq!(expr, ron::from_str(&$expect).unwrap());
+    }};
+}
+
 macro_rules! eval {
     (@expr $expr:expr) => {{
         std::panic::catch_unwind(|| {
@@ -134,20 +156,91 @@ macro_rules! eval {
 
 #[test]
 fn expr() {
-    let expr = eval!(@expr "!5 + -10 / (test(54, test_again) % 200 if 10 else 52) - (true)");
-    let expected = "UnaryExpr(Not,BinaryOp(Literal(Integer((sign:Positive,bits:5))),Add,\
-        BinaryOp(Literal(Integer((sign:Negative,bits:10))),Div,BinaryOp(Parenthesised(BinaryOp(\
-        FunctionCall(caller:Variable((key:1)),arguments:[Literal(Integer((sign:Positive,bits:54\
-        ))),Variable((key:2))]),Mod,InlineConditional(true_arm:Literal(Integer((sign:Positive,bits:200\
-        ))),condition:Literal(Integer((sign:Positive,bits:10))),false_arm:Literal(Integer((sign:Positive,\
-        bits:52)))))),Sub,Parenthesised(Literal(Bool(true)))))))";
+    // let expr = eval!(@expr "!5 + -10 / (test(54, test_again) % 200 if 10 else 52) - (true)");
+    // let expected = "UnaryExpr(Not,BinaryOp(Literal(Integer((sign:Positive,bits:5))),Add,\
+    //     BinaryOp(Literal(Integer((sign:Negative,bits:10))),Div,BinaryOp(Parenthesised(BinaryOp(\
+    //     FunctionCall(caller:Variable((key:1)),arguments:[Literal(Integer((sign:Positive,bits:54\
+    //     ))),Variable((key:2))]),Mod,InlineConditional(true_arm:Literal(Integer((sign:Positive,bits:200\
+    //     ))),condition:Literal(Integer((sign:Positive,bits:10))),false_arm:Literal(Integer((sign:Positive,\
+    //     bits:52)))))),Sub,Parenthesised(Literal(Bool(true)))))))";
+    //
+    // assert_eq!(expr, expected);
 
-    assert_eq!(expr, expected);
+    let expr = "!5 + -10 / (test(54, test_again) % 200) - (true)";
+    let expected = "
+    (
+        kind: UnaryOp(Not, ((
+            kind: BinaryOp((
+                lhs: ((
+                    kind: Literal(Integer((
+                        sign: Positive,
+                        bits: 5,
+                    ))),
+                )),
+                op: Add,
+                rhs: ((
+                    kind: BinaryOp((
+                        lhs: ((
+                            kind: Literal(Integer((
+                                sign: Negative,
+                                bits: 10,
+                            ))),
+                        )),
+                        op: Div,
+                        rhs: ((
+                            kind: BinaryOp((
+                                lhs: ((
+                                    kind: Paren(((
+                                        kind: BinaryOp((
+                                            lhs: ((
+                                                kind: FuncCall(
+                                                    caller: ((
+                                                        kind: Variable(((key: 1))),
+                                                    )),
+                                                    args: [
+
+                                                        (
+                                                            kind: Literal(Integer((
+                                                                sign: Positive,
+                                                                bits: 54,
+                                                            ))),
+                                                        ),
+                                                        (
+                                                            kind: Variable(((key: 2)))
+                                                        ),
+                                                    ],
+                                                ),
+                                            )),
+                                            op: Mod,
+                                            rhs: ((
+                                                kind: Literal(Integer((
+                                                    sign: Positive,
+                                                    bits: 200,
+                                                ))),
+                                            )),
+                                        )),
+                                    ))),
+                                )),
+                                op: Sub,
+                                rhs: ((
+                                    kind: Paren(((
+                                        kind: Literal(Bool(true)),
+                                    ))),
+                                )),
+                            )),
+                        )),
+                    )),
+                )),
+            )),
+        ))),
+    )";
+
+    assert_expr_eq!(expr, expected);
 }
 
 #[test]
 fn integer_literals() {
-    let fmt = |bits, sign| format!("Literal(Integer((sign:{:?},bits:{})))", sign, bits);
+    let fmt = |bits, sign| format!("(kind: Literal(Integer((sign:{:?},bits:{}))))", sign, bits);
 
     #[rustfmt::skip]
     let integers: Vec<(String, (u128, Sign))> = vec![
@@ -166,16 +259,13 @@ fn integer_literals() {
     ];
 
     for (src, (bits, sign)) in integers {
-        let expr = eval!(@expr &src);
-        let expected = fmt(bits, sign);
-
-        assert_eq!(expr, expected);
+        assert_expr_eq!(src, fmt(bits, sign));
     }
 }
 
 #[test]
 fn float_literals() {
-    let fmt = |float| format!("Literal(Float(F64({})))", float);
+    let fmt = |float| format!("(kind: Literal(Float(F64({}))))", float);
 
     // TODO: More comprehensive testing
     #[rustfmt::skip]
@@ -191,53 +281,48 @@ fn float_literals() {
     ];
 
     for (src, float) in f64s {
-        let expr = eval!(@expr &src);
-        let expected = fmt(float);
-
-        assert_eq!(expr, expected);
+        assert_expr_eq!(src, fmt(float));
     }
 }
 
 #[test]
 fn string_literals() {
-    let expr = eval!(@expr "\"Some string\"");
     let expected =
-        "Literal(String(([(83),(111),(109),(101),(32),(115),(116),(114),(105),(110),(103)])))";
+        "(kind: Literal(String(([(83),(111),(109),(101),(32),(115),(116),(114),(105),(110),(103)]))))";
 
-    assert_eq!(expr, expected);
+    assert_expr_eq!(r#""Some string""#, expected);
 
-    let expr = eval!(@expr "b\"Some string\"");
-    let expected =
-        "Literal(Array([Integer((sign:Positive,bits:83)),Integer((sign:Positive,bits:111)),\
-        Integer((sign:Positive,bits:109)),Integer((sign:Positive,bits:101)),Integer((sign:Positive,bits:32)),\
-        Integer((sign:Positive,bits:115)),Integer((sign:Positive,bits:116)),Integer((sign:Positive,bits:114)),\
-        Integer((sign:Positive,bits:105)),Integer((sign:Positive,bits:110)),Integer((sign:Positive,bits:103))]))";
+    let expected = "
+        (kind: Literal(Array([
+            Integer((sign:Positive,bits:83)),
+            Integer((sign:Positive,bits:111)),
+            Integer((sign:Positive,bits:109)),
+            Integer((sign:Positive,bits:101)),
+            Integer((sign:Positive,bits:32)),
+            Integer((sign:Positive,bits:115)),
+            Integer((sign:Positive,bits:116)),
+            Integer((sign:Positive,bits:114)),
+            Integer((sign:Positive,bits:105)),
+            Integer((sign:Positive,bits:110)),
+            Integer((sign:Positive,bits:103)),
+        ])))";
 
-    assert_eq!(expr, expected);
+    assert_expr_eq!(r#"b"Some string""#, expected);
 }
 
 #[test]
 fn char_literals() {
-    let expr = eval!(@expr "'S'");
-    let expected = "Literal(Rune((83)))";
-    assert_eq!(expr, expected);
+    let expected = "(kind: Literal(Rune((83))))";
+    assert_expr_eq!("'S'", expected);
 
-    let expr = eval!(@expr "b'S'");
-    let expected = "Literal(Integer((sign:Positive,bits:83)))";
-    assert_eq!(expr, expected);
+    let expected = "(kind: Literal(Integer((sign:Positive,bits:83))))";
+    assert_expr_eq!("b'S'", expected);
 }
 
 #[test]
 fn boolean_literals() {
-    let fmt = |boolean| format!("Literal(Bool({}))", boolean);
-
-    let expr = eval!(@expr "true");
-    let expected = fmt(true);
-    assert_eq!(expr, expected);
-
-    let expr = eval!(@expr "false");
-    let expected = fmt(false);
-    assert_eq!(expr, expected);
+    assert_expr_eq!("true", "(kind: Literal(Bool(true)))");
+    assert_expr_eq!("false", "(kind: Literal(Bool(false)))");
 }
 
 // TODO: More varied internal types
@@ -249,14 +334,14 @@ fn array_literals() {
             iter::repeat("true").take(i).collect::<Vec<_>>().join(", ")
         );
         let expected = format!(
-            "Array([{}])",
-            iter::repeat("Literal(Bool(true))")
+            "(kind: Array([{}]))",
+            iter::repeat("(kind: Literal(Bool(true)))")
                 .take(i)
                 .collect::<Vec<_>>()
                 .join(",")
         );
 
-        assert_eq!(eval!(@expr &expr), expected);
+        assert_expr_eq!(expr, expected);
     }
 }
 
@@ -269,38 +354,54 @@ fn tuple_literals() {
             iter::repeat("true").take(i).collect::<Vec<_>>().join(", ")
         );
         let expected = format!(
-            "Tuple([{}])",
-            iter::repeat("Literal(Bool(true))")
+            "(kind: Tuple([{}]))",
+            iter::repeat("(kind: Literal(Bool(true)))")
                 .take(i)
                 .collect::<Vec<&str>>()
                 .join(",")
         );
 
-        assert_eq!(eval!(@expr &expr), expected);
+        assert_expr_eq!(expr, expected);
     }
 }
 
 #[test]
 fn comparison_operations() {
-    let fmt = |lhs, op, rhs| format!("Comparison({},{:?},{})", lhs, op, rhs);
+    let fmt = |op| {
+        format!(
+            "(kind:
+                Comparison((
+                    lhs: ((
+                        kind: Literal(Integer((
+                            sign: Positive,
+                            bits: 10,
+                        ))),
+                    )),
+                    op: {:?},
+                    rhs: ((
+                        kind: Literal(Integer((
+                            sign: Positive,
+                            bits: 0,
+                        ))),
+                    )),
+                ))
+            )",
+            op
+        )
+    };
 
-    let ten = "Literal(Integer((sign:Positive,bits:10)))";
-    let zero = "Literal(Integer((sign:Positive,bits:0)))";
     #[rustfmt::skip]
-    let comparisons: Vec<(&str, (&str, CompOp, &str))> = vec![
-        ("10 == 0", (ten, CompOp::Equal,        zero)),
-        ("10 != 0", (ten, CompOp::NotEqual,     zero)),
-        ("10 < 0",  (ten, CompOp::Less,         zero)),
-        ("10 > 0",  (ten, CompOp::Greater,      zero)),
-        ("10 <= 0", (ten, CompOp::LessEqual,    zero)),
-        ("10 >= 0", (ten, CompOp::GreaterEqual, zero)),
+    let comparisons: Vec<(&str, CompOp)> = vec![
+        ("10 == 0", CompOp::Equal),
+        ("10 != 0", CompOp::NotEqual),
+        ("10 < 0",  CompOp::Less),
+        ("10 > 0",  CompOp::Greater),
+        ("10 <= 0", CompOp::LessEqual),
+        ("10 >= 0", CompOp::GreaterEqual),
     ];
 
-    for (src, (lhs, op, rhs)) in comparisons {
-        let expr = eval!(@expr &src);
-        let expected = fmt(lhs, op, rhs);
-
-        assert_eq!(expr, expected);
+    for (src, op) in comparisons {
+        assert_expr_eq!(src, fmt(op));
     }
 }
 
@@ -308,7 +409,22 @@ fn comparison_operations() {
 fn assignments() {
     let fmt = |assign| {
         format!(
-            "Assignment(Variable((key:1)),{:?},Literal(Integer((sign:Positive,bits:100))))",
+            "(
+                kind: Assign((
+                    lhs: ((
+                        kind: Variable(((
+                            key: 1,
+                        ))),
+                    )),
+                    op: {:?},
+                    rhs: ((
+                        kind: Literal(Integer((
+                            sign: Positive,
+                            bits: 100,
+                        ))),
+                    )),
+                ))
+            )",
             assign
         )
     };
@@ -330,10 +446,7 @@ fn assignments() {
     ];
 
     for (src, ty) in integers {
-        let expr = eval!(@expr &src);
-        let expected = fmt(ty);
-
-        assert_eq!(expr, expected);
+        assert_expr_eq!(src, fmt(ty));
     }
 }
 
@@ -345,17 +458,46 @@ fn assignments() {
 //       - Floats
 #[test]
 fn ranges() {
-    let expr = eval!(@expr "1..100");
-    let expected = "Range(Literal(Integer((sign:Positive,bits:1))),Literal(Integer((sign:Positive,bits:100))))";
+    let expected = "(
+        kind: Range(
+            ((
+                kind: Literal(Integer((
+                    sign: Positive,
+                    bits: 1,
+                ))),
+            )),
+            ((
+                kind: Literal(Integer((
+                    sign: Positive,
+                    bits: 100,
+                ))),
+            )),
+        ),
+    )";
 
-    assert_eq!(expr, expected);
+    assert_expr_eq!("1..100", expected);
 }
 
 #[test]
 fn binary_ops() {
     let fmt = |op| {
         format!(
-            "BinaryOp(Variable((key:1)),{:?},Literal(Integer((sign:Positive,bits:100))))",
+            "(
+                kind: BinaryOp((
+                    lhs: ((
+                        kind: Variable(((
+                            key: 1,
+                        ))),
+                    )),
+                    op: {:?},
+                    rhs: ((
+                        kind: Literal(Integer((
+                            sign: Positive,
+                            bits: 100,
+                        ))),
+                    )),
+                )),
+            )",
             op
         )
     };
@@ -376,10 +518,7 @@ fn binary_ops() {
     ];
 
     for (src, ty) in integers {
-        let expr = eval!(@expr &src);
-        let expected = fmt(ty);
-
-        assert_eq!(expr, expected);
+        assert_expr_eq!(src, fmt(ty));
     }
 }
 
