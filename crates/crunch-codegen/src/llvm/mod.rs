@@ -1,15 +1,31 @@
 mod context;
-mod function;
-mod module;
-mod utils;
+mod error;
+pub mod module;
+pub mod target_machine;
+pub mod types;
+pub mod utils;
+pub mod values;
 
+pub use context::Context;
+pub use error::{Error, ErrorKind, Result};
+
+/*
+pub mod builder;
+pub mod context;
+pub mod function;
+pub mod module;
+pub mod value;
+
+use builder::Builder;
 use context::Context;
-use module::{Builder, Module};
-use utils::{Type, Typeable};
+use module::Module;
+use value::Value;
+
+use std::ffi::CStr;
 
 // TODO: Internal string caching, this must be done
 
-type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 /// Turns a raw pointer into a `Result<NonNull<T, Error>`
 #[doc(hidden)]
@@ -17,7 +33,7 @@ type Result<T> = std::result::Result<T, Error>;
 macro_rules! null {
     ($expr:expr, $msg:expr $(,)?) => {
         ::std::ptr::NonNull::new($expr)
-            .ok_or_else(|| $crate::llvm::Error::new($msg, $crate::llvm::ErrorKind::ReceivedNullPtr))
+            .ok_or_else(|| $crate::llvm::Error::new($msg, $crate::llvm::ErrorKind::NullPtr))
     };
 }
 
@@ -30,6 +46,14 @@ pub struct LLVM {
 impl LLVM {
     #[inline]
     pub fn new() -> Result<Self> {
+        let ctx = Context::new()?;
+        Self::set_fatal_error_handler();
+
+        Ok(Self { ctx })
+    }
+
+    #[inline]
+    pub fn without_handler() -> Result<Self> {
         let ctx = Context::new()?;
 
         Ok(Self { ctx })
@@ -50,63 +74,53 @@ impl LLVM {
 
     #[inline]
     pub fn get_type<'a, T: Typeable>(&'a self) -> Result<Type<'a>> {
-        unsafe { <T as Typeable>::create_type(self) }
+        unsafe { <T as Typeable>::create_type(&self.ctx) }
+    }
+
+    #[inline]
+    pub fn constant<'a, T: Constant + Typeable>(&'a self, constant: T) -> Result<Value<'a>> {
+        constant.create(&self.ctx)
+    }
+
+    // TODO: This can be partially replaced by const generics
+    #[inline]
+    pub fn array_type<'a, T: Typeable>(&'a self, len: u32) -> Result<Type<'a>> {
+        use llvm_sys::core::LLVMArrayType;
+
+        unsafe {
+            let elm = <T as Typeable>::create_type(&self.ctx)?;
+
+            let array = Type::from_raw(null!(
+                LLVMArrayType(elm.as_mut_ptr(), len),
+                "Failed to create array type",
+            )?);
+
+            debug_assert!(array.is_array());
+            debug_assert_eq!(array.array_len(), Some(len));
+
+            Ok(array)
+        }
     }
 }
 
 // Private interface
 impl LLVM {
-    pub(crate) fn context<'a>(&'a self) -> &'a Context {
-        &self.ctx
-    }
-}
+    pub(crate) fn set_fatal_error_handler() {
+        extern "C" fn error_handler(reason: *const i8) {
+            println!(
+                "LLVM encountered a fatal error: {}",
+                unsafe { CStr::from_ptr(reason) }.to_string_lossy(),
+            );
+        }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Error {
-    message: String,
-    kind: ErrorKind,
-}
-
-impl Error {
-    #[inline]
-    fn new(message: impl Into<String>, kind: ErrorKind) -> Self {
-        Self {
-            message: message.into(),
-            kind,
+        // Unset the current error handler before inserting our own
+        unsafe {
+            llvm_sys::error_handling::LLVMResetFatalErrorHandler();
+            llvm_sys::error_handling::LLVMInstallFatalErrorHandler(Some(error_handler))
         }
     }
-
-    #[inline]
-    pub fn message(&self) -> &str {
-        &self.message
-    }
-
-    #[inline]
-    pub const fn kind(&self) -> ErrorKind {
-        self.kind
-    }
 }
 
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "an error was encountered with LLVM: {:?}, {}",
-            self.kind, self.message,
-        )
-    }
-}
-
-impl std::error::Error for Error {}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum ErrorKind {
-    ReceivedNullPtr,
-    InteriorNullBytes,
-    MissingType,
-    NamelessFunction,
-    TooManyArgs,
-}
 
 #[cfg(test)]
 mod tests {
@@ -116,4 +130,24 @@ mod tests {
     fn new_llvm() {
         let _llvm = LLVM::new().unwrap();
     }
+
+    #[test]
+    fn create_array_ty() {
+        let llvm = LLVM::new().unwrap();
+        let array = llvm.array_type::<i32>(10).unwrap();
+
+        assert!(array.is_array());
+        assert_eq!(array.array_len(), Some(10));
+    }
+
+    #[test]
+    fn create_i32() {
+        let llvm = LLVM::new().unwrap();
+        let int32 = llvm.constant(100i32).unwrap();
+
+        assert!(int32.is_constant());
+        assert!(int32.is_const_int());
+        assert_eq!(Some(100), int32.const_int_val());
+    }
 }
+*/

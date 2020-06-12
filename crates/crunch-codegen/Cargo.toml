@@ -7,3 +7,6 @@ edition = "2018"
 
 [dependencies.llvm-sys]
 version = "100"
+
+[dev-dependencies.tempfile]
+version = "3.1.0"

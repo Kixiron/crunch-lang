@@ -3,7 +3,9 @@ use crunch_proc::recursion_guard;
 use crunch_shared::{
     error::ParseResult,
     trees::{
-        Ref, ast::{Binding, Pattern}},
+        ast::{Binding, Pattern},
+        Ref,
+    },
 };
 
 impl<'src> Parser<'src> {

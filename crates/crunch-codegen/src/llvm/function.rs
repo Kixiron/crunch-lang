@@ -1,97 +1,28 @@
+/*
 use crate::{
     llvm::{
-        context::Context,
-        module::{BasicBlock, BlockAddress, Builder, Module},
-        utils::{Type, Value},
-        Error, ErrorKind, Result,
+        context::Context, module::Module, utils::LLVMString, value::Value, Error,
+        ErrorKind, Result,
     },
     null,
 };
 use llvm_sys::{
+    analysis::{LLVMVerifierFailureAction, LLVMVerifyFunction, LLVMVerifyModule},
     core::{
-        LLVMAddFunction, LLVMBlockAddress, LLVMCountBasicBlocks, LLVMCountParams, LLVMFunctionType,
+        LLVMAddFunction, LLVMCountParams, LLVMCreateMessage, LLVMDisposeMessage, LLVMFunctionType,
         LLVMGetParamTypes, LLVMGetParams,
     },
     LLVMType, LLVMValue,
 };
-use std::{
-    convert::TryInto,
-    ffi::{CStr, CString},
-    marker::PhantomData,
-};
-
-#[derive(Debug)]
-pub struct FunctionBuilder<'a> {
-    function: Function<'a>,
-    builder: Builder<'a>,
-    ctx: &'a Context,
-}
-
-// Public interface
-impl<'a> FunctionBuilder<'a> {
-    #[inline]
-    pub fn append_block<'b>(&'b self, name: &str) -> Result<BasicBlock<'b>> {
-        let name = CString::new(name).expect("Rust strings cannot have null bytes");
-
-        let block = self.builder.new_block(self.ctx, &self.function, &name)?;
-
-        Ok(block)
-    }
-
-    #[inline]
-    pub fn args(&self) -> &[FunctionArg<'a>] {
-        &self.function.args()
-    }
-
-    #[inline]
-    pub fn block_address(&self, block: &BasicBlock<'a>) -> Result<BlockAddress<'a>> {
-        let address = null!(
-            unsafe { LLVMBlockAddress(self.function.as_value().as_mut_ptr(), block.as_mut_ptr()) },
-            "Failed to get BasicBlock address",
-        )?;
-
-        Ok(BlockAddress::from_raw(address))
-    }
-
-    #[inline]
-    pub fn len(&self) -> usize {
-        unsafe { LLVMCountBasicBlocks(self.function.as_value().as_mut_ptr()) as usize }
-    }
-}
-
-// Private interface
-impl<'a> FunctionBuilder<'a> {
-    #[inline]
-    pub(crate) fn new(ctx: &'a Context, function: Function<'a>) -> Result<Self> {
-        let builder = Builder::new(ctx)?;
-
-        Ok(Self {
-            function,
-            builder,
-            ctx,
-        })
-    }
-
-    #[inline]
-    pub(crate) fn finish(self) -> Result<Function<'a>> {
-        Ok(self.function)
-    }
-}
-
-impl<'a> std::ops::Index<usize> for FunctionBuilder<'a> {
-    type Output = FunctionArg<'a>;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.args()[index]
-    }
-}
+use std::{borrow::Cow, ffi::CStr, fmt, marker::PhantomData, mem::MaybeUninit, ptr::NonNull};
 
 #[derive(Debug)]
 pub struct Function<'a> {
     function: Value<'a>,
     signature: Type<'a>,
     args: Vec<FunctionArg<'a>>,
-    __module: PhantomData<&'a Module<'a>>,
+    return_type: Type<'a>,
+    module: &'a Module<'a>,
 }
 
 // Public interface
@@ -100,14 +31,21 @@ impl<'a> Function<'a> {
     pub fn args(&self) -> &[FunctionArg<'a>] {
         &self.args
     }
+
+    #[inline]
+    pub const fn return_type(&self) -> Type<'a> {
+        self.return_type
+    }
 }
 
 // Private interface
 impl<'a> Function<'a> {
     #[inline]
-    pub(crate) fn new(module: &Module<'a>, name: &CStr, signature: &Signature<'a>) -> Result<Self> {
-        use std::mem::MaybeUninit;
-
+    pub(crate) fn new(
+        module: &'a Module<'a>,
+        name: &CStr,
+        signature: &Signature<'a>,
+    ) -> Result<Self> {
         let function = null!(
             unsafe {
                 LLVMAddFunction(
@@ -178,14 +116,56 @@ impl<'a> Function<'a> {
         Ok(Self {
             function,
             signature: signature.as_type(),
+            return_type: signature.return_type,
             args,
-            __module: PhantomData,
+            module,
         })
     }
 
     #[inline]
     pub(crate) const fn as_value(&self) -> Value<'a> {
         self.function
+    }
+
+    #[inline]
+    pub(crate) fn verify(&self) -> Result<()> {
+        let failed_verification = unsafe {
+            LLVMVerifyFunction(
+                self.as_value().as_mut_ptr(),
+                LLVMVerifierFailureAction::LLVMReturnStatusAction,
+            )
+        } != 0;
+
+        if failed_verification {
+            // This pointer has to be destroyed using `LLVMDisposeMessage`, which is what the later `LLVMString` guarantees
+            let mut llvm_message: MaybeUninit<*mut i8> = MaybeUninit::zeroed();
+            unsafe {
+                // This also returns a status code on the module, but we just want info on the current function
+                LLVMVerifyModule(
+                    self.module.as_mut_ptr(),
+                    LLVMVerifierFailureAction::LLVMPrintMessageAction,
+                    llvm_message.as_mut_ptr(),
+                )
+            };
+
+            let llvm_string = LLVMString::from_ptr(unsafe { llvm_message.assume_init() });
+            let message = if let Ok(ref message) = llvm_string {
+                if message.is_empty() {
+                    "<LLVM gave no error message>".into()
+                } else {
+                    message.to_string_lossy()
+                }
+            } else {
+                "<LLVM gave no error message>".into()
+            };
+
+            Err(Error::new(
+                format!("LLVM failed to verify function: {}", message),
+                ErrorKind::InvalidFunc,
+            ))
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -232,8 +212,23 @@ pub struct Signature<'a> {
 /// Public interface
 impl<'a> Signature<'a> {
     #[inline]
+    pub const fn ret(&self) -> Type<'a> {
+        self.return_type
+    }
+
+    #[inline]
     pub fn args(&self) -> &[Type<'a>] {
         &self.args
+    }
+
+    #[inline]
+    pub fn num_args(&self) -> usize {
+        self.args.len()
+    }
+
+    #[inline]
+    pub const fn is_variadic(&self) -> bool {
+        self.variadic
     }
 
     #[inline]
@@ -251,10 +246,19 @@ impl<'a> Signature<'a> {
     {
         let args = args.into();
 
-        if <usize as TryInto<u32>>::try_into(args.len()).is_err() {
+        // LLVM takes a u32 as the length of function arguments, so return an error if there are too many
+        if args.len() > u32::max_value() as usize {
             return Err(Error::new(
                 "Functions cannot have more than u32::MAX arguments",
                 ErrorKind::TooManyArgs,
+            ));
+        }
+
+        // Make sure all function arguments are valid
+        if args.iter().any(|arg| arg.is_void()) {
+            return Err(Error::new(
+                "Functions cannot take `void` as an argument",
+                ErrorKind::InvalidFuncArg,
             ));
         }
 
@@ -290,13 +294,12 @@ mod tests {
         let llvm = LLVM::new().unwrap();
         let module = llvm.create_module("module").unwrap();
         let _sig = module
-            .add_function_type(
-                llvm.get_type::<()>().unwrap(),
+            .function_ty(
                 &[
                     llvm.get_type::<i32>().unwrap(),
                     llvm.get_type::<i64>().unwrap(),
                 ],
-                false,
+                llvm.get_type::<()>().unwrap(),
             )
             .unwrap();
     }
@@ -306,57 +309,22 @@ mod tests {
         let llvm = LLVM::new().unwrap();
         let module = llvm.create_module("module").unwrap();
         let sig = module
-            .add_function_type(llvm.get_type::<()>().unwrap(), &[], false)
+            .function_ty(&[], llvm.get_type::<()>().unwrap())
             .unwrap();
-        let _function = module.build_function("function", &sig, |_| Ok(())).unwrap();
+
+        let function = module.build_function("function", &sig, |_| Ok(())).unwrap();
+        assert!(function.as_value().is_function());
     }
 
     #[test]
-    fn build_function() {
+    fn void_func_arg() {
         let llvm = LLVM::new().unwrap();
-        let module = llvm.create_module("entry").unwrap();
+        let module = llvm.create_module("module").unwrap();
+        let void = llvm.get_type::<()>().unwrap();
 
-        let aiee_32 = llvm.get_type::<i32>().unwrap();
-        let sig = module
-            .add_function_type(aiee_32, &[aiee_32, aiee_32], false)
-            .unwrap();
+        let sig = module.function_ty(&[void], void);
 
-        let _function = module
-            .build_function("function", &sig, |builder| {
-                let entry = builder.append_block("entry")?;
-                let add = entry.add(builder[0], builder[1], "sum.1")?;
-                entry.ret(add)?;
-
-                let jump_to = builder.append_block("jump_to")?;
-                let jump_from = builder.append_block("jump_from")?;
-                jump_to.branch(jump_to)?;
-                jump_from.branch(jump_from)?;
-
-                Ok(())
-            })
-            .unwrap();
-    }
-
-    #[test]
-    fn builder_len() {
-        let llvm = LLVM::new().unwrap();
-        let module = llvm.create_module("entry").unwrap();
-
-        let aiee_32 = llvm.get_type::<i32>().unwrap();
-        let sig = module
-            .add_function_type(aiee_32, &[aiee_32, aiee_32], false)
-            .unwrap();
-
-        let _function = module
-            .build_function("function", &sig, |builder| {
-                assert_eq!(builder.len(), 0);
-                builder.append_block("entry")?;
-                assert_eq!(builder.len(), 1);
-                builder.append_block("another_block")?;
-                assert_eq!(builder.len(), 2);
-
-                Ok(())
-            })
-            .unwrap();
+        assert!(sig.is_err());
     }
 }
+*/
