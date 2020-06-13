@@ -16,5 +16,5 @@ mod pretty_printer;
 mod tests;
 mod token;
 
-pub use parser::Parser;
+pub use parser::{ParseConfig, Parser};
 pub use pretty_printer::PrettyPrinter;

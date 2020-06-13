@@ -437,6 +437,9 @@ pub enum SyntaxError {
 
     #[display(fmt = "Array lengths cannot be negative")]
     NegativeArrayLen,
+
+    #[display(fmt = "Too many errors occurred (limit: {})", _0)]
+    TooManyErrors(usize),
 }
 
 impl SyntaxError {

@@ -27,6 +27,22 @@ type ReturnData = (Vec<Item>, ErrorHandler, Graph<Scope, MaybeSym>, NodeId);
 
 // TODO: Make the parser a little more lax, it's kinda strict about whitespace
 
+#[derive(Debug, Copy, Clone)]
+pub struct ParseConfig {
+    pub max_errors: usize,
+    #[doc(hidden)]
+    pub __private: (),
+}
+
+impl Default for ParseConfig {
+    fn default() -> Self {
+        Self {
+            max_errors: 200,
+            __private: (),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Parser<'src> {
     token_stream: TokenStream<'src>,
@@ -38,6 +54,7 @@ pub struct Parser<'src> {
     context: Context,
     symbol_table: Graph<Scope, MaybeSym>,
     module_scope: NodeId,
+    config: ParseConfig,
 }
 
 /// Initialization and high-level usage
@@ -58,6 +75,7 @@ impl<'src> Parser<'src> {
             context,
             symbol_table,
             module_scope,
+            config: ParseConfig::default(),
         }
     }
 
@@ -82,13 +100,14 @@ impl<'src> Parser<'src> {
             context,
             symbol_table,
             module_scope,
+            config: ParseConfig::default(),
         }
     }
 
     pub fn parse(mut self) -> Result<ReturnData, ErrorHandler> {
         let timer = start_timer!("parsing");
 
-        let mut items = Vec::with_capacity(20);
+        let (mut items, mut errors) = (Vec::with_capacity(20), 0);
 
         while self.peek().is_ok() {
             match self.item() {
@@ -99,8 +118,21 @@ impl<'src> Parser<'src> {
                 }
 
                 Err(err) => {
-                    self.error_handler.push_err(err);
+                    errors += 1;
 
+                    if errors >= self.config.max_errors {
+                        let loc = err.loc;
+                        self.error_handler.push_err(err);
+                        self.error_handler.push_err(Locatable::new(
+                            Error::Syntax(SyntaxError::TooManyErrors(errors)),
+                            loc,
+                        ));
+
+                        end_timer!("parsing unsuccessfully", timer);
+                        return Err(self.error_handler);
+                    }
+
+                    self.error_handler.push_err(err);
                     if let Err(err) = self.stress_eat() {
                         self.error_handler.push_err(err);
 
@@ -129,6 +161,11 @@ impl<'src> Parser<'src> {
 
         end_timer!("lexing", timer);
         (token_stream, next, peek)
+    }
+
+    pub fn with_config(mut self, config: ParseConfig) -> Self {
+        self.config = config;
+        self
     }
 
     #[inline(always)]

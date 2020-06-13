@@ -23,7 +23,8 @@ impl<'src> Parser<'src> {
     ///     'str' | 'rune' | 'bool' | 'unit' | 'absurd'
     ///     | 'ureg' | 'ireg' | 'uptr' | 'iptr' | Path
     ///     | 'i' [0-9]+ | 'u' [0-9]+ | 'f' [0-9]+
-    ///     | '!' Type | 'infer'
+    ///     | '!' Type | 'infer' | '&' 'mut'? Type
+    ///     | 'ref'? 'mut'? Type
     ///     | '(' Type ')'
     ///     | Type '&' Type
     ///     | Type '|' Type
@@ -37,6 +38,7 @@ impl<'src> Parser<'src> {
     ///     | 'fn' '(' (Type | Type ',' Type)? ')' ('->' Type)?
     /// ```
     // TODO: Decide about `Self` and `self`
+    // TODO: Add `'&' 'mut'? Type` and `'ref'? 'mut'? Type`
     #[recursion_guard]
     pub(super) fn ascribed_type(&mut self) -> ParseResult<Type> {
         self.ascribed_type_internal(0)

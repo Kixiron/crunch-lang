@@ -39,6 +39,9 @@ path = "../crunch-shared"
 [dependencies.crunch-proc]
 path = "../crunch-proc"
 
+[dependencies.humansize]
+version = "1.1.0"
+
 [dev-dependencies.ron]
 version = "0.6.0"
 

@@ -13,7 +13,8 @@ def rand_ident(length: int) -> str:
         "trait", "while", "if", "else", 
         "then", "let", "or", "and", "as", 
         "end", "lib", "pkg", "inf", "NaN",
-        "loop",
+        "loop", "with", "mut", "ref", "tup",
+        "arr", "slice",
     ]
     
     letters = string.ascii_lowercase
@@ -25,7 +26,7 @@ def rand_ident(length: int) -> str:
     return ident
 
 def rand_ty() -> str:
-    types = ["unit", "bool", "int", "str", "float", ""]
+    types = ["unit", "bool", "i32", "str", "f32", ""]
     
     ty = random.choice(types)
     
@@ -47,16 +48,18 @@ def rand_call_params() -> str:
     
     for _ in range(0, random.randint(0, 10)):
         params += rand_ident(random.randint(5, 10))
-        params += " , "
+        params += " : "
+        params += random.choice(["unit", "bool", "i32", "str", "f32"])
+        params += ", "
         
     return params
 
 def expr(paren: bool) -> str:
     exprs = []
     if paren:
-        exprs = ["func", "binop", "var", "paren"]
+        exprs = ["binop", "var", "paren"] # "func", 
     else:
-        exprs = ["func", "binop", "var"]
+        exprs = ["binop", "var"] # "func", 
     binops = ["+", "-", "/", "*", "&", "**", "^", "%", "|"]
     
     exp = random.choice(exprs)
@@ -84,11 +87,11 @@ def expr(paren: bool) -> str:
     return exp
 
 def statement(indentlev: int, recurse: int) -> str:
-    stmts = ["if", "let", "func", "return", "match"]
-    # "match", "for", "while", "loop", 
+    stmts = ["if", "let"]
+    # "match", "for", "while", "loop", "func", "return"
     
     if recurse > 5:
-        stmts = ["let", "func", "return"]
+        stmts = ["let"] # "func", "return"
 
     stmt = random.choice(stmts)
     
@@ -119,7 +122,7 @@ def statement(indentlev: int, recurse: int) -> str:
         stmt = indent(indentlev)
         stmt += "let "
         stmt += rand_ident(random.randint(2, 5))
-        stmt += " = "
+        stmt += " := "
         stmt += expr(True)
         stmt += " "
         stmt += "\n"
@@ -184,7 +187,7 @@ def generate() -> str:
         
 
 def main():
-    with open("test.crunch", "w+") as f:
+    with open("test2.crunch", "w+") as f:
         f.truncate(0)
         f.write(generate())
 

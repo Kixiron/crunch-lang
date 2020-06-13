@@ -115,6 +115,8 @@
 - [ ] No dependencies on crt or libc
 - [ ] MIR for majority of passes
 - [ ] SSA IR for compilation to LLVM
+- [ ] https://github.com/rust-lang/rust/pull/45920
+- [ ] https://github.com/rust-lang/rust/tree/master/src/librustc_codegen_llvm/llvm
 
 ### Optimizations
 
@@ -143,3 +145,4 @@
   - https://github.com/pandaman64/effective-rust
   - https://github.com/effect-handlers/effects-rosetta-stone
 - [ ] Opt-in UB
+- [ ] More instrumenting

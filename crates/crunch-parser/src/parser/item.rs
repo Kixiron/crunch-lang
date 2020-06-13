@@ -17,7 +17,6 @@ use crunch_shared::{
 };
 
 // TODO: Const blocks
-// TODO: Add back generics to funcs
 
 impl<'src> Parser<'src> {
     #[recursion_guard]
@@ -746,8 +745,6 @@ impl<'src> Parser<'src> {
             // FIXME: Type span
             let loc = Location::concrete(name_span, self.current_file);
             let arg = FuncArg { name, ty, loc };
-            // FIXME: Span is off here
-            let _arg_span = Span::merge(name_span, name_span);
 
             args.push(arg);
 
