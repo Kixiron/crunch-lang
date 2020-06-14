@@ -1,5 +1,7 @@
 use crunch_shared::{
-    end_timer, start_timer,
+    end_timer,
+    error::Location,
+    start_timer,
     strings::StrT,
     symbol_table::{Graph, MaybeSym, NodeId, Scope},
     trees::{
@@ -12,8 +14,8 @@ use crunch_shared::{
             While as AstWhile,
         },
         hir::{
-            Block, Break, Expr, ExprKind, FuncArg, FuncCall, Function, Item, Match, MatchArm,
-            Return, Stmt, Type, TypeKind, VarDecl, Vis,
+            Binding, Block, Break, Expr, ExprKind, FuncArg, FuncCall, Function, Item, Match,
+            MatchArm, Pattern, Return, Stmt, Type, TypeKind, Var, VarDecl, Vis,
         },
         Ref, Sided,
     },
@@ -63,20 +65,13 @@ impl ItemVisitor for Ladder {
         let name = self.module_path.join(item.name.unwrap());
         let args = args
             .iter()
-            .map(|arg| {
-                let name = self
-                    .module_table
-                    .node(self.module_scope)
-                    .unwrap()
-                    .resolve(&self.module_table, arg.name)
-                    .unwrap();
-
-                let kind = TypeKind::from(&*arg.ty);
+            .map(|AstFuncArg { name, ty, loc }| {
+                let kind = TypeKind::from(&**ty);
 
                 FuncArg {
-                    name,
+                    name: Var::User(*name),
                     kind,
-                    loc: arg.location(),
+                    loc: *loc,
                 }
             })
             .collect();
@@ -161,7 +156,7 @@ impl StmtVisitor for Ladder {
 
     fn visit_var_decl(&mut self, stmt: &AstStmt, var: &AstVarDecl) -> Stmt {
         Stmt::VarDecl(VarDecl {
-            name: ItemPath::new(var.name),
+            name: Var::User(var.name),
             value: Ref::new(self.visit_expr(&*var.val)),
             ty: Type {
                 name: ItemPath::new(var.name),
@@ -175,54 +170,50 @@ impl StmtVisitor for Ladder {
 impl ExprVisitor for Ladder {
     type Output = Expr;
 
-    fn visit_if(
-        &mut self,
-        expr: &AstExpr,
-        AstIf {
-            cond: AstIfCond { cond, body },
-            clauses,
-            else_,
-        }: &AstIf,
-    ) -> Self::Output {
+    fn visit_if(&mut self, expr: &AstExpr, AstIf { clauses, else_ }: &AstIf) -> Self::Output {
         let mut arms = Vec::with_capacity(1 + clauses.len() + else_.is_some() as usize);
 
-        if clauses.is_empty() {
+        for AstIfCond { cond, body } in clauses {
             arms.push(MatchArm {
-                cond: Ref::new(Expr {
-                    kind: ExprKind::Literal(Literal::Bool(true)),
-                    loc: expr.location(),
-                }),
+                bind: Binding {
+                    reference: false,
+                    mutable: false,
+                    pattern: Pattern::Wildcard,
+                    ty: None,
+                },
+                guard: Some(Ref::new(self.visit_expr(cond))),
                 body: Block::from_iter(
                     body.location(),
                     body.iter().map(|stmt| self.visit_stmt(stmt)),
                 ),
                 ty: TypeKind::Infer,
             });
+        }
 
-            if let Some(body) = else_ {
-                arms.push(MatchArm {
-                    cond: Ref::new(Expr {
-                        kind: ExprKind::Literal(Literal::Bool(false)),
-                        loc: expr.location(),
-                    }),
-                    body: Block::from_iter(
-                        body.location(),
-                        body.iter().map(|s| self.visit_stmt(s)),
-                    ),
-                    ty: TypeKind::Infer,
-                });
-            }
+        if let Some(body) = else_ {
+            arms.push(MatchArm {
+                bind: Binding {
+                    reference: false,
+                    mutable: false,
+                    pattern: Pattern::Wildcard,
+                    ty: None,
+                },
+                guard: None,
+                body: Block::from_iter(body.location(), body.iter().map(|s| self.visit_stmt(s))),
+                ty: TypeKind::Infer,
+            });
+        }
 
-            Expr {
-                kind: ExprKind::Match(Match {
-                    cond: Ref::new(self.visit_expr(cond)),
-                    arms,
-                    ty: TypeKind::Infer,
+        Expr {
+            kind: ExprKind::Match(Match {
+                cond: Ref::new(Expr {
+                    kind: ExprKind::Literal(Literal::Bool(true)),
+                    loc: expr.location(),
                 }),
-                loc: expr.location(),
-            }
-        } else {
-            todo!()
+                arms,
+                ty: TypeKind::Infer,
+            }),
+            loc: expr.location(),
         }
     }
 
@@ -251,8 +242,195 @@ impl ExprVisitor for Ladder {
         }
     }
 
-    fn visit_while(&mut self, _expr: &AstExpr, _while_: &AstWhile) -> Self::Output {
-        todo!()
+    fn visit_while(
+        &mut self,
+        expr: &AstExpr,
+        AstWhile {
+            cond,
+            body: ast_body,
+            then,
+            else_,
+        }: &AstWhile,
+    ) -> Self::Output {
+        let mut scope: Block<Stmt> = Block::with_capacity(
+            expr.location(),
+            2 + (then.is_some() as usize * 2) + (else_.is_some() as usize * 2),
+        );
+
+        let loop_broken = Var::Auto(0);
+        scope.push(Stmt::VarDecl(VarDecl {
+            name: loop_broken,
+            value: Ref::new(Expr {
+                kind: ExprKind::Literal(Literal::Bool(false)),
+                loc: cond.location(),
+            }),
+            ty: Type {
+                name: ItemPath::default(), // TODO: ????
+                kind: TypeKind::Bool,
+            },
+            loc: cond.location(),
+        }));
+
+        let mut body: Block<Stmt> = Block::with_capacity(ast_body.location(), ast_body.len() + 1);
+        body.push(Stmt::Expr(Expr {
+            kind: ExprKind::Match(Match {
+                cond: Ref::new(self.visit_expr(cond)),
+                arms: vec![
+                    // If the `while` condition is true, do nothing
+                    // TODO: `likely` annotation?
+                    // TODO: `generated` annotation?
+                    MatchArm {
+                        bind: Binding {
+                            reference: false,
+                            mutable: false,
+                            pattern: Pattern::Literal(Literal::Bool(true)),
+                            ty: None,
+                        },
+                        guard: None,
+                        body: Block::new(cond.location()),
+                        ty: TypeKind::Infer,
+                    },
+                    // If the `while` condition returns false, set the status and break
+                    MatchArm {
+                        bind: Binding {
+                            reference: false,
+                            mutable: false,
+                            pattern: Pattern::Literal(Literal::Bool(false)),
+                            ty: None,
+                        },
+                        guard: None,
+                        body: Block::from_iter(
+                            cond.location(),
+                            vec![
+                                // Set the loop status to true since we've broken it
+                                Stmt::Expr(Expr {
+                                    kind: ExprKind::Assign(
+                                        loop_broken,
+                                        Ref::new(Expr {
+                                            kind: ExprKind::Literal(Literal::Bool(true)),
+                                            loc: cond.location(),
+                                        }),
+                                    ),
+                                    loc: cond.location(),
+                                }),
+                                // Break from the loop
+                                Stmt::Expr(Expr {
+                                    kind: ExprKind::Break(Break { val: None }),
+                                    loc: cond.location(),
+                                }),
+                            ],
+                        ),
+                        ty: TypeKind::Infer,
+                    },
+                ],
+                ty: TypeKind::Infer,
+            }),
+            loc: cond.location(),
+        }));
+
+        body.extend(ast_body.iter().map(|s| self.visit_stmt(s)));
+
+        scope.push(Stmt::Expr(Expr {
+            kind: ExprKind::Loop(body),
+            loc: expr.location(),
+        }));
+
+        fn block_statement(
+            then_loc: Location,
+            else_loc: Location,
+            loop_broken: Var,
+            then_block: Block<Stmt>,
+            else_block: Block<Stmt>,
+        ) -> Stmt {
+            let location = Location::merge(then_loc, else_loc);
+
+            Stmt::Expr(Expr {
+                kind: ExprKind::Match(Match {
+                    cond: Ref::new(Expr {
+                        kind: ExprKind::Comparison(Sided {
+                            lhs: Ref::new(Expr {
+                                kind: ExprKind::Variable(loop_broken, TypeKind::Bool),
+                                loc: location,
+                            }),
+                            op: CompOp::Equal,
+                            rhs: Ref::new(Expr {
+                                kind: ExprKind::Literal(Literal::Bool(true)),
+                                loc: location,
+                            }),
+                        }),
+                        loc: location,
+                    }),
+                    arms: vec![
+                        // If the loop was broken, execute the `else` block
+                        MatchArm {
+                            bind: Binding {
+                                reference: false,
+                                mutable: false,
+                                pattern: Pattern::Literal(Literal::Bool(true)),
+                                ty: None,
+                            },
+                            guard: None,
+                            body: else_block,
+                            ty: TypeKind::Unit, // TODO: Allow returning values from loops
+                        },
+                        // If the loop was unbroken, execute the `then` block
+                        MatchArm {
+                            bind: Binding {
+                                reference: false,
+                                mutable: false,
+                                pattern: Pattern::Literal(Literal::Bool(false)),
+                                ty: None,
+                            },
+                            guard: None,
+                            body: then_block,
+                            ty: TypeKind::Unit, // TODO: Allow returning values from loops
+                        },
+                    ],
+                    ty: TypeKind::Unit, // TODO: Allow returning values from loops
+                }),
+                loc: location,
+            })
+        }
+
+        // TODO: Handle these blocks for *any* breaks, not just condition ones
+        match (then, else_) {
+            (Some(then), Some(else_)) => {
+                scope.push(block_statement(
+                    then.location(),
+                    else_.location(),
+                    loop_broken,
+                    Block::from_iter(then.location(), then.iter().map(|s| self.visit_stmt(s))),
+                    Block::from_iter(else_.location(), else_.iter().map(|s| self.visit_stmt(s))),
+                ));
+            }
+
+            (Some(then), None) => {
+                scope.push(block_statement(
+                    then.location(),
+                    then.location(),
+                    loop_broken,
+                    Block::from_iter(then.location(), then.iter().map(|s| self.visit_stmt(s))),
+                    Block::new(then.location()),
+                ));
+            }
+
+            (None, Some(else_)) => {
+                scope.push(block_statement(
+                    else_.location(),
+                    else_.location(),
+                    loop_broken,
+                    Block::new(else_.location()),
+                    Block::from_iter(else_.location(), else_.iter().map(|s| self.visit_stmt(s))),
+                ));
+            }
+
+            (None, None) => {}
+        }
+
+        Expr {
+            kind: ExprKind::Scope(scope),
+            loc: expr.location(),
+        }
     }
 
     fn visit_loop(&mut self, expr: &AstExpr, AstLoop { body, else_: _ }: &AstLoop) -> Self::Output {
@@ -293,7 +471,7 @@ impl ExprVisitor for Ladder {
 
     fn visit_variable(&mut self, expr: &AstExpr, var: StrT) -> Self::Output {
         Expr {
-            kind: ExprKind::Variable(var, TypeKind::Infer),
+            kind: ExprKind::Variable(Var::User(var), TypeKind::Infer),
             loc: expr.location(),
         }
     }
@@ -405,28 +583,36 @@ fn test() {
 
     let source = r#"
     fn main()
-        let mut greeting := "Hello from Crunch!"
-        println(greeting)
-
-        if greeting == "Hello"
-            println("You said hello")
+        while true
+            let asdfasdfsadfasfasdfsadfgsahrtjmtymntykjrret6yegfsdgtrx := "fadsfglsdoighwerigsdgaiegbhepow"
+        then
+            let asfdasdfsadfasafsdfasdfy := "dfsdfsadfsadfs"
         else
-            println("You didn't say hello :(")
+            let sdafsadfasfz := "fdiog"
         end
 
-        loop
-            println("Over and over again")
-        end
-
-        match greeting
-            string where string == "some string" =>
-                println("this can't happen")
-            end
-
-            greeting =>
-                println("{}", greeting)
-            end
-        end
+        :: let mut greeting := "Hello from Crunch!"
+        :: println(greeting)
+        :: 
+        :: if greeting == "Hello"
+        ::     println("You said hello")
+        :: else
+        ::     println("You didn't say hello :(")
+        :: end
+        :: 
+        :: loop
+        ::     println("Over and over again")
+        :: end
+        :: 
+        :: match greeting
+        ::     string where string == "some string" =>
+        ::         println("this can't happen")
+        ::     end
+        :: 
+        ::     greeting =>
+        ::         println("{}", greeting)
+        ::     end
+        :: end
     end
     "#;
 
@@ -444,8 +630,8 @@ fn test() {
         Ok((ast, mut warnings, module_table, module_scope)) => {
             warnings.emit(&files);
 
-            println!("Nodes: {:#?}", &ast);
-            println!("Symbols: {:#?}", &module_scope);
+            // println!("Nodes: {:#?}", &ast);
+            // println!("Symbols: {:#?}", &module_scope);
 
             let mut ladder = Ladder::new(
                 module_table,

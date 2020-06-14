@@ -602,15 +602,15 @@ impl PrettyPrinter {
                 f.write_str("end\n")
             }
 
-            ExprKind::If(If {
-                cond: IfCond { cond, body },
-                clauses,
-                else_,
-            }) => {
-                f.write_str("if ")?;
-                self.print_expr(f, cond)?;
-                f.write_char('\n')?;
-                self.block(f, body)?;
+            ExprKind::If(If { clauses, else_ }) => {
+                let mut clauses = clauses.iter();
+
+                if let Some(IfCond { cond, body }) = clauses.next() {
+                    f.write_str("if ")?;
+                    self.print_expr(f, cond)?;
+                    f.write_char('\n')?;
+                    self.block(f, body)?;
+                }
 
                 for IfCond { cond, body } in clauses {
                     self.print_indent(f)?;
@@ -868,6 +868,7 @@ impl PrettyPrinter {
             Pattern::Literal(lit) => self.print_literal(f, lit),
             Pattern::Ident(ident) => f.write_str(self.context.strings.resolve(*ident)),
             Pattern::ItemPath(path) => self.item_path(f, path),
+            Pattern::Wildcard => f.write_char('_'),
         }
     }
 }

@@ -502,11 +502,8 @@ impl<'src> Parser<'src> {
         }
 
         let loc = Location::concrete(Span::merge(cond.span(), end), self.current_file);
-        let kind = ExprKind::If(If {
-            cond: IfCond { cond, body },
-            clauses,
-            else_,
-        });
+        clauses.push(IfCond { cond, body });
+        let kind = ExprKind::If(If { clauses, else_ });
 
         Ok(Expr { kind, loc })
     }

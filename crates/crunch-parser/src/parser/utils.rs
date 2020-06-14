@@ -62,7 +62,9 @@ impl<'src> Parser<'src> {
 
     #[recursion_guard]
     pub(crate) fn literal(&self, token: &Token<'_>, file: CurrentFile) -> ParseResult<Literal> {
-        let mut chars: Vec<char> = token.source().chars().filter(|c| *c != '_').collect();
+        let filtered: String = token.source().chars().filter(|c| *c != '_').collect();
+        let mut chars: Vec<char> = filtered.chars().collect();
+        let mut source: &str = &filtered;
 
         match token.ty() {
             TokenType::Float => {
@@ -74,65 +76,31 @@ impl<'src> Parser<'src> {
 
                 let negative = if chars.get(0).copied() == Some('-') {
                     chars.remove(0);
+                    source = &source[1..];
+
                     true
                 } else if chars.get(0).copied() == Some('+') {
                     chars.remove(0);
+                    source = &source[1..];
+
                     false
                 } else {
                     false
                 };
 
                 let mut float = if chars.get(..2) == Some(&['0', 'x']) {
-                    use hexponent::FloatLiteral;
-
-                    let float = chars
-                        .into_iter()
-                        .collect::<String>()
-                        .parse::<FloatLiteral>()
-                        .map_err(|err| {
-                            use hexponent::ParseErrorKind;
-
-                            match err.kind {
-                                ParseErrorKind::ExponentOverflow => Locatable::new(
-                                    Error::Syntax(SyntaxError::LiteralOverflow(
-                                        "float".to_string(),
-                                        format!("'{}' is too large, only floats of up to 64 bits are supported", token.source()),
-                                    )),
-                                    Location::concrete(token, file),
-                                ),
-
-                                ParseErrorKind::MissingPrefix
-                                | ParseErrorKind::MissingDigits
-                                | ParseErrorKind::MissingExponent
-                                | ParseErrorKind::MissingEnd => unreachable!(),
-                            }
-                        })?;
-
-                    float.convert::<f64>().inner()
+                    lexical_core::parse_radix::<f64>(source[2..].as_bytes(), 16).map_err(|_| {
+                        Locatable::new(
+                            Error::Syntax(SyntaxError::InvalidLiteral("float".to_string())),
+                            Location::concrete(token, file),
+                        )
+                    })?
                 } else {
-                    let string = chars.into_iter().collect::<String>();
-
-                    lexical_core::parse(string.as_bytes()).map_err(|err| {
-                        use lexical_core::ErrorCode;
-
-                        match err.code {
-                            ErrorCode::Overflow => Locatable::new(
-                                Error::Syntax(SyntaxError::LiteralOverflow(
-                                    "float".to_string(),
-                                    format!("'{}' is too large, only floats of up to 64 bits are supported", token.source()),
-                                )),
-                                Location::concrete(token, file),
-                            ),
-                            ErrorCode::Underflow => Locatable::new(
-                                Error::Syntax(SyntaxError::LiteralUnderflow(
-                                    "float".to_string(),
-                                    format!("'{}' is too small, only floats of up to 64 bits are supported", token.source()),
-                                )),
-                                Location::concrete(token, file),
-                            ),
-
-                            err => unreachable!("Internal error: Failed to handle all float errors (Error: {:?})", err),
-                        }
+                    lexical_core::parse(source.as_bytes()).map_err(|_| {
+                        Locatable::new(
+                            Error::Syntax(SyntaxError::InvalidLiteral("float".to_string())),
+                            Location::concrete(token, file),
+                        )
                     })?
                 };
 
@@ -250,36 +218,34 @@ impl<'src> Parser<'src> {
             TokenType::Int => {
                 let sign = if chars.get(0).copied() == Some('-') {
                     chars.remove(0);
+                    source = &source[1..];
+
                     Sign::Negative
                 } else if chars.get(0).copied() == Some('+') {
                     chars.remove(0);
+                    source = &source[1..];
+
                     Sign::Positive
                 } else {
                     Sign::Positive
                 };
 
                 let int = if chars.get(..2) == Some(&['0', 'x']) {
-                    let string = chars[2..].iter().collect::<String>();
-
-                    u128::from_str_radix(&string, 16).map_err(|_| {
+                    lexical_core::parse_radix::<u128>(source[2..].as_bytes(), 16).map_err(|_| {
                         Locatable::new(
                             Error::Syntax(SyntaxError::InvalidLiteral("int".to_string())),
                             Location::concrete(token, file),
                         )
                     })?
                 } else if chars.get(..2) == Some(&['0', 'b']) {
-                    let string = chars[2..].iter().collect::<String>();
-
-                    u128::from_str_radix(&string, 2).map_err(|_| {
+                    lexical_core::parse_radix::<u128>(source[2..].as_bytes(), 2).map_err(|_| {
                         Locatable::new(
                             Error::Syntax(SyntaxError::InvalidLiteral("int".to_string())),
                             Location::concrete(token, file),
                         )
                     })?
                 } else {
-                    let string = chars.into_iter().collect::<String>();
-
-                    u128::from_str_radix(&string, 10).map_err(|_| {
+                    lexical_core::parse_radix::<u128>(source.as_bytes(), 10).map_err(|_| {
                         Locatable::new(
                             Error::Syntax(SyntaxError::InvalidLiteral("int".to_string())),
                             Location::concrete(token, file),

@@ -18,14 +18,10 @@ concurrent = ["crunch-shared/concurrent"]
 [dependencies.logos]
 version = "0.11.4"
 
-# Hex float parsing
-[dependencies.hexponent]
-version = "0.3.0"
-default-features = false
-
 # Integer parsing
 [dependencies.lexical-core]
 version = "0.7.4"
+features = ["radix"]
 
 # NFKC Normalization
 [dependencies.unicode-normalization]
@@ -38,9 +34,6 @@ path = "../crunch-shared"
 # Tracking stack frames
 [dependencies.crunch-proc]
 path = "../crunch-proc"
-
-[dependencies.humansize]
-version = "1.1.0"
 
 [dev-dependencies.ron]
 version = "0.6.0"

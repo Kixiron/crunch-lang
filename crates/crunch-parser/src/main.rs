@@ -3,7 +3,6 @@ use crunch_shared::{
     context::Context,
     files::{CurrentFile, Files},
 };
-use humansize::{file_size_opts as options, FileSize};
 use std::{
     alloc::{self, GlobalAlloc, Layout},
     fs::File,
@@ -89,8 +88,8 @@ fn main() {
     let elapsed = start.elapsed();
 
     println!(
-        "Max memory usage: {}",
-        ALLOCATOR.max().file_size(options::BINARY).unwrap(),
+        "Max memory usage: {:.2}MiB",
+        ALLOCATOR.max() as f64 / 1024.0 / 1024.0,
     );
     println!("Time: {}ms", elapsed.as_millis());
 }

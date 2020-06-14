@@ -1,6 +1,6 @@
 use crate::{
     error::{Location, Span},
-    strings::StrT,
+    strings::{StrInterner, StrT},
     trees::{Ref, Sided},
 };
 use core::fmt::Debug;
@@ -26,7 +26,7 @@ pub struct Function {
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct FuncArg {
-    pub name: ItemPath,
+    pub name: Var,
     pub kind: TypeKind,
     pub loc: Location,
 }
@@ -76,12 +76,28 @@ pub enum ExprKind {
     FnCall(FuncCall),
     Literal(Literal),
     Comparison(Sided<CompOp, Ref<Expr>>),
-    Variable(StrT, TypeKind),
+    Variable(Var, TypeKind),
+    Assign(Var, Ref<Expr>),
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+pub enum Var {
+    User(StrT),
+    Auto(usize),
+}
+
+impl Var {
+    pub fn to_string(&self, interner: &StrInterner) -> String {
+        match *self {
+            Self::User(var) => interner.resolve(var).to_owned(),
+            Self::Auto(var) => var.to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct VarDecl {
-    pub name: ItemPath,
+    pub name: Var,
     pub value: Ref<Expr>,
     pub ty: Type,
     pub loc: Location,
@@ -102,9 +118,27 @@ pub struct Match {
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct MatchArm {
-    pub cond: Ref<Expr>,
+    pub bind: Binding,
+    pub guard: Option<Ref<Expr>>,
     pub body: Block<Stmt>,
     pub ty: TypeKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct Binding {
+    // TODO: Enum for mutability/referential status?
+    pub reference: bool,
+    pub mutable: bool,
+    pub pattern: Pattern,
+    pub ty: Option<Ref<Type>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub enum Pattern {
+    Literal(Literal),
+    Ident(StrT),
+    ItemPath(ItemPath),
+    Wildcard,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -124,6 +158,32 @@ pub struct Block<T> {
 }
 
 impl<T> Block<T> {
+    #[inline]
+    pub fn new(loc: Location) -> Self {
+        Self {
+            block: Vec::new(),
+            loc,
+        }
+    }
+
+    #[inline]
+    pub fn with_capacity(loc: Location, capacity: usize) -> Self {
+        Self {
+            block: Vec::with_capacity(capacity),
+            loc,
+        }
+    }
+
+    #[inline]
+    pub fn push(&mut self, item: T) {
+        self.block.push(item);
+    }
+
+    #[inline]
+    pub fn insert(&mut self, idx: usize, item: T) {
+        self.block.insert(idx, item);
+    }
+
     #[inline]
     pub fn location(&self) -> Location {
         self.loc
@@ -162,6 +222,25 @@ impl<T> Block<T> {
         }
 
         Self { block, loc }
+    }
+}
+
+impl<T> Block<T>
+where
+    T: Clone,
+{
+    #[inline]
+    pub fn extend_from_slice<S>(&mut self, slice: S)
+    where
+        S: AsRef<[T]>,
+    {
+        self.block.extend_from_slice(slice.as_ref())
+    }
+}
+
+impl<T> Extend<T> for Block<T> {
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        self.block.extend(iter)
     }
 }
 

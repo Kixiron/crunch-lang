@@ -59,7 +59,6 @@
   - [ ] Inlined string variables e.g. `"{var}"`
   - [ ] String format specifiers e.g. `"{:?}"`
 - [ ] Char escapes in char literals
-- [ ] Switch to `lexical-core` for all float parsing
 - [ ] Allow one-liner match arms delimited by commas
 - [ ] Effects?
 - [ ] Annotate *all* parse functions with grammar rules
@@ -80,6 +79,7 @@
 - [x] `loop` doesn't need `then` clauses
 - [x] Else clause for loops that executes on breakage?
 - [x] Fix if parsing
+- [x] Switch to `lexical-core` for all float parsing
 - [ ] AST Visitor
   - [x] Trait
   - [x] Semantic checker
@@ -87,7 +87,7 @@
   - [x] Typecheck
   - [ ] Symbol table
   - [ ] Pretty printer
-    - [ ] Remove this entirely in favor of better methods?
+    - [ ] Remove this entirely in favor of better testing methods?
 
 ## AST -> HIR lowering
 

@@ -1,10 +1,9 @@
 use crate::{
     error::Location,
-    strings::StrT,
     trees::{
         hir::{
             Block, Break, CompOp, Expr, ExprKind, FuncCall, Function, Item, Literal, Match, Return,
-            Stmt, TypeKind, VarDecl,
+            Stmt, TypeKind, Var, VarDecl,
         },
         Sided,
     },
@@ -51,6 +50,7 @@ pub trait ExprVisitor {
             ExprKind::Comparison(Sided { lhs, op, rhs }) => {
                 self.visit_comparison(loc, lhs, *op, rhs)
             }
+            ExprKind::Assign(var, value) => self.visit_assign(loc, *var, value),
         }
     }
 
@@ -59,7 +59,7 @@ pub trait ExprVisitor {
     fn visit_continue(&mut self, loc: Location) -> Self::Output;
     fn visit_loop(&mut self, loc: Location, body: &mut Block<Stmt>) -> Self::Output;
     fn visit_match(&mut self, loc: Location, match_: &mut Match) -> Self::Output;
-    fn visit_variable(&mut self, loc: Location, var: StrT, ty: &mut TypeKind) -> Self::Output;
+    fn visit_variable(&mut self, loc: Location, var: Var, ty: &mut TypeKind) -> Self::Output;
     fn visit_literal(&mut self, loc: Location, literal: &mut Literal) -> Self::Output;
     fn visit_scope(&mut self, loc: Location, body: &mut Block<Stmt>) -> Self::Output;
     fn visit_func_call(&mut self, loc: Location, call: &mut FuncCall) -> Self::Output;
@@ -70,4 +70,5 @@ pub trait ExprVisitor {
         op: CompOp,
         rhs: &mut Expr,
     ) -> Self::Output;
+    fn visit_assign(&mut self, loc: Location, var: Var, value: &mut Expr) -> Self::Output;
 }

@@ -14,7 +14,7 @@ use crunch_shared::{
     strings::{StrInterner, StrT},
     trees::hir::{
         Block, Break, CompOp, Expr, FuncArg, FuncCall, Function, Item, ItemPath, Literal, Match,
-        MatchArm, Return, Stmt, TypeKind, VarDecl,
+        MatchArm, Return, Stmt, TypeKind, Var, VarDecl,
     },
     utils::HashMap,
     visitors::hir::{ExprVisitor, ItemVisitor, StmtVisitor},
@@ -26,7 +26,7 @@ type TypeId = usize;
 pub struct Engine {
     id_counter: TypeId,
     types: HashMap<TypeId, (TypeInfo, Location)>,
-    ids: HashMap<ItemPath, TypeId>,
+    ids: HashMap<Var, TypeId>,
     errors: ErrorHandler,
     interner: StrInterner,
 }
@@ -43,7 +43,7 @@ impl Engine {
     }
 
     /// Create a new type term with whatever we have about its type
-    fn insert(&mut self, variable: &ItemPath, kind: &TypeKind, loc: Location) -> TypeId {
+    fn insert(&mut self, variable: Var, kind: &TypeKind, loc: Location) -> TypeId {
         if let Some(&id) = self.ids.get(&variable) {
             self.types.insert(id, (kind.into(), loc));
 
@@ -59,10 +59,10 @@ impl Engine {
         }
     }
 
-    fn get(&self, path: &ItemPath) -> TypeResult<TypeId> {
-        self.ids.get(path).copied().ok_or_else(|| {
+    fn get(&self, var: &Var) -> TypeResult<TypeId> {
+        self.ids.get(var).copied().ok_or_else(|| {
             Locatable::new(
-                TypeError::VarNotInScope(path.to_string(&self.interner)).into(),
+                TypeError::VarNotInScope(var.to_string(&self.interner)).into(),
                 Location::implicit(Span::new(0, 0), crunch_shared::files::FileId::new(0)),
             )
         })
@@ -197,7 +197,7 @@ impl Engine {
         }
     }
 
-    pub fn type_of(&self, var: &ItemPath) -> TypeResult<TypeKind> {
+    pub fn type_of(&self, var: &Var) -> TypeResult<TypeKind> {
         if let Some(&id) = self.ids.get(var) {
             self.reconstruct(id)
         } else {
@@ -224,7 +224,7 @@ impl ItemVisitor for Engine {
     ) -> Self::Output {
         let func_args: Vec<_> = args
             .iter()
-            .map(|FuncArg { name, kind, loc }| self.insert(name, kind, *loc))
+            .map(|FuncArg { name, kind, loc }| self.insert(*name, kind, *loc))
             .collect();
 
         let mut ty = self.insert_bare(TypeInfo::Infer, *loc);
@@ -232,7 +232,7 @@ impl ItemVisitor for Engine {
             ty = self.visit_stmt(stmt)?;
         }
 
-        let ret_type = self.insert(&ItemPath::default(), &ret, *loc);
+        let ret_type = self.insert_bare(TypeInfo::from(&*ret), *loc);
         self.unify(ty, ret_type)?;
         *ret = self.reconstruct(ty)?;
 
@@ -270,7 +270,7 @@ impl StmtVisitor for Engine {
             loc,
         }: &mut VarDecl,
     ) -> <Self as StmtVisitor>::Output {
-        let var = self.insert(name, &ty.kind, *loc);
+        let var = self.insert(*name, &ty.kind, *loc);
         let expr = self.visit_expr(value)?;
 
         self.unify(var, expr)?;
@@ -300,13 +300,26 @@ impl ExprVisitor for Engine {
     }
 
     fn visit_match(&mut self, loc: Location, Match { cond, arms, ty }: &mut Match) -> Self::Output {
-        let match_cond = self.visit_expr(cond)?;
+        let _match_cond = self.visit_expr(cond)?;
 
         let mut arm_types = Vec::new();
-        for MatchArm { cond, body, ty } in arms.iter_mut() {
+        for MatchArm {
+            bind: _,
+            guard,
+            body,
+            ty,
+            ..
+        } in arms.iter_mut()
+        {
             let arm_ty = self.insert_bare(TypeInfo::from(&*ty), cond.location());
-            let arm_cond = self.visit_expr(cond)?;
-            self.unify(match_cond, arm_cond)?;
+
+            // FIXME: Bindings
+
+            if let Some(guard) = guard {
+                let guard_ty = self.visit_expr(guard)?;
+                let boolean = self.insert_bare(TypeInfo::Bool, guard.location());
+                self.unify(guard_ty, boolean)?;
+            }
 
             let arm_ret = body
                 .iter_mut()
@@ -326,13 +339,14 @@ impl ExprVisitor for Engine {
         for arm in arm_types {
             self.unify(match_ty, arm)?;
         }
+
         *ty = self.reconstruct(match_ty)?;
 
         Ok(match_ty)
     }
 
-    fn visit_variable(&mut self, _loc: Location, var: StrT, _ty: &mut TypeKind) -> Self::Output {
-        self.get(&ItemPath::new(var))
+    fn visit_variable(&mut self, _loc: Location, var: Var, _ty: &mut TypeKind) -> Self::Output {
+        self.get(&var)
     }
 
     fn visit_literal(&mut self, loc: Location, literal: &mut Literal) -> Self::Output {
@@ -361,6 +375,10 @@ impl ExprVisitor for Engine {
         self.unify(left, right)?;
 
         Ok(self.insert_bare(TypeInfo::Bool, loc))
+    }
+
+    fn visit_assign(&mut self, _loc: Location, _var: Var, _value: &mut Expr) -> Self::Output {
+        todo!()
     }
 }
 
@@ -482,7 +500,7 @@ fn test() {
             println!(
                 "Type of `greeting`: {:?}",
                 engine
-                    .type_of(&ItemPath::new(vec![ctx.strings.intern("greeting")]))
+                    .type_of(&Var::User(ctx.strings.intern("greeting")))
                     .unwrap(),
             );
         }

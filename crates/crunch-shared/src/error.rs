@@ -33,6 +33,16 @@ pub enum Location {
 }
 
 impl Location {
+    pub fn merge(self, other: Self) -> Self {
+        debug_assert_eq!(self.file(), other.file());
+        debug_assert_eq!(self.is_concrete(), other.is_concrete());
+
+        Self::Concrete {
+            span: Span::merge(self.span(), other.span()),
+            file: self.file(),
+        }
+    }
+
     #[inline]
     pub fn concrete<S, F>(span: S, file: F) -> Self
     where
@@ -76,6 +86,16 @@ impl Location {
     #[inline]
     pub fn range(&self) -> Range<usize> {
         self.span().into()
+    }
+
+    #[inline]
+    pub fn is_concrete(&self) -> bool {
+        matches!(self, Self::Concrete { .. })
+    }
+
+    #[inline]
+    pub fn is_implicit(&self) -> bool {
+        matches!(self, Self::Concrete { .. })
     }
 }
 
