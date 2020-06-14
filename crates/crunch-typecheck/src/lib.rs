@@ -11,10 +11,10 @@ use crunch_shared::{
     end_timer,
     error::{ErrorHandler, Locatable, Location, Span, TypeError, TypeResult},
     start_timer,
-    strings::{StrInterner, StrT},
+    strings::StrInterner,
     trees::hir::{
-        Block, Break, CompOp, Expr, FuncArg, FuncCall, Function, Item, ItemPath, Literal, Match,
-        MatchArm, Return, Stmt, TypeKind, Var, VarDecl,
+        Block, Break, CompOp, Expr, FuncArg, FuncCall, Function, Item, Literal, Match, MatchArm,
+        Return, Stmt, TypeKind, Var, VarDecl,
     },
     utils::HashMap,
     visitors::hir::{ExprVisitor, ItemVisitor, StmtVisitor},
@@ -422,6 +422,7 @@ fn test() {
     use crunch_shared::{
         context::Context,
         files::{CurrentFile, FileId, Files},
+        trees::ast::ItemPath,
     };
     use ladder::Ladder;
 

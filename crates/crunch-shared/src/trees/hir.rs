@@ -141,6 +141,19 @@ pub enum Pattern {
     Wildcard,
 }
 
+impl From<crate::trees::ast::Pattern> for Pattern {
+    fn from(pat: crate::trees::ast::Pattern) -> Self {
+        use crate::trees::ast::Pattern;
+
+        match pat {
+            Pattern::Literal(lit) => Self::Literal(lit),
+            Pattern::Ident(ident) => Self::Ident(ident),
+            Pattern::ItemPath(path) => Self::ItemPath(path),
+            Pattern::Wildcard => Self::Wildcard,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Return {
     pub val: Option<Ref<Expr>>,
