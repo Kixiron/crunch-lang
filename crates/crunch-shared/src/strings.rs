@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 pub use interner::StrInterner;
 
-#[cfg(feature = "concurrent")]
+#[cfg(all(feature = "concurrent", not(feature = "no-std")))]
 mod interner {
     use super::StrT;
     use alloc::sync::Arc;
@@ -73,6 +73,33 @@ mod interner {
         #[inline]
         fn default() -> Self {
             Self::new()
+        }
+    }
+}
+
+// This is to make rust-analyzer shut up, concurrent & no-std is not supported
+#[cfg(all(feature = "concurrent", feature = "no-std"))]
+mod interner {
+    use super::StrT;
+
+    #[derive(Debug, Clone)]
+    #[allow(missing_copy_implementations)]
+    pub struct StrInterner;
+
+    impl StrInterner {
+        #[inline]
+        pub fn new() -> Self {
+            unreachable!()
+        }
+
+        #[inline]
+        pub fn resolve<'a>(&'a self, _sym: StrT) -> &'a str {
+            unreachable!()
+        }
+
+        #[inline]
+        pub fn intern(&self, _string: impl AsRef<str>) -> StrT {
+            unreachable!()
         }
     }
 }

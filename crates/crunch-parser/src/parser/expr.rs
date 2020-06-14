@@ -126,7 +126,7 @@ impl<'src> Parser<'src> {
             TokenType::For => |parser, _token| Ok(parser.for_stmt()?),
 
             TokenType::Return => |parser, token| {
-                if dbg!(parser.peek())?.ty() == TokenType::Newline {
+                if parser.peek()?.ty() == TokenType::Newline {
                     let end = parser.eat(TokenType::Newline, [])?.span();
 
                     Ok(Expr {

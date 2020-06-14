@@ -38,8 +38,8 @@ mod log {
 
 #[cfg(feature = "no-std")]
 #[macro_export]
-macro_rules! start_timer {{
-    ($thing:expr) => {
+macro_rules! start_timer {
+    ($thing:expr) => {{
         $crate::info!("Started {}", $thing);
     }};
 }

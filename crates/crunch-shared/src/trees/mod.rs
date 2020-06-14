@@ -1,6 +1,8 @@
 pub mod ast;
 pub mod hir;
 
+#[cfg(feature = "no-std")]
+use alloc::boxed::Box;
 use core::{
     fmt::{Debug, Display, Formatter, Result},
     ops::{Deref, DerefMut},

@@ -3,6 +3,12 @@ use crate::{
     strings::{StrInterner, StrT},
     trees::{Ref, Sided},
 };
+#[cfg(feature = "no-std")]
+use alloc::{
+    borrow::ToOwned,
+    string::{String, ToString},
+    vec::Vec,
+};
 use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
 

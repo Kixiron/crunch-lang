@@ -10,7 +10,7 @@
 
 extern crate alloc;
 
-use alloc::{borrow::ToOwned, boxed::Box, vec::Vec};
+use alloc::{borrow::ToOwned, boxed::Box, format, vec::Vec};
 use core::fmt;
 use crunch_shared::{
     context::Context,
