@@ -57,28 +57,32 @@ impl PrettyPrinter {
                 ret,
             } => {
                 self.vis(f, item.vis.as_ref().unwrap())?;
-                write!(f, "fn {}", self.context.strings.resolve(item.name.unwrap()))?;
+                write!(
+                    f,
+                    "fn {}",
+                    self.context.strings.resolve(item.name.unwrap()).as_ref()
+                )?;
                 self.print_func(f, generics, args, body, ret)
             }
 
             ItemKind::Type { generics, members } => {
                 self.vis(f, item.vis.as_ref().unwrap())?;
                 f.write_str("type ")?;
-                f.write_str(self.context.strings.resolve(item.name.unwrap()))?;
+                f.write_str(self.context.strings.resolve(item.name.unwrap()).as_ref())?;
                 self.print_type(f, generics, members)
             }
 
             ItemKind::Enum { generics, variants } => {
                 self.vis(f, item.vis.as_ref().unwrap())?;
                 f.write_str("enum ")?;
-                f.write_str(self.context.strings.resolve(item.name.unwrap()))?;
+                f.write_str(self.context.strings.resolve(item.name.unwrap()).as_ref())?;
                 self.print_enum(f, generics, variants)
             }
 
             ItemKind::Trait { generics, methods } => {
                 self.vis(f, item.vis.as_ref().unwrap())?;
                 f.write_str("trait ")?;
-                f.write_str(self.context.strings.resolve(item.name.unwrap()))?;
+                f.write_str(self.context.strings.resolve(item.name.unwrap()).as_ref())?;
                 self.print_trait(f, generics, methods)
             }
 
@@ -141,12 +145,12 @@ impl PrettyPrinter {
         let last = path.next_back();
 
         for segment in path {
-            f.write_str(self.context.strings.resolve(*segment))?;
+            f.write_str(self.context.strings.resolve(*segment).as_ref())?;
             f.write_char('.')?;
         }
 
         if let Some(segment) = last {
-            f.write_str(self.context.strings.resolve(*segment))?;
+            f.write_str(self.context.strings.resolve(*segment).as_ref())?;
         }
 
         Ok(())
@@ -246,13 +250,15 @@ impl PrettyPrinter {
 
         match exposes {
             Exposure::All => f.write_str(" exposing *")?,
-            Exposure::None(name) => write!(f, " as {}", self.context.strings.resolve(*name))?,
+            Exposure::None(name) => {
+                write!(f, " as {}", self.context.strings.resolve(*name).as_ref())?
+            }
             Exposure::Items(items) => {
                 let write_item =
                     |fmt: &mut Self, f: &mut dyn Write, (name, alias): &(ItemPath, StrT)| {
                         fmt.item_path(f, name)?;
                         f.write_str(" as ")?;
-                        f.write_str(fmt.context.strings.resolve(*alias))
+                        f.write_str(fmt.context.strings.resolve(*alias).as_ref())
                     };
 
                 f.write_str(" exposing ")?;
@@ -296,7 +302,7 @@ impl PrettyPrinter {
                     self.decorators(f, decorators)?;
 
                     self.print_indent(f)?;
-                    f.write_str(self.context.strings.resolve(*name))?;
+                    f.write_str(self.context.strings.resolve(*name).as_ref())?;
                     f.write_char('\n')?;
                 }
 
@@ -308,7 +314,7 @@ impl PrettyPrinter {
                     self.decorators(f, decorators)?;
 
                     self.print_indent(f)?;
-                    f.write_str(self.context.strings.resolve(*name))?;
+                    f.write_str(self.context.strings.resolve(*name).as_ref())?;
                     f.write_char('(')?;
 
                     let mut elms = elms.iter();
@@ -356,7 +362,7 @@ impl PrettyPrinter {
                 write!(f, "{}", attr)?;
             }
 
-            f.write_str(self.context.strings.resolve(*name))?;
+            f.write_str(self.context.strings.resolve(*name).as_ref())?;
             f.write_str(": ")?;
 
             self.print_ty(f, ty)?;
@@ -383,7 +389,8 @@ impl PrettyPrinter {
             let args = args
                 .iter()
                 .map(|arg| {
-                    let mut param = format!("{}: ", self.context.strings.resolve(arg.name));
+                    let mut param =
+                        format!("{}: ", self.context.strings.resolve(arg.name).as_ref());
                     self.print_ty(&mut param, &arg.ty).unwrap();
 
                     param
@@ -409,7 +416,7 @@ impl PrettyPrinter {
         self.print_indent(f)?;
 
         if !dec.args.is_empty() {
-            write!(f, "@{}(", self.context.strings.resolve(dec.name))?;
+            write!(f, "@{}(", self.context.strings.resolve(dec.name).as_ref())?;
 
             let mut args = dec.args.iter();
             let last = args.next_back();
@@ -425,13 +432,13 @@ impl PrettyPrinter {
 
             f.write_char(')')
         } else {
-            write!(f, "@{}", self.context.strings.resolve(dec.name))
+            write!(f, "@{}", self.context.strings.resolve(dec.name).as_ref())
         }
     }
 
     pub(crate) fn print_expr(&mut self, f: &mut dyn Write, expr: &Expr) -> Result {
         match &expr.kind {
-            ExprKind::Variable(name) => f.write_str(self.context.strings.resolve(*name)),
+            ExprKind::Variable(name) => f.write_str(self.context.strings.resolve(*name).as_ref()),
 
             ExprKind::UnaryOp(op, expr) => {
                 write!(f, "{}", op)?;
@@ -698,7 +705,11 @@ impl PrettyPrinter {
                 f.write_char(')')
             }
             Type::Const(ident, ty) => {
-                write!(f, "const {}: ", self.context.strings.resolve(*ident))?;
+                write!(
+                    f,
+                    "const {}: ",
+                    self.context.strings.resolve(*ident).as_ref()
+                )?;
                 self.print_ty(f, ty)
             }
             Type::Operand(Sided { lhs, op, rhs }) => {
@@ -817,7 +828,7 @@ impl PrettyPrinter {
                     "{}{}{}: ",
                     if *constant { "const" } else { "let" },
                     if *mutable { " mut " } else { " " },
-                    self.context.strings.resolve(*name)
+                    self.context.strings.resolve(*name).as_ref()
                 )?;
 
                 self.print_ty(f, ty)?;
@@ -866,7 +877,7 @@ impl PrettyPrinter {
     fn print_pattern(&mut self, f: &mut dyn Write, pattern: &Pattern) -> Result {
         match pattern {
             Pattern::Literal(lit) => self.print_literal(f, lit),
-            Pattern::Ident(ident) => f.write_str(self.context.strings.resolve(*ident)),
+            Pattern::Ident(ident) => f.write_str(self.context.strings.resolve(*ident).as_ref()),
             Pattern::ItemPath(path) => self.item_path(f, path),
             Pattern::Wildcard => f.write_char('_'),
         }

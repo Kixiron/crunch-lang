@@ -160,7 +160,7 @@ impl ItemVisitor for Correctness {
         let mut arg_map = HashMap::with_capacity(args.len());
         for FuncArg { name, .. } in args.iter() {
             if let Some(..) = arg_map.insert(name, name) {
-                let name = self.strings().resolve(*name).to_owned();
+                let name = self.strings().resolve(*name).as_ref().to_owned();
                 // FIXME: More locations
                 self.errors().push_err(Locatable::new(
                     Error::Semantic(SemanticError::Redefinition {
@@ -196,7 +196,7 @@ impl ItemVisitor for Correctness {
         {
             // If there's already a member by the same name, emit an error
             if let Some(loc) = member_map.insert(name, item.loc) {
-                let name = self.strings().resolve(*name).to_owned();
+                let name = self.strings().resolve(*name).as_ref().to_owned();
                 // FIXME: Location information
                 self.errors().push_err(Locatable::new(
                     Error::Semantic(SemanticError::Redefinition {
@@ -279,7 +279,7 @@ impl ItemVisitor for Correctness {
             // If there's already a variant by the same name, emit an error
             // FIXME: Error locations
             if let Some(loc) = variant_map.insert(name, item.loc) {
-                let name = self.strings().resolve(name).to_owned();
+                let name = self.strings().resolve(name).as_ref().to_owned();
                 self.errors().push_err(Locatable::new(
                     Error::Semantic(SemanticError::Redefinition {
                         name,

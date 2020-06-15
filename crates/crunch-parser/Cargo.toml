@@ -9,7 +9,7 @@ edition = "2018"
 name = "crunch-parser"
 
 [features]
-default = ["concurrent"]
+default = []
 no-std = ["crunch-shared/no-std"]
 logging = ["crunch-shared/logging"]
 concurrent = ["crunch-shared/concurrent"]

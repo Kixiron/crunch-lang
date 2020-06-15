@@ -630,9 +630,11 @@ impl Type {
             Self::Infer => "infer".to_string(),
             Self::Not(ty) => format!("!{}", ty.to_string(intern)),
             Self::Paren(ty) => format!("({})", ty.to_string(intern)),
-            Self::Const(ident, ty) => {
-                format!("const {}: {}", intern.resolve(*ident), ty.to_string(intern),)
-            }
+            Self::Const(ident, ty) => format!(
+                "const {}: {}",
+                intern.resolve(*ident).as_ref(),
+                ty.to_string(intern),
+            ),
             Self::Operand(Sided { lhs, op, rhs }) => {
                 format!("{} {} {}", lhs.to_string(intern), op, rhs.to_string(intern),)
             }
@@ -655,21 +657,14 @@ impl Type {
             ),
             Self::Bounded { path, bounds } => format!(
                 "{}[{}]",
-                path.iter()
-                    .map(|seg| intern.resolve(*seg))
-                    .collect::<Vec<&str>>()
-                    .join("."),
+                path.to_string(intern),
                 bounds
                     .iter()
                     .map(|ty| ty.to_string(intern))
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
-            Self::ItemPath(path) => path
-                .iter()
-                .map(|seg| intern.resolve(*seg))
-                .collect::<Vec<&str>>()
-                .join("."),
+            Self::ItemPath(path) => path.to_string(intern),
             Self::Integer { sign, width } => format!(
                 "{}{}",
                 match sign {
@@ -779,12 +774,12 @@ impl ItemPath {
         let last = segments.next_back();
 
         for seg in segments {
-            string.push_str(interner.resolve(*seg));
+            string.push_str(interner.resolve(*seg).as_ref());
             string.push('.');
         }
 
         if let Some(seg) = last {
-            string.push_str(interner.resolve(*seg));
+            string.push_str(interner.resolve(*seg).as_ref());
         }
 
         string

@@ -21,7 +21,7 @@ mod interner {
         }
 
         #[inline]
-        pub fn resolve<'a>(&'a self, sym: StrT) -> &'a str {
+        pub fn resolve<'a>(&'a self, sym: StrT) -> impl AsRef<str> + 'a {
             self.0.resolve(&sym.get())
         }
 
@@ -41,31 +41,41 @@ mod interner {
 
 #[cfg(not(feature = "concurrent"))]
 mod interner {
+    use super::StrT;
     use alloc::rc::Rc;
+    use core::{
+        cell::{Ref, RefCell},
+        ops::Deref,
+    };
     use lasso::{Rodeo, Spur};
 
     #[derive(Debug, Clone)]
     #[repr(transparent)]
-    pub struct StrInterner(Rc<Rodeo<str, Spur>>);
+    pub struct StrInterner(Rc<RefCell<Rodeo<str, Spur>>>);
 
     impl StrInterner {
         #[inline]
         pub fn new() -> Self {
-            Self(Rc::new(Rodeo::with_capacity(2048)))
+            Self(Rc::new(RefCell::new(Rodeo::with_capacity(2048))))
         }
 
         #[inline]
-        pub fn resolve<'a>(&'a self, sym: StrT) -> &'a str {
-            self.0.resolve(&sym.get())
+        pub fn resolve<'a>(&'a self, sym: StrT) -> impl AsRef<str> + 'a {
+            #[repr(transparent)]
+            struct RefWrap<T>(T);
+
+            impl<'a> AsRef<str> for RefWrap<Ref<'a, str>> {
+                fn as_ref(&self) -> &str {
+                    self.0.deref()
+                }
+            }
+
+            RefWrap(Ref::map(self.0.borrow(), |i| i.resolve(&sym.get())))
         }
 
         #[inline]
         pub fn intern(&self, string: impl AsRef<str>) -> StrT {
-            StrT::from(
-                Rc::get_mut(&mut self.0)
-                    .expect("Multiple mutable borrows of an interner")
-                    .get_or_intern(string.as_ref()),
-            )
+            StrT::from(self.0.borrow_mut().get_or_intern(string.as_ref()))
         }
     }
 
@@ -93,8 +103,9 @@ mod interner {
         }
 
         #[inline]
-        pub fn resolve<'a>(&'a self, _sym: StrT) -> &'a str {
-            unreachable!()
+        pub fn resolve<'a>(&'a self, _sym: StrT) -> impl AsRef<str> + 'a {
+            unreachable!();
+            ""
         }
 
         #[inline]

@@ -95,7 +95,7 @@ pub enum Var {
 impl Var {
     pub fn to_string(&self, interner: &StrInterner) -> String {
         match *self {
-            Self::User(var) => interner.resolve(var).to_owned(),
+            Self::User(var) => interner.resolve(var).as_ref().to_owned(),
             Self::Auto(var) => var.to_string(),
         }
     }

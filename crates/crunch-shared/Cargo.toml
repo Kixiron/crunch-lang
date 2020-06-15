@@ -6,7 +6,7 @@ license = "Zlib"
 edition = "2018"
 
 [features]
-default = ["concurrent"]
+default = []
 concurrent = ["lasso/multi-threaded"]
 no-std = ["hashbrown", "lasso/no-std"]
 logging = ["log"]

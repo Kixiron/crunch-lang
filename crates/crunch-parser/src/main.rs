@@ -79,7 +79,7 @@ fn main() {
     {
         Ok((ast, mut warn, ..)) => {
             warn.emit(&files);
-            // println!("{:#?}", ast);
+
             let _ast = ast;
         }
 

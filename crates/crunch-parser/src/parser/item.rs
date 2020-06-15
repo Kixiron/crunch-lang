@@ -154,7 +154,8 @@ impl<'src> Parser<'src> {
         let start_span = self.eat(TokenType::Import, [TokenType::Newline])?.span();
 
         let file = self.eat(TokenType::Ident, [TokenType::Newline])?.source();
-        let file = self.item_path(self.context.strings.intern(file))?;
+        let file = self.context.strings.intern(file);
+        let file = self.item_path(file)?;
 
         let dest = if self.peek()?.ty() == TokenType::Library {
             self.eat(TokenType::Library, [TokenType::Newline])?;
