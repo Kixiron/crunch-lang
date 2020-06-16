@@ -381,11 +381,11 @@ pub struct Token<'a> {
 }
 
 impl<'a> Token<'a> {
-    pub fn new(ty: TokenType, source: &'a str, range: ops::Range<usize>) -> Self {
+    pub const fn new(ty: TokenType, source: &'a str, range: ops::Range<usize>) -> Self {
         Self {
             ty,
             source,
-            span: Span::from(range),
+            span: Span::new(range.start, range.end),
         }
     }
 
