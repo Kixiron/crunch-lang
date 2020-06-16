@@ -1,6 +1,6 @@
 use crate::{parser::Parser, token::TokenType};
 #[cfg(feature = "no-std")]
-use alloc::{format, vec::Vec};
+use alloc::vec::Vec;
 use crunch_proc::recursion_guard;
 use crunch_shared::{
     error::{Error, Locatable, Location, ParseResult, SemanticError, Span},

@@ -328,93 +328,18 @@ impl fmt::Display for TokenType {
 }
 
 #[derive(Clone)]
-pub struct TokenIter<'a> {
-    lexer: Lexer<'a, TokenType>,
-    current: Option<Token<'a>>,
-}
-
-impl<'a> TokenIter<'a> {
-    pub fn new(input: &'a str) -> Self {
-        let mut lexer = TokenType::lexer(input);
-
-        let current = lexer
-            .next()
-            .map(|current| Token::new(current, lexer.slice(), lexer.span()));
-
-        Self { lexer, current }
-    }
-
-    pub fn get_next(&mut self) -> Option<Token<'a>> {
-        let next = self
-            .lexer
-            .next()
-            .map(|current| Token::new(current, self.lexer.slice(), self.lexer.span()));
-
-        core::mem::replace(&mut self.current, next)
-    }
-}
-
-impl<'a> Iterator for TokenIter<'a> {
-    type Item = Token<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.get_next()
-    }
-}
-
-impl<'a> fmt::Debug for TokenIter<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let lexer = {
-            let lexer = self.lexer.clone();
-
-            TokenIter {
-                lexer,
-                current: self.current,
-            }
-            .collect::<Vec<Token<'a>>>()
-        };
-
-        f.debug_struct("TokenIter")
-            .field("lexer", &lexer)
-            .field("current", &self.current)
-            .finish()
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct TokenStream<'a> {
-    token_stream: TokenIter<'a>,
-    indent_level: u32,
-    line_indent_level: u32,
-    line_start: bool,
+    lexer: Lexer<'a, TokenType>,
     skip_comments: bool,
     skip_doc_comments: bool,
-    current: Option<Token<'a>>,
 }
 
 impl<'a> TokenStream<'a> {
     pub fn new(input: &'a str, skip_comments: bool, skip_doc_comments: bool) -> Self {
         Self {
-            token_stream: TokenIter::new(input),
-            indent_level: 0,
-            line_indent_level: 0,
-            line_start: false,
+            lexer: TokenType::lexer(input),
             skip_comments,
             skip_doc_comments,
-            current: None,
-        }
-    }
-
-    pub fn next_token(&mut self) -> Option<Token<'a>> {
-        if let Some(token) = self.token_stream.next() {
-            match token.ty {
-                TokenType::Space => self.next_token(),
-                TokenType::Comment if self.skip_comments => self.next_token(),
-                TokenType::DocComment if self.skip_doc_comments => self.next_token(),
-                _ => Some(token),
-            }
-        } else {
-            None
         }
     }
 }
@@ -423,7 +348,28 @@ impl<'a> Iterator for TokenStream<'a> {
     type Item = Token<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.next_token()
+        self.lexer.next().and_then(|token| {
+            let token = Token::new(token, self.lexer.slice(), self.lexer.span());
+            match token.ty {
+                TokenType::Space => self.next(),
+                TokenType::Comment if self.skip_comments => self.next(),
+                TokenType::DocComment if self.skip_doc_comments => self.next(),
+
+                _ => Some(token),
+            }
+        })
+    }
+}
+
+impl fmt::Debug for TokenStream<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let tokens = self.clone().collect::<Vec<Token<'_>>>();
+
+        f.debug_struct("TokenStream")
+            .field("lexer", &tokens)
+            .field("skip_comments", &self.skip_comments)
+            .field("skip_doc_comments", &self.skip_doc_comments)
+            .finish()
     }
 }
 
@@ -451,8 +397,8 @@ impl<'a> Token<'a> {
         self.span
     }
 
-    pub fn range(&self) -> ops::Range<usize> {
-        self.span.into()
+    pub const fn range(&self) -> ops::Range<usize> {
+        self.span.start()..self.span.end()
     }
 
     pub const fn source(&self) -> &'a str {
@@ -508,11 +454,16 @@ impl<'a> Into<[usize; 2]> for &Token<'a> {
     }
 }
 
+impl fmt::Display for Token<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} @ {:?}", self.source, self.span)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // Waiting on logos/#94 to fix this
     #[test]
     fn break_up_weird_stuff() {
         let mut stream = TokenStream::new("bredcp", true, true).into_iter();

@@ -157,7 +157,7 @@ impl<'src> Parser<'src> {
 
         let mut token_stream = TokenStream::new(source, true, true);
         let next = None;
-        let peek = token_stream.next_token();
+        let peek = token_stream.next();
 
         end_timer!("lexing", timer);
         (token_stream, next, peek)
@@ -178,7 +178,7 @@ impl<'src> Parser<'src> {
 impl<'src> Parser<'src> {
     #[inline(always)]
     fn next(&mut self) -> ParseResult<Token<'src>> {
-        let mut next = self.token_stream.next_token();
+        let mut next = self.token_stream.next();
         mem::swap(&mut next, &mut self.peek);
         self.next = next;
 

@@ -103,9 +103,10 @@ mod interner {
         }
 
         #[inline]
+        #[allow(unreachable_code)]
         pub fn resolve<'a>(&'a self, _sym: StrT) -> impl AsRef<str> + 'a {
             unreachable!();
-            ""
+            "" // This looks weird and it is, but for some reason `!` wasn't coercing to an `impl AsRef<str>`, so here we are
         }
 
         #[inline]
