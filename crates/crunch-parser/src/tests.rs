@@ -5,14 +5,10 @@ use crunch_shared::{
     context::Context,
     error::ErrorHandler,
     files::{CurrentFile, FileId},
-    symbol_table::{Graph, MaybeSym, NodeId, Scope},
     trees::ast::Item,
 };
 
-fn run(
-    src: &str,
-    ctx: Context,
-) -> Result<(Vec<Item>, ErrorHandler, Graph<Scope, MaybeSym>, NodeId), ErrorHandler> {
+fn run(src: &str, ctx: Context) -> Result<(Vec<Item>, ErrorHandler), ErrorHandler> {
     Parser::new(src, CurrentFile::new(FileId::new(0), 0), ctx).parse()
 }
 

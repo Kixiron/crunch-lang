@@ -292,6 +292,10 @@ impl From<&crate::trees::ast::Type> for TypeKind {
                 sign: Signedness::Signed,
                 width: 32,
             } => Self::Integer,
+            Type::Integer {
+                sign: Signedness::Signed,
+                width: 64,
+            } => Self::Integer,
 
             _ => todo!(),
         }

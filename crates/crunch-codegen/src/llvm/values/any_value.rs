@@ -1,8 +1,7 @@
 use crate::llvm::{
-    types::{AnyType, SealedAnyType, Type, TypeKind},
-    utils::to_non_nul,
+    types::{Type, TypeKind},
     values::{SealedAnyValue, Value, ValueUsage},
-    Error, Result,
+    Result,
 };
 use llvm_sys::core::{
     LLVMGetFirstUse, LLVMGetValueName2, LLVMIsAAllocaInst, LLVMIsABinaryOperator,
@@ -12,12 +11,7 @@ use llvm_sys::core::{
     LLVMIsAVAArgInst, LLVMIsNull, LLVMIsUndef, LLVMReplaceAllUsesWith, LLVMSetValueName2,
     LLVMTypeOf, LLVMValueIsBasicBlock,
 };
-use std::{
-    borrow::Cow,
-    convert::TryFrom,
-    fmt::{Debug, Display, LowerHex, Octal, Pointer, UpperHex},
-    ptr::NonNull,
-};
+use std::{borrow::Cow, convert::TryFrom, ptr::NonNull};
 
 // TODO: Docs for both the macro and the produced functions
 macro_rules! value_is {
@@ -31,17 +25,7 @@ macro_rules! value_is {
     };
 }
 
-pub trait AnyValue<'ctx>:
-    SealedAnyValue<'ctx>
-    + Into<Value<'ctx>>
-    + TryFrom<Value<'ctx>>
-    + Display
-    + Debug
-    + Pointer
-    + UpperHex
-    + LowerHex
-    + Octal
-{
+pub trait AnyValue<'ctx>: SealedAnyValue<'ctx> {
     /// Replace all uses of one `Value` with another
     // https://llvm.org/doxygen/classllvm_1_1Value.html#a3ab5fc45117b450e8bb04e564cb6e5f2
     fn replace_all_uses(self, new: Self) -> Self {
@@ -55,11 +39,7 @@ pub trait AnyValue<'ctx>:
     }
 
     fn as_type(&self) -> Result<Type<'ctx>> {
-        unsafe {
-            let ty = to_non_nul(LLVMTypeOf(self.as_mut_ptr()), "Failed to get type of value")?;
-
-            Ok(<Type as SealedAnyType>::from_non_nul(ty))
-        }
+        unsafe { Type::from_raw(LLVMTypeOf(self.as_mut_ptr())) }
     }
 
     fn kind(&self) -> Result<TypeKind> {

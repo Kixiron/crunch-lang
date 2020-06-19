@@ -1,19 +1,19 @@
 use crate::llvm::{
+    utils::Sealed,
     values::{sealed::SealedAnyValue, AnyValue, Val, Value},
-    Context, Error, ErrorKind, Result,
+    Error, ErrorKind, Result,
 };
-use llvm_sys::core::LLVMInt32TypeInContext;
 use std::convert::TryFrom;
 
 pub trait IntMath<'ctx>: AnyValue<'ctx> {}
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
-pub struct Int<'ctx>(Val<'ctx>);
+pub struct IntValue<'ctx>(Val<'ctx>);
 
-impl<'ctx> AnyValue<'ctx> for Int<'ctx> {}
+impl<'ctx> AnyValue<'ctx> for IntValue<'ctx> {}
 
-impl<'ctx> SealedAnyValue<'ctx> for Int<'ctx> {
+impl<'ctx> SealedAnyValue<'ctx> for IntValue<'ctx> {
     fn as_val(&self) -> Val<'ctx> {
         self.0
     }
@@ -23,13 +23,15 @@ impl<'ctx> SealedAnyValue<'ctx> for Int<'ctx> {
     }
 }
 
-impl<'ctx> Into<Value<'ctx>> for Int<'ctx> {
+impl<'ctx> Into<Value<'ctx>> for IntValue<'ctx> {
     fn into(self) -> Value<'ctx> {
         Value::ConstInt(self)
     }
 }
 
-impl<'ctx> TryFrom<Value<'ctx>> for Int<'ctx> {
+impl<'ctx> Sealed for IntValue<'ctx> {}
+
+impl<'ctx> TryFrom<Value<'ctx>> for IntValue<'ctx> {
     type Error = Error;
 
     fn try_from(val: Value<'ctx>) -> Result<Self> {

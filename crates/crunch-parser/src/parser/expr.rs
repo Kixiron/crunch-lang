@@ -127,25 +127,20 @@ impl<'src> Parser<'src> {
 
             TokenType::Return => |parser, token| {
                 if parser.peek()?.ty() == TokenType::Newline {
-                    let end = parser.eat(TokenType::Newline, [])?.span();
-
                     Ok(Expr {
                         kind: ExprKind::Return(None),
-                        loc: Location::concrete(
-                            Span::merge(token.span(), end),
-                            parser.current_file,
-                        ),
+                        loc: Location::concrete(token.span(), parser.current_file),
                     })
                 } else {
                     let expr = Ref::new(parser.expr()?);
-                    let end = parser.eat(TokenType::Newline, [])?.span();
+                    let loc = Location::concrete(
+                        Span::merge(token.span(), expr.span()),
+                        parser.current_file,
+                    );
 
                     Ok(Expr {
                         kind: ExprKind::Return(Some(expr)),
-                        loc: Location::concrete(
-                            Span::merge(token.span(), end),
-                            parser.current_file,
-                        ),
+                        loc,
                     })
                 }
             },

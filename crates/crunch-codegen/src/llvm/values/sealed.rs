@@ -1,4 +1,4 @@
-use crate::llvm::{utils::to_non_nul, values::Val, Context, Result};
+use crate::llvm::{utils::to_non_nul, values::Val, Result};
 use llvm_sys::LLVMValue;
 use std::ptr::NonNull;
 

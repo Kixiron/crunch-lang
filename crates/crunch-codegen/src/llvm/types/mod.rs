@@ -1,76 +1,62 @@
-mod sealed;
+mod integer;
+mod sealed_any_type;
 mod ty;
+mod type_kind;
 
-pub(crate) use sealed::SealedAnyType;
-pub(crate) use ty::Ty;
-pub use ty::TypeKind;
+pub use integer::{IntType, IntWidth, Unknown, I1};
+pub(crate) use sealed_any_type::SealedAnyType;
+pub(crate) use ty::Type;
+pub use type_kind::TypeKind;
 
 use crate::llvm::{
-    values::{AnyValue, Int, SealedAnyValue, Value},
+    utils::{AddressSpace, Sealed},
+    values::{AnyValue, IntValue, SealedAnyValue, Value},
     Context, Error, ErrorKind, Result,
 };
-use llvm_sys::core::{LLVMConstInt, LLVMInt32TypeInContext, LLVMSizeOf, LLVMVoidTypeInContext};
-use std::fmt::Debug;
+use llvm_sys::{
+    core::{
+        LLVMArrayType, LLVMCountParamTypes, LLVMGetElementType, LLVMGetParamTypes,
+        LLVMGetVectorSize, LLVMPointerType, LLVMSizeOf, LLVMVoidTypeInContext,
+    },
+    LLVMType,
+};
+use std::{
+    fmt::{Debug, Formatter, Result as FmtResult},
+    marker::PhantomData,
+    mem::MaybeUninit,
+};
 
-pub trait AnyType<'ctx>: SealedAnyType<'ctx> + Debug + Sized {
+pub trait AnyType<'ctx>: SealedAnyType<'ctx> + Sized {
     fn kind(self) -> TypeKind {
         self.as_ty().kind()
     }
 
-    fn size_of(self) -> Result<Int<'ctx>> {
+    fn size_of(self) -> Result<IntValue<'ctx>> {
         let size: Value<'ctx> = unsafe { Value::from_raw(LLVMSizeOf(self.as_ty().as_mut_ptr()))? };
 
-        size.downcast::<Int<'ctx>>().ok_or_else(|| {
+        size.downcast::<IntValue<'ctx>>().ok_or_else(|| {
             Error::new(
                 "LLVM returned a non-integer for the size of a type",
                 ErrorKind::LLVMError,
             )
         })
     }
-}
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(u8)]
-pub enum Type<'ctx> {
-    Array(Array<'ctx>),
-    Float(Float<'ctx>),
-    FunctionSig(FunctionSig<'ctx>),
-    Int(IntTy<'ctx>),
-    Pointer(Pointer<'ctx>),
-    Struct(Struct<'ctx>),
-    Vector(Vector<'ctx>),
-    Void(Void<'ctx>),
-}
-
-impl<'ctx> AnyType<'ctx> for Type<'ctx> {}
-
-impl<'ctx> SealedAnyType<'ctx> for Type<'ctx> {
-    fn from_ty(ty: Ty<'ctx>) -> Self {
-        match ty.kind() {
-            TypeKind::Array => Self::Array(Array::from_ty(ty)),
-            TypeKind::Float => Self::Float(Float::from_ty(ty)),
-            TypeKind::Function => Self::FunctionSig(FunctionSig::from_ty(ty)),
-            TypeKind::Integer => Self::Int(IntTy::from_ty(ty)),
-            TypeKind::Pointer => Self::Pointer(Pointer::from_ty(ty)),
-            TypeKind::Struct => Self::Struct(Struct::from_ty(ty)),
-            TypeKind::Vector => Self::Vector(Vector::from_ty(ty)),
-            TypeKind::Void => Self::Void(Void::from_ty(ty)),
-
-            unhandled => unimplemented!("{:?} has not been implemented as a Type yet", unhandled),
+    fn make_pointer(self, address_space: AddressSpace) -> Result<PointerType<'ctx>> {
+        unsafe {
+            PointerType::from_raw(LLVMPointerType(
+                self.as_mut_ptr(),
+                address_space as u8 as u32,
+            ))
         }
     }
 
-    fn as_ty(&self) -> Ty<'ctx> {
-        match self {
-            Self::Array(array) => array.as_ty(),
-            Self::Float(float) => float.as_ty(),
-            Self::FunctionSig(function) => function.as_ty(),
-            Self::Int(int) => int.as_ty(),
-            Self::Pointer(pointer) => pointer.as_ty(),
-            Self::Struct(structure) => structure.as_ty(),
-            Self::Vector(vector) => vector.as_ty(),
-            Self::Void(void) => void.as_ty(),
-        }
+    fn make_array(self, len: u32) -> Result<ArrayType<'ctx>> {
+        unsafe { ArrayType::from_raw(LLVMArrayType(self.as_mut_ptr(), len)) }
+    }
+
+    fn element_type(self) -> Result<Type<'ctx>> {
+        unsafe { Type::from_raw(LLVMGetElementType(self.as_mut_ptr())) }
     }
 }
 
@@ -80,12 +66,18 @@ macro_rules! impl_any_ty {
             impl<'ctx> AnyType<'ctx> for $ty<'ctx> {}
 
             impl<'ctx> SealedAnyType<'ctx> for $ty<'ctx> {
-                fn as_ty(&self) -> Ty<'ctx> {
+                fn as_ty(&self) -> Type<'ctx> {
                     self.0
                 }
 
-                fn from_ty(ty: Ty<'ctx>) -> Self {
+                fn from_ty(ty: Type<'ctx>) -> Self {
                     Self(ty)
+                }
+            }
+
+            impl<'ctx> Into<Type<'ctx>> for $ty<'ctx> {
+                fn into(self) -> Type<'ctx> {
+                    self.0
                 }
             }
         )*
@@ -93,77 +85,105 @@ macro_rules! impl_any_ty {
 }
 
 impl_any_ty! {
-    FunctionSig, Void, IntTy,
-    Array, Struct, Vector,
-    Float, Pointer,
+    FunctionSig, VoidType,
+    ArrayType, StructType,
+    FloatType, PointerType,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
-pub struct Array<'ctx>(Ty<'ctx>);
+pub struct ArrayType<'ctx>(Type<'ctx>);
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(transparent)]
-pub struct Float<'ctx>(Ty<'ctx>);
+impl<'ctx> Sealed for ArrayType<'ctx> {}
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(transparent)]
-pub struct FunctionSig<'ctx>(Ty<'ctx>);
-
-impl<'ctx> Into<Type<'ctx>> for FunctionSig<'ctx> {
-    fn into(self) -> Type<'ctx> {
-        Type::FunctionSig(self)
+impl Debug for ArrayType<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        Debug::fmt(&self.0, f)
     }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
-pub struct IntTy<'ctx>(Ty<'ctx>);
+pub struct FloatType<'ctx>(Type<'ctx>);
 
-impl<'ctx> IntTy<'ctx> {
-    pub fn i32(ctx: &'ctx Context) -> Result<Self> {
-        unsafe { Self::from_raw(LLVMInt32TypeInContext(ctx.as_mut_ptr())) }
-    }
+impl<'ctx> Sealed for FloatType<'ctx> {}
 
-    pub fn constant(self, value: u64, sign_extend: bool) -> Result<Int<'ctx>> {
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
+pub struct FunctionSig<'ctx>(Type<'ctx>);
+
+impl<'ctx> FunctionSig<'ctx> {
+    pub fn args(self) -> Result<Vec<Type<'ctx>>> {
         unsafe {
-            let value = LLVMConstInt(self.as_mut_ptr(), value, sign_extend as i32);
+            let mut args: Vec<MaybeUninit<*mut LLVMType>> =
+                vec![MaybeUninit::zeroed(); self.num_args() as usize];
+            LLVMGetParamTypes(self.as_mut_ptr(), args.as_mut_ptr() as *mut *mut LLVMType);
 
-            Int::from_raw(value)
+            args.into_iter()
+                .map(|arg| Type::from_raw(arg.assume_init()))
+                .collect()
         }
     }
+
+    pub fn num_args(self) -> u32 {
+        unsafe { LLVMCountParamTypes(self.as_mut_ptr()) }
+    }
+
+    pub(crate) const unsafe fn from(ty: Type<'ctx>) -> Self {
+        Self(ty)
+    }
 }
 
-impl<'ctx> Into<Type<'ctx>> for IntTy<'ctx> {
+impl<'ctx> Sealed for FunctionSig<'ctx> {}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
+pub struct PointerType<'ctx>(pub(crate) Type<'ctx>);
+
+impl<'ctx> Sealed for PointerType<'ctx> {}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
+pub struct StructType<'ctx>(Type<'ctx>);
+
+impl<'ctx> Sealed for StructType<'ctx> {}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
+pub struct VectorType<'ctx, E>(Type<'ctx>, PhantomData<E>);
+
+impl<'ctx, E> VectorType<'ctx, E> {
+    pub fn len(self) -> u32 {
+        unsafe { LLVMGetVectorSize(self.as_mut_ptr()) }
+    }
+}
+
+impl<'ctx, E> AnyType<'ctx> for VectorType<'ctx, E> {}
+
+impl<'ctx, E> SealedAnyType<'ctx> for VectorType<'ctx, E> {
+    fn as_ty(&self) -> Type<'ctx> {
+        self.0
+    }
+
+    fn from_ty(ty: Type<'ctx>) -> Self {
+        Self(ty, PhantomData)
+    }
+}
+
+impl<'ctx, T: Sealed> Sealed for VectorType<'ctx, T> {}
+
+impl<'ctx, E> Into<Type<'ctx>> for VectorType<'ctx, E> {
     fn into(self) -> Type<'ctx> {
-        Type::Int(self)
+        self.0
     }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
-pub struct Pointer<'ctx>(Ty<'ctx>);
+pub struct VoidType<'ctx>(Type<'ctx>);
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(transparent)]
-pub struct Struct<'ctx>(Ty<'ctx>);
-
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(transparent)]
-pub struct Vector<'ctx>(Ty<'ctx>);
-
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(transparent)]
-pub struct Void<'ctx>(Ty<'ctx>);
-
-impl<'ctx> Void<'ctx> {
+impl<'ctx> VoidType<'ctx> {
     pub fn new(ctx: &'ctx Context) -> Result<Self> {
         unsafe { Self::from_raw(LLVMVoidTypeInContext(ctx.as_mut_ptr())) }
-    }
-}
-
-impl<'ctx> Into<Type<'ctx>> for Void<'ctx> {
-    fn into(self) -> Type<'ctx> {
-        Type::Void(self)
     }
 }

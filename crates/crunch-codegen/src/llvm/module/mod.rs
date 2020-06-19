@@ -1,6 +1,7 @@
 mod builder;
 mod building_block;
 mod function_builder;
+mod intrinsics;
 mod linkage;
 
 use builder::Builder;
@@ -9,16 +10,16 @@ pub use function_builder::FunctionBuilder;
 pub use linkage::Linkage;
 
 use crate::llvm::{
-    types::{FunctionSig, SealedAnyType, Ty, Type},
-    utils::{to_non_nul, LLVMString},
-    values::{Function, SealedAnyValue},
+    types::{AnyType, FunctionSig, SealedAnyType, Type},
+    utils::{to_non_nul, AddressSpace, LLVMString},
+    values::{AnyValue, FunctionValue, Global, Pointable, PointerValue, SealedAnyValue},
     Context, Error, ErrorKind, Result,
 };
 use llvm_sys::{
     analysis::{LLVMVerifierFailureAction, LLVMVerifyModule},
     core::{
-        LLVMAddFunction, LLVMCloneModule, LLVMDisposeModule, LLVMFunctionType,
-        LLVMPrintModuleToString,
+        LLVMAddFunction, LLVMAddGlobal, LLVMAddGlobalInAddressSpace, LLVMCloneModule,
+        LLVMDisposeModule, LLVMFunctionType, LLVMGetNamedFunction, LLVMPrintModuleToString,
     },
     LLVMModule, LLVMType,
 };
@@ -42,7 +43,7 @@ impl<'ctx> Module<'ctx> {
         name: N,
         signature: FunctionSig<'ctx>,
         build_function: B,
-    ) -> Result<Function<'ctx>>
+    ) -> Result<FunctionValue<'ctx>>
     where
         N: AsRef<str>,
         B: FnOnce(&mut FunctionBuilder<'ctx>) -> Result<()>,
@@ -50,7 +51,7 @@ impl<'ctx> Module<'ctx> {
         let name = CString::new(name.as_ref())?;
 
         let function = unsafe {
-            Function::from_raw(LLVMAddFunction(
+            FunctionValue::from_raw(LLVMAddFunction(
                 self.as_mut_ptr(),
                 name.as_ptr(),
                 signature.as_mut_ptr(),
@@ -92,23 +93,16 @@ impl<'ctx> Module<'ctx> {
     }
 
     #[inline]
-    pub fn function_ty<T, A>(
+    pub fn function_ty(
         &self,
         // TODO: Make these both require concrete values
-        return_type: T,
-        args: &[A],
+        return_type: Type<'ctx>,
+        args: &[Type<'ctx>],
         variadic: bool,
-    ) -> Result<FunctionSig<'ctx>>
-    where
-        T: Into<Type<'ctx>>,
-        A: Into<Type<'ctx>> + Copy,
-    {
+    ) -> Result<FunctionSig<'ctx>> {
         // TODO: This isn't ideal
-        let mut args: Vec<*mut LLVMType> = args
-            .iter()
-            .copied()
-            .map(|arg| arg.into().as_ty().as_mut_ptr())
-            .collect();
+        let mut args: Vec<*mut LLVMType> =
+            args.iter().copied().map(|arg| arg.as_mut_ptr()).collect();
 
         // LLVM takes a u32 as the length of function arguments, so return an error if there are too many
         if args.len() > u32::max_value() as usize {
@@ -122,12 +116,83 @@ impl<'ctx> Module<'ctx> {
 
         unsafe {
             FunctionSig::from_raw(LLVMFunctionType(
-                return_type.into().as_mut_ptr(),
+                return_type.as_mut_ptr(),
                 args.as_mut_ptr(),
                 args.len() as u32,
                 variadic as _,
             ))
         }
+    }
+
+    /// Gets a function by its name
+    #[inline]
+    pub fn get_function<N>(&self, name: N) -> Result<FunctionValue<'ctx>>
+    where
+        N: AsRef<str>,
+    {
+        let name = CString::new(name.as_ref())?;
+        unsafe { FunctionValue::from_raw(LLVMGetNamedFunction(self.as_mut_ptr(), name.as_ptr())) }
+    }
+
+    /// Gets a function by its name or creates a new one if it doesn't exist
+    // TODO: Return the signature somehow?
+    #[inline]
+    pub fn get_or_create_function<N, F>(&self, name: N, create: F) -> Result<FunctionValue<'ctx>>
+    where
+        N: AsRef<str>,
+        F: FnOnce(&Module<'ctx>) -> Result<FunctionSig<'ctx>>,
+    {
+        let name = CString::new(name.as_ref())?;
+        let func = unsafe {
+            FunctionValue::from_raw(LLVMGetNamedFunction(self.as_mut_ptr(), name.as_ptr()))
+        };
+
+        match func {
+            Ok(func) => Ok(func),
+            Err(_) => {
+                let sig = create(self)?;
+                unsafe {
+                    FunctionValue::from_raw(LLVMAddFunction(
+                        self.as_mut_ptr(),
+                        name.as_ptr(),
+                        sig.as_mut_ptr(),
+                    ))
+                }
+            }
+        }
+    }
+
+    pub fn add_global<T, V, S>(
+        &self,
+        ty: T,
+        address_space: Option<AddressSpace>,
+        name: S,
+    ) -> Result<PointerValue<'ctx, Global<V>>>
+    where
+        T: Pointable + AnyType<'ctx>,
+        V: AnyValue<'ctx>,
+        S: AsRef<str>,
+    {
+        let name = CString::new(name.as_ref())?;
+
+        unsafe {
+            let value = match address_space {
+                Some(address_space) => LLVMAddGlobalInAddressSpace(
+                    self.as_mut_ptr(),
+                    ty.as_mut_ptr(),
+                    name.as_ptr(),
+                    address_space as u32,
+                ),
+                None => LLVMAddGlobal(self.as_mut_ptr(), ty.as_mut_ptr(), name.as_ptr()),
+            };
+
+            PointerValue::from_raw(value)
+        }
+    }
+
+    #[inline]
+    pub const fn context(&self) -> &'ctx Context {
+        self.ctx
     }
 }
 

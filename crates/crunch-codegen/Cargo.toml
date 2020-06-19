@@ -6,7 +6,16 @@ license = "Zlib"
 edition = "2018"
 
 [dependencies.llvm-sys]
-version = "100"
+version = "100.0.0"
+
+[dependencies.crunch-shared]
+path = "../crunch-shared"
 
 [dev-dependencies.tempfile]
 version = "3.1.0"
+
+[dev-dependencies.crunch-parser]
+path = "../crunch-parser"
+
+[dev-dependencies.ladder]
+path = "../ladder"

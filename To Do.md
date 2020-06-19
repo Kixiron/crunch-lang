@@ -108,6 +108,7 @@
   - [ ] DYI or Z3?
   - [ ] Could do double-duty for optimization and trait/type solving/inference
   - [ ] SIMD?
+  - https://arxiv.org/pdf/1809.02161v1.pdf
 - [ ] LLVM wrapper
   - [ ] DIY?
 - [ ] File checksums for knowing what needs to be recompiled https://apenwarr.ca/log/20181113

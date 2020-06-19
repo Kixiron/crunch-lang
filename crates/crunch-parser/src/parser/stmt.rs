@@ -129,8 +129,13 @@ impl<'src> Parser<'src> {
 
         Ok(Block {
             stmts,
-            // FIXME: Unwraps bad
-            loc: Location::concrete(Span::merge(start.unwrap(), end.unwrap()), self.current_file),
+            loc: Location::concrete(
+                Span::merge(
+                    start.unwrap_or(self.current_file.index_span()),
+                    end.unwrap_or(self.current_file.index_span()),
+                ),
+                self.current_file,
+            ),
         })
     }
 }

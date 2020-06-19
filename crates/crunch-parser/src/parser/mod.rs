@@ -7,7 +7,6 @@ use crunch_shared::{
     error::{Error, ErrorHandler, Locatable, Location, ParseResult, SyntaxError},
     files::CurrentFile,
     start_timer,
-    symbol_table::{Graph, MaybeSym, NodeId, Scope},
     trees::ast::Item,
 };
 
@@ -23,7 +22,7 @@ mod utils;
 
 use utils::StackGuard;
 
-type ReturnData = (Vec<Item>, ErrorHandler, Graph<Scope, MaybeSym>, NodeId);
+type ReturnData = (Vec<Item>, ErrorHandler);
 
 // TODO: Make the parser a little more lax, it's kinda strict about whitespace
 
@@ -52,8 +51,6 @@ pub struct Parser<'src> {
     stack_frames: StackGuard,
     current_file: CurrentFile,
     context: Context,
-    symbol_table: Graph<Scope, MaybeSym>,
-    module_scope: NodeId,
     config: ParseConfig,
 }
 
@@ -61,9 +58,6 @@ pub struct Parser<'src> {
 impl<'src> Parser<'src> {
     pub fn new(source: &'src str, current_file: CurrentFile, context: Context) -> Self {
         let (token_stream, next, peek) = Self::lex(source);
-        let mut symbol_table = Graph::new();
-        let module_scope = symbol_table
-            .push_with_capacity(Scope::LocalScope(Vec::new(), Vec::with_capacity(10)), 10);
 
         Self {
             token_stream,
@@ -73,8 +67,6 @@ impl<'src> Parser<'src> {
             stack_frames: StackGuard::new(),
             current_file,
             context,
-            symbol_table,
-            module_scope,
             config: ParseConfig::default(),
         }
     }
@@ -86,10 +78,6 @@ impl<'src> Parser<'src> {
         current_file: CurrentFile,
         context: Context,
     ) -> Self {
-        let mut symbol_table = Graph::new();
-        let module_scope = symbol_table
-            .push_with_capacity(Scope::LocalScope(Vec::new(), Vec::with_capacity(10)), 10);
-
         Self {
             token_stream,
             next,
@@ -98,8 +86,6 @@ impl<'src> Parser<'src> {
             stack_frames: StackGuard::new(),
             current_file,
             context,
-            symbol_table,
-            module_scope,
             config: ParseConfig::default(),
         }
     }
@@ -144,12 +130,7 @@ impl<'src> Parser<'src> {
         }
 
         end_timer!("parsing successfully", timer);
-        Ok((
-            items,
-            self.error_handler,
-            self.symbol_table,
-            self.module_scope,
-        ))
+        Ok((items, self.error_handler))
     }
 
     pub fn lex(source: &'src str) -> (TokenStream<'src>, Option<Token<'src>>, Option<Token<'src>>) {

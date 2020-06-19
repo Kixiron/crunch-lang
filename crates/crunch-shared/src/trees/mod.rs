@@ -1,5 +1,6 @@
 pub mod ast;
 pub mod hir;
+pub mod mir;
 
 #[cfg(feature = "no-std")]
 use alloc::boxed::Box;

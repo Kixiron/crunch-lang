@@ -3,11 +3,29 @@
 use crate::llvm::{Error, ErrorKind, Result};
 use std::ptr::NonNull;
 
+mod address_space;
+mod calling_convention;
+mod dll_storage_class;
 mod llvm_string;
 mod memory_buffer;
+mod thread_local_mode;
 
+pub use address_space::AddressSpace;
+pub use calling_convention::CallingConvention;
+pub use dll_storage_class::DLLStorageClass;
 pub use llvm_string::LLVMString;
 pub use memory_buffer::MemoryBuffer;
+pub(crate) use sealed::Sealed;
+pub use thread_local_mode::ThreadLocalMode;
+
+/// Empty string, to be used where LLVM expects an instruction name, indicating
+/// that the instruction is to be left unnamed (i.e. numbered, in textual IR).
+// TODO: Use CStr once it's const-stable
+pub(crate) const UNNAMED: *const i8 = [0i8].as_ptr();
+
+mod sealed {
+    pub trait Sealed {}
+}
 
 /// Converts a raw pointer into a [`Result`]`<`[`NonNull<T>`]`, `[`Error`]`>`, using `message`
 /// as the error message

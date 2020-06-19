@@ -1,8 +1,8 @@
 use crate::llvm::{
-    module::{Builder, BuildingBlock, Function, Module},
+    module::{Builder, BuildingBlock, Module},
     types::{FunctionSig, SealedAnyType, Type},
     utils::LLVMString,
-    values::{BasicBlock, SealedAnyValue, Value, ValueKind},
+    values::{BasicBlock, FunctionValue, SealedAnyValue, Value, ValueKind},
     Error, ErrorKind, Result,
 };
 use llvm_sys::{
@@ -13,8 +13,7 @@ use llvm_sys::{
 use std::{ffi::CString, mem::MaybeUninit, ops::Deref};
 
 pub struct FunctionBuilder<'ctx> {
-    function: Function<'ctx>,
-    builder: Builder<'ctx>,
+    function: FunctionValue<'ctx>,
     module: &'ctx Module<'ctx>,
     args: Vec<FunctionArg<'ctx>>,
 }
@@ -26,6 +25,7 @@ impl<'ctx> FunctionBuilder<'ctx> {
     {
         let name = CString::new(name.as_ref())?;
 
+        let builder = Builder::new(self.module.context())?;
         let block = unsafe {
             BasicBlock::from_raw(LLVMAppendBasicBlockInContext(
                 self.module.ctx.as_mut_ptr(),
@@ -33,8 +33,9 @@ impl<'ctx> FunctionBuilder<'ctx> {
                 name.as_ptr(),
             ))?
         };
+        builder.move_to_end(&block);
 
-        Ok(BuildingBlock::new(block, &self.builder))
+        Ok(BuildingBlock::new(block, builder))
     }
 
     pub fn args(&self) -> &[FunctionArg<'ctx>] {
@@ -48,12 +49,10 @@ impl<'ctx> FunctionBuilder<'ctx> {
 
 impl<'ctx> FunctionBuilder<'ctx> {
     pub(crate) fn new(
-        function: Function<'ctx>,
+        function: FunctionValue<'ctx>,
         module: &'ctx Module<'ctx>,
         signature: &FunctionSig<'ctx>,
     ) -> Result<Self> {
-        let builder = Builder::new(module.ctx)?;
-
         // Get the number of function parameters
         let num_args = unsafe { LLVMCountParams(function.as_mut_ptr()) } as usize;
 
@@ -90,7 +89,7 @@ impl<'ctx> FunctionBuilder<'ctx> {
 
         // Make sure the information LLVM gave us was sane
         #[cfg(debug_assertions)]
-        for (i, FunctionArg { value, ty }) in args.iter().enumerate() {
+        for FunctionArg { value, ty: _ } in args.iter() {
             use llvm_sys::core::LLVMGetValueKind;
 
             // TODO: Test signature types?
@@ -102,14 +101,13 @@ impl<'ctx> FunctionBuilder<'ctx> {
 
         Ok(Self {
             function,
-            builder,
             module,
             args,
         })
     }
 
     #[inline]
-    pub(crate) fn finish(self) -> Result<Function<'ctx>> {
+    pub(crate) fn finish(self) -> Result<FunctionValue<'ctx>> {
         let failed_verification = unsafe {
             LLVMVerifyFunction(
                 self.as_mut_ptr(),
@@ -151,21 +149,16 @@ impl<'ctx> FunctionBuilder<'ctx> {
             Ok(self.function)
         }
     }
-
-    #[inline]
-    pub(crate) fn move_to_end(&self, block: &BasicBlock<'ctx>) {
-        self.builder.move_to_end(block);
-    }
 }
 
-impl<'ctx> AsRef<Function<'ctx>> for FunctionBuilder<'ctx> {
-    fn as_ref(&self) -> &Function<'ctx> {
+impl<'ctx> AsRef<FunctionValue<'ctx>> for FunctionBuilder<'ctx> {
+    fn as_ref(&self) -> &FunctionValue<'ctx> {
         &self.function
     }
 }
 
 impl<'ctx> Deref for FunctionBuilder<'ctx> {
-    type Target = Function<'ctx>;
+    type Target = FunctionValue<'ctx>;
 
     fn deref(&self) -> &Self::Target {
         &self.function

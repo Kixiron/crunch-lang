@@ -26,8 +26,6 @@ impl<'src> Parser<'src> {
 
         while self.peek().is_ok() {
             if let Some(node) = self.item_impl(&mut decorators, &mut attributes, &mut vis)? {
-                self.symbol_table.push_item(self.module_scope, &node);
-
                 return Ok(Some(node));
             }
         }
@@ -532,7 +530,7 @@ impl<'src> Parser<'src> {
                         name,
                         ty: Ref::new(ty),
                     };
-                    let _end_span = self.eat(TokenType::Newline, [])?.span();
+                    let _end_span = self.eat(TokenType::Comma, [])?.span();
 
                     members.push(member);
                 }

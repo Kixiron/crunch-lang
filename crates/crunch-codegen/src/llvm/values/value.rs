@@ -1,16 +1,18 @@
 use crate::llvm::{
     context::Context,
+    types::Type,
     utils::to_non_nul,
     values::{
-        AnyValue, Argument, Array, BasicBlock, BlockAddress, Float, Function, InlineAsm,
-        Instruction, Int, Metadata, NullPtr, SealedAnyValue, Struct, Undef, Value, ValueKind,
-        Vector,
+        AnyValue, Argument, ArrayValue, BasicBlock, BlockAddress, FloatValue, FunctionValue,
+        InlineAsm, Instruction, IntValue, Metadata, NullPtr, SealedAnyValue, StructValue, Undef,
+        Value, ValueKind, VectorValue,
     },
     Result,
 };
 use llvm_sys::{
     core::{
         LLVMGetNextUse, LLVMGetUsedValue, LLVMGetUser, LLVMGetValueKind, LLVMPrintValueToString,
+        LLVMTypeOf,
     },
     LLVMUse, LLVMValue,
 };
@@ -64,6 +66,10 @@ impl<'ctx> Val<'ctx> {
         let kind = unsafe { LLVMGetValueKind(self.as_mut_ptr()) };
 
         ValueKind::from(kind)
+    }
+
+    pub(crate) fn as_type(self) -> Result<Type<'ctx>> {
+        unsafe { Type::from_raw(LLVMTypeOf(self.as_mut_ptr())) }
     }
 }
 
@@ -171,10 +177,10 @@ macro_rules! passthrough_fmt {
 
 // TODO: Test all of these
 passthrough_fmt! {
-    Int, Value, BasicBlock,
-    Function, BlockAddress,
-    Array, Struct, Vector,
-    Float, NullPtr, Undef,
+    IntValue, Value, BasicBlock,
+    FunctionValue, BlockAddress,
+    ArrayValue, StructValue, VectorValue,
+    FloatValue, NullPtr, Undef,
     Argument, InlineAsm,
     Metadata, Instruction,
 }

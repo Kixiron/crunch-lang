@@ -1,4 +1,4 @@
-use crate::llvm::{context::Context, utils::to_non_nul, Result};
+use crate::llvm::{utils::to_non_nul, Result};
 use llvm_sys::core::{LLVMCreateMessage, LLVMDisposeMessage};
 use std::{
     borrow::Cow,

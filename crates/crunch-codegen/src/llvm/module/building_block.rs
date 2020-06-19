@@ -1,10 +1,20 @@
 use crate::llvm::{
     module::Builder,
-    values::{AnyValue, BasicBlock, Instruction, SealedAnyValue, Value},
-    Result,
+    types::{FunctionSig, IntType, Type, TypeKind},
+    utils::UNNAMED,
+    values::{
+        AnyValue, ArrayValue, BasicBlock, CallSiteValue, FunctionOrPointer, FunctionValue, Global,
+        Instruction, PointerValue, SealedAnyValue, Value,
+    },
+    Error, ErrorKind, Result,
 };
-use llvm_sys::core::{
-    LLVMBuildAdd, LLVMBuildBr, LLVMBuildRet, LLVMBuildRetVoid, LLVMBuildSub, LLVMBuildUnreachable,
+use llvm_sys::{
+    core::{
+        LLVMBuildAdd, LLVMBuildBitCast, LLVMBuildBr, LLVMBuildCall, LLVMBuildGlobalString,
+        LLVMBuildGlobalStringPtr, LLVMBuildPointerCast, LLVMBuildRet, LLVMBuildRetVoid,
+        LLVMBuildSub, LLVMBuildUnreachable,
+    },
+    LLVMValue,
 };
 use std::{
     cmp::Ordering,
@@ -14,14 +24,18 @@ use std::{
     ops::Deref,
 };
 
-#[derive(Copy, Clone)]
 pub struct BuildingBlock<'ctx> {
     block: BasicBlock<'ctx>,
-    builder: &'ctx Builder<'ctx>,
+    builder: Builder<'ctx>,
 }
 
 // Public interface
 impl<'ctx> BuildingBlock<'ctx> {
+    #[inline]
+    pub const fn basic_block(&self) -> BasicBlock<'ctx> {
+        self.block
+    }
+
     // TODO: Take in addable values
     #[inline]
     pub fn add(
@@ -116,12 +130,175 @@ impl<'ctx> BuildingBlock<'ctx> {
 
         Ok(unreachable)
     }
+
+    pub fn bitcast(&self, value: Value<'ctx>, dest_ty: Type<'ctx>) -> Result<Value<'ctx>> {
+        unsafe {
+            Value::from_raw(LLVMBuildBitCast(
+                self.builder.as_mut_ptr(),
+                value.as_mut_ptr(),
+                dest_ty.as_mut_ptr(),
+                UNNAMED,
+            ))
+        }
+    }
+
+    pub fn call<F>(
+        &self,
+        function: F,
+        args: &[Value<'ctx>],
+        name: &str,
+    ) -> Result<CallSiteValue<'ctx>>
+    where
+        F: Into<FunctionOrPointer<'ctx>>,
+    {
+        dbg!();
+        let (value, ty, kind) = match function.into() {
+            FunctionOrPointer::Function(value) => {
+                let ty = value.as_type()?;
+                let kind = ty.element_type()?.kind();
+
+                (value, ty, kind)
+            }
+
+            FunctionOrPointer::Pointer(value) => {
+                let ty = value.as_type()?;
+                let kind = ty.element_type()?.kind();
+
+                if kind != TypeKind::Function {
+                    return Err(Error::new(
+                        "Called a pointer that was not a function",
+                        ErrorKind::MismatchedTypes,
+                    ));
+                }
+
+                (value, ty, kind)
+            }
+        };
+
+        let name = if let TypeKind::Void = kind { "" } else { name };
+        let c_string = CString::new(name)?;
+
+        let mut args: Vec<*mut LLVMValue> =
+            self.check_call(FunctionValue::from_val(value), args)?;
+
+        unsafe {
+            let value = LLVMBuildCall(
+                self.builder.as_mut_ptr(),
+                value.as_mut_ptr(),
+                args.as_mut_ptr(),
+                args.len() as u32,
+                c_string.as_ptr(),
+            );
+
+            CallSiteValue::from_raw(value)
+        }
+    }
+
+    pub fn create_global_string_ptr(
+        &self,
+        value: &str,
+        name: &str,
+    ) -> Result<PointerValue<'ctx, Global<IntType<'ctx, i8>>>> {
+        let c_string_value = CString::new(value)?;
+        let c_string_name = CString::new(name)?;
+
+        unsafe {
+            let value = LLVMBuildGlobalStringPtr(
+                self.builder.as_mut_ptr(),
+                c_string_value.as_ptr(),
+                c_string_name.as_ptr(),
+            );
+
+            PointerValue::from_raw(value)
+        }
+    }
+
+    pub fn create_global_string(&self, value: &str, name: &str) -> Result<ArrayValue<'ctx>> {
+        let c_string_value = CString::new(value)?;
+        let c_string_name = CString::new(name)?;
+
+        unsafe {
+            let value = LLVMBuildGlobalString(
+                self.builder.as_mut_ptr(),
+                c_string_value.as_ptr(),
+                c_string_name.as_ptr(),
+            );
+
+            ArrayValue::from_raw(value)
+        }
+    }
+
+    pub fn ptr_cast(
+        &self,
+        value: Value<'ctx>,
+        cast_ty: Type<'ctx>,
+        name: &str,
+    ) -> Result<Value<'ctx>> {
+        let name = CString::new(name)?;
+
+        unsafe {
+            let value = LLVMBuildPointerCast(
+                self.builder.as_mut_ptr(),
+                value.as_mut_ptr(),
+                cast_ty.as_mut_ptr(),
+                name.as_ptr(),
+            );
+
+            Value::from_raw(value)
+        }
+    }
 }
 
 // Private interface
 impl<'ctx> BuildingBlock<'ctx> {
-    pub(crate) const fn new(block: BasicBlock<'ctx>, builder: &'ctx Builder<'ctx>) -> Self {
+    pub(crate) const fn new(block: BasicBlock<'ctx>, builder: Builder<'ctx>) -> Self {
         Self { block, builder }
+    }
+
+    pub(crate) fn check_call<'a>(
+        &self,
+        function: FunctionValue<'ctx>,
+        args: &'a [Value<'ctx>],
+    ) -> Result<Vec<*mut LLVMValue>> {
+        let mut function = function.as_type()?;
+        while function.kind() == TypeKind::Pointer {
+            function = function.element_type()?;
+        }
+
+        let param_types = unsafe { FunctionSig::from(function) }.args()?;
+
+        let all_args_match = dbg!(&param_types)
+            .iter()
+            .zip(args.iter().filter_map(|&v| dbg!(v.as_type()).ok()))
+            .all(|(expected_ty, actual_ty)| *dbg!(expected_ty) == dbg!(actual_ty));
+
+        if all_args_match {
+            return Ok(args.into_iter().map(|a| a.as_mut_ptr()).collect());
+        }
+
+        let casted_args: Vec<*mut LLVMValue> = param_types
+            .into_iter()
+            .zip(args.iter())
+            .filter_map(|(expected_ty, &actual_val)| {
+                dbg!(expected_ty);
+                let actual_ty = dbg!(actual_val.as_type().ok()?);
+
+                if expected_ty != actual_ty {
+                    dbg!();
+                    self.bitcast(actual_val, expected_ty)
+                        .ok()
+                        .map(|a| a.as_mut_ptr())
+                } else {
+                    Some(actual_val.as_mut_ptr())
+                }
+            })
+            .collect();
+
+        Ok(casted_args)
+    }
+
+    pub(crate) const fn builder(&self) -> &Builder<'ctx> {
+        &self.builder
     }
 }
 
@@ -174,15 +351,17 @@ impl<'ctx> Deref for BuildingBlock<'ctx> {
 #[cfg(test)]
 #[allow(non_snake_case)]
 mod tests {
-    use crate::llvm::{module::Linkage, types::IntTy, Context};
+    use crate::llvm::{module::Linkage, types::IntType, Context};
 
     #[test]
     fn addition() {
         let ctx = Context::new().unwrap();
         let module = ctx.module("main").unwrap();
 
-        let I32 = IntTy::i32(&ctx).unwrap();
-        let sig = module.function_ty(I32, &[I32, I32], false).unwrap();
+        let I32 = IntType::i32(&ctx).unwrap();
+        let sig = module
+            .function_ty(I32.into(), &[I32.into(), I32.into()], false)
+            .unwrap();
 
         let _function = module
             .build_function("main", sig, |builder| {

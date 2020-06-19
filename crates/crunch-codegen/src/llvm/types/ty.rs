@@ -1,12 +1,7 @@
-use crate::llvm::{
-    context::Context,
-    types::{Array, Float, FunctionSig, IntTy, Pointer, SealedAnyType, Struct, Type, Vector, Void},
-    utils::to_non_nul,
-    Result,
-};
+use crate::llvm::{context::Context, types::TypeKind, utils::to_non_nul, Result};
 use llvm_sys::{
-    core::{LLVMGetTypeKind, LLVMPrintTypeToString},
-    LLVMType, LLVMTypeKind,
+    core::{LLVMGetElementType, LLVMGetTypeKind, LLVMPrintTypeToString},
+    LLVMType,
 };
 use std::{
     ffi::CStr,
@@ -21,12 +16,12 @@ use std::{
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
-pub struct Ty<'ctx> {
+pub struct Type<'ctx> {
     ty: NonNull<LLVMType>,
     __ctx: PhantomData<&'ctx Context>,
 }
 
-impl<'ctx> Ty<'ctx> {
+impl<'ctx> Type<'ctx> {
     #[inline]
     pub(crate) unsafe fn from_raw(raw: *mut LLVMType) -> Result<Self> {
         let ty = to_non_nul(
@@ -61,9 +56,13 @@ impl<'ctx> Ty<'ctx> {
 
         TypeKind::from(kind)
     }
+
+    pub(crate) fn element_type(self) -> Result<Type<'ctx>> {
+        unsafe { Type::from_raw(LLVMGetElementType(self.as_mut_ptr())) }
+    }
 }
 
-impl Display for Ty<'_> {
+impl Display for Type<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let string = unsafe {
             let value = to_non_nul(
@@ -79,7 +78,7 @@ impl Display for Ty<'_> {
     }
 }
 
-impl Debug for Ty<'_> {
+impl Debug for Type<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let string = unsafe {
             let value = to_non_nul(
@@ -95,102 +94,26 @@ impl Debug for Ty<'_> {
     }
 }
 
-impl FmtPointer for Ty<'_> {
+impl FmtPointer for Type<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "{:p}", self.as_mut_ptr())
     }
 }
 
-impl UpperHex for Ty<'_> {
+impl UpperHex for Type<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "{:X}", self.as_mut_ptr() as usize)
     }
 }
 
-impl LowerHex for Ty<'_> {
+impl LowerHex for Type<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "{:x}", self.as_mut_ptr() as usize)
     }
 }
 
-impl Octal for Ty<'_> {
+impl Octal for Type<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "{:o}", self.as_mut_ptr() as usize)
-    }
-}
-
-macro_rules! passthrough_fmt {
-    ($($ty:ident),* $(,)?) => {
-        $(
-            passthrough_fmt! {
-                @inner $ty [Display, Debug, FmtPointer, UpperHex, LowerHex, Octal]
-            }
-        )*
-    };
-
-    (@inner $ty:ident [$($fmt:ident),* $(,)?]) => {
-        $(
-            impl $fmt for $ty<'_> {
-                fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-                    $fmt::fmt(&self.as_ty(), f)
-                }
-            }
-        )*
-    };
-}
-
-// TODO: Test all of these
-passthrough_fmt! {
-    Array, Float, IntTy,
-    FunctionSig, Pointer,
-    Struct, Vector,
-    Void, Type,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(u8)]
-#[allow(non_camel_case_types)]
-pub enum TypeKind {
-    Void,
-    Half,
-    Float,
-    Double,
-    X86_FP80,
-    FP128,
-    PC_FP128,
-    Label,
-    Integer,
-    Function,
-    Struct,
-    Array,
-    Pointer,
-    Vector,
-    Metadata,
-    X86_MMX,
-    Token,
-}
-
-#[rustfmt::skip]
-impl From<LLVMTypeKind> for TypeKind {
-    fn from(kind: LLVMTypeKind) -> Self {
-        match kind {
-            LLVMTypeKind::LLVMVoidTypeKind      => Self::Void,
-            LLVMTypeKind::LLVMHalfTypeKind      => Self::Half,
-            LLVMTypeKind::LLVMFloatTypeKind     => Self::Float,
-            LLVMTypeKind::LLVMDoubleTypeKind    => Self::Double,
-            LLVMTypeKind::LLVMX86_FP80TypeKind  => Self::X86_FP80,
-            LLVMTypeKind::LLVMFP128TypeKind     => Self::FP128,
-            LLVMTypeKind::LLVMPPC_FP128TypeKind => Self::PC_FP128,
-            LLVMTypeKind::LLVMLabelTypeKind     => Self::Label,
-            LLVMTypeKind::LLVMIntegerTypeKind   => Self::Integer,
-            LLVMTypeKind::LLVMFunctionTypeKind  => Self::Function,
-            LLVMTypeKind::LLVMStructTypeKind    => Self::Struct,
-            LLVMTypeKind::LLVMArrayTypeKind     => Self::Array,
-            LLVMTypeKind::LLVMPointerTypeKind   => Self::Pointer,
-            LLVMTypeKind::LLVMVectorTypeKind    => Self::Vector,
-            LLVMTypeKind::LLVMMetadataTypeKind  => Self::Metadata,
-            LLVMTypeKind::LLVMX86_MMXTypeKind   => Self::X86_MMX,
-            LLVMTypeKind::LLVMTokenTypeKind     => Self::Token,
-        }
     }
 }

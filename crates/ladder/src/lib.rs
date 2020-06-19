@@ -3,7 +3,6 @@ use crunch_shared::{
     error::Location,
     start_timer,
     strings::StrT,
-    symbol_table::{Graph, MaybeSym, NodeId, Scope},
     trees::{
         ast::{
             Arm as AstMatchArm, AssignKind, BinaryOp, Block as AstBlock, CompOp, Dest as AstDest,
@@ -22,23 +21,11 @@ use crunch_shared::{
     visitors::ast::{ExprVisitor, ItemVisitor, StmtVisitor},
 };
 
-pub struct Ladder {
-    module_table: Graph<Scope, MaybeSym>,
-    module_scope: NodeId,
-    module_path: ItemPath,
-}
+pub struct Ladder {}
 
 impl Ladder {
-    pub fn new(
-        module_table: Graph<Scope, MaybeSym>,
-        module_scope: NodeId,
-        module_path: ItemPath,
-    ) -> Self {
-        Self {
-            module_table,
-            module_scope,
-            module_path,
-        }
+    pub fn new() -> Self {
+        Self {}
     }
 
     pub fn lower(&mut self, items: &[AstItem]) -> Vec<Item> {
@@ -162,7 +149,7 @@ impl ItemVisitor for Ladder {
         body: &AstBlock,
         ret: &AstType,
     ) -> Self::Output {
-        let name = self.module_path.join(item.name.unwrap());
+        let name = ItemPath::from(vec![item.name.unwrap()]);
         let args = args
             .iter()
             .map(|AstFuncArg { name, ty, loc }| {
@@ -664,32 +651,13 @@ fn test() {
     use crunch_shared::{
         context::Context,
         files::{CurrentFile, FileId},
+        symbol_table::Resolver,
     };
 
     let source = r#"
     fn main()
-        :: let mut greeting := "Hello from Crunch!"
-        :: println(greeting)
-        :: 
-        if greeting == "Hello"
-            println("You said hello")
-        else
-            println("You didn't say hello :(")
-        end
-        :: 
-        :: loop
-        ::     println("Over and over again")
-        :: end
-        :: 
-        :: match greeting
-        ::     string where string == "some string" =>
-        ::         println("this can't happen")
-        ::     end
-        :: 
-        ::     greeting =>
-        ::         println("{}", greeting)
-        ::     end
-        :: end
+        let greeting := 10
+        printf(greeting)
     end
     "#;
 
@@ -704,19 +672,22 @@ fn test() {
     )
     .parse()
     {
-        Ok((ast, mut warnings, module_table, module_scope)) => {
+        Ok((items, mut warnings)) => {
             warnings.emit(&files);
 
-            // println!("Nodes: {:#?}", &ast);
+            let mut resolver = Resolver::new(vec![ctx.strings.intern("<test>")].into());
+            for item in items.iter() {
+                resolver.visit_item(item);
+            }
+            resolver.finalize();
+            println!("{:#?}", resolver);
+
+            // println!("Nodes: {:#?}", &items);
             // println!("Symbols: {:#?}", &module_scope);
 
-            let mut ladder = Ladder::new(
-                module_table,
-                module_scope,
-                ItemPath::new(ctx.strings.intern("package")),
-            );
+            let mut _ladder = Ladder::new();
 
-            println!("HIR: {:#?}", ladder.lower(&ast));
+            // println!("HIR: {:#?}", ladder.lower(&items));
         }
 
         Err(mut err) => {

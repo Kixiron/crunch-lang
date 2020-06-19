@@ -17,7 +17,7 @@ use crunch_shared::{
         Return, Stmt, TypeKind, Var, VarDecl,
     },
     utils::HashMap,
-    visitors::hir::{ExprVisitor, ItemVisitor, StmtVisitor},
+    visitors::hir::{MutExprVisitor, MutItemVisitor, MutStmtVisitor},
 };
 
 type TypeId = usize;
@@ -209,7 +209,7 @@ impl Engine {
     }
 }
 
-impl ItemVisitor for Engine {
+impl MutItemVisitor for Engine {
     type Output = TypeResult<()>;
 
     fn visit_func(
@@ -244,11 +244,11 @@ impl ItemVisitor for Engine {
     }
 }
 
-impl StmtVisitor for Engine {
+impl MutStmtVisitor for Engine {
     type Output = TypeResult<TypeId>;
 
     #[inline]
-    fn visit_stmt(&mut self, stmt: &mut Stmt) -> <Self as StmtVisitor>::Output {
+    fn visit_stmt(&mut self, stmt: &mut Stmt) -> <Self as MutStmtVisitor>::Output {
         match stmt {
             Stmt::VarDecl(decl) => self.visit_var_decl(decl),
             Stmt::Item(item) => {
@@ -269,7 +269,7 @@ impl StmtVisitor for Engine {
             ty,
             loc,
         }: &mut VarDecl,
-    ) -> <Self as StmtVisitor>::Output {
+    ) -> <Self as MutStmtVisitor>::Output {
         let var = self.insert(*name, &ty.kind, *loc);
         let expr = self.visit_expr(value)?;
 
@@ -280,7 +280,7 @@ impl StmtVisitor for Engine {
     }
 }
 
-impl ExprVisitor for Engine {
+impl MutExprVisitor for Engine {
     type Output = TypeResult<TypeId>;
 
     fn visit_return(&mut self, _loc: Location, _value: &mut Return) -> Self::Output {
@@ -422,7 +422,6 @@ fn test() {
     use crunch_shared::{
         context::Context,
         files::{CurrentFile, FileId, Files},
-        trees::ast::ItemPath,
     };
     use ladder::Ladder;
 
@@ -462,17 +461,13 @@ fn test() {
     )
     .parse()
     {
-        Ok((ast, mut warnings, module_table, module_scope)) => {
+        Ok((ast, mut warnings)) => {
             warnings.emit(&files);
 
             // println!("Nodes: {:#?}", &ast);
             // println!("Symbols: {:#?}", &module_scope);
 
-            let mut ladder = Ladder::new(
-                module_table,
-                module_scope,
-                ItemPath::new(ctx.strings.intern("package")),
-            );
+            let mut ladder = Ladder::new();
 
             let mut hir = ladder.lower(&ast);
             // println!("HIR: {:#?}", hir);

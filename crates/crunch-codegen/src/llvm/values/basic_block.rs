@@ -150,3 +150,9 @@ impl<'ctx> TryFrom<Value<'ctx>> for BasicBlock<'ctx> {
         }
     }
 }
+
+impl<'ctx> AsRef<BasicBlock<'ctx>> for BasicBlock<'ctx> {
+    fn as_ref(&self) -> &BasicBlock<'ctx> {
+        self
+    }
+}

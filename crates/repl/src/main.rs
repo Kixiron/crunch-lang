@@ -13,7 +13,6 @@ use crunch_shared::{
     context::Context,
     error::ErrorHandler,
     files::{CurrentFile, FileId, Files},
-    trees::ast::ItemPath,
 };
 use crunch_typecheck::Engine;
 use ladder::Ladder;
@@ -54,17 +53,12 @@ fn main() -> rustyline::Result<()> {
                 );
 
                 match parser.parse() {
-                    Ok((items, mut warnings, graph, module)) => {
+                    Ok((items, mut warnings)) => {
                         semantic_analyzer().analyze(&items, &context, &mut warnings);
 
                         // The semantic analyzer will set an error if one occurs
                         if !warnings.is_fatal() {
-                            let mut hir = Ladder::new(
-                                graph.clone(),
-                                module,
-                                ItemPath::from(vec![context.strings.intern("{{repl}}")]),
-                            )
-                            .lower(&items);
+                            let mut hir = Ladder::new().lower(&items);
 
                             warnings.extend(
                                 Engine::new(context.strings.clone())
@@ -89,7 +83,7 @@ fn main() -> rustyline::Result<()> {
                                             println!("{:#?}", hir)
                                         }
                                     }
-                                    EvalType::Symbol => println!("{:#?}", graph),
+                                    EvalType::Symbol => todo!(),
                                     EvalType::Pretty => {
                                         let mut pretty_printed = String::new();
                                         PrettyPrinter::new(context.clone())

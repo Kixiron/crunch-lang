@@ -1,6 +1,5 @@
 use crate::llvm::{
     module::Module,
-    types::SealedAnyType,
     utils::{to_non_nul, LLVMString, MemoryBuffer},
     Error, ErrorKind, Result,
 };
