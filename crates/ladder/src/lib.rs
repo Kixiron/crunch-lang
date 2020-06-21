@@ -1,6 +1,6 @@
 use crunch_shared::{
     end_timer,
-    error::Location,
+    error::{Locatable, Location},
     start_timer,
     strings::StrT,
     trees::{
@@ -147,7 +147,8 @@ impl ItemVisitor for Ladder {
         _generics: &[AstType],
         args: &[AstFuncArg],
         body: &AstBlock,
-        ret: &AstType,
+        ret: Locatable<&AstType>,
+        sig: Location,
     ) -> Self::Output {
         let name = ItemPath::from(vec![item.name.unwrap()]);
         let args = args
@@ -173,8 +174,13 @@ impl ItemVisitor for Ladder {
             vis: item.vis.expect("Functions should have a visibility"),
             args,
             body,
-            ret: TypeKind::from(ret),
+            ret: Type {
+                name: ItemPath::default(), // FIXME: ???
+                kind: TypeKind::from(*ret.data()),
+                loc: ret.loc(),
+            },
             loc: item.location(),
+            sig,
         };
 
         Item::Function(func)
@@ -247,6 +253,7 @@ impl StmtVisitor for Ladder {
             ty: Type {
                 name: ItemPath::new(var.name),
                 kind: TypeKind::from(&*var.ty),
+                loc: stmt.location(),
             },
             loc: stmt.location(),
         })
@@ -303,7 +310,7 @@ impl ExprVisitor for Ladder {
                     arms,
                     ty: TypeKind::Infer,
                 }),
-                loc: expr.location(),
+                loc: dbg!(expr.location()),
             }
         } else {
             for AstIfCond { cond, body } in clauses {
@@ -404,6 +411,7 @@ impl ExprVisitor for Ladder {
             ty: Type {
                 name: ItemPath::default(), // TODO: ????
                 kind: TypeKind::Bool,
+                loc: expr.location(),
             },
             loc: cond.location(),
         }));
@@ -510,6 +518,7 @@ impl ExprVisitor for Ladder {
                                 Ref::new(Type {
                                     name: ItemPath::default(), // FIXME: ???
                                     kind: TypeKind::from(&**ty),
+                                    loc: expr.location(),
                                 })
                             }),
                         },
@@ -588,12 +597,42 @@ impl ExprVisitor for Ladder {
 
     fn visit_assign(
         &mut self,
-        _expr: &AstExpr,
-        _lhs: &AstExpr,
-        _op: AssignKind,
-        _rhs: &AstExpr,
+        expr: &AstExpr,
+        lhs: &AstExpr,
+        op: AssignKind,
+        rhs: &AstExpr,
     ) -> Self::Output {
-        todo!()
+        let var = if let AstExpr {
+            kind: AstExprKind::Variable(var),
+            ..
+        } = lhs
+        {
+            Var::User(*var)
+        } else {
+            todo!()
+        };
+
+        if let AssignKind::BinaryOp(op) = op {
+            Expr {
+                kind: ExprKind::Assign(
+                    var,
+                    Ref::new(Expr {
+                        kind: ExprKind::BinOp(Sided {
+                            lhs: Ref::new(self.visit_expr(lhs)),
+                            op: op,
+                            rhs: Ref::new(self.visit_expr(rhs)),
+                        }),
+                        loc: expr.location(),
+                    }),
+                ),
+                loc: expr.location(),
+            }
+        } else {
+            Expr {
+                kind: ExprKind::Assign(var, Ref::new(self.visit_expr(rhs))),
+                loc: expr.location(),
+            }
+        }
     }
 
     fn visit_paren(&mut self, _expr: &AstExpr, _inner: &AstExpr) -> Self::Output {

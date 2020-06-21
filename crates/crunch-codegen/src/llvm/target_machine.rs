@@ -165,7 +165,7 @@ impl TargetMachine {
         reloc: Option<RelocMode>,
         code_model: Option<CodeModel>,
     ) -> Result<Self> {
-        let (cpu, features, opt_level, reloc, code_model) = dbg!((
+        let (cpu, features, opt_level, reloc, code_model) = (
             // FIXME: Here be hacky
             if let Some(cpu) = cpu {
                 ErrorString::from(cpu)
@@ -180,7 +180,7 @@ impl TargetMachine {
             opt_level.unwrap_or_default(),
             reloc.unwrap_or_default(),
             code_model.unwrap_or_default(),
-        ));
+        );
 
         unsafe {
             Self::from_raw(LLVMCreateTargetMachine(

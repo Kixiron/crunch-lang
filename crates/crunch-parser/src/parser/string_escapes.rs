@@ -5,6 +5,42 @@ use crunch_shared::{
     trees::ast::{Rune, Text},
 };
 
+// TODO: Finish logos string lexer and add string escapes
+//
+// use logos::{Lexer, Logos};
+//
+// #[derive(Logos, Debug, PartialEq, Eq, Clone, Copy, Hash)]
+// #[logos(subpattern hex = "[0-9a-fA-F]", subpattern oct = "[0-7]")]
+// enum EscapeToken {
+//     #[error]
+//     Error,
+//
+//     #[token("\\\\")]
+//     Backslash,
+//     #[token("\\n")]
+//     Newline,
+//     #[token("\\t")]
+//     Tab,
+//     #[token("\\r")]
+//     CarriageReturn,
+//     #[token("\\'")]
+//     SingleQuote,
+//     #[token("\\\"")]
+//     DoubleQuote,
+//     #[regex("\\\\x\\{(?&hex)(?&hex)\\}")]
+//     Hex,
+//     #[regex("\\\\u\\{(?&hex)(?&hex)(?&hex)(?&hex)\\}")]
+//     Unicode16,
+//     #[regex("\\\\U\\{(?&hex)(?&hex)(?&hex)(?&hex)(?&hex)(?&hex)(?&hex)(?&hex)\\}")]
+//     Unicode32,
+//     #[regex("\\\\o\\{(?&oct)(?&oct)(?&oct)\\}")]
+//     Octal,
+//     #[regex("\\\\b\\{[01][01][01][01][01][01][01][01]\\}")]
+//     Binary,
+//     #[regex(".")]
+//     Other,
+// }
+
 // TODO: Verify that these all work and are actually recognized by the parser/lexer and supported by
 //       the backends
 // TODO: Have this process inlined variables & formatting

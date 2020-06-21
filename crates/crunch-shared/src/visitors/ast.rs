@@ -1,4 +1,5 @@
 use crate::{
+    error::{Locatable, Location},
     strings::StrT,
     trees::{
         ast::{
@@ -22,7 +23,8 @@ pub trait ItemVisitor {
                 args,
                 body,
                 ret,
-            } => self.visit_func(item, generics, args, body, ret),
+                sig,
+            } => self.visit_func(item, generics, args, body, ret.map(|t| &**t), *sig),
             ItemKind::Type { generics, members } => self.visit_type(item, generics, members),
             ItemKind::Enum { generics, variants } => self.visit_enum(item, generics, variants),
             ItemKind::Trait { generics, methods } => self.visit_trait(item, generics, methods),
@@ -48,7 +50,8 @@ pub trait ItemVisitor {
         generics: &[Type],
         args: &[FuncArg],
         body: &Block,
-        ret: &Type,
+        ret: Locatable<&Type>,
+        sig: Location,
     ) -> Self::Output;
     fn visit_type(
         &mut self,

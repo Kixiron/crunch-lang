@@ -1,6 +1,7 @@
 use crate::{
     error::Location,
     trees::{
+        ast::BinaryOp,
         hir::{
             Block, Break, CompOp, Expr, ExprKind, FuncCall, Function, Item, Literal, Match, Return,
             Stmt, TypeKind, Var, VarDecl,
@@ -51,6 +52,7 @@ pub trait MutExprVisitor {
                 self.visit_comparison(loc, lhs, *op, rhs)
             }
             ExprKind::Assign(var, value) => self.visit_assign(loc, *var, value),
+            ExprKind::BinOp(Sided { lhs, op, rhs }) => self.visit_binop(loc, lhs, *op, rhs),
         }
     }
 
@@ -71,6 +73,13 @@ pub trait MutExprVisitor {
         rhs: &mut Expr,
     ) -> Self::Output;
     fn visit_assign(&mut self, loc: Location, var: Var, value: &mut Expr) -> Self::Output;
+    fn visit_binop(
+        &mut self,
+        loc: Location,
+        lhs: &mut Expr,
+        op: BinaryOp,
+        rhs: &mut Expr,
+    ) -> Self::Output;
 }
 
 #[allow(unused_variables)]
@@ -115,6 +124,7 @@ pub trait ExprVisitor {
                 self.visit_comparison(loc, lhs, *op, rhs)
             }
             ExprKind::Assign(var, value) => self.visit_assign(loc, *var, value),
+            ExprKind::BinOp(Sided { lhs, op, rhs }) => self.visit_binop(loc, lhs, *op, rhs),
         }
     }
 
@@ -135,4 +145,5 @@ pub trait ExprVisitor {
         rhs: &Expr,
     ) -> Self::Output;
     fn visit_assign(&mut self, loc: Location, var: Var, value: &Expr) -> Self::Output;
+    fn visit_binop(&mut self, loc: Location, lhs: &Expr, op: BinaryOp, rhs: &Expr) -> Self::Output;
 }

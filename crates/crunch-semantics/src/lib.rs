@@ -15,7 +15,7 @@ use core::fmt;
 use crunch_shared::{
     context::Context,
     end_timer,
-    error::{Error, ErrorHandler, Locatable, SemanticError, Warning},
+    error::{Error, ErrorHandler, Locatable, Location, SemanticError, Warning},
     start_timer,
     strings::{StrInterner, StrT},
     trees::ast::{
@@ -146,7 +146,8 @@ impl ItemVisitor for Correctness {
         _generics: &[Type],
         args: &[FuncArg],
         body: &Block,
-        _ret: &Type,
+        _ret: Locatable<&Type>,
+        _loc: Location,
     ) {
         // Errors for empty function bodies
         if body.is_empty() {

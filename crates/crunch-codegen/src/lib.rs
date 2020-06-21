@@ -1,14 +1,12 @@
 use crunch_shared::{
-    trees::mir::{
-        Constant, Function as MirFunction, Instruction, Intrinsic, Rval, Type as MirType, VarId,
-    },
+    strings::StrInterner,
+    trees::mir::{Constant, Function as MirFunction, Instruction, Rval, Type as MirType, VarId},
     utils::HashMap,
 };
 use llvm::{
     module::{BuildingBlock, Linkage, Module},
-    types::{AnyType, IntType, Type, VoidType},
-    utils::{AddressSpace, CallingConvention, UNNAMED},
-    values::{AnyValue, ArrayValue, FunctionValue, Global, PointerValue, SealedAnyValue, Value},
+    types::{IntType, Type, VoidType},
+    values::{FunctionValue, Value},
     Result,
 };
 
@@ -29,51 +27,21 @@ fn rval<'ctx>(
     val: Rval,
 ) -> Result<Value<'ctx>> {
     match val {
-        Rval::Const(Constant::I64(i)) => dbg!(IntType::i64(module.context())?
+        Rval::Const(Constant::I64(i)) => IntType::i64(module.context())?
             .constant(i as u64, false)
-            .map(|i| i.into())),
+            .map(|i| i.into()),
         Rval::Var(id) => Ok(*values.get(&id).unwrap()),
-        Rval::Intrinsic(Intrinsic::Printf, args) => unsafe {
-            dbg!(&args);
-            let iee_ate = IntType::i8(module.context())?;
-            let iee_32 = IntType::i32(module.context())?;
-
-            let printf = module
-                .get_or_create_function("printf", |module| {
-                    module.function_ty(
-                        iee_32.into(),
-                        &[iee_ate.make_pointer(AddressSpace::Generic)?.into()],
-                        true,
-                    )
-                })?
-                .with_linkage(Linkage::External)
-                .with_calling_convention(CallingConvention::C);
-
-            let fmt = b"Test %i\0";
-            let string =
-                module.add_global(iee_ate.make_array(fmt.len() as u32)?, None, "printf_fmt")?;
-
-            string.set_initializer(ArrayValue::const_string(module.context(), fmt, true)?);
-            let string = block.ptr_cast(
-                string.as_value(),
-                iee_ate.make_pointer(AddressSpace::Global)?.0,
-                "printfmt_fmt_casted",
-            )?;
-
-            let args: Vec<Value<'ctx>> = std::iter::once(string)
-                .chain(
-                    args.iter()
-                        .map(|arg| rval(module, block, values, arg.clone()).unwrap()),
-                )
-                .collect();
-
-            Ok(block.call(printf, &args, "hope_this_works")?.as_value())
-        },
-        _ => todo!(),
+        Rval::Mul(lhs, rhs) => block.mult(
+            rval(module, block, values, *lhs)?,
+            rval(module, block, values, *rhs)?,
+            "mult",
+        ),
+        v => todo!("{:?}", v),
     }
 }
 
 pub fn translate<'ctx>(
+    interner: &StrInterner,
     module: &'ctx Module<'ctx>,
     function: MirFunction,
 ) -> Result<FunctionValue<'ctx>> {
@@ -85,33 +53,47 @@ pub fn translate<'ctx>(
 
     let sig = module.function_ty(ty(module, &function.ret)?, args.as_slice(), false)?;
 
-    module.build_function(function.id.0.to_string(), sig, |builder| {
-        let mut blocks = HashMap::new();
-        let mut values = HashMap::new();
+    module.build_function(
+        function
+            .name
+            .as_ref()
+            .map_or_else(|| function.id.0.to_string(), |n| n.to_string(interner)),
+        sig,
+        |builder| {
+            builder.with_linkage(Linkage::External);
 
-        for bl in function.blocks {
-            let block = builder.append_block(bl.id.0.to_string())?;
-            blocks.insert(bl.id, block.basic_block());
+            let mut blocks = HashMap::new();
+            let mut values = HashMap::new();
 
-            for inst in bl.instructions {
-                match inst {
-                    Instruction::Return(ret) => {
-                        block.ret(ret.map(|ret| rval(module, &block, &values, ret).unwrap()))?;
+            for (i, bl) in function.blocks.into_iter().enumerate() {
+                let block = builder.append_block(if i == 0 {
+                    "entry".to_string()
+                } else {
+                    bl.id.0.to_string()
+                })?;
+                blocks.insert(bl.id, block.basic_block());
+
+                for inst in bl.instructions {
+                    match inst {
+                        Instruction::Return(ret) => {
+                            block
+                                .ret(ret.map(|ret| rval(module, &block, &values, ret).unwrap()))?;
+                        }
+                        Instruction::Goto(bl) => {
+                            block.branch(blocks.get(&bl).unwrap())?;
+                        }
+                        Instruction::Assign(id, _, val) => {
+                            let val = rval(module, &block, &values, val)?;
+                            values.insert(id, val);
+                        }
+                        _ => todo!(),
                     }
-                    Instruction::Goto(bl) => {
-                        block.branch(blocks.get(&bl).unwrap())?;
-                    }
-                    Instruction::Assign(id, _, val) => {
-                        let val = rval(module, &block, &values, val)?;
-                        values.insert(id, val);
-                    }
-                    _ => todo!(),
                 }
             }
-        }
 
-        Ok(())
-    })
+            Ok(())
+        },
+    )
 }
 
 #[test]
@@ -119,63 +101,86 @@ fn mir() {
     use crunch_parser::Parser;
     use crunch_shared::{
         context::Context as ParseContext,
+        end_timer,
         files::{CurrentFile, FileId, Files},
+        start_timer,
         symbol_table::Resolver,
         trees::mir::MirBuilder,
         visitors::ast::ItemVisitor,
     };
     use ladder::Ladder;
-    use llvm::Context;
+    use llvm::{
+        target_machine::{CodegenFileKind, Target, TargetConf, TargetMachine},
+        Context,
+    };
+
+    simple_logger::init().ok();
 
     let source = r#"
-    fn main()
-        let greeting: i64 := 10
-        printf(greeting)
-        return
+    fn main() -> i64
+        let mut greeting: i64 := 10
+        greeting *= 10
+
+        return greeting
     end
     "#;
 
-    let ctx = ParseContext::default();
+    let parse_ctx = ParseContext::default();
     let mut files = Files::new();
     files.add("<test>", source);
 
     match Parser::new(
         source,
         CurrentFile::new(FileId::new(0), source.len()),
-        ctx.clone(),
+        parse_ctx.clone(),
     )
     .parse()
     {
         Ok((items, mut warnings)) => {
             warnings.emit(&files);
 
-            let mut resolver = Resolver::new(vec![ctx.strings.intern("<test>")].into());
+            let mut resolver = Resolver::new(vec![parse_ctx.strings().intern("<test>")].into());
             for item in items.iter() {
                 resolver.visit_item(item);
             }
             resolver.finalize();
             let ladder = Ladder::new().lower(&items);
             let mir = MirBuilder::new().lower(&ladder);
-            println!("{:?}", &mir);
+            println!("{:#?}", &mir);
 
+            let start = start_timer!("codegen");
             let ctx = Context::new().unwrap();
-            unsafe { llvm_sys::error_handling::LLVMEnablePrettyStackTrace() };
             let module = ctx.module("crunch-module").unwrap();
 
             for func in mir {
-                translate(&module, func).unwrap();
+                translate(&parse_ctx.strings(), &module, func).unwrap();
             }
 
+            module.verify().unwrap();
+
+            end_timer!("codegen", start);
             println!("{:?}", &module);
-            unsafe {
-                assert_eq!(
-                    llvm_sys::bit_writer::LLVMWriteBitcodeToFile(
-                        module.as_mut_ptr(),
-                        b"output.o".as_ptr() as *const i8,
-                    ),
-                    0,
-                );
-            }
+
+            let start = start_timer!("object file emission");
+
+            Target::init_native(TargetConf::all()).unwrap();
+            let target = Target::from_triple("x86_64-pc-windows-msvc").unwrap();
+            let target_machine = TargetMachine::new(
+                &target,
+                "x86_64-pc-windows-msvc",
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+
+            target_machine
+                .emit_to_file(&module, "crunch.asm", CodegenFileKind::Object)
+                .unwrap();
+
+            end_timer!("object file emission", start);
         }
 
         Err(mut err) => {

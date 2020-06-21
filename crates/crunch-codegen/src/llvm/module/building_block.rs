@@ -11,8 +11,8 @@ use crate::llvm::{
 use llvm_sys::{
     core::{
         LLVMBuildAdd, LLVMBuildBitCast, LLVMBuildBr, LLVMBuildCall, LLVMBuildGlobalString,
-        LLVMBuildGlobalStringPtr, LLVMBuildPointerCast, LLVMBuildRet, LLVMBuildRetVoid,
-        LLVMBuildSub, LLVMBuildUnreachable,
+        LLVMBuildGlobalStringPtr, LLVMBuildMul, LLVMBuildPointerCast, LLVMBuildRet,
+        LLVMBuildRetVoid, LLVMBuildSub, LLVMBuildUnreachable,
     },
     LLVMValue,
 };
@@ -45,7 +45,6 @@ impl<'ctx> BuildingBlock<'ctx> {
         name: &str,
     ) -> Result<Value<'ctx>> {
         let cname = CString::new(name).expect("Rust strings cannot have null bytes");
-        self.builder.move_to_end(self);
 
         let add = unsafe {
             Value::from_raw(LLVMBuildAdd(
@@ -67,7 +66,6 @@ impl<'ctx> BuildingBlock<'ctx> {
         name: &str,
     ) -> Result<Value<'ctx>> {
         let cname = CString::new(name).expect("Rust strings cannot have null bytes");
-        self.builder.move_to_end(self);
 
         let sub = unsafe {
             Value::from_raw(LLVMBuildSub(
@@ -81,11 +79,29 @@ impl<'ctx> BuildingBlock<'ctx> {
         Ok(sub)
     }
 
+    pub fn mult(
+        &self,
+        lhs: impl Into<Value<'ctx>>,
+        rhs: impl Into<Value<'ctx>>,
+        name: &str,
+    ) -> Result<Value<'ctx>> {
+        let cname = CString::new(name).expect("Rust strings cannot have null bytes");
+
+        let mult = unsafe {
+            Value::from_raw(LLVMBuildMul(
+                self.builder.as_mut_ptr(),
+                lhs.into().as_mut_ptr(),
+                rhs.into().as_mut_ptr(),
+                cname.as_ptr(),
+            ))?
+        };
+
+        Ok(mult)
+    }
+
     // TODO: Take in a returnable value
     #[inline]
     pub fn ret(&self, value: Option<Value<'ctx>>) -> Result<Instruction<'ctx>> {
-        self.builder.move_to_end(self);
-
         // TODO: Verify return type is correct
 
         let ret = unsafe {
@@ -105,8 +121,6 @@ impl<'ctx> BuildingBlock<'ctx> {
 
     #[inline]
     pub fn branch(&self, block: impl AsRef<BasicBlock<'ctx>>) -> Result<Instruction<'ctx>> {
-        self.builder.move_to_end(self);
-
         let branch = unsafe {
             Instruction::from_raw(LLVMBuildBr(
                 self.builder.as_mut_ptr(),
@@ -121,8 +135,6 @@ impl<'ctx> BuildingBlock<'ctx> {
 
     #[inline]
     pub fn unreachable(&self) -> Result<Instruction<'ctx>> {
-        self.builder.move_to_end(self);
-
         let unreachable =
             unsafe { Instruction::from_raw(LLVMBuildUnreachable(self.builder.as_mut_ptr()))? };
 
@@ -142,6 +154,7 @@ impl<'ctx> BuildingBlock<'ctx> {
         }
     }
 
+    /*
     pub fn call<F>(
         &self,
         function: F,
@@ -151,7 +164,6 @@ impl<'ctx> BuildingBlock<'ctx> {
     where
         F: Into<FunctionOrPointer<'ctx>>,
     {
-        dbg!();
         let (value, ty, kind) = match function.into() {
             FunctionOrPointer::Function(value) => {
                 let ty = value.as_type()?;
@@ -193,6 +205,7 @@ impl<'ctx> BuildingBlock<'ctx> {
             CallSiteValue::from_raw(value)
         }
     }
+    */
 
     pub fn create_global_string_ptr(
         &self,
@@ -255,6 +268,7 @@ impl<'ctx> BuildingBlock<'ctx> {
         Self { block, builder }
     }
 
+    /*
     pub(crate) fn check_call<'a>(
         &self,
         function: FunctionValue<'ctx>,
@@ -267,10 +281,10 @@ impl<'ctx> BuildingBlock<'ctx> {
 
         let param_types = unsafe { FunctionSig::from(function) }.args()?;
 
-        let all_args_match = dbg!(&param_types)
+        let all_args_match = param_types
             .iter()
-            .zip(args.iter().filter_map(|&v| dbg!(v.as_type()).ok()))
-            .all(|(expected_ty, actual_ty)| *dbg!(expected_ty) == dbg!(actual_ty));
+            .zip(args.iter().filter_map(|&v| v.as_type()).ok())
+            .all(|(expected_ty, actual_ty)| *expected_ty == actual_ty);
 
         if all_args_match {
             return Ok(args.into_iter().map(|a| a.as_mut_ptr()).collect());
@@ -280,11 +294,9 @@ impl<'ctx> BuildingBlock<'ctx> {
             .into_iter()
             .zip(args.iter())
             .filter_map(|(expected_ty, &actual_val)| {
-                dbg!(expected_ty);
-                let actual_ty = dbg!(actual_val.as_type().ok()?);
+                let actual_ty = actual_val.as_type().ok()?;
 
                 if expected_ty != actual_ty {
-                    dbg!();
                     self.bitcast(actual_val, expected_ty)
                         .ok()
                         .map(|a| a.as_mut_ptr())
@@ -296,6 +308,7 @@ impl<'ctx> BuildingBlock<'ctx> {
 
         Ok(casted_args)
     }
+    */
 
     pub(crate) const fn builder(&self) -> &Builder<'ctx> {
         &self.builder

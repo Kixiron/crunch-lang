@@ -1,7 +1,9 @@
 use crate::{
+    error::{Locatable, Location},
     strings::StrT,
     trees::ast::{
-        Block, Dest, Exposure, FuncArg, Item, ItemPath, Type as AstType, TypeMember, Variant,
+        Block, Dest, Exposure, FuncArg, Item, ItemPath, Signedness, Type as AstType, TypeMember,
+        Variant,
     },
     utils::HashMap,
     visitors::ast::ItemVisitor,
@@ -32,6 +34,7 @@ impl Resolver {
                 Type::Unit,
                 Type::Absurd,
                 Type::Infer,
+                Type::Integer,
             ],
             functions: Vec::new(),
             current_path,
@@ -102,6 +105,10 @@ impl Resolver {
             AstType::Unit => Either::Left(3),
             AstType::Absurd => Either::Left(4),
             AstType::Infer => Either::Left(5),
+            AstType::Integer {
+                sign: Signedness::Signed,
+                width: 64,
+            } => Either::Left(6),
             AstType::ItemPath(path) => self
                 .current()
                 .lookup_type(self, *path.last().unwrap())
@@ -148,7 +155,8 @@ impl ItemVisitor for Resolver {
         _generics: &[AstType],
         func_args: &[FuncArg],
         _body: &Block,
-        ret: &AstType,
+        ret: Locatable<&AstType>,
+        _loc: Location,
     ) -> Self::Output {
         let mut args = HashMap::with_capacity(func_args.len());
         for FuncArg { name, ty, .. } in func_args {
@@ -158,7 +166,7 @@ impl ItemVisitor for Resolver {
         let func = Function {
             name: item.name.unwrap(),
             args,
-            ret: self.ty(ret),
+            ret: self.ty(*ret),
             parent: self.current_module,
         };
 
@@ -318,6 +326,7 @@ pub enum Type {
     Unit,
     Absurd,
     Infer,
+    Integer,
     Custom {
         name: StrT,
         members: HashMap<StrT, Either<TypeId, (StrT, ModuleId)>>,

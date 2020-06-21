@@ -1,13 +1,14 @@
 use crate::files::FileId;
-
 use alloc::{
     collections::VecDeque,
+    format,
     string::{String, ToString},
     vec,
     vec::Vec,
 };
 use codespan_reporting::{
     diagnostic::{Diagnostic, Label},
+    files::Files as CodeFiles,
     term::{
         self,
         termcolor::{ColorChoice, StandardStream},
@@ -112,6 +113,14 @@ impl Span {
     }
 
     #[inline]
+    pub const fn double(span: usize) -> Self {
+        Self {
+            start: span,
+            end: span,
+        }
+    }
+
+    #[inline]
     pub const fn start(&self) -> usize {
         self.start
     }
@@ -119,6 +128,11 @@ impl Span {
     #[inline]
     pub const fn end(&self) -> usize {
         self.end
+    }
+
+    #[inline]
+    pub const fn range(&self) -> Range<usize> {
+        self.start..self.end
     }
 
     #[inline]
@@ -231,6 +245,17 @@ impl<T> Locatable<T> {
     pub fn range(&self) -> Range<usize> {
         self.span().into()
     }
+
+    #[inline]
+    pub fn map<F, U>(&self, map: F) -> Locatable<&U>
+    where
+        F: FnOnce(&T) -> &U,
+    {
+        Locatable {
+            data: map(&self.data),
+            loc: self.loc,
+        }
+    }
 }
 
 impl<T> AsRef<T> for Locatable<T> {
@@ -320,14 +345,14 @@ impl ErrorHandler {
     #[inline]
     pub fn emit<'a, F>(&mut self, files: &'a F)
     where
-        F: codespan_reporting::files::Files<'a, FileId = FileId>,
+        F: CodeFiles<'a, FileId = FileId>,
     {
         let writer = StandardStream::stderr(ColorChoice::Auto);
         let config = Config::default();
         let mut diag = Vec::with_capacity(5);
 
         while let Some(err) = self.warnings.pop_front() {
-            err.emit(err.file(), err.span(), &mut diag);
+            err.emit(files, err.file(), err.span(), &mut diag);
 
             for diag in diag.drain(..) {
                 term::emit(&mut writer.lock(), &config, files, &diag).unwrap();
@@ -335,7 +360,7 @@ impl ErrorHandler {
         }
 
         while let Some(err) = self.errors.pop_front() {
-            err.emit(err.file(), err.span(), &mut diag);
+            err.emit(files, err.file(), err.span(), &mut diag);
 
             for diag in diag.drain(..) {
                 term::emit(&mut writer.lock(), &config, files, &diag).unwrap();
@@ -388,11 +413,19 @@ pub enum Error {
 }
 
 impl Error {
-    fn emit(&self, file: FileId, span: Span, diag: &mut Vec<Diagnostic<FileId>>) {
+    fn emit<'a, F>(
+        &self,
+        files: &'a F,
+        file: FileId,
+        span: Span,
+        diag: &mut Vec<Diagnostic<FileId>>,
+    ) where
+        F: CodeFiles<'a, FileId = FileId>,
+    {
         match self {
-            Self::Syntax(err) => err.emit(file, span, diag),
-            Self::Semantic(err) => err.emit(file, span, diag),
-            Self::Type(err) => err.emit(file, span, diag),
+            Self::Syntax(err) => err.emit(files, file, span, diag),
+            Self::Semantic(err) => err.emit(files, file, span, diag),
+            Self::Type(err) => err.emit(files, file, span, diag),
             Self::EndOfFile => diag.push(
                 Diagnostic::error()
                     .with_message(self.to_string())
@@ -464,7 +497,15 @@ pub enum SyntaxError {
 
 impl SyntaxError {
     #[inline]
-    fn emit(&self, file: FileId, span: Span, diag: &mut Vec<Diagnostic<FileId>>) {
+    fn emit<'a, F>(
+        &self,
+        _files: &'a F,
+        file: FileId,
+        span: Span,
+        diag: &mut Vec<Diagnostic<FileId>>,
+    ) where
+        F: CodeFiles<'a, FileId = FileId>,
+    {
         diag.push(
             Diagnostic::error()
                 .with_message(self.to_string())
@@ -522,7 +563,15 @@ pub enum SemanticError {
 
 impl SemanticError {
     #[inline]
-    fn emit(&self, file: FileId, span: Span, diag: &mut Vec<Diagnostic<FileId>>) {
+    fn emit<'a, F>(
+        &self,
+        _files: &'a F,
+        file: FileId,
+        span: Span,
+        diag: &mut Vec<Diagnostic<FileId>>,
+    ) where
+        F: CodeFiles<'a, FileId = FileId>,
+    {
         match self {
             Self::Redefinition { first, second, .. } => {
                 diag.push(
@@ -578,26 +627,52 @@ pub enum TypeError {
     #[display(fmt = "The variable '{}' was not found in this scope", _0)]
     VarNotInScope(String),
 
-    #[display(fmt = "Type conflict between '{}' and '{}': {}", _0, _1, _2)]
-    TypeConflict(String, String, String, Vec<Location>),
+    #[display(fmt = "<Internal error, incorrectly rendered an error>")]
+    TypeConflict([(Option<String>, String, Location); 2]),
 
     #[display(fmt = "Failed to infer the type of '{}'", _0)]
     FailedInfer(String),
+
+    #[display(fmt = "{} are not optional", _0)]
+    MissingType(String),
+
+    #[display(fmt = "{}", _0)]
+    IncorrectType(String),
 }
 
 impl TypeError {
     #[inline]
-    fn emit(&self, file: FileId, span: Span, diag: &mut Vec<Diagnostic<FileId>>) {
+    fn emit<'a, F>(
+        &self,
+        files: &'a F,
+        file: FileId,
+        span: Span,
+        diag: &mut Vec<Diagnostic<FileId>>,
+    ) where
+        F: CodeFiles<'a, FileId = FileId>,
+    {
         match self {
-            Self::TypeConflict(_, _, _, locations) => {
+            Self::TypeConflict([(lvar, lty, lloc), (rvar, rty, rloc)]) => {
+                let source = files.source(file).expect("Received an invalid file id");
+
+                let lvar = lvar
+                    .as_deref()
+                    .unwrap_or_else(|| &source.as_ref()[lloc.span().range()]);
+                let rvar = rvar
+                    .as_deref()
+                    .unwrap_or_else(|| &source.as_ref()[rloc.span().range()]);
+
                 diag.push(
                     Diagnostic::error()
-                        .with_message(self.to_string())
+                        .with_message(format!("Type conflict between {} and {}", lvar, rvar))
                         .with_labels(
-                            locations
-                                .iter()
-                                .map(|loc| Label::primary(file, loc.range()))
-                                .collect(),
+                            [
+                                Label::primary(file, lloc.range())
+                                    .with_message(format!("Has the type of {}", lty)),
+                                Label::secondary(file, rloc.range())
+                                    .with_message(format!("Has the type of {}", rty)),
+                            ]
+                            .into(),
                         ),
                 );
             }
@@ -625,7 +700,15 @@ pub enum Warning {
 
 impl Warning {
     #[inline]
-    fn emit(&self, file: FileId, span: Span, diag: &mut Vec<Diagnostic<FileId>>) {
+    fn emit<'a, F>(
+        &self,
+        _files: &'a F,
+        file: FileId,
+        span: Span,
+        diag: &mut Vec<Diagnostic<FileId>>,
+    ) where
+        F: CodeFiles<'a, FileId = FileId>,
+    {
         diag.push(
             Diagnostic::error()
                 .with_message(self.to_string())

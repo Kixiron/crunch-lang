@@ -3,8 +3,8 @@ use crate::{
     trees::{
         ast::ItemPath,
         hir::{
-            Block as HirBlock, Expr, FuncArg, FuncCall, Function as HirFunction, Item, Literal,
-            Return, Stmt, TypeKind as HirType, TypeKind, Var, VarDecl,
+            BinaryOp, Block as HirBlock, CompOp, Expr, FuncArg, FuncCall, Function as HirFunction,
+            Item, Literal, Return, Stmt, TypeKind as HirType, TypeKind, Var, VarDecl,
         },
     },
     utils::HashMap,
@@ -21,6 +21,7 @@ pub struct Mir {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function {
     pub id: FuncId,
+    pub name: Option<ItemPath>,
     pub args: Vec<(VarId, Type)>,
     pub ret: Type,
     pub blocks: Vec<Block>,
@@ -59,16 +60,10 @@ pub enum Rval {
     Const(Constant),
     Phi(BlockId, BlockId),
     Call(FuncId, Vec<Rval>),
-    Intrinsic(Intrinsic, Vec<Rval>),
     Add(Box<Rval>, Box<Rval>),
     Sub(Box<Rval>, Box<Rval>),
     Mul(Box<Rval>, Box<Rval>),
     Div(Box<Rval>, Box<Rval>),
-}
-
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub enum Intrinsic {
-    Printf,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -180,8 +175,9 @@ impl ItemVisitor for MirBuilder {
 
         let func = Function {
             id,
+            name: Some(func.name.clone()),
             args,
-            ret: (&func.ret).into(),
+            ret: (&func.ret.kind).into(),
             blocks: mem::take(&mut self.blocks),
         };
 
@@ -275,25 +271,17 @@ impl ExprVisitor for MirBuilder {
     }
 
     fn visit_func_call(&mut self, _loc: Location, call: &FuncCall) -> Self::Output {
+        let func = self.function_names.get(&call.func).unwrap();
+
         Some((
             Type::Unit,
-            if let Some(func) = self.function_names.get(&call.func) {
-                Rval::Call(
-                    *func,
-                    call.args
-                        .iter()
-                        .map(|a| self.visit_expr(a).unwrap().1)
-                        .collect(),
-                )
-            } else {
-                Rval::Intrinsic(
-                    Intrinsic::Printf,
-                    call.args
-                        .iter()
-                        .map(|a| self.visit_expr(a).unwrap().1)
-                        .collect(),
-                )
-            },
+            Rval::Call(
+                *func,
+                call.args
+                    .iter()
+                    .map(|a| self.visit_expr(a).unwrap().1)
+                    .collect(),
+            ),
         ))
     }
 
@@ -301,18 +289,44 @@ impl ExprVisitor for MirBuilder {
         &mut self,
         _loc: Location,
         _lhs: &Expr,
-        _op: super::hir::CompOp,
+        _op: CompOp,
         _rhs: &Expr,
     ) -> Self::Output {
         todo!()
     }
 
-    fn visit_assign(
+    fn visit_assign(&mut self, _loc: Location, var: Var, value: &Expr) -> Self::Output {
+        let (ty, rval) = self.visit_expr(value).unwrap();
+        let (_old_id, old_ty) = self.variables.get(&var).unwrap().clone();
+        let new_id = self.next_var();
+        assert_eq!(ty, old_ty);
+
+        self.variables.insert(var, (new_id, ty));
+        self.current_block_mut()
+            .push(Instruction::Assign(new_id, ty, rval));
+
+        None
+    }
+
+    fn visit_binop(
         &mut self,
         _loc: Location,
-        _var: super::hir::Var,
-        _value: &Expr,
+        lhs: &Expr,
+        op: BinaryOp,
+        rhs: &Expr,
     ) -> Self::Output {
-        todo!()
+        let ((lhs_ty, lhs), (rhs_ty, rhs)) =
+            (self.visit_expr(lhs).unwrap(), self.visit_expr(rhs).unwrap());
+        let (lhs, rhs) = (Box::new(lhs), Box::new(rhs));
+        assert_eq!(lhs_ty, rhs_ty);
+
+        match op {
+            BinaryOp::Add => Some((lhs_ty, Rval::Add(lhs, rhs))),
+            BinaryOp::Sub => Some((lhs_ty, Rval::Sub(lhs, rhs))),
+            BinaryOp::Mult => Some((lhs_ty, Rval::Mul(lhs, rhs))),
+            BinaryOp::Div => Some((lhs_ty, Rval::Div(lhs, rhs))),
+
+            _ => todo!(),
+        }
     }
 }

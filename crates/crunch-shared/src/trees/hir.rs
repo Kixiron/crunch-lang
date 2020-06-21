@@ -13,7 +13,7 @@ use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
 
 // TODO: Make equivalents of everything in HIR, even though it's duplicated code
-pub use super::ast::{CompOp, ItemPath, Literal, Vis};
+pub use super::ast::{BinaryOp, CompOp, ItemPath, Literal, Vis};
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum Item {
@@ -26,8 +26,9 @@ pub struct Function {
     pub vis: Vis,
     pub args: Vec<FuncArg>,
     pub body: Block<Stmt>,
-    pub ret: TypeKind,
+    pub ret: Type,
     pub loc: Location,
+    pub sig: Location,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -84,6 +85,7 @@ pub enum ExprKind {
     Comparison(Sided<CompOp, Ref<Expr>>),
     Variable(Var, TypeKind),
     Assign(Var, Ref<Expr>),
+    BinOp(Sided<BinaryOp, Ref<Expr>>),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
@@ -267,6 +269,7 @@ impl<T> Extend<T> for Block<T> {
 pub struct Type {
     pub name: ItemPath,
     pub kind: TypeKind,
+    pub loc: Location,
 }
 
 #[allow(missing_copy_implementations)] // This eventually won't be copy
@@ -277,6 +280,12 @@ pub enum TypeKind {
     String,
     Bool,
     Unit,
+}
+
+impl TypeKind {
+    pub fn is_infer(&self) -> bool {
+        matches!(self, Self::Infer)
+    }
 }
 
 impl From<&crate::trees::ast::Type> for TypeKind {

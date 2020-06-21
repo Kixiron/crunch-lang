@@ -675,18 +675,25 @@ impl<'src> Parser<'src> {
             self.context.strings.intern(ident.source())
         };
         let generics = self.generics()?;
-        let args = self.function_args()?;
+        let (args, args_loc) = self.function_args()?;
 
-        let returns = if self.peek()?.ty() == TokenType::RightArrow {
+        let (returns, end_span) = if self.peek()?.ty() == TokenType::RightArrow {
             self.eat(TokenType::RightArrow, [])?;
-            Some(self.ascribed_type()?)
-        } else {
-            None
-        };
-        let sig_end_span = self.eat(TokenType::Newline, [])?.span();
-        let _signature_span = Span::merge(start_span, sig_end_span);
+            let ty = self.ascribed_type()?;
+            // TODO: Make types have spans
+            let janky_span = Span::double(self.peek()?.span().start());
 
-        let ret = Ref::new(returns.unwrap_or_default());
+            (Some(ty), Some(janky_span))
+        } else {
+            (None, None)
+        };
+        self.eat(TokenType::Newline, [])?;
+        let sig_span = Span::merge(start_span, end_span.unwrap_or_else(|| args_loc.span()));
+
+        let ret = Locatable::new(
+            Ref::new(returns.unwrap_or_default()),
+            Location::concrete(sig_span, self.current_file),
+        );
 
         while self.peek()?.ty() == TokenType::Newline {
             self.eat(TokenType::Newline, [])?;
@@ -694,12 +701,14 @@ impl<'src> Parser<'src> {
 
         let body = self.block(&[TokenType::End], 20)?;
         let end_span = self.eat(TokenType::End, [TokenType::Newline])?.span();
+        let sig = Location::concrete(sig_span, self.current_file);
 
         let kind = ItemKind::Func {
             generics,
             args,
             body,
             ret,
+            sig,
         };
 
         Ok(Item {
@@ -718,8 +727,8 @@ impl<'src> Parser<'src> {
     /// Argument ::= Ident ':' Type
     /// ```
     #[recursion_guard]
-    fn function_args(&mut self) -> ParseResult<Vec<FuncArg>> {
-        self.eat(TokenType::LeftParen, [TokenType::Newline])?;
+    fn function_args(&mut self) -> ParseResult<(Vec<FuncArg>, Location)> {
+        let left = self.eat(TokenType::LeftParen, [TokenType::Newline])?.span();
 
         let mut args = Vec::with_capacity(7);
         while self.peek()?.ty() != TokenType::RightParen {
@@ -753,9 +762,14 @@ impl<'src> Parser<'src> {
                 break;
             }
         }
-        self.eat(TokenType::RightParen, [TokenType::Newline])?;
+        let right = self
+            .eat(TokenType::RightParen, [TokenType::Newline])?
+            .span();
 
-        Ok(args)
+        Ok((
+            args,
+            Location::concrete(Span::merge(left, right), self.current_file),
+        ))
     }
 
     /// ```ebnf

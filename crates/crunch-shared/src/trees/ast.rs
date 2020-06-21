@@ -1,5 +1,5 @@
 use crate::{
-    error::{Location, Span},
+    error::{Locatable, Location, Span},
     strings::{StrInterner, StrT},
     trees::{Ref, Sided},
 };
@@ -45,7 +45,8 @@ pub enum ItemKind {
         generics: Vec<Type>,
         args: Vec<FuncArg>,
         body: Block,
-        ret: Ref<Type>,
+        ret: Locatable<Ref<Type>>,
+        sig: Location,
     },
 
     Type {
@@ -710,7 +711,7 @@ impl Type {
 impl Default for Type {
     #[inline]
     fn default() -> Self {
-        Self::Infer
+        Self::Unit
     }
 }
 

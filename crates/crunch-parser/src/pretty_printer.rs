@@ -55,6 +55,7 @@ impl PrettyPrinter {
                 args,
                 body,
                 ret,
+                sig: _,
             } => {
                 self.vis(f, item.vis.as_ref().unwrap())?;
                 write!(

@@ -44,7 +44,7 @@ impl<'src> Parser<'src> {
 
                 let ty = if self.peek()?.ty() == TokenType::Equal {
                     self.eat(TokenType::Equal, [])?;
-                    Type::default()
+                    Type::Infer
                 } else {
                     let ty = self.ascribed_type()?;
                     self.eat(TokenType::Colon, [TokenType::Newline])?;

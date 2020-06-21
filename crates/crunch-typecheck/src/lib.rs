@@ -83,7 +83,7 @@ impl Engine {
         match (self.types[&a].clone(), self.types[&b].clone()) {
             // Follow any references
             ((TypeInfo::Ref(a), _), _) => self.unify(a, b),
-            (_, (TypeInfo::Ref(a), _)) => self.unify(a, b),
+            (_, (TypeInfo::Ref(b), _)) => self.unify(a, b),
 
             // When we don't know anything about either term, assume that
             // they match and make the one we know nothing about reference the
@@ -107,37 +107,29 @@ impl Engine {
 
             // If no previous attempts to unify were successful, raise an error
             ((a_ty, a_loc), (b_ty, b_loc)) => {
-                let a = self
-                    .ids
-                    .iter()
-                    .find_map(|(name, id)| {
-                        if *id == a {
-                            Some(name.to_string(&self.interner))
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or("<anonymous type>".to_owned());
+                let a = self.ids.iter().find_map(|(name, id)| {
+                    if *id == a {
+                        Some(name.to_string(&self.interner))
+                    } else {
+                        None
+                    }
+                });
 
-                let b = self
-                    .ids
-                    .iter()
-                    .find_map(|(name, id)| {
-                        if *id == b {
-                            Some(name.to_string(&self.interner))
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or("<anonymous type>".to_owned());
-
-                let message = format!(
-                    "'{}' is of type {:?} while '{}' is of type {:?}",
-                    a, a_ty, b, b_ty
-                );
+                let b = self.ids.iter().find_map(|(name, id)| {
+                    if *id == b {
+                        Some(name.to_string(&self.interner))
+                    } else {
+                        None
+                    }
+                });
 
                 Err(Locatable::new(
-                    TypeError::TypeConflict(a, b, message, vec![a_loc, b_loc]).into(),
+                    TypeError::TypeConflict([
+                        // TODO: Pretty print the types
+                        (a, format!("{:?}", a_ty), a_loc),
+                        (b, format!("{:?}", b_ty), b_loc),
+                    ])
+                    .into(),
                     b_loc,
                 ))
             }
@@ -173,16 +165,12 @@ impl Engine {
         }
     }
 
-    pub fn walk(&mut self, hir: &mut [Item]) -> Result<ErrorHandler, ErrorHandler> {
+    pub fn walk(&mut self, items: &mut [Item]) -> Result<ErrorHandler, ErrorHandler> {
         let timer = start_timer!("type checking");
 
-        for node in hir {
-            match node {
-                Item::Function(func) => {
-                    if let Err(err) = self.visit_func(func) {
-                        self.errors.push_err(err);
-                    }
-                }
+        for item in items {
+            if let Err(err) = self.visit_item(item) {
+                self.errors.push_err(err);
             }
         }
 
@@ -212,29 +200,59 @@ impl Engine {
 impl MutItemVisitor for Engine {
     type Output = TypeResult<()>;
 
+    fn visit_item(&mut self, item: &mut Item) -> Self::Output {
+        match item {
+            Item::Function(func) => self.visit_func(func),
+        }
+    }
+
     fn visit_func(
         &mut self,
         Function {
             args,
             body,
             ret,
-            loc,
+            sig,
             ..
         }: &mut Function,
     ) -> Self::Output {
+        let mut missing_arg_ty = None;
+        for arg in args.iter().filter(|a| !a.kind.is_infer()) {
+            if let Some(err) = missing_arg_ty.take() {
+                self.errors.push_err(err);
+            }
+
+            missing_arg_ty = Some(Locatable::new(
+                TypeError::MissingType("Types for function arguments".to_owned()).into(),
+                arg.loc,
+            ));
+        }
+
+        if ret.kind.is_infer() {
+            if let Some(err) = missing_arg_ty {
+                self.errors.push_err(err);
+            }
+
+            return Err(Locatable::new(
+                TypeError::MissingType("Return types for functions".to_owned()).into(),
+                ret.loc,
+            ));
+        } else if let Some(err) = missing_arg_ty {
+            return Err(err);
+        }
+
         let func_args: Vec<_> = args
             .iter()
             .map(|FuncArg { name, kind, loc }| self.insert(*name, kind, *loc))
             .collect();
 
-        let mut ty = self.insert_bare(TypeInfo::Infer, *loc);
+        let ret_type = self.insert_bare(TypeInfo::from(&ret.kind), *sig);
         for stmt in body.iter_mut() {
-            ty = self.visit_stmt(stmt)?;
+            let ty = self.visit_stmt(stmt)?;
+            self.unify(ty, ret_type)?;
         }
 
-        let ret_type = self.insert_bare(TypeInfo::from(&*ret), *loc);
-        self.unify(ty, ret_type)?;
-        *ret = self.reconstruct(ty)?;
+        ret.kind = self.reconstruct(ret_type)?;
 
         for (i, arg) in func_args.into_iter().enumerate() {
             args[i].kind = self.reconstruct(arg)?;
@@ -251,12 +269,14 @@ impl MutStmtVisitor for Engine {
     fn visit_stmt(&mut self, stmt: &mut Stmt) -> <Self as MutStmtVisitor>::Output {
         match stmt {
             Stmt::VarDecl(decl) => self.visit_var_decl(decl),
+
             Stmt::Item(item) => {
                 self.visit_item(item)?;
 
                 // FIXME: This is bad, very bad
                 Ok(0)
             }
+
             Stmt::Expr(expr) => self.visit_expr(expr),
         }
     }
@@ -300,7 +320,14 @@ impl MutExprVisitor for Engine {
     }
 
     fn visit_match(&mut self, loc: Location, Match { cond, arms, ty }: &mut Match) -> Self::Output {
-        let _match_cond = self.visit_expr(cond)?;
+        let match_cond = self.visit_expr(cond)?;
+        let b = self.insert_bare(TypeInfo::Bool, cond.location());
+        if self.unify(match_cond, b).is_err() {
+            return Err(Locatable::new(
+                TypeError::IncorrectType("If conditions must be booleans".to_owned()).into(),
+                cond.location(),
+            ));
+        }
 
         let mut arm_types = Vec::new();
         for MatchArm {
@@ -335,7 +362,7 @@ impl MutExprVisitor for Engine {
             arm_types.push(arm_ty);
         }
 
-        let match_ty = self.insert_bare(TypeInfo::from(&*ty), loc);
+        let match_ty = self.insert_bare(TypeInfo::from(&*ty), dbg!(loc));
         for arm in arm_types {
             self.unify(match_ty, arm)?;
         }
@@ -378,6 +405,16 @@ impl MutExprVisitor for Engine {
     }
 
     fn visit_assign(&mut self, _loc: Location, _var: Var, _value: &mut Expr) -> Self::Output {
+        todo!()
+    }
+
+    fn visit_binop(
+        &mut self,
+        _loc: Location,
+        _lhs: &mut Expr,
+        _op: crunch_shared::trees::hir::BinaryOp,
+        _rhs: &mut Expr,
+    ) -> Self::Output {
         todo!()
     }
 }
@@ -470,7 +507,7 @@ fn test() {
             let mut ladder = Ladder::new();
 
             let mut hir = ladder.lower(&ast);
-            // println!("HIR: {:#?}", hir);
+            println!("HIR: {:#?}", hir);
 
             let mut engine = Engine::new(ctx.strings.clone());
 
@@ -480,7 +517,14 @@ fn test() {
                         "Type checking completed successfully with {} warnings",
                         warnings.warn_len(),
                     );
-                    warnings.emit(&files)
+                    warnings.emit(&files);
+
+                    println!(
+                        "Type of `greeting`: {:?}",
+                        engine
+                            .type_of(&Var::User(ctx.strings.intern("greeting")))
+                            .unwrap(),
+                    );
                 }
 
                 Err(mut errors) => {
@@ -489,16 +533,9 @@ fn test() {
                         errors.warn_len(),
                         errors.err_len(),
                     );
-                    errors.emit(&files)
+                    errors.emit(&files);
                 }
             }
-
-            println!(
-                "Type of `greeting`: {:?}",
-                engine
-                    .type_of(&Var::User(ctx.strings.intern("greeting")))
-                    .unwrap(),
-            );
         }
 
         Err(mut err) => {

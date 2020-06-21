@@ -14,6 +14,10 @@ impl Context {
             strings: StrInterner::new(),
         }
     }
+
+    pub const fn strings(&self) -> &StrInterner {
+        &self.strings
+    }
 }
 
 impl Default for Context {
