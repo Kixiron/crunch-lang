@@ -1,7 +1,5 @@
 use crunch_shared::{
-    end_timer,
     error::{Locatable, Location},
-    start_timer,
     strings::StrT,
     trees::{
         ast::{
@@ -18,6 +16,7 @@ use crunch_shared::{
         },
         Ref, Sided,
     },
+    utils::Timer,
     visitors::ast::{ExprVisitor, ItemVisitor, StmtVisitor},
 };
 
@@ -29,11 +28,10 @@ impl Ladder {
     }
 
     pub fn lower(&mut self, items: &[AstItem]) -> Vec<Item> {
-        let timer = start_timer!("hir lowering");
+        let _lowering = Timer::start("hir lowering");
 
         let lowered = items.iter().map(|item| self.visit_item(item)).collect();
 
-        end_timer!("hir lowering", timer);
         lowered
     }
 
@@ -310,7 +308,7 @@ impl ExprVisitor for Ladder {
                     arms,
                     ty: TypeKind::Infer,
                 }),
-                loc: dbg!(expr.location()),
+                loc: expr.location(),
             }
         } else {
             for AstIfCond { cond, body } in clauses {

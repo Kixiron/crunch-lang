@@ -14,15 +14,13 @@ use alloc::{borrow::ToOwned, boxed::Box, format, vec::Vec};
 use core::fmt;
 use crunch_shared::{
     context::Context,
-    end_timer,
     error::{Error, ErrorHandler, Locatable, Location, SemanticError, Warning},
-    start_timer,
     strings::{StrInterner, StrT},
     trees::ast::{
         AssignKind, BinaryOp, Block, CompOp, Dest, Exposure, Expr, For, FuncArg, If, Item,
         ItemPath, Literal, Loop, Match, Stmt, Type, TypeMember, UnaryOp, VarDecl, Variant, While,
     },
-    utils::HashMap,
+    utils::{HashMap, Timer},
     visitors::ast::{ExprVisitor, ItemVisitor, StmtVisitor},
 };
 
@@ -62,11 +60,10 @@ impl SemanticAnalyzer {
     }
 
     pub fn analyze(&mut self, items: &[Item], context: &Context, errors: &mut ErrorHandler) {
-        let timer = start_timer!("semantic analysis");
+        let _analysis = Timer::start("semantic analysis");
 
         for pass in self.passes.iter_mut() {
-            let pass_name = format!("semantic analysis pass {}", pass.name());
-            let pass_timer = start_timer!(pass_name);
+            let _pass_timer = Timer::start(format!("semantic analysis pass {}", pass.name()));
 
             pass.load(ErrorHandler::new(), context.clone());
 
@@ -76,10 +73,7 @@ impl SemanticAnalyzer {
 
             let err = pass.unload();
             errors.extend(err);
-            end_timer!(pass_name, pass_timer);
         }
-
-        end_timer!("semantic analysis", timer);
     }
 }
 

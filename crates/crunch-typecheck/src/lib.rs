@@ -8,15 +8,13 @@
 )]
 
 use crunch_shared::{
-    end_timer,
     error::{ErrorHandler, Locatable, Location, Span, TypeError, TypeResult},
-    start_timer,
     strings::StrInterner,
     trees::hir::{
         Block, Break, CompOp, Expr, FuncArg, FuncCall, Function, Item, Literal, Match, MatchArm,
         Return, Stmt, TypeKind, Var, VarDecl,
     },
-    utils::HashMap,
+    utils::{HashMap, Timer},
     visitors::hir::{MutExprVisitor, MutItemVisitor, MutStmtVisitor},
 };
 
@@ -166,7 +164,7 @@ impl Engine {
     }
 
     pub fn walk(&mut self, items: &mut [Item]) -> Result<ErrorHandler, ErrorHandler> {
-        let timer = start_timer!("type checking");
+        let _type_checking = Timer::start("type checking");
 
         for item in items {
             if let Err(err) = self.visit_item(item) {
@@ -175,12 +173,8 @@ impl Engine {
         }
 
         if self.errors.is_fatal() {
-            end_timer!("type checking unsuccessfully", timer);
-
             Err(self.errors.take())
         } else {
-            end_timer!("type checking successfully", timer);
-
             Ok(self.errors.take())
         }
     }
@@ -362,7 +356,7 @@ impl MutExprVisitor for Engine {
             arm_types.push(arm_ty);
         }
 
-        let match_ty = self.insert_bare(TypeInfo::from(&*ty), dbg!(loc));
+        let match_ty = self.insert_bare(TypeInfo::from(&*ty), loc);
         for arm in arm_types {
             self.unify(match_ty, arm)?;
         }

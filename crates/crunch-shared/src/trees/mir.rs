@@ -4,7 +4,8 @@ use crate::{
         ast::ItemPath,
         hir::{
             BinaryOp, Block as HirBlock, CompOp, Expr, FuncArg, FuncCall, Function as HirFunction,
-            Item, Literal, Return, Stmt, TypeKind as HirType, TypeKind, Var, VarDecl,
+            Item, Literal, Match, MatchArm, Return, Stmt, TypeKind as HirType, TypeKind, Var,
+            VarDecl,
         },
     },
     utils::HashMap,
@@ -44,6 +45,10 @@ impl Block {
     pub fn push(&mut self, inst: Instruction) {
         self.instructions.push(inst);
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.instructions.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -51,7 +56,7 @@ pub enum Instruction {
     Return(Option<Rval>),
     Goto(BlockId),
     Assign(VarId, Type, Rval),
-    Switch(Rval, Vec<(Rval, BlockId)>),
+    Switch(Rval, Vec<(Option<Rval>, BlockId)>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -140,6 +145,18 @@ impl MirBuilder {
         let id = VarId(self.var_counter);
         self.var_counter += 1;
         id
+    }
+
+    fn next_block(&mut self) -> BlockId {
+        let id = BlockId(self.blocks.len());
+        self.blocks.push(Block::new(id));
+        self.current_block = id.0;
+
+        id
+    }
+
+    fn move_to_block(&mut self, block: BlockId) {
+        self.current_block = block.0;
     }
 
     fn current_block_mut(&mut self) -> &mut Block {
@@ -241,8 +258,34 @@ impl ExprVisitor for MirBuilder {
         todo!()
     }
 
-    fn visit_match(&mut self, _loc: Location, _match_: &super::hir::Match) -> Self::Output {
-        todo!()
+    fn visit_match(&mut self, _loc: Location, Match { cond, arms, .. }: &Match) -> Self::Output {
+        let current_block = BlockId(self.current_block);
+
+        let mut cases = Vec::with_capacity(arms.len());
+        for MatchArm { guard, body, .. } in arms {
+            self.next_block();
+            let block_id = BlockId(self.current_block);
+
+            for stmt in body.iter() {
+                self.visit_stmt(stmt);
+            }
+
+            self.move_to_block(current_block);
+            if let Some(guard) = guard {
+                cases.push((Some(self.visit_expr(guard).unwrap().1), block_id));
+            } else {
+                cases.push((None, block_id));
+            }
+        }
+
+        self.move_to_block(current_block);
+
+        let switch = Instruction::Switch(self.visit_expr(cond).unwrap().1, cases);
+        self.current_block_mut().push(switch);
+
+        self.next_block();
+
+        None
     }
 
     fn visit_variable(&mut self, _loc: Location, var: Var, _ty: &TypeKind) -> Self::Output {

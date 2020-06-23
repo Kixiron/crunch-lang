@@ -1,3 +1,4 @@
+use alloc::string::String;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "no-std")]
@@ -210,44 +211,68 @@ mod log {
     }
 }
 
-#[cfg(feature = "no-std")]
-#[macro_export]
-macro_rules! start_timer {
-    ($thing:expr) => {{
-        $crate::info!("Started {}", $thing);
-    }};
+#[derive(Debug)]
+#[allow(missing_copy_implementations)]
+pub struct Timer {
+    #[cfg(not(feature = "no-std"))]
+    name: String,
+
+    #[cfg(not(feature = "no-std"))]
+    start: std::time::Instant,
+
+    #[cfg(not(feature = "no-std"))]
+    finished: bool,
+
+    __private: (),
+}
+
+impl Timer {
+    #[allow(unused_variables)]
+    pub fn start(name: impl Into<String>) -> Self {
+        #[cfg(not(feature = "no-std"))]
+        {
+            let name = name.into();
+            crate::info!("Started {}", name);
+
+            return Self {
+                name,
+                start: std::time::Instant::now(),
+                finished: false,
+                __private: (),
+            };
+        }
+
+        #[cfg(feature = "no-std")]
+        return Self { __private: () };
+    }
+
+    #[allow(unused_mut)]
+    pub fn end(mut self) {
+        #[cfg(not(feature = "no-std"))]
+        self.end_inner();
+    }
+
+    #[cfg(not(feature = "no-std"))]
+    fn end_inner(&mut self) {
+        if !self.finished {
+            let elapsed = self.start.elapsed();
+
+            crate::info!(
+                "Finished {} in {}sec, {}ms and {}μs",
+                self.name,
+                elapsed.as_secs(),
+                elapsed.subsec_micros() / 1000,
+                elapsed.subsec_micros() % 1000,
+            );
+
+            self.finished = true;
+        }
+    }
 }
 
 #[cfg(not(feature = "no-std"))]
-#[macro_export]
-macro_rules! start_timer {
-    ($thing:expr) => {{
-        $crate::info!("Started {}", $thing);
-        ::std::time::Instant::now()
-    }};
-}
-
-#[cfg(feature = "no-std")]
-#[macro_export]
-macro_rules! end_timer {
-    ($thing:expr, $time:expr) => {{
-        $crate::info!("Finished {}", $thing);
-        let _ = $time;
-    }};
-}
-
-#[cfg(not(feature = "no-std"))]
-#[macro_export]
-macro_rules! end_timer {
-    ($thing:expr, $time:expr) => {{
-        let elapsed = $time.elapsed();
-        $crate::info!(
-            "Finished {} in {}sec, {}ms and {}μs",
-            $thing,
-            elapsed.as_secs(),
-            elapsed.subsec_micros() / 1000,
-            elapsed.subsec_micros() % 1000,
-        );
-        let _ = $time;
-    }};
+impl Drop for Timer {
+    fn drop(&mut self) {
+        self.end_inner();
+    }
 }

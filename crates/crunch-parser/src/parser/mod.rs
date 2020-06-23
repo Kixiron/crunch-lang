@@ -3,11 +3,10 @@ use alloc::{format, vec::Vec};
 use core::mem;
 use crunch_shared::{
     context::Context,
-    end_timer,
     error::{Error, ErrorHandler, Locatable, Location, ParseResult, SyntaxError},
     files::CurrentFile,
-    start_timer,
     trees::ast::Item,
+    utils::Timer,
 };
 
 mod expr;
@@ -91,7 +90,7 @@ impl<'src> Parser<'src> {
     }
 
     pub fn parse(mut self) -> Result<ReturnData, ErrorHandler> {
-        let timer = start_timer!("parsing");
+        let _parsing = Timer::start("parsing");
 
         let (mut items, mut errors) = (Vec::with_capacity(20), 0);
 
@@ -114,7 +113,6 @@ impl<'src> Parser<'src> {
                             loc,
                         ));
 
-                        end_timer!("parsing unsuccessfully", timer);
                         return Err(self.error_handler);
                     }
 
@@ -122,25 +120,22 @@ impl<'src> Parser<'src> {
                     if let Err(err) = self.stress_eat() {
                         self.error_handler.push_err(err);
 
-                        end_timer!("parsing unsuccessfully", timer);
                         return Err(self.error_handler);
                     }
                 }
             }
         }
 
-        end_timer!("parsing successfully", timer);
         Ok((items, self.error_handler))
     }
 
     pub fn lex(source: &'src str) -> (TokenStream<'src>, Option<Token<'src>>, Option<Token<'src>>) {
-        let timer = start_timer!("lexing");
+        let _lexing = Timer::start("lexing");
 
         let mut token_stream = TokenStream::new(source, true, true);
         let next = None;
         let peek = token_stream.next();
 
-        end_timer!("lexing", timer);
         (token_stream, next, peek)
     }
 
