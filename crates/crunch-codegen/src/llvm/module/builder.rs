@@ -1,6 +1,6 @@
 use crate::llvm::{
     utils::to_non_nul,
-    values::{BasicBlock, Instruction, SealedAnyValue},
+    values::{BasicBlock, InstructionValue, SealedAnyValue},
     Context, Result,
 };
 use llvm_sys::{
@@ -34,7 +34,7 @@ impl<'ctx> Builder<'ctx> {
     }
 
     #[inline]
-    pub(crate) fn move_to(&self, block: &BasicBlock<'ctx>, instruction: Instruction<'ctx>) {
+    pub(crate) fn move_to(&self, block: &BasicBlock<'ctx>, instruction: InstructionValue<'ctx>) {
         unsafe {
             LLVMPositionBuilder(
                 self.as_mut_ptr(),
@@ -50,7 +50,7 @@ impl<'ctx> Builder<'ctx> {
     }
 
     #[inline]
-    pub(crate) fn move_before(&self, instruction: Instruction<'ctx>) {
+    pub(crate) fn move_before(&self, instruction: InstructionValue<'ctx>) {
         unsafe { LLVMPositionBuilderBefore(self.as_mut_ptr(), instruction.as_mut_ptr()) };
     }
 

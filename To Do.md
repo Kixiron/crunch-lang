@@ -67,6 +67,9 @@
 - [ ] Achievements
 - [ ] Bidirectional type checking
 - [ ] Switch tests to do two-way serialization, check equality structurally and not by strings
+- [ ] Generic mutability
+- [ ] Function arguments are patterns with required types
+- [ ] Variable declarations are patterns
 - [x] Stop using `.deref()`, instead use `*`
 - [x] Re-add function generics
   - [x] `fn t[T, E, F](t: T, e: E, f: F)`
@@ -112,6 +115,7 @@
 - [ ] LLVM wrapper
   - [ ] DIY?
 - [ ] File checksums for knowing what needs to be recompiled https://apenwarr.ca/log/20181113
+  - [ ] Hash compiler version, git rev and LLVM version together as part of cache fingerprint
 - [ ] Symbolic execution
 - [ ] No dependencies on crt or libc
 - [ ] MIR for majority of passes
@@ -145,5 +149,8 @@
   - https://www.unisonweb.org/docs/language-reference
   - https://github.com/pandaman64/effective-rust
   - https://github.com/effect-handlers/effects-rosetta-stone
+  - [ ] Static dispatch of effects with defunctionalization
 - [ ] Opt-in UB
 - [ ] More instrumenting
+- [ ] Module-level parallelism
+- [ ] Ability to test compile errors

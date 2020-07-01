@@ -248,6 +248,7 @@ impl StmtVisitor for Ladder {
         Stmt::VarDecl(VarDecl {
             name: Var::User(var.name),
             value: Ref::new(self.visit_expr(&*var.val)),
+            mutable: var.mutable,
             ty: Type {
                 name: ItemPath::new(var.name),
                 kind: TypeKind::from(&*var.ty),
@@ -406,6 +407,7 @@ impl ExprVisitor for Ladder {
                 kind: ExprKind::Literal(Literal::Bool(false)),
                 loc: cond.location(),
             }),
+            mutable: true,
             ty: Type {
                 name: ItemPath::default(), // TODO: ????
                 kind: TypeKind::Bool,

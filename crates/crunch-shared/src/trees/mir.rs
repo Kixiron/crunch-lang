@@ -1,7 +1,7 @@
 use crate::{
     error::Location,
     trees::{
-        ast::ItemPath,
+        ast::{Integer, ItemPath},
         hir::{
             BinaryOp, Block as HirBlock, CompOp, Expr, FuncArg, FuncCall, Function as HirFunction,
             Item, Literal, Match, MatchArm, Return, Stmt, TypeKind as HirType, TypeKind, Var,
@@ -14,9 +14,17 @@ use crate::{
 use alloc::{boxed::Box, vec::Vec};
 use core::mem;
 
+type Result<T> = core::result::Result<T, ()>;
+
 #[derive(Debug)]
 pub struct Mir {
     functions: Vec<Function>,
+}
+
+impl Mir {
+    pub fn iter(&self) -> impl Iterator<Item = &Function> {
+        self.functions.iter()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -26,6 +34,12 @@ pub struct Function {
     pub args: Vec<(VarId, Type)>,
     pub ret: Type,
     pub blocks: Vec<Block>,
+}
+
+impl Function {
+    pub fn iter(&self) -> impl Iterator<Item = &Block> {
+        self.blocks.iter()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -49,14 +63,24 @@ impl Block {
     pub fn is_empty(&self) -> bool {
         self.instructions.is_empty()
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Instruction> {
+        self.instructions.iter()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
-    Return(Option<Rval>),
+    Return(Option<RightValue>),
     Goto(BlockId),
-    Assign(VarId, Type, Rval),
-    Switch(Rval, Vec<(Option<Rval>, BlockId)>),
+    Assign(VarId, RightValue),
+    Switch(RightValue, Vec<(Option<RightValue>, BlockId)>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RightValue {
+    pub ty: Type,
+    pub val: Rval,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -64,11 +88,11 @@ pub enum Rval {
     Var(VarId),
     Const(Constant),
     Phi(BlockId, BlockId),
-    Call(FuncId, Vec<Rval>),
-    Add(Box<Rval>, Box<Rval>),
-    Sub(Box<Rval>, Box<Rval>),
-    Mul(Box<Rval>, Box<Rval>),
-    Div(Box<Rval>, Box<Rval>),
+    Call(FuncId, Vec<RightValue>),
+    Add(Box<RightValue>, Box<RightValue>),
+    Sub(Box<RightValue>, Box<RightValue>),
+    Mul(Box<RightValue>, Box<RightValue>),
+    Div(Box<RightValue>, Box<RightValue>),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -76,7 +100,6 @@ pub enum Constant {
     I64(i64),
     U8(u8),
     Bool(bool),
-    Unit,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -133,12 +156,14 @@ impl MirBuilder {
         }
     }
 
-    pub fn lower(mut self, items: &[Item]) -> Vec<Function> {
+    pub fn lower(mut self, items: &[Item]) -> Result<Mir> {
         for item in items {
-            self.visit_item(item);
+            self.visit_item(item)?;
         }
 
-        self.functions
+        Ok(Mir {
+            functions: self.functions,
+        })
     }
 
     fn next_var(&mut self) -> VarId {
@@ -165,7 +190,7 @@ impl MirBuilder {
 }
 
 impl ItemVisitor for MirBuilder {
-    type Output = ();
+    type Output = Result<()>;
 
     fn visit_func(&mut self, func: &HirFunction) -> Self::Output {
         self.blocks.clear();
@@ -187,7 +212,7 @@ impl ItemVisitor for MirBuilder {
         }
 
         for stmt in func.body.iter() {
-            self.visit_stmt(stmt);
+            self.visit_stmt(stmt)?;
         }
 
         let func = Function {
@@ -199,47 +224,58 @@ impl ItemVisitor for MirBuilder {
         };
 
         self.functions.push(func);
+
+        Ok(())
     }
 }
 
 impl StmtVisitor for MirBuilder {
-    type Output = ();
+    type Output = Result<()>;
 
     fn visit_stmt(&mut self, stmt: &Stmt) -> <Self as StmtVisitor>::Output {
         match stmt {
-            Stmt::Item(item) => self.visit_item(item).into(),
+            Stmt::Item(item) => self.visit_item(item)?,
             Stmt::Expr(expr) => {
-                if let Some((ty, val)) = self.visit_expr(expr) {
+                if let Some(val) = self.visit_expr(expr)? {
                     let id = self.next_var();
-                    self.current_block_mut()
-                        .push(Instruction::Assign(id, ty, val));
+                    self.current_block_mut().push(Instruction::Assign(id, val));
                 }
             }
-            Stmt::VarDecl(var) => self.visit_var_decl(var),
+            Stmt::VarDecl(var) => self.visit_var_decl(var)?,
         }
+
+        Ok(())
     }
 
     fn visit_var_decl(&mut self, var: &VarDecl) -> <Self as StmtVisitor>::Output {
-        let (ty, rval) = self.visit_expr(&*var.value).unwrap();
+        let rval = self.visit_expr(&*var.value)?.unwrap();
 
         let id = self.next_var();
-        self.variables.insert(var.name, (id, ty.clone()));
-        self.current_block_mut()
-            .push(Instruction::Assign(id, ty, rval));
+        self.variables.insert(var.name, (id, rval.ty.clone()));
+        self.current_block_mut().push(Instruction::Assign(id, rval));
+
+        Ok(())
     }
 }
 
 impl ExprVisitor for MirBuilder {
-    type Output = Option<(Type, Rval)>;
+    type Output = Result<Option<RightValue>>;
 
     fn visit_return(&mut self, _loc: Location, ret: &Return) -> Self::Output {
         let value = ret
             .val
             .as_ref()
-            .map(|val| self.visit_expr(&**val).unwrap().1);
+            .map(|val| Ok(self.visit_expr(&**val)?.unwrap()));
+
+        let value = if let Some(value) = value {
+            Some(value?)
+        } else {
+            None
+        };
+
         self.current_block_mut().push(Instruction::Return(value));
 
-        None
+        Ok(None)
     }
 
     fn visit_break(&mut self, _loc: Location, _value: &super::hir::Break) -> Self::Output {
@@ -267,12 +303,12 @@ impl ExprVisitor for MirBuilder {
             let block_id = BlockId(self.current_block);
 
             for stmt in body.iter() {
-                self.visit_stmt(stmt);
+                self.visit_stmt(stmt)?;
             }
 
             self.move_to_block(current_block);
             if let Some(guard) = guard {
-                cases.push((Some(self.visit_expr(guard).unwrap().1), block_id));
+                cases.push((Some(self.visit_expr(guard)?.unwrap()), block_id));
             } else {
                 cases.push((None, block_id));
             }
@@ -280,31 +316,39 @@ impl ExprVisitor for MirBuilder {
 
         self.move_to_block(current_block);
 
-        let switch = Instruction::Switch(self.visit_expr(cond).unwrap().1, cases);
+        let switch = Instruction::Switch(self.visit_expr(cond)?.unwrap(), cases);
         self.current_block_mut().push(switch);
 
         self.next_block();
 
-        None
+        Ok(None)
     }
 
     fn visit_variable(&mut self, _loc: Location, var: Var, _ty: &TypeKind) -> Self::Output {
-        self.variables
-            .get(&var)
-            .map(|(var, ty)| (*ty, Rval::Var(*var)))
+        Ok(self.variables.get(&var).map(|(var, ty)| RightValue {
+            ty: *ty,
+            val: Rval::Var(*var),
+        }))
     }
 
     fn visit_literal(&mut self, _loc: Location, literal: &Literal) -> Self::Output {
         match literal {
-            Literal::Integer(int) => Some((
-                Type::Bool,
-                Rval::Const(Constant::I64(if int.sign.is_negative() {
-                    -(int.bits as i64)
-                } else {
-                    int.bits as i64
-                })),
-            )),
-            Literal::Bool(b) => Some((Type::Bool, Rval::Const(Constant::Bool(*b)))),
+            Literal::Integer(Integer { sign, bits }) => {
+                // TODO: This isn't great
+                let val = Rval::Const(Constant::I64(sign.maybe_negate(*bits) as i64));
+                let rval = RightValue {
+                    ty: Type::Bool,
+                    val,
+                };
+
+                Ok(Some(rval))
+            }
+
+            Literal::Bool(b) => Ok(Some(RightValue {
+                ty: Type::Bool,
+                val: Rval::Const(Constant::Bool(*b)),
+            })),
+
             _ => todo!(),
         }
     }
@@ -315,17 +359,19 @@ impl ExprVisitor for MirBuilder {
 
     fn visit_func_call(&mut self, _loc: Location, call: &FuncCall) -> Self::Output {
         let func = self.function_names.get(&call.func).unwrap();
+        let val = Rval::Call(
+            *func,
+            call.args
+                .iter()
+                .map(|a| Ok(self.visit_expr(a)?.unwrap()))
+                .collect::<Result<Vec<RightValue>>>()?,
+        );
 
-        Some((
-            Type::Unit,
-            Rval::Call(
-                *func,
-                call.args
-                    .iter()
-                    .map(|a| self.visit_expr(a).unwrap().1)
-                    .collect(),
-            ),
-        ))
+        Ok(Some(RightValue {
+            // TODO: Get the actual return type
+            ty: Type::Unit,
+            val,
+        }))
     }
 
     fn visit_comparison(
@@ -339,16 +385,16 @@ impl ExprVisitor for MirBuilder {
     }
 
     fn visit_assign(&mut self, _loc: Location, var: Var, value: &Expr) -> Self::Output {
-        let (ty, rval) = self.visit_expr(value).unwrap();
+        let rval = self.visit_expr(value)?.unwrap();
         let (_old_id, old_ty) = self.variables.get(&var).unwrap().clone();
         let new_id = self.next_var();
-        assert_eq!(ty, old_ty);
+        assert_eq!(rval.ty, old_ty);
 
-        self.variables.insert(var, (new_id, ty));
+        self.variables.insert(var, (new_id, rval.ty));
         self.current_block_mut()
-            .push(Instruction::Assign(new_id, ty, rval));
+            .push(Instruction::Assign(new_id, rval));
 
-        None
+        Ok(None)
     }
 
     fn visit_binop(
@@ -358,18 +404,23 @@ impl ExprVisitor for MirBuilder {
         op: BinaryOp,
         rhs: &Expr,
     ) -> Self::Output {
-        let ((lhs_ty, lhs), (rhs_ty, rhs)) =
-            (self.visit_expr(lhs).unwrap(), self.visit_expr(rhs).unwrap());
+        let (lhs, rhs) = (
+            self.visit_expr(lhs)?.unwrap(),
+            self.visit_expr(rhs)?.unwrap(),
+        );
         let (lhs, rhs) = (Box::new(lhs), Box::new(rhs));
-        assert_eq!(lhs_ty, rhs_ty);
+        assert_eq!(lhs.ty, rhs.ty);
 
-        match op {
-            BinaryOp::Add => Some((lhs_ty, Rval::Add(lhs, rhs))),
-            BinaryOp::Sub => Some((lhs_ty, Rval::Sub(lhs, rhs))),
-            BinaryOp::Mult => Some((lhs_ty, Rval::Mul(lhs, rhs))),
-            BinaryOp::Div => Some((lhs_ty, Rval::Div(lhs, rhs))),
+        let ty = lhs.ty;
+        let val = match op {
+            BinaryOp::Add => Rval::Add(lhs, rhs),
+            BinaryOp::Sub => Rval::Sub(lhs, rhs),
+            BinaryOp::Mult => Rval::Mul(lhs, rhs),
+            BinaryOp::Div => Rval::Div(lhs, rhs),
 
             _ => todo!(),
-        }
+        };
+
+        Ok(Some(RightValue { ty, val }))
     }
 }

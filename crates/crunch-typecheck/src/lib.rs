@@ -282,6 +282,7 @@ impl MutStmtVisitor for Engine {
             value,
             ty,
             loc,
+            ..
         }: &mut VarDecl,
     ) -> <Self as MutStmtVisitor>::Output {
         let var = self.insert(*name, &ty.kind, *loc);

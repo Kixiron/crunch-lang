@@ -1,7 +1,7 @@
 use crate::llvm::{
     module::{Builder, BuildingBlock, Module},
     types::{FunctionSig, SealedAnyType, Type},
-    utils::LLVMString,
+    utils::{LLVMString, UNNAMED_CSTR},
     values::{BasicBlock, FunctionValue, SealedAnyValue, Value, ValueKind},
     Error, ErrorKind, Result,
 };
@@ -10,27 +10,23 @@ use llvm_sys::{
     core::{LLVMAppendBasicBlockInContext, LLVMCountParams, LLVMGetParamTypes, LLVMGetParams},
     LLVMType, LLVMValue,
 };
-use std::{ffi::CString, mem::MaybeUninit, ops::Deref};
+use std::{mem::MaybeUninit, ops::Deref};
 
 pub struct FunctionBuilder<'ctx> {
     function: FunctionValue<'ctx>,
     module: &'ctx Module<'ctx>,
     args: Vec<FunctionArg<'ctx>>,
+    finished: bool,
 }
 
 impl<'ctx> FunctionBuilder<'ctx> {
-    pub fn append_block<'block, N>(&'block self, name: N) -> Result<BuildingBlock<'block>>
-    where
-        N: AsRef<str>,
-    {
-        let name = CString::new(name.as_ref())?;
-
+    pub fn append_block(&self) -> Result<BuildingBlock<'ctx>> {
         let builder = Builder::new(self.module.context())?;
         let block = unsafe {
             BasicBlock::from_raw(LLVMAppendBasicBlockInContext(
                 self.module.ctx.as_mut_ptr(),
                 self.function.as_mut_ptr(),
-                name.as_ptr(),
+                UNNAMED_CSTR,
             ))?
         };
         builder.move_to_end(&block);
@@ -44,6 +40,13 @@ impl<'ctx> FunctionBuilder<'ctx> {
 
     pub fn num_args(&self) -> usize {
         self.args.len()
+    }
+
+    pub fn move_to_end(&self, block: BasicBlock<'ctx>) -> Result<BuildingBlock<'ctx>> {
+        let builder = Builder::new(self.module.context())?;
+        builder.move_to_end(&block);
+
+        Ok(BuildingBlock::new(block, builder))
     }
 }
 
@@ -103,11 +106,18 @@ impl<'ctx> FunctionBuilder<'ctx> {
             function,
             module,
             args,
+            finished: false,
         })
     }
 
     #[inline]
-    pub(crate) fn finish(self) -> Result<FunctionValue<'ctx>> {
+    pub fn finish(mut self) -> Result<FunctionValue<'ctx>> {
+        self.finish_inner()
+    }
+
+    fn finish_inner(&mut self) -> Result<FunctionValue<'ctx>> {
+        self.finished = true;
+
         let failed_verification = unsafe {
             LLVMVerifyFunction(
                 self.as_mut_ptr(),
@@ -162,6 +172,16 @@ impl<'ctx> Deref for FunctionBuilder<'ctx> {
 
     fn deref(&self) -> &Self::Target {
         &self.function
+    }
+}
+
+impl<'ctx> Drop for FunctionBuilder<'ctx> {
+    fn drop(&mut self) {
+        // Don't attempt to finish if the thread is panicking, since the code is likely invalid at
+        // that stage and will only incur a double panic
+        if !self.finished && !std::thread::panicking() {
+            self.finish_inner().expect("Failed to build function");
+        }
     }
 }
 

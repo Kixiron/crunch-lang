@@ -38,15 +38,13 @@ pub struct Module<'ctx> {
 // Public interface
 impl<'ctx> Module<'ctx> {
     #[inline]
-    pub fn build_function<N, B>(
+    pub fn build_function<N>(
         &'ctx self,
         name: N,
         signature: FunctionSig<'ctx>,
-        build_function: B,
-    ) -> Result<FunctionValue<'ctx>>
+    ) -> Result<FunctionBuilder<'ctx>>
     where
         N: AsRef<str>,
-        B: FnOnce(&mut FunctionBuilder<'ctx>) -> Result<()>,
     {
         let name = CString::new(name.as_ref())?;
 
@@ -58,9 +56,7 @@ impl<'ctx> Module<'ctx> {
             ))?
         };
 
-        let mut builder = FunctionBuilder::new(function, self, &signature)?;
-        build_function(&mut builder)?;
-        builder.finish()
+        FunctionBuilder::new(function, self, &signature)
     }
 
     #[inline]

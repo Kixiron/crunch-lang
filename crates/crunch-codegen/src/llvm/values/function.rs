@@ -10,7 +10,7 @@ use llvm_sys::{
         LLVMGetFunctionCallConv, LLVMGetLinkage, LLVMGetParams, LLVMSetFunctionCallConv,
         LLVMSetLinkage,
     },
-    LLVMType, LLVMValue,
+    LLVMValue,
 };
 use std::{convert::TryFrom, mem::MaybeUninit};
 

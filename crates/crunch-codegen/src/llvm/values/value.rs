@@ -4,8 +4,8 @@ use crate::llvm::{
     utils::to_non_nul,
     values::{
         AnyValue, Argument, ArrayValue, BasicBlock, BlockAddress, FloatValue, FunctionValue,
-        InlineAsm, Instruction, IntValue, Metadata, NullPtr, SealedAnyValue, StructValue, Undef,
-        Value, ValueKind, VectorValue,
+        InlineAsm, InstructionValue, IntValue, Metadata, NullPtr, SealedAnyValue, StructValue,
+        Undef, Value, ValueKind, VectorValue,
     },
     Result,
 };
@@ -182,7 +182,7 @@ passthrough_fmt! {
     ArrayValue, StructValue, VectorValue,
     FloatValue, NullPtr, Undef,
     Argument, InlineAsm,
-    Metadata, Instruction,
+    Metadata, InstructionValue,
 }
 
 #[derive(Copy, Clone)]

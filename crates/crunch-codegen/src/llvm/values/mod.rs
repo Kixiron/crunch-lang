@@ -40,7 +40,7 @@ pub enum Value<'ctx> {
     ConstPtrNull(NullPtr<'ctx>),
     Metadata(Metadata<'ctx>),
     InlineAsm(InlineAsm<'ctx>),
-    Instruction(Instruction<'ctx>),
+    Instruction(InstructionValue<'ctx>),
     GlobalVariable(Val<'ctx>),
     ConstExpr(Val<'ctx>),
     ConstDataArray(Val<'ctx>),
@@ -58,7 +58,7 @@ impl<'ctx> Value<'ctx> {
             ValueKind::Undef => Self::Undef(Undef::from_val(val)),
             ValueKind::MetadataAsValue => Self::Metadata(Metadata::from_val(val)),
             ValueKind::InlineAsm => Self::InlineAsm(InlineAsm::from_val(val)),
-            ValueKind::Instruction => Self::Instruction(Instruction::from_val(val)),
+            ValueKind::Instruction => Self::Instruction(InstructionValue::from_val(val)),
             ValueKind::ConstInt => Self::ConstInt(IntValue::from_val(val)),
 
             ValueKind::ConstArray => Self::ConstArray(todo!()),
@@ -159,7 +159,7 @@ impl_any_val! {
     BlockAddress, InlineAsm, FloatValue,
     ArrayValue, StructValue, VectorValue,
     NullPtr, Undef, Argument, Metadata,
-    Instruction, CallSiteValue,
+    InstructionValue, CallSiteValue,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -472,15 +472,15 @@ impl<'ctx> TryFrom<Value<'ctx>> for Metadata<'ctx> {
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
-pub struct Instruction<'ctx>(Val<'ctx>);
+pub struct InstructionValue<'ctx>(Val<'ctx>);
 
-impl<'ctx> Into<Value<'ctx>> for Instruction<'ctx> {
+impl<'ctx> Into<Value<'ctx>> for InstructionValue<'ctx> {
     fn into(self) -> Value<'ctx> {
         Value::Instruction(self)
     }
 }
 
-impl<'ctx> TryFrom<Value<'ctx>> for Instruction<'ctx> {
+impl<'ctx> TryFrom<Value<'ctx>> for InstructionValue<'ctx> {
     type Error = Error;
 
     fn try_from(val: Value<'ctx>) -> Result<Self> {

@@ -13,7 +13,7 @@ use alloc::{
 use core::{
     fmt::{Debug, Display, Formatter, Result, Write},
     iter::FromIterator,
-    ops::Deref,
+    ops::{Deref, Not},
 };
 use serde::{Deserialize, Serialize};
 
@@ -524,6 +524,18 @@ impl Sign {
     #[inline]
     pub fn is_negative(self) -> bool {
         self == Self::Negative
+    }
+
+    #[inline]
+    pub fn maybe_negate<T>(self, integer: T) -> T
+    where
+        T: Not<Output = T>,
+    {
+        if self.is_negative() {
+            !integer
+        } else {
+            integer
+        }
     }
 }
 

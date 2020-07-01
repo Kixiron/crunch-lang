@@ -1,179 +1,269 @@
 use crunch_shared::{
     strings::StrInterner,
     trees::mir::{
-        Block, BlockId, Constant, Function as MirFunction, Instruction, Rval, Type as MirType,
-        VarId,
+        Block, BlockId, Constant, Function as MirFunction, Instruction, Mir, RightValue, Rval,
+        Type as MirType, VarId,
     },
-    utils::HashMap,
+    utils::{HashMap, Timer},
+    visitors::mir::MirVisitor,
 };
 use llvm::{
     module::{BuildingBlock, FunctionBuilder, Linkage, Module},
     types::{IntType, Type, VoidType},
-    values::{BasicBlock, FunctionValue, SealedAnyValue, Value},
-    Result,
+    values::{BasicBlock, FunctionValue, InstructionValue, Value},
+    Context, Error, ErrorKind, Result,
 };
 
 pub mod llvm;
 
-fn ty<'ctx>(module: &'ctx Module<'ctx>, ty: &MirType) -> Result<Type<'ctx>> {
-    match ty {
-        MirType::I64 => IntType::i64(module.context()).map(|i| i.into()),
-        MirType::Unit => VoidType::new(module.context()).map(|i| i.into()),
-        _ => todo!(),
-    }
+pub struct CodeGenerator<'ctx> {
+    module: &'ctx Module<'ctx>,
+    ctx: &'ctx Context,
+    values: HashMap<VarId, Value<'ctx>>,
+    blocks: HashMap<BlockId, BasicBlock<'ctx>>,
+    function_builder: Option<FunctionBuilder<'ctx>>,
+    block_builder: Option<BuildingBlock<'ctx>>,
+    interner: &'ctx StrInterner,
+    raw_blocks: Vec<Option<Block>>,
 }
 
-fn rval<'ctx>(
-    module: &'ctx Module<'ctx>,
-    block: &BuildingBlock<'ctx>,
-    values: &HashMap<VarId, Value<'ctx>>,
-    val: Rval,
-) -> Result<Value<'ctx>> {
-    match val {
-        Rval::Const(Constant::I64(i)) => IntType::i64(module.context())?
-            .constant(i as u64, false)
-            .map(|i| i.into()),
-        Rval::Const(Constant::Bool(b)) => IntType::i1(module.context())?
-            .constant(b as u64, false)
-            .map(|i| i.into()),
-        Rval::Var(id) => Ok(*values.get(&id).unwrap()),
-        Rval::Mul(lhs, rhs) => block.mult(
-            rval(module, block, values, *lhs)?,
-            rval(module, block, values, *rhs)?,
-            "mult",
-        ),
-        v => todo!("{:?}", v),
-    }
-}
-
-fn block<'ctx>(
-    module: &'ctx Module<'ctx>,
-    builder: &'ctx FunctionBuilder<'ctx>,
-    raw_blocks: &mut Vec<Option<Block>>,
-    blocks: &mut HashMap<BlockId, BasicBlock<'ctx>>,
-    values: &mut HashMap<VarId, Value<'ctx>>,
-    name: String,
-    bl: Block,
-) -> Result<()> {
-    let block = builder.append_block(name)?;
-
-    blocks.insert(bl.id, block.basic_block());
-
-    for inst in bl.instructions {
-        match inst {
-            Instruction::Return(ret) => {
-                block.ret(ret.map(|ret| rval(module, &block, &values, ret).unwrap()))?;
-            }
-            Instruction::Goto(bl) => {
-                block.branch(blocks.get(&bl).unwrap())?;
-            }
-            Instruction::Assign(id, _, val) => {
-                let val = rval(module, &block, &values, val)?;
-                values.insert(id, val);
-            }
-            Instruction::Switch(cond, branches) => {
-                let cond = rval(module, &block, &values, cond)?;
-                let br1 = branches[0].clone();
-
-                let br1 = match blocks.get(&br1.1) {
-                    Some(b) => *b,
-                    None => {
-                        let b = raw_blocks[(br1.1).0].clone().unwrap();
-                        crate::block(
-                            module,
-                            builder,
-                            raw_blocks,
-                            blocks,
-                            values,
-                            (br1.1).0.to_string(),
-                            b,
-                        )?;
-
-                        *blocks.get(&br1.1).unwrap()
-                    }
-                };
-
-                let br2 = branches[1].clone();
-                let br2 = match blocks.get(&br2.1) {
-                    Some(b) => *b,
-                    None => {
-                        let b = raw_blocks[(br2.1).0].clone().unwrap();
-
-                        crate::block(
-                            module,
-                            builder,
-                            raw_blocks,
-                            blocks,
-                            values,
-                            (br2.1).0.to_string(),
-                            b,
-                        )?;
-
-                        *blocks.get(&br2.1).unwrap()
-                    }
-                };
-
-                unsafe {
-                    llvm_sys::core::LLVMBuildCondBr(
-                        block.builder().as_mut_ptr(),
-                        cond.as_mut_ptr(),
-                        br1.as_mut_ptr(),
-                        br2.as_mut_ptr(),
-                    );
-                }
-            }
-            _ => todo!(),
+impl<'ctx> CodeGenerator<'ctx> {
+    pub fn new(module: &'ctx Module<'ctx>, interner: &'ctx StrInterner) -> Self {
+        Self {
+            module,
+            ctx: module.context(),
+            values: HashMap::new(),
+            blocks: HashMap::new(),
+            function_builder: None,
+            block_builder: None,
+            interner,
+            raw_blocks: Vec::new(),
         }
     }
 
-    Ok(())
+    pub fn generate(mut self, mir: Mir) -> Result<()> {
+        let _codegen_timer = Timer::start("codegen");
+
+        for function in mir.iter() {
+            self.visit_function(function)?;
+        }
+
+        Ok(())
+    }
+
+    fn value(&self, id: &VarId) -> Result<Value<'ctx>> {
+        self.values.get(id).map_or_else(
+            || {
+                Err(Error::new(
+                    "Attempted to get a value that doesn't exist",
+                    ErrorKind::LLVMError,
+                ))
+            },
+            |value| Ok(*value),
+        )
+    }
 }
 
-pub fn translate<'ctx>(
-    interner: &StrInterner,
-    module: &'ctx Module<'ctx>,
-    mut function: MirFunction,
-) -> Result<FunctionValue<'ctx>> {
-    let args: Vec<Type<'ctx>> = function
-        .args
-        .iter()
-        .map(|(_, a)| ty(module, a).unwrap())
-        .collect();
+impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
+    type FunctionOutput = Result<FunctionValue<'ctx>>;
+    type BlockOutput = Result<BasicBlock<'ctx>>;
+    type InstructionOutput = Result<Option<InstructionValue<'ctx>>>;
+    type RvalOutput = Result<Value<'ctx>>;
+    type ConstantOutput = Result<Value<'ctx>>;
+    type TypeOutput = Result<Type<'ctx>>;
 
-    let sig = module.function_ty(ty(module, &function.ret)?, args.as_slice(), false)?;
-    let mut raw_blocks: Vec<_> = function
-        .blocks
-        .drain(..)
-        .filter_map(|b| if !b.is_empty() { Some(Some(b)) } else { None })
-        .collect();
+    fn visit_function(&mut self, function: &MirFunction) -> Self::FunctionOutput {
+        let args: Vec<Type<'ctx>> = function
+            .args
+            .iter()
+            .map(|(_, arg)| self.visit_type(arg).unwrap())
+            .collect();
 
-    module.build_function(
-        function
-            .name
-            .as_ref()
-            .map_or_else(|| function.id.0.to_string(), |n| n.to_string(interner)),
-        sig,
-        |builder| {
-            builder.with_linkage(Linkage::External);
+        let sig =
+            self.module
+                .function_ty(self.visit_type(&function.ret)?, args.as_slice(), false)?;
 
-            let mut blocks = HashMap::new();
-            let mut values = HashMap::new();
+        self.raw_blocks = function
+            .blocks
+            .clone()
+            .into_iter()
+            .filter_map(|b| if !b.is_empty() { Some(Some(b)) } else { None })
+            .collect();
 
-            while let Some(bl) = raw_blocks.iter_mut().find_map(|b| b.take()) {
-                block(
-                    &module,
-                    &builder,
-                    &mut raw_blocks,
-                    &mut blocks,
-                    &mut values,
-                    bl.id.0.to_string(),
-                    bl,
-                )?;
+        let builder: FunctionBuilder<'ctx> = self.module.build_function(
+            function
+                .name
+                .as_ref()
+                .map_or_else(|| function.id.0.to_string(), |n| n.to_string(self.interner)),
+            sig,
+        )?;
+
+        builder.with_linkage(Linkage::External);
+        self.function_builder = Some(builder);
+
+        while let Some(block) = self.raw_blocks.iter_mut().find_map(|b| b.take()) {
+            self.visit_block(&block)?;
+        }
+
+        self.function_builder
+            .take()
+            .expect("there should be a finished function after a function finishes")
+            .finish()
+    }
+
+    fn visit_block(&mut self, block: &Block) -> Self::BlockOutput {
+        let block_builder: BuildingBlock<'ctx> = self
+            .function_builder
+            .as_mut()
+            .expect("blocks should be inside builders")
+            .append_block()?;
+
+        let basic_block = block_builder.basic_block();
+        self.blocks.insert(block.id, basic_block);
+        self.block_builder = Some(block_builder);
+
+        for instruction in block.iter() {
+            self.visit_instruction(instruction)?;
+        }
+
+        Ok(basic_block)
+    }
+
+    fn visit_instruction(&mut self, instruction: &Instruction) -> Self::InstructionOutput {
+        match instruction {
+            Instruction::Return(ret) => {
+                // If the return value is `None` then it's interpreted as returning void
+                let return_value = if let Some(ret) = ret {
+                    Some(self.visit_rval(ret)?)
+                } else {
+                    None
+                };
+
+                self.block_builder
+                    .as_ref()
+                    .expect("instructions should be in a block")
+                    .ret(return_value)
+                    .map(Some)
             }
 
-            Ok(())
-        },
-    )
+            Instruction::Goto(bl) => self
+                .block_builder
+                .as_ref()
+                .expect("instructions should be in a block")
+                .branch(self.blocks.get(&bl).unwrap())
+                .map(Some),
+
+            Instruction::Assign(id, val) => {
+                let val = self.visit_rval(val)?;
+                self.values.insert(*id, val);
+
+                Ok(None)
+            }
+
+            Instruction::Switch(cond, branches) => {
+                let current_block = self
+                    .block_builder
+                    .as_ref()
+                    .expect("instructions should be in a block")
+                    .basic_block();
+                let cond = self.visit_rval(cond)?;
+
+                let true_branch = branches[0].clone();
+                let true_branch = match self.blocks.get(&true_branch.1) {
+                    Some(block) => *block,
+                    None => {
+                        let block = self.raw_blocks[(true_branch.1).0].take().unwrap();
+                        self.visit_block(&block)?
+                    }
+                };
+
+                let false_branch = branches[1].clone();
+                let false_branch = match self.blocks.get(&false_branch.1) {
+                    Some(block) => *block,
+                    None => {
+                        let block = self.raw_blocks[(false_branch.1).0].take().unwrap();
+                        self.visit_block(&block)?
+                    }
+                };
+
+                self.block_builder = Some(
+                    self.function_builder
+                        .as_ref()
+                        .expect("instructions should be in a function")
+                        .move_to_end(current_block)?,
+                );
+
+                let instruction = self
+                    .block_builder
+                    .as_ref()
+                    .expect("instructions should be in a block")
+                    .conditional_branch(cond, true_branch, false_branch)
+                    .map(Some);
+
+                instruction
+            }
+        }
+    }
+
+    fn visit_rval(&mut self, RightValue { ty: _ty, val }: &RightValue) -> Self::RvalOutput {
+        match val {
+            Rval::Const(constant) => self.visit_constant(constant),
+            Rval::Var(id) => self.value(id),
+
+            Rval::Add(lhs, rhs) => {
+                let (lhs, rhs) = (self.visit_rval(lhs)?, self.visit_rval(rhs)?);
+                self.block_builder
+                    .as_ref()
+                    .expect("rvals should be inside blocks")
+                    .add(lhs, rhs)
+            }
+
+            Rval::Sub(lhs, rhs) => {
+                let (lhs, rhs) = (self.visit_rval(lhs)?, self.visit_rval(rhs)?);
+                self.block_builder
+                    .as_ref()
+                    .expect("rvals should be inside blocks")
+                    .sub(lhs, rhs)
+            }
+
+            Rval::Mul(lhs, rhs) => {
+                let (lhs, rhs) = (self.visit_rval(lhs)?, self.visit_rval(rhs)?);
+                self.block_builder
+                    .as_ref()
+                    .expect("rvals should be inside blocks")
+                    .mult(lhs, rhs)
+            }
+
+            Rval::Phi(_, _) => todo!(),
+            Rval::Call(_, _) => todo!(),
+            Rval::Div(_, _) => todo!(),
+        }
+    }
+
+    fn visit_constant(&mut self, constant: &Constant) -> Self::ConstantOutput {
+        match constant {
+            Constant::I64(int) => IntType::i64(self.ctx)?
+                .constant(*int as u64, true)
+                .map(|i| i.into()),
+
+            Constant::U8(int) => IntType::u8(self.ctx)?
+                .constant(*int as u64, true)
+                .map(|i| i.into()),
+
+            Constant::Bool(boolean) => IntType::i1(self.ctx)?
+                .constant(*boolean as u64, true)
+                .map(|i| i.into()),
+        }
+    }
+
+    fn visit_type(&mut self, ty: &MirType) -> Self::TypeOutput {
+        match ty {
+            MirType::I64 => IntType::i64(self.ctx).map(|i| i.into()),
+            MirType::U8 => IntType::u8(self.ctx).map(|i| i.into()),
+            MirType::Bool => IntType::i1(self.ctx).map(|i| i.into()),
+            MirType::Unit => VoidType::new(self.ctx).map(|i| i.into()),
+        }
+    }
 }
 
 #[test]
@@ -184,7 +274,6 @@ fn mir() {
         files::{CurrentFile, FileId, Files},
         symbol_table::Resolver,
         trees::mir::MirBuilder,
-        utils::Timer,
         visitors::ast::ItemVisitor,
     };
     use ladder::Ladder;
@@ -232,18 +321,16 @@ fn mir() {
             resolver.finalize();
 
             let ladder = Ladder::new().lower(&items);
-            let mir = MirBuilder::new().lower(&ladder);
+            let mir = MirBuilder::new().lower(&ladder).unwrap();
 
-            let codegen = Timer::start("codegen");
             let ctx = Context::new().unwrap();
             let module = ctx.module("crunch-module").unwrap();
 
-            for func in dbg!(mir) {
-                translate(&parse_ctx.strings(), &module, func).unwrap();
-            }
+            CodeGenerator::new(&module, &parse_ctx.strings)
+                .generate(mir)
+                .unwrap();
 
             module.verify().unwrap();
-            codegen.end();
 
             let object_emission = Timer::start("object file emission");
 
@@ -285,8 +372,9 @@ fn mir() {
                 .unwrap()
                 .status;
             println!(
-                "LLVM IR:\n{:?}\n\nExited with code {:?}\nFile Sizes:\n  Source: {:>4} bytes\n  Object: {:>4} bytes\n  Binary: {:>4} bytes",
-                module,
+                "Source Code:{}\n\nLLVM IR:\n{}\n\nExited with code {:?}\nFile Sizes:\n    Source: {:>4} bytes\n    Object: {:>4} bytes\n    Binary: {:>4} bytes",
+                source,
+                format!("{:?}", module).trim().lines().map(|l| "    ".to_string() + l).collect::<Vec<String>>().join("\n"),
                 exit_code.code(),
                 source.as_bytes().len(),
                 File::open("crunch.o")

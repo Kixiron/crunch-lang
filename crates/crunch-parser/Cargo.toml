@@ -25,7 +25,7 @@ features = ["radix"]
 
 # NFKC Normalization
 [dependencies.unicode-normalization]
-version = "0.1.12"
+version = "0.1.13"
 
 # Abstract Syntax Tree and Errors
 [dependencies.crunch-shared]

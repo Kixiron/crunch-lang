@@ -107,6 +107,7 @@ impl Var {
 pub struct VarDecl {
     pub name: Var,
     pub value: Ref<Expr>,
+    pub mutable: bool,
     pub ty: Type,
     pub loc: Location,
 }

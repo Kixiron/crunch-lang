@@ -1,20 +1,17 @@
 use crate::llvm::{
     module::Builder,
-    types::{FunctionSig, IntType, Type, TypeKind},
-    utils::UNNAMED,
+    types::{IntType, Type},
+    utils::UNNAMED_CSTR,
     values::{
-        AnyValue, ArrayValue, BasicBlock, CallSiteValue, FunctionOrPointer, FunctionValue, Global,
-        Instruction, PointerValue, SealedAnyValue, Value,
+        AnyValue, ArrayValue, BasicBlock, Global, InstructionValue, PointerValue, SealedAnyValue,
+        Value,
     },
-    Error, ErrorKind, Result,
+    Result,
 };
-use llvm_sys::{
-    core::{
-        LLVMBuildAdd, LLVMBuildBitCast, LLVMBuildBr, LLVMBuildCall, LLVMBuildGlobalString,
-        LLVMBuildGlobalStringPtr, LLVMBuildMul, LLVMBuildPointerCast, LLVMBuildRet,
-        LLVMBuildRetVoid, LLVMBuildSub, LLVMBuildUnreachable,
-    },
-    LLVMValue,
+use llvm_sys::core::{
+    LLVMBuildAdd, LLVMBuildBitCast, LLVMBuildBr, LLVMBuildGlobalString, LLVMBuildGlobalStringPtr,
+    LLVMBuildMul, LLVMBuildPointerCast, LLVMBuildRet, LLVMBuildRetVoid, LLVMBuildSub,
+    LLVMBuildUnreachable,
 };
 use std::{
     cmp::Ordering,
@@ -42,16 +39,13 @@ impl<'ctx> BuildingBlock<'ctx> {
         &self,
         lhs: impl Into<Value<'ctx>>,
         rhs: impl Into<Value<'ctx>>,
-        name: &str,
     ) -> Result<Value<'ctx>> {
-        let cname = CString::new(name).expect("Rust strings cannot have null bytes");
-
         let add = unsafe {
             Value::from_raw(LLVMBuildAdd(
                 self.builder.as_mut_ptr(),
                 lhs.into().as_mut_ptr(),
                 rhs.into().as_mut_ptr(),
-                cname.as_ptr(),
+                UNNAMED_CSTR,
             ))?
         };
 
@@ -59,40 +53,36 @@ impl<'ctx> BuildingBlock<'ctx> {
     }
 
     // TODO: Take in subtractable values
+    #[inline]
     pub fn sub(
         &self,
         lhs: impl Into<Value<'ctx>>,
         rhs: impl Into<Value<'ctx>>,
-        name: &str,
     ) -> Result<Value<'ctx>> {
-        let cname = CString::new(name).expect("Rust strings cannot have null bytes");
-
         let sub = unsafe {
             Value::from_raw(LLVMBuildSub(
                 self.builder.as_mut_ptr(),
                 lhs.into().as_mut_ptr(),
                 rhs.into().as_mut_ptr(),
-                cname.as_ptr(),
+                UNNAMED_CSTR,
             ))?
         };
 
         Ok(sub)
     }
 
+    #[inline]
     pub fn mult(
         &self,
         lhs: impl Into<Value<'ctx>>,
         rhs: impl Into<Value<'ctx>>,
-        name: &str,
     ) -> Result<Value<'ctx>> {
-        let cname = CString::new(name).expect("Rust strings cannot have null bytes");
-
         let mult = unsafe {
             Value::from_raw(LLVMBuildMul(
                 self.builder.as_mut_ptr(),
                 lhs.into().as_mut_ptr(),
                 rhs.into().as_mut_ptr(),
-                cname.as_ptr(),
+                UNNAMED_CSTR,
             ))?
         };
 
@@ -101,7 +91,7 @@ impl<'ctx> BuildingBlock<'ctx> {
 
     // TODO: Take in a returnable value
     #[inline]
-    pub fn ret(&self, value: Option<Value<'ctx>>) -> Result<Instruction<'ctx>> {
+    pub fn ret(&self, value: Option<Value<'ctx>>) -> Result<InstructionValue<'ctx>> {
         // TODO: Verify return type is correct
 
         let ret = unsafe {
@@ -111,7 +101,7 @@ impl<'ctx> BuildingBlock<'ctx> {
                 LLVMBuildRetVoid(self.builder.as_mut_ptr())
             };
 
-            Instruction::from_raw(ret)?
+            InstructionValue::from_raw(ret)?
         };
 
         debug_assert!(ret.is_return());
@@ -120,9 +110,9 @@ impl<'ctx> BuildingBlock<'ctx> {
     }
 
     #[inline]
-    pub fn branch(&self, block: impl AsRef<BasicBlock<'ctx>>) -> Result<Instruction<'ctx>> {
+    pub fn branch(&self, block: impl AsRef<BasicBlock<'ctx>>) -> Result<InstructionValue<'ctx>> {
         let branch = unsafe {
-            Instruction::from_raw(LLVMBuildBr(
+            InstructionValue::from_raw(LLVMBuildBr(
                 self.builder.as_mut_ptr(),
                 (*block.as_ref()).as_mut_ptr(),
             ))?
@@ -133,23 +123,42 @@ impl<'ctx> BuildingBlock<'ctx> {
         Ok(branch)
     }
 
+    pub fn conditional_branch(
+        &self,
+        condition: Value<'ctx>,
+        true_branch: impl AsRef<BasicBlock<'ctx>>,
+        false_branch: impl AsRef<BasicBlock<'ctx>>,
+    ) -> Result<InstructionValue<'ctx>> {
+        let cond_branch = unsafe {
+            InstructionValue::from_raw(llvm_sys::core::LLVMBuildCondBr(
+                self.builder.as_mut_ptr(),
+                condition.as_mut_ptr(),
+                (*true_branch.as_ref()).as_mut_ptr(),
+                (*false_branch.as_ref()).as_mut_ptr(),
+            ))?
+        };
+
+        Ok(cond_branch)
+    }
+
     #[inline]
-    pub fn unreachable(&self) -> Result<Instruction<'ctx>> {
+    pub fn unreachable(&self) -> Result<InstructionValue<'ctx>> {
         let unreachable =
-            unsafe { Instruction::from_raw(LLVMBuildUnreachable(self.builder.as_mut_ptr()))? };
+            unsafe { InstructionValue::from_raw(LLVMBuildUnreachable(self.builder.as_mut_ptr()))? };
 
         debug_assert!(unreachable.is_unreachable());
 
         Ok(unreachable)
     }
 
+    #[inline]
     pub fn bitcast(&self, value: Value<'ctx>, dest_ty: Type<'ctx>) -> Result<Value<'ctx>> {
         unsafe {
             Value::from_raw(LLVMBuildBitCast(
                 self.builder.as_mut_ptr(),
                 value.as_mut_ptr(),
                 dest_ty.as_mut_ptr(),
-                UNNAMED,
+                UNNAMED_CSTR,
             ))
         }
     }
@@ -309,10 +318,6 @@ impl<'ctx> BuildingBlock<'ctx> {
         Ok(casted_args)
     }
     */
-
-    pub(crate) const fn builder(&self) -> &Builder<'ctx> {
-        &self.builder
-    }
 }
 
 impl Debug for BuildingBlock<'_> {
@@ -376,16 +381,11 @@ mod tests {
             .function_ty(I32.into(), &[I32.into(), I32.into()], false)
             .unwrap();
 
-        let _function = module
-            .build_function("main", sig, |builder| {
-                builder.set_linkage(Linkage::External);
+        let builder = module.build_function("main", sig).unwrap();
+        builder.set_linkage(Linkage::External);
 
-                let block = builder.append_block("entry")?;
-                let add = block.add(builder.args()[0], builder.args()[1], "add")?;
-                block.ret(Some(add))?;
-
-                Ok(())
-            })
-            .unwrap();
+        let block = builder.append_block().unwrap();
+        let add = block.add(builder.args()[0], builder.args()[1]).unwrap();
+        block.ret(Some(add)).unwrap();
     }
 }

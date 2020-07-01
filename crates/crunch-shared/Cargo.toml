@@ -12,7 +12,7 @@ no-std = ["hashbrown", "lasso/no-std"]
 logging = ["log"]
 
 [dependencies.hashbrown]
-version = "0.7.2"
+version = "0.8.0"
 optional = true
 
 [dependencies.log]
@@ -20,14 +20,14 @@ version = "0.4.8"
 optional = true
 
 [dependencies.serde]
-version = "1.0.111"
+version = "1.0.114"
 features = ["derive"]
 
 [dependencies.derive_more]
-version = "0.99.7"
+version = "0.99.9"
 
 [dependencies.codespan-reporting]
-version = "0.9.4"
+version = "0.9.5"
 
 [dependencies.lasso]
 git = "https://github.com/Kixiron/lasso.git"
