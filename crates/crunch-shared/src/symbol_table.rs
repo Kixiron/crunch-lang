@@ -5,7 +5,7 @@ use crate::{
         Block, Dest, Exposure, FuncArg, Item, ItemPath, Signedness, Type as AstType, TypeMember,
         Variant,
     },
-    utils::HashMap,
+    utils::{HashMap, Timer},
     visitors::ast::ItemVisitor,
 };
 use alloc::{vec, vec::Vec};
@@ -44,6 +44,8 @@ impl Resolver {
 
     // FIXME: This is just bad
     pub fn finalize(&mut self) {
+        let _resolution_finalization = Timer::start("Type resolution finalization");
+        // FIXME: This just won't work
         let hacky = self.clone(); // Your mother can't be borrowed immutably because she's already borrowed mutably
 
         for ty in self.types.iter_mut() {

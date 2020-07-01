@@ -4,6 +4,7 @@ use core::fmt::{Result, Write};
 use crunch_shared::{
     context::Context,
     strings::StrT,
+    trace,
     trees::{
         ast::{
             Arm, Binding, Block, Decorator, Dest, Exposure, Expr, ExprKind, For, FuncArg, If,
@@ -12,6 +13,7 @@ use crunch_shared::{
         },
         Sided,
     },
+    utils::Timer,
 };
 
 #[derive(Debug)]
@@ -22,6 +24,8 @@ pub struct PrettyPrinter {
 
 impl PrettyPrinter {
     pub fn new(context: Context) -> Self {
+        trace!("Constructed PrettyPrinter");
+
         Self {
             indent_level: 0,
             context,
@@ -29,6 +33,8 @@ impl PrettyPrinter {
     }
 
     pub fn pretty_print(&mut self, f: &mut dyn Write, items: &[Item]) -> Result {
+        let _pretty_printer = Timer::start("Pretty printing");
+
         for item in items {
             self.print_item(f, item)?;
         }

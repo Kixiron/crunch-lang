@@ -70,6 +70,7 @@
 - [ ] Generic mutability
 - [ ] Function arguments are patterns with required types
 - [ ] Variable declarations are patterns
+- [ ] Switch to structured logging via `slog`
 - [x] Stop using `.deref()`, instead use `*`
 - [x] Re-add function generics
   - [x] `fn t[T, E, F](t: T, e: E, f: F)`

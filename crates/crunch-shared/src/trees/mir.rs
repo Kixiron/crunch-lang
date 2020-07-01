@@ -8,7 +8,7 @@ use crate::{
             VarDecl,
         },
     },
-    utils::HashMap,
+    utils::{HashMap, Timer},
     visitors::hir::{ExprVisitor, ItemVisitor, StmtVisitor},
 };
 use alloc::{boxed::Box, vec::Vec};
@@ -157,6 +157,8 @@ impl MirBuilder {
     }
 
     pub fn lower(mut self, items: &[Item]) -> Result<Mir> {
+        let _mir_lowering = Timer::start("lowering to mir");
+
         for item in items {
             self.visit_item(item)?;
         }

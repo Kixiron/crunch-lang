@@ -14,6 +14,7 @@ use alloc::{borrow::ToOwned, boxed::Box, format, vec::Vec};
 use core::fmt;
 use crunch_shared::{
     context::Context,
+    debug,
     error::{Error, ErrorHandler, Locatable, Location, SemanticError, Warning},
     strings::{StrInterner, StrT},
     trees::ast::{
@@ -47,7 +48,9 @@ impl SemanticAnalyzer {
     }
 
     pub fn pass<T: Analyzer<Output = ()> + 'static>(mut self, pass: T) -> Self {
+        debug!("Loaded semantic analysis pass '{}'", pass.name());
         self.passes.push(Box::new(pass));
+
         self
     }
 
@@ -55,7 +58,10 @@ impl SemanticAnalyzer {
     where
         I: Iterator<Item = Box<dyn Analyzer<Output = ()>>>,
     {
-        self.passes.extend(passes);
+        self.passes.extend(
+            passes.inspect(|pass| debug!("Loaded semantic analysis pass '{}'", pass.name())),
+        );
+
         self
     }
 

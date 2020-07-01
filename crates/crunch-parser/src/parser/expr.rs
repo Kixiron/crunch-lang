@@ -115,15 +115,15 @@ impl<'src> Parser<'src> {
                 }
             }
 
-            TokenType::If => |parser, _token| Ok(parser.if_stmt()?),
+            TokenType::If => |parser, _token| Ok(parser.if_expr()?),
 
-            TokenType::Match => |parser, _token| Ok(parser.match_stmt()?),
+            TokenType::Match => |parser, _token| Ok(parser.match_expr()?),
 
-            TokenType::While => |parser, _token| Ok(parser.while_stmt()?),
+            TokenType::While => |parser, _token| Ok(parser.while_expr()?),
 
-            TokenType::Loop => |parser, _token| Ok(parser.loop_stmt()?),
+            TokenType::Loop => |parser, _token| Ok(parser.loop_expr()?),
 
-            TokenType::For => |parser, _token| Ok(parser.for_stmt()?),
+            TokenType::For => |parser, _token| Ok(parser.for_expr()?),
 
             TokenType::Return => |parser, token| {
                 if parser.peek()?.ty() == TokenType::Newline {
@@ -453,7 +453,7 @@ impl<'src> Parser<'src> {
     }
 
     #[recursion_guard]
-    fn if_stmt(&mut self) -> ParseResult<Expr> {
+    fn if_expr(&mut self) -> ParseResult<Expr> {
         let cond = Ref::new(self.expr()?);
         self.eat(TokenType::Newline, [])?;
 
@@ -504,7 +504,7 @@ impl<'src> Parser<'src> {
     }
 
     #[recursion_guard]
-    fn match_stmt(&mut self) -> ParseResult<Expr> {
+    fn match_expr(&mut self) -> ParseResult<Expr> {
         let var = Ref::new(self.expr()?);
         self.eat(TokenType::Newline, [])?;
 
@@ -543,13 +543,13 @@ impl<'src> Parser<'src> {
     }
 
     #[recursion_guard]
-    fn while_stmt(&mut self) -> ParseResult<Expr> {
+    fn while_expr(&mut self) -> ParseResult<Expr> {
         let cond = Ref::new(self.expr()?);
         self.eat(TokenType::Newline, [])?;
 
         let body = self.block(&[TokenType::End, TokenType::Then], 10)?;
-        let then = self.then_stmt()?;
-        let else_ = self.else_stmt()?;
+        let then = self.then_block()?;
+        let else_ = self.else_block()?;
 
         let end = self.eat(TokenType::End, [TokenType::Newline])?.span();
 
@@ -568,11 +568,11 @@ impl<'src> Parser<'src> {
     }
 
     #[recursion_guard]
-    fn loop_stmt(&mut self) -> ParseResult<Expr> {
+    fn loop_expr(&mut self) -> ParseResult<Expr> {
         let start = self.eat(TokenType::Newline, [])?.span();
 
         let body = self.block(&[TokenType::End, TokenType::Then], 10)?;
-        let else_ = self.else_stmt()?;
+        let else_ = self.else_block()?;
         let end = self.eat(TokenType::End, [TokenType::Newline])?.span();
 
         let expr = Expr {
@@ -584,15 +584,15 @@ impl<'src> Parser<'src> {
     }
 
     #[recursion_guard]
-    fn for_stmt(&mut self) -> ParseResult<Expr> {
+    fn for_expr(&mut self) -> ParseResult<Expr> {
         let var = Ref::new(self.expr()?);
         self.eat(TokenType::In, [TokenType::Newline])?;
         let cond = Ref::new(self.expr()?);
         self.eat(TokenType::Newline, [])?;
 
         let body = self.block(&[TokenType::End, TokenType::Then], 10)?;
-        let then = self.then_stmt()?;
-        let else_ = self.else_stmt()?;
+        let then = self.then_block()?;
+        let else_ = self.else_block()?;
         let end = self.eat(TokenType::End, [TokenType::Newline])?.span();
 
         let loc = Location::concrete(Span::merge(var.span(), end), self.current_file);
@@ -611,7 +611,7 @@ impl<'src> Parser<'src> {
     }
 
     #[recursion_guard]
-    fn then_stmt(&mut self) -> ParseResult<Option<Block>> {
+    fn then_block(&mut self) -> ParseResult<Option<Block>> {
         if self.peek()?.ty() == TokenType::Then {
             self.eat(TokenType::Then, [TokenType::Newline])?;
             self.eat(TokenType::Newline, [])?;
@@ -625,7 +625,7 @@ impl<'src> Parser<'src> {
     }
 
     #[recursion_guard]
-    fn else_stmt(&mut self) -> ParseResult<Option<Block>> {
+    fn else_block(&mut self) -> ParseResult<Option<Block>> {
         if self.peek()?.ty() == TokenType::Else {
             self.eat(TokenType::Else, [TokenType::Newline])?;
             self.eat(TokenType::Newline, [])?;
