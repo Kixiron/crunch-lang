@@ -1,3 +1,4 @@
+use crate as crunch_shared;
 use crate::{
     error::Location,
     trees::{
@@ -8,11 +9,12 @@ use crate::{
             VarDecl,
         },
     },
-    utils::{HashMap, Timer},
+    utils::HashMap,
     visitors::hir::{ExprVisitor, ItemVisitor, StmtVisitor},
 };
 use alloc::{boxed::Box, vec::Vec};
-use core::mem;
+use core::{iter::FromIterator, mem};
+use crunch_proc::instrument;
 
 type Result<T> = core::result::Result<T, ()>;
 
@@ -83,6 +85,27 @@ pub struct RightValue {
     pub val: Rval,
 }
 
+impl RightValue {
+    // TODO: Change this when there's floats
+    pub fn is_float(&self) -> bool {
+        false
+    }
+
+    // TODO: Add more ints
+    pub fn is_signed(&self) -> bool {
+        matches!(self.ty, Type::I64)
+    }
+
+    // TODO: Add more ints
+    pub fn is_unsigned(&self) -> bool {
+        matches!(self.ty, Type::U8)
+    }
+
+    pub fn is_bool(&self) -> bool {
+        matches!(self.ty, Type::Bool)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Rval {
     Var(VarId),
@@ -141,7 +164,7 @@ pub struct MirBuilder {
     current_block: usize,
     var_counter: u64,
     variables: HashMap<Var, (VarId, Type)>,
-    function_names: HashMap<ItemPath, FuncId>,
+    function_names: HashMap<ItemPath, (FuncId, Type)>,
 }
 
 impl MirBuilder {
@@ -156,8 +179,17 @@ impl MirBuilder {
         }
     }
 
+    #[instrument(name = "lowering to mir")]
     pub fn lower(mut self, items: &[Item]) -> Result<Mir> {
-        let _mir_lowering = Timer::start("lowering to mir");
+        self.function_names =
+            HashMap::from_iter(items.iter().enumerate().filter_map(|(i, item)| {
+                #[allow(irrefutable_let_patterns)]
+                if let Item::Function(HirFunction { name, ret, .. }) = item {
+                    Some((name.clone(), (FuncId(i), Type::from(&ret.kind))))
+                } else {
+                    None
+                }
+            }));
 
         for item in items {
             self.visit_item(item)?;
@@ -224,7 +256,6 @@ impl ItemVisitor for MirBuilder {
             ret: (&func.ret.kind).into(),
             blocks: mem::take(&mut self.blocks),
         };
-
         self.functions.push(func);
 
         Ok(())
@@ -264,17 +295,7 @@ impl ExprVisitor for MirBuilder {
     type Output = Result<Option<RightValue>>;
 
     fn visit_return(&mut self, _loc: Location, ret: &Return) -> Self::Output {
-        let value = ret
-            .val
-            .as_ref()
-            .map(|val| Ok(self.visit_expr(&**val)?.unwrap()));
-
-        let value = if let Some(value) = value {
-            Some(value?)
-        } else {
-            None
-        };
-
+        let value = ret.val.as_ref().map_or(Ok(None), |val| self.visit_expr(&**val))?;
         self.current_block_mut().push(Instruction::Return(value));
 
         Ok(None)
@@ -338,10 +359,7 @@ impl ExprVisitor for MirBuilder {
             Literal::Integer(Integer { sign, bits }) => {
                 // TODO: This isn't great
                 let val = Rval::Const(Constant::I64(sign.maybe_negate(*bits) as i64));
-                let rval = RightValue {
-                    ty: Type::Bool,
-                    val,
-                };
+                let rval = RightValue { ty: Type::I64, val };
 
                 Ok(Some(rval))
             }
@@ -360,9 +378,9 @@ impl ExprVisitor for MirBuilder {
     }
 
     fn visit_func_call(&mut self, _loc: Location, call: &FuncCall) -> Self::Output {
-        let func = self.function_names.get(&call.func).unwrap();
+        let (func, ty) = self.function_names.get(&call.func).unwrap().clone();
         let val = Rval::Call(
-            *func,
+            func,
             call.args
                 .iter()
                 .map(|a| Ok(self.visit_expr(a)?.unwrap()))
@@ -371,7 +389,7 @@ impl ExprVisitor for MirBuilder {
 
         Ok(Some(RightValue {
             // TODO: Get the actual return type
-            ty: Type::Unit,
+            ty,
             val,
         }))
     }

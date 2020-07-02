@@ -3,10 +3,10 @@ use alloc::{format, vec::Vec};
 use core::mem;
 use crunch_shared::{
     context::Context,
+    crunch_proc::instrument,
     error::{Error, ErrorHandler, Locatable, Location, ParseResult, SyntaxError},
     files::CurrentFile,
     trees::ast::Item,
-    utils::Timer,
 };
 
 mod expr;
@@ -89,9 +89,8 @@ impl<'src> Parser<'src> {
         }
     }
 
+    #[instrument(name = "parsing")]
     pub fn parse(mut self) -> Result<ReturnData, ErrorHandler> {
-        let _parsing = Timer::start("parsing");
-
         let (mut items, mut errors) = (Vec::with_capacity(20), 0);
 
         while self.peek().is_ok() {
@@ -129,9 +128,8 @@ impl<'src> Parser<'src> {
         Ok((items, self.error_handler))
     }
 
+    #[instrument(name = "lexing")]
     pub fn lex(source: &'src str) -> (TokenStream<'src>, Option<Token<'src>>, Option<Token<'src>>) {
-        let _lexing = Timer::start("lexing");
-
         let mut token_stream = TokenStream::new(source, true, true);
         let next = None;
         let peek = token_stream.next();

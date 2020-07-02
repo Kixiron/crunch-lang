@@ -4,8 +4,8 @@ use crate::{
 };
 use alloc::{format, string::ToString, vec::Vec};
 use core::mem;
-use crunch_proc::recursion_guard;
 use crunch_shared::{
+    crunch_proc::recursion_guard,
     error::{Error, Locatable, Location, ParseResult, Span, SyntaxError},
     trees::{
         ast::{

@@ -1,6 +1,6 @@
 use crate::{parser::Parser, token::TokenType};
-use crunch_proc::recursion_guard;
 use crunch_shared::{
+    crunch_proc::recursion_guard,
     error::ParseResult,
     trees::{
         ast::{Binding, Pattern},

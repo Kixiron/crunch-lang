@@ -4,8 +4,8 @@ use crate::{
 };
 use alloc::{format, vec::Vec};
 use core::convert::TryFrom;
-use crunch_proc::recursion_guard;
 use crunch_shared::{
+    crunch_proc::recursion_guard,
     error::{Error, Locatable, Location, ParseResult, Span, SyntaxError},
     trees::{
         ast::{Arm, Block, Expr, ExprKind, For, If, IfCond, Loop, Match, While},
@@ -521,8 +521,6 @@ impl<'src> Parser<'src> {
                 None
             };
             self.eat(TokenType::RightRocket, [TokenType::Newline])?;
-            self.eat(TokenType::Newline, [])?;
-
             let body = self.block(&[TokenType::End], 5)?;
 
             self.eat(TokenType::End, [TokenType::Newline])?;

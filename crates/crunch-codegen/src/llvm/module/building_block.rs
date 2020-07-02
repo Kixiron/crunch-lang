@@ -1,17 +1,21 @@
 use crate::llvm::{
     module::Builder,
-    types::{IntType, Type},
+    types::{FunctionSig, IntType, SealedAnyType, Type, TypeKind},
     utils::UNNAMED_CSTR,
     values::{
-        AnyValue, ArrayValue, BasicBlock, Global, InstructionValue, PointerValue, SealedAnyValue,
-        Value,
+        AnyValue, ArrayValue, BasicBlock, CallSiteValue, FunctionOrPointer, FunctionValue, Global,
+        InstructionValue, PointerValue, SealedAnyValue, Value,
     },
-    Result,
+    Error, ErrorKind, Result,
 };
-use llvm_sys::core::{
-    LLVMBuildAdd, LLVMBuildBitCast, LLVMBuildBr, LLVMBuildGlobalString, LLVMBuildGlobalStringPtr,
-    LLVMBuildMul, LLVMBuildPointerCast, LLVMBuildRet, LLVMBuildRetVoid, LLVMBuildSub,
-    LLVMBuildUnreachable,
+use llvm_sys::{
+    core::{
+        LLVMAddCase, LLVMBuildAdd, LLVMBuildBitCast, LLVMBuildBr, LLVMBuildCall2, LLVMBuildFDiv,
+        LLVMBuildGlobalString, LLVMBuildGlobalStringPtr, LLVMBuildMul, LLVMBuildPointerCast,
+        LLVMBuildRet, LLVMBuildRetVoid, LLVMBuildSDiv, LLVMBuildSub, LLVMBuildSwitch,
+        LLVMBuildUDiv, LLVMBuildUnreachable,
+    },
+    LLVMValue,
 };
 use std::{
     cmp::Ordering,
@@ -79,6 +83,60 @@ impl<'ctx> BuildingBlock<'ctx> {
     ) -> Result<Value<'ctx>> {
         let mult = unsafe {
             Value::from_raw(LLVMBuildMul(
+                self.builder.as_mut_ptr(),
+                lhs.into().as_mut_ptr(),
+                rhs.into().as_mut_ptr(),
+                UNNAMED_CSTR,
+            ))?
+        };
+
+        Ok(mult)
+    }
+
+    #[inline]
+    pub fn signed_div(
+        &self,
+        lhs: impl Into<Value<'ctx>>,
+        rhs: impl Into<Value<'ctx>>,
+    ) -> Result<Value<'ctx>> {
+        let mult = unsafe {
+            Value::from_raw(LLVMBuildSDiv(
+                self.builder.as_mut_ptr(),
+                lhs.into().as_mut_ptr(),
+                rhs.into().as_mut_ptr(),
+                UNNAMED_CSTR,
+            ))?
+        };
+
+        Ok(mult)
+    }
+
+    #[inline]
+    pub fn unsigned_div(
+        &self,
+        lhs: impl Into<Value<'ctx>>,
+        rhs: impl Into<Value<'ctx>>,
+    ) -> Result<Value<'ctx>> {
+        let mult = unsafe {
+            Value::from_raw(LLVMBuildUDiv(
+                self.builder.as_mut_ptr(),
+                lhs.into().as_mut_ptr(),
+                rhs.into().as_mut_ptr(),
+                UNNAMED_CSTR,
+            ))?
+        };
+
+        Ok(mult)
+    }
+
+    #[inline]
+    pub fn float_div(
+        &self,
+        lhs: impl Into<Value<'ctx>>,
+        rhs: impl Into<Value<'ctx>>,
+    ) -> Result<Value<'ctx>> {
+        let mult = unsafe {
+            Value::from_raw(LLVMBuildFDiv(
                 self.builder.as_mut_ptr(),
                 lhs.into().as_mut_ptr(),
                 rhs.into().as_mut_ptr(),
@@ -163,17 +221,40 @@ impl<'ctx> BuildingBlock<'ctx> {
         }
     }
 
-    /*
-    pub fn call<F>(
+    #[inline]
+    pub fn switch(
         &self,
-        function: F,
-        args: &[Value<'ctx>],
-        name: &str,
-    ) -> Result<CallSiteValue<'ctx>>
+        condition: Value<'ctx>,
+        default: BasicBlock<'ctx>,
+        jumps: &[(Value<'ctx>, BasicBlock<'ctx>)],
+    ) -> Result<InstructionValue<'ctx>> {
+        let switch = unsafe {
+            InstructionValue::from_raw(LLVMBuildSwitch(
+                self.builder.as_mut_ptr(),
+                condition.as_mut_ptr(),
+                default.as_mut_ptr(),
+                jumps.len() as u32,
+            ))?
+        };
+
+        for (condition, block) in jumps {
+            unsafe {
+                LLVMAddCase(
+                    switch.as_mut_ptr(),
+                    condition.as_mut_ptr(),
+                    (*block).as_mut_ptr(),
+                );
+            }
+        }
+
+        Ok(switch)
+    }
+
+    pub fn call<F>(&self, function: F, args: &[Value<'ctx>]) -> Result<CallSiteValue<'ctx>>
     where
         F: Into<FunctionOrPointer<'ctx>>,
     {
-        let (value, ty, kind) = match function.into() {
+        let (value, ty, _kind) = match function.into() {
             FunctionOrPointer::Function(value) => {
                 let ty = value.as_type()?;
                 let kind = ty.element_type()?.kind();
@@ -196,25 +277,22 @@ impl<'ctx> BuildingBlock<'ctx> {
             }
         };
 
-        let name = if let TypeKind::Void = kind { "" } else { name };
-        let c_string = CString::new(name)?;
-
         let mut args: Vec<*mut LLVMValue> =
             self.check_call(FunctionValue::from_val(value), args)?;
 
         unsafe {
-            let value = LLVMBuildCall(
+            let value = LLVMBuildCall2(
                 self.builder.as_mut_ptr(),
+                ty.as_mut_ptr(),
                 value.as_mut_ptr(),
                 args.as_mut_ptr(),
                 args.len() as u32,
-                c_string.as_ptr(),
+                UNNAMED_CSTR,
             );
 
             CallSiteValue::from_raw(value)
         }
     }
-    */
 
     pub fn create_global_string_ptr(
         &self,
@@ -277,7 +355,6 @@ impl<'ctx> BuildingBlock<'ctx> {
         Self { block, builder }
     }
 
-    /*
     pub(crate) fn check_call<'a>(
         &self,
         function: FunctionValue<'ctx>,
@@ -288,11 +365,10 @@ impl<'ctx> BuildingBlock<'ctx> {
             function = function.element_type()?;
         }
 
-        let param_types = unsafe { FunctionSig::from(function) }.args()?;
-
+        let param_types = FunctionSig::from_ty(function).args()?;
         let all_args_match = param_types
             .iter()
-            .zip(args.iter().filter_map(|&v| v.as_type()).ok())
+            .zip(args.iter().filter_map(|&v| v.as_type().ok()))
             .all(|(expected_ty, actual_ty)| *expected_ty == actual_ty);
 
         if all_args_match {
@@ -317,7 +393,6 @@ impl<'ctx> BuildingBlock<'ctx> {
 
         Ok(casted_args)
     }
-    */
 }
 
 impl Debug for BuildingBlock<'_> {

@@ -3,6 +3,7 @@ use alloc::{format, vec::Vec};
 use core::fmt::{Result, Write};
 use crunch_shared::{
     context::Context,
+    crunch_proc::instrument,
     strings::StrT,
     trace,
     trees::{
@@ -13,7 +14,6 @@ use crunch_shared::{
         },
         Sided,
     },
-    utils::Timer,
 };
 
 #[derive(Debug)]
@@ -32,9 +32,8 @@ impl PrettyPrinter {
         }
     }
 
+    #[instrument(name = "pretty printing")]
     pub fn pretty_print(&mut self, f: &mut dyn Write, items: &[Item]) -> Result {
-        let _pretty_printer = Timer::start("Pretty printing");
-
         for item in items {
             self.print_item(f, item)?;
         }

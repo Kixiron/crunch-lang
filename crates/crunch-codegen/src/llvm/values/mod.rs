@@ -44,6 +44,7 @@ pub enum Value<'ctx> {
     GlobalVariable(Val<'ctx>),
     ConstExpr(Val<'ctx>),
     ConstDataArray(Val<'ctx>),
+    CallSite(CallSiteValue<'ctx>),
 }
 
 impl<'ctx> Value<'ctx> {
@@ -90,6 +91,7 @@ impl<'ctx> Value<'ctx> {
             Self::Metadata(meta) => meta.as_val(),
             Self::InlineAsm(asm) => asm.as_val(),
             Self::Instruction(inst) => inst.as_val(),
+            Self::CallSite(call) => call.as_val(),
             Self::GlobalVariable(val) | Self::ConstExpr(val) | Self::ConstDataArray(val) => val,
         }
     }
@@ -169,6 +171,12 @@ pub struct CallSiteValue<'ctx>(Val<'ctx>);
 impl Debug for CallSiteValue<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         Debug::fmt(&self.0, f)
+    }
+}
+
+impl<'ctx> Into<Value<'ctx>> for CallSiteValue<'ctx> {
+    fn into(self) -> Value<'ctx> {
+        Value::CallSite(self)
     }
 }
 

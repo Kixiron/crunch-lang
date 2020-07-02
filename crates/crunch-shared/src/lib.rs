@@ -9,6 +9,7 @@
 )]
 
 extern crate alloc;
+pub extern crate crunch_proc;
 
 #[cfg(feature = "logging")]
 pub use log::{debug, error, info, trace, warn};

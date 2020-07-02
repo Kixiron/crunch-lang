@@ -1,4 +1,5 @@
 use crunch_shared::{
+    crunch_proc::instrument,
     error::{Locatable, Location},
     strings::StrT,
     trees::{
@@ -16,7 +17,6 @@ use crunch_shared::{
         },
         Ref, Sided,
     },
-    utils::Timer,
     visitors::ast::{ExprVisitor, ItemVisitor, StmtVisitor},
 };
 
@@ -27,12 +27,9 @@ impl Ladder {
         Self {}
     }
 
+    #[instrument(name = "hir lowering")]
     pub fn lower(&mut self, items: &[AstItem]) -> Vec<Item> {
-        let _lowering = Timer::start("hir lowering");
-
-        let lowered = items.iter().map(|item| self.visit_item(item)).collect();
-
-        lowered
+        items.iter().map(|item| self.visit_item(item)).collect()
     }
 
     fn visit_then_and_else(
@@ -570,12 +567,19 @@ impl ExprVisitor for Ladder {
 
     fn visit_binary_op(
         &mut self,
-        _expr: &AstExpr,
-        _lhs: &AstExpr,
-        _op: BinaryOp,
-        _rhs: &AstExpr,
+        expr: &AstExpr,
+        lhs: &AstExpr,
+        op: BinaryOp,
+        rhs: &AstExpr,
     ) -> Self::Output {
-        todo!()
+        Expr {
+            kind: ExprKind::BinOp(Sided {
+                lhs: Ref::new(self.visit_expr(lhs)),
+                op,
+                rhs: Ref::new(self.visit_expr(rhs)),
+            }),
+            loc: expr.location(),
+        }
     }
 
     fn visit_comparison(

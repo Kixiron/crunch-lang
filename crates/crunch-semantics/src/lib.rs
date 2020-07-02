@@ -14,6 +14,7 @@ use alloc::{borrow::ToOwned, boxed::Box, format, vec::Vec};
 use core::fmt;
 use crunch_shared::{
     context::Context,
+    crunch_proc::instrument,
     debug,
     error::{Error, ErrorHandler, Locatable, Location, SemanticError, Warning},
     strings::{StrInterner, StrT},
@@ -65,11 +66,10 @@ impl SemanticAnalyzer {
         self
     }
 
+    #[instrument(name = "semantic analysis")]
     pub fn analyze(&mut self, items: &[Item], context: &Context, errors: &mut ErrorHandler) {
-        let _analysis = Timer::start("semantic analysis");
-
         for pass in self.passes.iter_mut() {
-            let _pass_timer = Timer::start(format!("semantic analysis pass {}", pass.name()));
+            let __pass_timer = Timer::start(format!("semantic analysis pass {}", pass.name()));
 
             pass.load(ErrorHandler::new(), context.clone());
 

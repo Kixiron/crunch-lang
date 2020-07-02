@@ -10,7 +10,11 @@ use llvm_sys::{
     core::{LLVMAppendBasicBlockInContext, LLVMCountParams, LLVMGetParamTypes, LLVMGetParams},
     LLVMType, LLVMValue,
 };
-use std::{mem::MaybeUninit, ops::Deref};
+use std::{
+    fmt::{Debug, Formatter, Result as FmtResult},
+    mem::MaybeUninit,
+    ops::Deref,
+};
 
 pub struct FunctionBuilder<'ctx> {
     function: FunctionValue<'ctx>,
@@ -172,6 +176,12 @@ impl<'ctx> Deref for FunctionBuilder<'ctx> {
 
     fn deref(&self) -> &Self::Target {
         &self.function
+    }
+}
+
+impl Debug for FunctionBuilder<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        Debug::fmt(&self.function, f)
     }
 }
 

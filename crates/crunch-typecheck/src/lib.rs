@@ -8,13 +8,14 @@
 )]
 
 use crunch_shared::{
+    crunch_proc::instrument,
     error::{ErrorHandler, Locatable, Location, Span, TypeError, TypeResult},
     strings::StrInterner,
     trees::hir::{
         Block, Break, CompOp, Expr, FuncArg, FuncCall, Function, Item, Literal, Match, MatchArm,
         Return, Stmt, TypeKind, Var, VarDecl,
     },
-    utils::{HashMap, Timer},
+    utils::HashMap,
     visitors::hir::{MutExprVisitor, MutItemVisitor, MutStmtVisitor},
 };
 
@@ -163,9 +164,8 @@ impl Engine {
         }
     }
 
+    #[instrument(name = "type checking")]
     pub fn walk(&mut self, items: &mut [Item]) -> Result<ErrorHandler, ErrorHandler> {
-        let _type_checking = Timer::start("type checking");
-
         for item in items {
             if let Err(err) = self.visit_item(item) {
                 self.errors.push_err(err);

@@ -9,8 +9,8 @@ use alloc::{
     vec,
     vec::Vec,
 };
-use crunch_proc::recursion_guard;
 use crunch_shared::{
+    crunch_proc::recursion_guard,
     error::{Error, Locatable, Location, ParseResult, SyntaxError},
     files::CurrentFile,
     strings::StrT,

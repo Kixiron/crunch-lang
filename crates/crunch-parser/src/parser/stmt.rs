@@ -1,8 +1,8 @@
 use crate::{parser::Parser, token::TokenType};
 #[cfg(feature = "no-std")]
 use alloc::vec::Vec;
-use crunch_proc::recursion_guard;
 use crunch_shared::{
+    crunch_proc::recursion_guard,
     error::{Error, Locatable, Location, ParseResult, SemanticError, Span},
     trees::{
         ast::{Block, Stmt, StmtKind, Type, VarDecl},

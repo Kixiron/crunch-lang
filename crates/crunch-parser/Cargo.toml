@@ -31,10 +31,6 @@ version = "0.1.13"
 [dependencies.crunch-shared]
 path = "../crunch-shared"
 
-# Tracking stack frames
-[dependencies.crunch-proc]
-path = "../crunch-proc"
-
 [dev-dependencies.ron]
 version = "0.6.0"
 
