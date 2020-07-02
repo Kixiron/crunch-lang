@@ -1,5 +1,6 @@
 use crate::llvm::{
     module::Linkage,
+    types::{FunctionSig, SealedAnyType, TypeKind},
     utils::CallingConvention,
     values::{AnyValue, BasicBlock, BlockAddress, SealedAnyValue, Val, Value},
     Error, ErrorKind, Result,
@@ -29,6 +30,15 @@ impl<'ctx> FunctionValue<'ctx> {
                 .map(|arg| Value::from_raw(arg.assume_init()))
                 .collect()
         }
+    }
+
+    pub fn signature(self) -> Result<FunctionSig<'ctx>> {
+        let mut function = self.as_type()?;
+        while function.kind() == TypeKind::Pointer {
+            function = function.element_type()?;
+        }
+
+        Ok(FunctionSig::from_ty(function))
     }
 
     pub fn num_args(self) -> u32 {

@@ -1,7 +1,7 @@
 use crate::llvm::{
     module::Builder,
-    types::{FunctionSig, IntType, SealedAnyType, Type, TypeKind},
-    utils::UNNAMED_CSTR,
+    types::{IntType, Type, TypeKind},
+    utils::EMPTY_CSTR,
     values::{
         AnyValue, ArrayValue, BasicBlock, CallSiteValue, FunctionOrPointer, FunctionValue, Global,
         InstructionValue, PointerValue, SealedAnyValue, Value,
@@ -49,7 +49,7 @@ impl<'ctx> BuildingBlock<'ctx> {
                 self.builder.as_mut_ptr(),
                 lhs.into().as_mut_ptr(),
                 rhs.into().as_mut_ptr(),
-                UNNAMED_CSTR,
+                EMPTY_CSTR,
             ))?
         };
 
@@ -68,7 +68,7 @@ impl<'ctx> BuildingBlock<'ctx> {
                 self.builder.as_mut_ptr(),
                 lhs.into().as_mut_ptr(),
                 rhs.into().as_mut_ptr(),
-                UNNAMED_CSTR,
+                EMPTY_CSTR,
             ))?
         };
 
@@ -86,7 +86,7 @@ impl<'ctx> BuildingBlock<'ctx> {
                 self.builder.as_mut_ptr(),
                 lhs.into().as_mut_ptr(),
                 rhs.into().as_mut_ptr(),
-                UNNAMED_CSTR,
+                EMPTY_CSTR,
             ))?
         };
 
@@ -104,7 +104,7 @@ impl<'ctx> BuildingBlock<'ctx> {
                 self.builder.as_mut_ptr(),
                 lhs.into().as_mut_ptr(),
                 rhs.into().as_mut_ptr(),
-                UNNAMED_CSTR,
+                EMPTY_CSTR,
             ))?
         };
 
@@ -122,7 +122,7 @@ impl<'ctx> BuildingBlock<'ctx> {
                 self.builder.as_mut_ptr(),
                 lhs.into().as_mut_ptr(),
                 rhs.into().as_mut_ptr(),
-                UNNAMED_CSTR,
+                EMPTY_CSTR,
             ))?
         };
 
@@ -140,7 +140,7 @@ impl<'ctx> BuildingBlock<'ctx> {
                 self.builder.as_mut_ptr(),
                 lhs.into().as_mut_ptr(),
                 rhs.into().as_mut_ptr(),
-                UNNAMED_CSTR,
+                EMPTY_CSTR,
             ))?
         };
 
@@ -216,7 +216,7 @@ impl<'ctx> BuildingBlock<'ctx> {
                 self.builder.as_mut_ptr(),
                 value.as_mut_ptr(),
                 dest_ty.as_mut_ptr(),
-                UNNAMED_CSTR,
+                EMPTY_CSTR,
             ))
         }
     }
@@ -254,12 +254,9 @@ impl<'ctx> BuildingBlock<'ctx> {
     where
         F: Into<FunctionOrPointer<'ctx>>,
     {
-        let (value, ty, _kind) = match function.into() {
+        let (value, sig) = match function.into() {
             FunctionOrPointer::Function(value) => {
-                let ty = value.as_type()?;
-                let kind = ty.element_type()?.kind();
-
-                (value, ty, kind)
+                (value, FunctionValue::from_val(value).signature()?)
             }
 
             FunctionOrPointer::Pointer(value) => {
@@ -273,21 +270,20 @@ impl<'ctx> BuildingBlock<'ctx> {
                     ));
                 }
 
-                (value, ty, kind)
+                (value, FunctionValue::from_val(value).signature()?)
             }
         };
 
-        let mut args: Vec<*mut LLVMValue> =
-            self.check_call(FunctionValue::from_val(value), args)?;
+        let mut args = self.cast_call_args(args, &sig.args()?)?;
 
         unsafe {
             let value = LLVMBuildCall2(
                 self.builder.as_mut_ptr(),
-                ty.as_mut_ptr(),
+                sig.as_mut_ptr(),
                 value.as_mut_ptr(),
                 args.as_mut_ptr(),
                 args.len() as u32,
-                UNNAMED_CSTR,
+                EMPTY_CSTR,
             );
 
             CallSiteValue::from_raw(value)
@@ -355,38 +351,21 @@ impl<'ctx> BuildingBlock<'ctx> {
         Self { block, builder }
     }
 
-    pub(crate) fn check_call<'a>(
+    pub(crate) fn cast_call_args(
         &self,
-        function: FunctionValue<'ctx>,
-        args: &'a [Value<'ctx>],
+        values: &[Value<'ctx>],
+        types: &[Type<'ctx>],
     ) -> Result<Vec<*mut LLVMValue>> {
-        let mut function = function.as_type()?;
-        while function.kind() == TypeKind::Pointer {
-            function = function.element_type()?;
-        }
-
-        let param_types = FunctionSig::from_ty(function).args()?;
-        let all_args_match = param_types
+        let casted_args: Vec<*mut LLVMValue> = types
             .iter()
-            .zip(args.iter().filter_map(|&v| v.as_type().ok()))
-            .all(|(expected_ty, actual_ty)| *expected_ty == actual_ty);
+            .zip(values.iter())
+            .map(|(expected_ty, &val)| {
+                let ty = val.as_type().unwrap();
 
-        if all_args_match {
-            return Ok(args.into_iter().map(|a| a.as_mut_ptr()).collect());
-        }
-
-        let casted_args: Vec<*mut LLVMValue> = param_types
-            .into_iter()
-            .zip(args.iter())
-            .filter_map(|(expected_ty, &actual_val)| {
-                let actual_ty = actual_val.as_type().ok()?;
-
-                if expected_ty != actual_ty {
-                    self.bitcast(actual_val, expected_ty)
-                        .ok()
-                        .map(|a| a.as_mut_ptr())
+                if *expected_ty != ty {
+                    self.bitcast(val, *expected_ty).unwrap().as_mut_ptr()
                 } else {
-                    Some(actual_val.as_mut_ptr())
+                    val.as_mut_ptr()
                 }
             })
             .collect();

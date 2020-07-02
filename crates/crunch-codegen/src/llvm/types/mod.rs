@@ -128,6 +128,10 @@ impl<'ctx> FunctionSig<'ctx> {
     pub fn num_args(self) -> u32 {
         unsafe { LLVMCountParamTypes(self.as_mut_ptr()) }
     }
+
+    pub(crate) const fn as_mut_ptr(self) -> *mut LLVMType {
+        self.0.as_mut_ptr()
+    }
 }
 
 impl<'ctx> Sealed for FunctionSig<'ctx> {}

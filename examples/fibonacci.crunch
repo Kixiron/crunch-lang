@@ -1,0 +1,19 @@
+fn main() -> i64
+    return fibonacci(10)
+end
+
+fn fibonacci(n: i64) -> i64
+    match n
+        0 =>
+            return 0
+        end
+
+        1 =>
+            return 1
+        end
+
+        n =>
+            return fibonacci(n - 1) + fibonacci(n - 2)
+        end
+    end
+end

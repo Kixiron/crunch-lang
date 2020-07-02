@@ -175,8 +175,6 @@ fn nanopass_attr_inner(mut args: AttributeArgs, input: ItemFn) -> Result<TokenSt
         err => return Err(Error::new(err.span(), "expected a string literal")),
     };
 
-    dbg!(accepts, output);
-
     Ok(TokenStream::from(quote! { #input }))
 }
 

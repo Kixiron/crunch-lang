@@ -21,8 +21,8 @@ pub use thread_local_mode::ThreadLocalMode;
 /// Empty string, to be used where LLVM expects an instruction name, indicating
 /// that the instruction is to be left unnamed (i.e. numbered, in textual IR).
 // TODO: Use CStr once it's const-stable
-pub(crate) const UNNAMED_STR: &[u8] = b"\0";
-pub(crate) const UNNAMED_CSTR: *const i8 = UNNAMED_STR.as_ptr() as *const i8;
+pub(crate) const EMPTY_STR: &[u8] = b"\0";
+pub(crate) const EMPTY_CSTR: *const i8 = EMPTY_STR.as_ptr() as *const i8;
 
 mod sealed {
     pub trait Sealed {}

@@ -1,7 +1,7 @@
 use crate::llvm::{
     module::{Builder, BuildingBlock, Module},
     types::{FunctionSig, SealedAnyType, Type},
-    utils::{LLVMString, UNNAMED_CSTR},
+    utils::{LLVMString, EMPTY_CSTR},
     values::{BasicBlock, FunctionValue, SealedAnyValue, Value, ValueKind},
     Error, ErrorKind, Result,
 };
@@ -30,7 +30,7 @@ impl<'ctx> FunctionBuilder<'ctx> {
             BasicBlock::from_raw(LLVMAppendBasicBlockInContext(
                 self.module.ctx.as_mut_ptr(),
                 self.function.as_mut_ptr(),
-                UNNAMED_CSTR,
+                EMPTY_CSTR,
             ))?
         };
         builder.move_to_end(&block);
@@ -51,6 +51,10 @@ impl<'ctx> FunctionBuilder<'ctx> {
         builder.move_to_end(&block);
 
         Ok(BuildingBlock::new(block, builder))
+    }
+
+    pub fn function(&self) -> FunctionValue<'ctx> {
+        self.function
     }
 }
 

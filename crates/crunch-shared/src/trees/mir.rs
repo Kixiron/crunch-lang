@@ -4,9 +4,9 @@ use crate::{
     trees::{
         ast::{Integer, ItemPath},
         hir::{
-            BinaryOp, Block as HirBlock, CompOp, Expr, FuncArg, FuncCall, Function as HirFunction,
-            Item, Literal, Match, MatchArm, Return, Stmt, TypeKind as HirType, TypeKind, Var,
-            VarDecl,
+            BinaryOp, Binding, Block as HirBlock, CompOp, Expr, FuncArg, FuncCall,
+            Function as HirFunction, Item, Literal, Match, MatchArm, Pattern, Return, Stmt,
+            TypeKind as HirType, TypeKind, Var, VarDecl,
         },
     },
     utils::HashMap,
@@ -26,6 +26,10 @@ pub struct Mir {
 impl Mir {
     pub fn iter(&self) -> impl Iterator<Item = &Function> {
         self.functions.iter()
+    }
+
+    pub fn len(&self) -> usize {
+        self.functions.len()
     }
 }
 
@@ -76,7 +80,19 @@ pub enum Instruction {
     Return(Option<RightValue>),
     Goto(BlockId),
     Assign(VarId, RightValue),
-    Switch(RightValue, Vec<(Option<RightValue>, BlockId)>),
+    Switch(RightValue, Vec<SwitchArm>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SwitchArm {
+    pub kind: SwitchArmKind,
+    pub block: BlockId,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SwitchArmKind {
+    Default(Option<RightValue>),
+    Rval(RightValue),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -180,10 +196,10 @@ impl MirBuilder {
     }
 
     #[instrument(name = "lowering to mir")]
+    #[allow(irrefutable_let_patterns)]
     pub fn lower(mut self, items: &[Item]) -> Result<Mir> {
         self.function_names =
             HashMap::from_iter(items.iter().enumerate().filter_map(|(i, item)| {
-                #[allow(irrefutable_let_patterns)]
                 if let Item::Function(HirFunction { name, ret, .. }) = item {
                     Some((name.clone(), (FuncId(i), Type::from(&ret.kind))))
                 } else {
@@ -295,7 +311,10 @@ impl ExprVisitor for MirBuilder {
     type Output = Result<Option<RightValue>>;
 
     fn visit_return(&mut self, _loc: Location, ret: &Return) -> Self::Output {
-        let value = ret.val.as_ref().map_or(Ok(None), |val| self.visit_expr(&**val))?;
+        let value = ret
+            .val
+            .as_ref()
+            .map_or(Ok(None), |val| self.visit_expr(&**val))?;
         self.current_block_mut().push(Instruction::Return(value));
 
         Ok(None)
@@ -317,11 +336,16 @@ impl ExprVisitor for MirBuilder {
         todo!()
     }
 
-    fn visit_match(&mut self, _loc: Location, Match { cond, arms, .. }: &Match) -> Self::Output {
+    fn visit_match(&mut self, loc: Location, Match { cond, arms, .. }: &Match) -> Self::Output {
         let current_block = BlockId(self.current_block);
 
         let mut cases = Vec::with_capacity(arms.len());
-        for MatchArm { guard, body, .. } in arms {
+        for MatchArm {
+            bind: Binding { pattern, .. },
+            body,
+            ..
+        } in arms
+        {
             self.next_block();
             let block_id = BlockId(self.current_block);
 
@@ -330,11 +354,23 @@ impl ExprVisitor for MirBuilder {
             }
 
             self.move_to_block(current_block);
-            if let Some(guard) = guard {
-                cases.push((Some(self.visit_expr(guard)?.unwrap()), block_id));
-            } else {
-                cases.push((None, block_id));
-            }
+
+            let kind = match pattern {
+                Pattern::Literal(lit) => {
+                    SwitchArmKind::Rval(self.visit_literal(loc, lit)?.unwrap())
+                }
+                // TODO: Get the type somehow
+                Pattern::Ident(ident) => SwitchArmKind::Default(Some(
+                    self.visit_variable(loc, Var::User(*ident), &TypeKind::Integer)?
+                        .unwrap(),
+                )),
+                Pattern::ItemPath(..) => todo!(),
+                Pattern::Wildcard => SwitchArmKind::Default(None),
+            };
+            cases.push(SwitchArm {
+                kind,
+                block: block_id,
+            });
         }
 
         self.move_to_block(current_block);

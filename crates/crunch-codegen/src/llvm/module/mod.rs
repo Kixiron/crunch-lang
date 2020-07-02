@@ -59,6 +59,35 @@ impl<'ctx> Module<'ctx> {
     }
 
     #[inline]
+    pub fn create_function<N>(
+        &'ctx self,
+        name: N,
+        signature: FunctionSig<'ctx>,
+    ) -> Result<FunctionValue<'ctx>>
+    where
+        N: AsRef<str>,
+    {
+        let name = CString::new(name.as_ref())?;
+
+        let function = unsafe {
+            FunctionValue::from_raw(LLVMAddFunction(
+                self.as_mut_ptr(),
+                name.as_ptr(),
+                signature.as_mut_ptr(),
+            ))?
+        };
+
+        Ok(function)
+    }
+
+    pub fn resume_function(
+        &'ctx self,
+        function: FunctionValue<'ctx>,
+    ) -> Result<FunctionBuilder<'ctx>> {
+        FunctionBuilder::new(function, self, &function.signature()?)
+    }
+
+    #[inline]
     pub fn verify(&self) -> Result<()> {
         let mut err_message = MaybeUninit::zeroed();
 
