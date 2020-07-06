@@ -2,12 +2,15 @@ pub mod ast;
 pub mod hir;
 pub mod mir;
 
+use crate::error::SyntaxError;
 #[cfg(feature = "no-std")]
 use alloc::boxed::Box;
 use core::{
     fmt::{Debug, Display, Formatter, Result},
     ops::{Deref, DerefMut},
+    str::FromStr,
 };
+use derive_more::Display;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -61,5 +64,29 @@ impl<T: Display> Display for Ref<T> {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         Display::fmt(&*self.0, f)
+    }
+}
+
+#[derive(Display, Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub enum CallConv {
+    #[display(fmt = "Crunch")]
+    Crunch,
+    #[display(fmt = "C")]
+    C,
+}
+
+impl FromStr for CallConv {
+    type Err = SyntaxError;
+
+    fn from_str(s: &str) -> core::result::Result<Self, Self::Err> {
+        // Calling conventions are (hopefully) ordered in order of most use
+        let callconv = match s {
+            c if c.eq_ignore_ascii_case("c") => Self::C,
+            crunch if crunch.eq_ignore_ascii_case("crunch") => Self::Crunch,
+
+            conv => return Err(SyntaxError::UnrecognizedCallConv(conv.to_owned())),
+        };
+
+        Ok(callconv)
     }
 }

@@ -2,9 +2,12 @@ use crate as crunch_shared;
 use crate::{
     error::{Locatable, Location},
     strings::StrT,
-    trees::ast::{
-        Block, Dest, Exposure, FuncArg, Item, ItemPath, Signedness, Type as AstType, TypeMember,
-        Variant,
+    trees::{
+        ast::{
+            Block, Dest, Exposure, FuncArg, Item, ItemPath, Signedness, Type as AstType,
+            TypeMember, Variant,
+        },
+        CallConv,
     },
     utils::HashMap,
     visitors::ast::ItemVisitor,
@@ -37,6 +40,7 @@ impl Resolver {
                 Type::Absurd,
                 Type::Infer,
                 Type::Integer,
+                Type::Pointer,
             ],
             functions: Vec::new(),
             current_path,
@@ -111,8 +115,13 @@ impl Resolver {
             AstType::Infer => Either::Left(5),
             AstType::Integer {
                 sign: Signedness::Signed,
+                width: 32,
+            } => Either::Left(6),
+            AstType::Integer {
+                sign: Signedness::Signed,
                 width: 64,
             } => Either::Left(6),
+            AstType::Pointer { mutable: _, ty: _ } => Either::Left(7),
             AstType::ItemPath(path) => self
                 .current()
                 .lookup_type(self, *path.last().unwrap())
@@ -241,6 +250,36 @@ impl ItemVisitor for Resolver {
     fn visit_alias(&mut self, _item: &Item, _alias: &AstType, _actual: &AstType) -> Self::Output {
         todo!()
     }
+
+    fn visit_extern_block(&mut self, _item: &Item, items: &[Item]) -> Self::Output {
+        for item in items {
+            self.visit_item(item);
+        }
+    }
+
+    fn visit_extern_func(
+        &mut self,
+        item: &Item,
+        _generics: &[AstType],
+        func_args: &[FuncArg],
+        ret: Locatable<&AstType>,
+        _callconv: CallConv,
+    ) -> Self::Output {
+        let mut args = HashMap::with_capacity(func_args.len());
+        for FuncArg { name, ty, .. } in func_args {
+            args.insert(*name, self.ty(&**ty));
+        }
+
+        let func = Function {
+            name: item.name.unwrap(),
+            args,
+            ret: self.ty(*ret),
+            parent: self.current_module,
+        };
+
+        let func = self.push_func(func);
+        self.current_mut().functions.push(func);
+    }
 }
 
 impl Module {
@@ -331,6 +370,7 @@ pub enum Type {
     Absurd,
     Infer,
     Integer,
+    Pointer,
     Custom {
         name: StrT,
         members: HashMap<StrT, Either<TypeId, (StrT, ModuleId)>>,

@@ -21,7 +21,8 @@ version = "0.11.4"
 # Integer parsing
 [dependencies.lexical-core]
 version = "0.7.4"
-features = ["radix"]
+default-features = false
+features = ["radix", "ryu", "format", "std"]
 
 # NFKC Normalization
 [dependencies.unicode-normalization]

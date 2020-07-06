@@ -116,16 +116,18 @@ impl<'src> Parser<'src> {
                     }
 
                     self.error_handler.push_err(err);
-                    if let Err(err) = self.stress_eat() {
-                        self.error_handler.push_err(err);
-
+                    if self.stress_eat().is_err() {
                         return Err(self.error_handler);
                     }
                 }
             }
         }
 
-        Ok((items, self.error_handler))
+        if self.error_handler.is_fatal() {
+            Err(self.error_handler)
+        } else {
+            Ok((items, self.error_handler))
+        }
     }
 
     #[instrument(name = "lexing")]
@@ -213,7 +215,12 @@ impl<'src> Parser<'src> {
         let mut token = self.next()?;
 
         // Assert that the two slices don't share any elements, as that's likely a dev error
-        debug_assert!(ignoring.iter().any(|i| !expected.contains(i)));
+        debug_assert!(
+            ignoring.iter().all(|i| !expected.contains(i)),
+            "Ignored set contains expected token: {:?}, {:?}",
+            ignoring,
+            expected,
+        );
 
         loop {
             match token.ty() {

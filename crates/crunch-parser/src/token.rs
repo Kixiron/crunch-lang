@@ -67,6 +67,8 @@ pub enum TokenType {
     Mut,
     #[token("ref")]
     Ref,
+    #[token("extern")]
+    Extern,
 
     #[token("in")]
     In,
@@ -264,6 +266,7 @@ impl TokenType {
             Self::Alias => "alias",
             Self::Mut => "mut",
             Self::Ref => "ref",
+            Self::Extern => "extern",
 
             Self::Equal => "=",
             Self::AddAssign => "+=",
@@ -321,9 +324,7 @@ impl TokenType {
 
 impl fmt::Display for TokenType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let string = self.to_str();
-
-        write!(f, "{}", string)
+        f.write_str(self.to_str())
     }
 }
 

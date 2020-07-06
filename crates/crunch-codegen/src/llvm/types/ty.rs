@@ -1,6 +1,11 @@
-use crate::llvm::{context::Context, types::TypeKind, utils::to_non_nul, Result};
+use crate::llvm::{
+    context::Context,
+    types::{PointerType, SealedAnyType, TypeKind},
+    utils::{to_non_nul, AddressSpace},
+    Result,
+};
 use llvm_sys::{
-    core::{LLVMGetElementType, LLVMGetTypeKind, LLVMPrintTypeToString},
+    core::{LLVMGetElementType, LLVMGetTypeKind, LLVMPointerType, LLVMPrintTypeToString},
     LLVMType,
 };
 use std::{
@@ -22,6 +27,15 @@ pub struct Type<'ctx> {
 }
 
 impl<'ctx> Type<'ctx> {
+    pub(crate) fn make_pointer(self, address_space: AddressSpace) -> Result<PointerType<'ctx>> {
+        unsafe {
+            PointerType::from_raw(LLVMPointerType(
+                self.as_mut_ptr(),
+                address_space as u8 as u32,
+            ))
+        }
+    }
+
     #[inline]
     pub(crate) unsafe fn from_raw(raw: *mut LLVMType) -> Result<Self> {
         let ty = to_non_nul(

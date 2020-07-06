@@ -3,7 +3,7 @@ use crate::{
     token::{Token, TokenType},
 };
 use alloc::{format, string::ToString, vec::Vec};
-use core::mem;
+use core::{mem, str::FromStr};
 use crunch_shared::{
     crunch_proc::recursion_guard,
     error::{Error, Locatable, Location, ParseResult, Span, SyntaxError},
@@ -12,7 +12,7 @@ use crunch_shared::{
             Attribute, Decorator, Dest, Exposure, FuncArg, Item, ItemKind, Type, TypeMember,
             Variant, Vis,
         },
-        Ref,
+        CallConv, Ref,
     },
 };
 
@@ -133,6 +133,22 @@ impl<'src> Parser<'src> {
                     vis.take().unwrap_or_default(),
                 )?;
                 Ok(Some(alias))
+            }
+
+            TokenType::Extern => {
+                let extern_block =
+                    self.extern_block(mem::take(decorators), mem::take(attributes))?;
+
+                // Throw the visibility error after we parse the block so that we can do more useful work
+                if vis.take().is_some() {
+                    // TODO: Give visibility a span
+                    Err(Locatable::new(
+                        SyntaxError::NoVisibilityAllowed("External blocks".to_owned()).into(),
+                        Location::concrete(extern_block.span(), self.current_file),
+                    ))
+                } else {
+                    Ok(Some(extern_block))
+                }
             }
 
             TokenType::Newline | TokenType::Space => {
@@ -429,7 +445,13 @@ impl<'src> Parser<'src> {
         let (name, name_span) = {
             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
 
-            (self.context.strings.intern(ident.source()), ident.span())
+            (
+                Locatable::new(
+                    self.context.strings.intern(ident.source()),
+                    Location::concrete(ident.span(), self.current_file),
+                ),
+                ident.span(),
+            )
         };
 
         let (args, end_span) = if self.peek()?.ty() == TokenType::LeftParen {
@@ -658,7 +680,7 @@ impl<'src> Parser<'src> {
 
     /// ```ebnf
     /// Function ::=
-    ///     Decorator* Attribute* 'fn' Ident '(' FunctionArgs* ')' ('->' Type)? '\n'
+    ///     Vis? Decorator* Attribute* 'fn' Ident '(' FunctionArgs* ')' ('->' Type)? '\n'
     ///         Statement* | 'empty'
     ///     'end'
     /// ```
@@ -770,6 +792,153 @@ impl<'src> Parser<'src> {
             args,
             Location::concrete(Span::merge(left, right), self.current_file),
         ))
+    }
+
+    /// ```ebnf
+    /// ExternBlock ::=
+    ///     Decorator* Attribute* 'extern'
+    ///         ExternFunc*
+    ///     'end'
+    /// ```
+    #[recursion_guard]
+    fn extern_block(
+        &mut self,
+        decorators: Vec<Decorator>,
+        attrs: Vec<Attribute>,
+    ) -> ParseResult<Item> {
+        let start = self.eat(TokenType::Extern, [TokenType::Newline])?.span();
+        let mut items = Vec::with_capacity(5);
+
+        let (mut item_decorators, mut item_attributes, mut item_vis) =
+            (Vec::new(), Vec::new(), None);
+        while self.peek()?.ty() != TokenType::End {
+            match self.peek()?.ty() {
+                TokenType::AtSign => {
+                    self.decorator(&mut item_decorators)?;
+                }
+                TokenType::Exposed | TokenType::Package => item_vis = Some(self.vis()?),
+
+                TokenType::Function => {
+                    let func = self.extern_func(
+                        mem::take(&mut item_decorators),
+                        mem::take(&mut item_attributes),
+                        item_vis.unwrap_or_default(),
+                    )?;
+
+                    items.push(func);
+                }
+
+                TokenType::Newline => {
+                    self.eat(TokenType::Newline, [])?;
+                }
+
+                _ => {
+                    return Err(Locatable::new(
+                        Error::Syntax(SyntaxError::Generic(
+                            "Only external functions are allowed in extern blocks".to_string(),
+                        )),
+                        Location::concrete(&self.peek()?, self.current_file),
+                    ));
+                }
+            }
+        }
+        let end = self.eat(TokenType::End, [TokenType::Newline])?.span();
+
+        Ok(Item {
+            name: None,
+            vis: None,
+            attrs,
+            decorators,
+            kind: ItemKind::ExternBlock { items },
+            loc: Location::concrete(Span::merge(start, end), self.current_file),
+        })
+    }
+
+    /// ```ebnf
+    /// ExternFunc ::=
+    ///     Vis? Decorator* Attribute* 'fn' Ident '(' FunctionArgs* ')' ('->' Type)? ';'
+    /// ```
+    #[recursion_guard]
+    fn extern_func(
+        &mut self,
+        mut decorators: Vec<Decorator>,
+        attrs: Vec<Attribute>,
+        vis: Vis,
+    ) -> ParseResult<Item> {
+        let start = self.eat(TokenType::Function, [TokenType::Newline])?.span();
+        let name = {
+            let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
+            self.context.strings.intern(ident.source())
+        };
+        let generics = self.generics()?;
+        let (args, _args_loc) = self.function_args()?;
+
+        let returns = if self.peek()?.ty() == TokenType::RightArrow {
+            self.eat(TokenType::RightArrow, [])?;
+            Some(self.ascribed_type()?)
+        } else {
+            None
+        };
+        let end = self.eat(TokenType::Semicolon, [])?.span();
+
+        let ret = Locatable::new(
+            Ref::new(returns.unwrap_or_default()),
+            Location::concrete(Span::merge(start, end), self.current_file),
+        );
+        let callconv = self.callconv(false, &mut decorators)?;
+
+        Ok(Item {
+            name: Some(name),
+            vis: Some(vis),
+            attrs,
+            decorators,
+            kind: ItemKind::ExternFunc {
+                args,
+                generics,
+                ret,
+                callconv,
+            },
+            loc: Location::concrete(Span::merge(start, end), self.current_file),
+        })
+    }
+
+    fn callconv(
+        &mut self,
+        optional: bool,
+        decorators: &mut Vec<Decorator>,
+    ) -> ParseResult<CallConv> {
+        let callconv = self.context.strings.intern("callconv");
+
+        if let Some(idx) = decorators.iter().position(|dec| *dec.name == callconv) {
+            let decorator = decorators.remove(idx);
+            let expected = |loc| {
+                Locatable::new(
+                    SyntaxError::Generic(
+                        "Expected a str literal as a calling convention".to_owned(),
+                    )
+                    .into(),
+                    loc,
+                )
+            };
+
+            let literal = decorator
+                .args
+                .iter()
+                .find_map(|arg| arg.as_literal())
+                .ok_or_else(|| expected(decorator.location()))?;
+            let callconv = literal
+                .as_string()
+                .ok_or_else(|| expected(literal.location()))?;
+
+            CallConv::from_str(&callconv.to_string())
+                .map_err(|err| Locatable::new(err.into(), literal.location()))
+        } else {
+            if optional {
+                Ok(CallConv::Crunch)
+            } else {
+                todo!("Error handling")
+            }
+        }
     }
 
     /// ```ebnf

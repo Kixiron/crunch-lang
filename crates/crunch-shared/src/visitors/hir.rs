@@ -3,8 +3,8 @@ use crate::{
     trees::{
         ast::BinaryOp,
         hir::{
-            Block, Break, CompOp, Expr, ExprKind, FuncCall, Function, Item, Literal, Match, Return,
-            Stmt, TypeKind, Var, VarDecl,
+            Block, Break, CompOp, Expr, ExprKind, ExternFunc, FuncCall, Function, Item, Literal,
+            Match, Return, Stmt, TypeKind, Var, VarDecl,
         },
         Sided,
     },
@@ -18,10 +18,12 @@ pub trait MutItemVisitor {
     fn visit_item(&mut self, item: &mut Item) -> Self::Output {
         match item {
             Item::Function(func) => self.visit_func(func),
+            Item::ExternFunc(func) => self.visit_extern_func(func),
         }
     }
 
     fn visit_func(&mut self, func: &mut Function) -> Self::Output;
+    fn visit_extern_func(&mut self, func: &mut ExternFunc) -> Self::Output;
 }
 
 pub trait MutStmtVisitor: MutItemVisitor + MutExprVisitor {
@@ -90,10 +92,12 @@ pub trait ItemVisitor {
     fn visit_item(&mut self, item: &Item) -> Self::Output {
         match item {
             Item::Function(func) => self.visit_func(func),
+            Item::ExternFunc(func) => self.visit_extern_func(func),
         }
     }
 
     fn visit_func(&mut self, func: &Function) -> Self::Output;
+    fn visit_extern_func(&mut self, func: &ExternFunc) -> Self::Output;
 }
 
 pub trait StmtVisitor: ItemVisitor + ExprVisitor {

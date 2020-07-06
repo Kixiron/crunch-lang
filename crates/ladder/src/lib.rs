@@ -7,15 +7,15 @@ use crunch_shared::{
             Arm as AstMatchArm, AssignKind, BinaryOp, Block as AstBlock, CompOp, Dest as AstDest,
             Exposure as AstExposure, Expr as AstExpr, ExprKind as AstExprKind, For as AstFor,
             FuncArg as AstFuncArg, If as AstIf, IfCond as AstIfCond, Item as AstItem, ItemPath,
-            Literal, Loop as AstLoop, Match as AstMatch, Stmt as AstStmt, Type as AstType,
-            TypeMember as AstTypeMember, UnaryOp, VarDecl as AstVarDecl, Variant as AstVariant,
-            While as AstWhile,
+            Literal, Loop as AstLoop, Match as AstMatch, Stmt as AstStmt, StmtKind as AstStmtKind,
+            Type as AstType, TypeMember as AstTypeMember, UnaryOp, VarDecl as AstVarDecl,
+            Variant as AstVariant, While as AstWhile,
         },
         hir::{
-            Binding, Block, Break, Expr, ExprKind, FuncArg, FuncCall, Function, Item, Match,
-            MatchArm, Pattern, Return, Stmt, Type, TypeKind, Var, VarDecl,
+            Binding, Block, Break, Expr, ExprKind, ExternFunc, FuncArg, FuncCall, Function, Item,
+            Match, MatchArm, Pattern, Return, Stmt, Type, TypeKind, Var, VarDecl,
         },
-        Ref, Sided,
+        CallConv, Ref, Sided,
     },
     visitors::ast::{ExprVisitor, ItemVisitor, StmtVisitor},
 };
@@ -29,7 +29,10 @@ impl Ladder {
 
     #[instrument(name = "hir lowering")]
     pub fn lower(&mut self, items: &[AstItem]) -> Vec<Item> {
-        items.iter().map(|item| self.visit_item(item)).collect()
+        items
+            .iter()
+            .filter_map(|item| self.visit_item(item))
+            .collect()
     }
 
     fn visit_then_and_else(
@@ -103,8 +106,14 @@ impl Ladder {
                     then.location(),
                     else_.location(),
                     loop_broken,
-                    Block::from_iter(then.location(), then.iter().map(|s| self.visit_stmt(s))),
-                    Block::from_iter(else_.location(), else_.iter().map(|s| self.visit_stmt(s))),
+                    Block::from_iter(
+                        then.location(),
+                        then.iter().filter_map(|s| self.visit_stmt(s)),
+                    ),
+                    Block::from_iter(
+                        else_.location(),
+                        else_.iter().filter_map(|s| self.visit_stmt(s)),
+                    ),
                 ));
             }
 
@@ -113,7 +122,10 @@ impl Ladder {
                     then.location(),
                     then.location(),
                     loop_broken,
-                    Block::from_iter(then.location(), then.iter().map(|s| self.visit_stmt(s))),
+                    Block::from_iter(
+                        then.location(),
+                        then.iter().filter_map(|s| self.visit_stmt(s)),
+                    ),
                     Block::new(then.location()),
                 ));
             }
@@ -124,7 +136,10 @@ impl Ladder {
                     else_.location(),
                     loop_broken,
                     Block::new(else_.location()),
-                    Block::from_iter(else_.location(), else_.iter().map(|s| self.visit_stmt(s))),
+                    Block::from_iter(
+                        else_.location(),
+                        else_.iter().filter_map(|s| self.visit_stmt(s)),
+                    ),
                 ));
             }
 
@@ -134,7 +149,7 @@ impl Ladder {
 }
 
 impl ItemVisitor for Ladder {
-    type Output = Item;
+    type Output = Option<Item>;
 
     fn visit_func(
         &mut self,
@@ -161,7 +176,7 @@ impl ItemVisitor for Ladder {
 
         let body = Block::from_iter(
             body.location(),
-            body.iter().map(|stmt| self.visit_stmt(stmt)),
+            body.iter().filter_map(|stmt| self.visit_stmt(stmt)),
         );
 
         let func = Function {
@@ -172,13 +187,13 @@ impl ItemVisitor for Ladder {
             ret: Type {
                 name: ItemPath::default(), // FIXME: ???
                 kind: TypeKind::from(*ret.data()),
-                loc: ret.loc(),
+                loc: ret.location(),
             },
             loc: item.location(),
             sig,
         };
 
-        Item::Function(func)
+        Some(Item::Function(func))
     }
 
     fn visit_type(
@@ -236,13 +251,67 @@ impl ItemVisitor for Ladder {
     ) -> Self::Output {
         todo!()
     }
+
+    fn visit_extern_block(&mut self, _item: &AstItem, _items: &[AstItem]) -> Self::Output {
+        crunch_shared::error!("The external block unnester pass should be run before HIR lowering");
+
+        None
+    }
+
+    fn visit_extern_func(
+        &mut self,
+        item: &AstItem,
+        _generics: &[AstType],
+        args: &[AstFuncArg],
+        ret: Locatable<&AstType>,
+        callconv: CallConv,
+    ) -> Self::Output {
+        let name = ItemPath::from(vec![item.name.unwrap()]);
+        let args = args
+            .iter()
+            .map(|AstFuncArg { name, ty, loc }| {
+                let kind = TypeKind::from(&**ty);
+
+                FuncArg {
+                    name: Var::User(*name),
+                    kind,
+                    loc: *loc,
+                }
+            })
+            .collect();
+
+        let func = ExternFunc {
+            name,
+            vis: item
+                .vis
+                .expect("External functions should have a visibility"),
+            args,
+            ret: Type {
+                name: ItemPath::default(), // FIXME: ???
+                kind: TypeKind::from(*ret.data()),
+                loc: ret.location(),
+            },
+            callconv,
+            loc: item.location(),
+        };
+
+        Some(Item::ExternFunc(func))
+    }
 }
 
 impl StmtVisitor for Ladder {
-    type Output = Stmt;
+    type Output = Option<Stmt>;
 
-    fn visit_var_decl(&mut self, stmt: &AstStmt, var: &AstVarDecl) -> Stmt {
-        Stmt::VarDecl(VarDecl {
+    fn visit_stmt(&mut self, stmt: &AstStmt) -> Self::Output {
+        match &stmt.kind {
+            AstStmtKind::VarDecl(decl) => self.visit_var_decl(stmt, decl),
+            AstStmtKind::Item(item) => self.visit_item(item).map(|i| Stmt::Item(i)),
+            AstStmtKind::Expr(expr) => Some(Stmt::Expr(self.visit_expr(expr))),
+        }
+    }
+
+    fn visit_var_decl(&mut self, stmt: &AstStmt, var: &AstVarDecl) -> Self::Output {
+        Some(Stmt::VarDecl(VarDecl {
             name: Var::User(var.name),
             value: Ref::new(self.visit_expr(&*var.val)),
             mutable: var.mutable,
@@ -252,7 +321,7 @@ impl StmtVisitor for Ladder {
                 loc: stmt.location(),
             },
             loc: stmt.location(),
-        })
+        }))
     }
 }
 
@@ -279,7 +348,7 @@ impl ExprVisitor for Ladder {
                     guard: None,
                     body: Block::from_iter(
                         body.location(),
-                        body.iter().map(|stmt| self.visit_stmt(stmt)),
+                        body.iter().filter_map(|stmt| self.visit_stmt(stmt)),
                     ),
                     ty: TypeKind::Infer,
                 },
@@ -292,7 +361,10 @@ impl ExprVisitor for Ladder {
                     },
                     guard: None,
                     body: if let Some(else_) = else_ {
-                        Block::from_iter(else_.location(), else_.iter().map(|s| self.visit_stmt(s)))
+                        Block::from_iter(
+                            else_.location(),
+                            else_.iter().filter_map(|s| self.visit_stmt(s)),
+                        )
                     } else {
                         Block::new(cond.location())
                     },
@@ -320,7 +392,7 @@ impl ExprVisitor for Ladder {
                     guard: Some(Ref::new(self.visit_expr(cond))),
                     body: Block::from_iter(
                         body.location(),
-                        body.iter().map(|stmt| self.visit_stmt(stmt)),
+                        body.iter().filter_map(|stmt| self.visit_stmt(stmt)),
                     ),
                     ty: TypeKind::Infer,
                 });
@@ -337,7 +409,7 @@ impl ExprVisitor for Ladder {
                     guard: None,
                     body: Block::from_iter(
                         body.location(),
-                        body.iter().map(|s| self.visit_stmt(s)),
+                        body.iter().filter_map(|s| self.visit_stmt(s)),
                     ),
                     ty: TypeKind::Infer,
                 });
@@ -470,7 +542,7 @@ impl ExprVisitor for Ladder {
             loc: cond.location(),
         }));
 
-        body.extend(ast_body.iter().map(|s| self.visit_stmt(s)));
+        body.extend(ast_body.iter().filter_map(|s| self.visit_stmt(s)));
 
         scope.push(Stmt::Expr(Expr {
             kind: ExprKind::Loop(body),
@@ -489,7 +561,7 @@ impl ExprVisitor for Ladder {
         Expr {
             kind: ExprKind::Loop(Block::from_iter(
                 body.location(),
-                body.iter().map(|stmt| self.visit_stmt(stmt)),
+                body.iter().filter_map(|stmt| self.visit_stmt(stmt)),
             )),
             loc: expr.location(),
         }
@@ -524,7 +596,7 @@ impl ExprVisitor for Ladder {
                             .map(|guard| Ref::new(self.visit_expr(&**guard))),
                         body: Block::from_iter(
                             body.location(),
-                            body.iter().map(|stmt| self.visit_stmt(stmt)),
+                            body.iter().filter_map(|stmt| self.visit_stmt(stmt)),
                         ),
                         ty: TypeKind::Infer,
                     })
@@ -547,16 +619,16 @@ impl ExprVisitor for Ladder {
         }
     }
 
-    fn visit_variable(&mut self, expr: &AstExpr, var: StrT) -> Self::Output {
+    fn visit_variable(&mut self, expr: &AstExpr, var: Locatable<StrT>) -> Self::Output {
         Expr {
-            kind: ExprKind::Variable(Var::User(var), TypeKind::Infer),
+            kind: ExprKind::Variable(Var::User(*var), TypeKind::Infer),
             loc: expr.location(),
         }
     }
 
-    fn visit_literal(&mut self, expr: &AstExpr, literal: &Literal) -> Self::Output {
+    fn visit_literal(&mut self, expr: &AstExpr, literal: &Locatable<Literal>) -> Self::Output {
         Expr {
-            kind: ExprKind::Literal(literal.clone()),
+            kind: ExprKind::Literal((**literal).clone()),
             loc: expr.location(),
         }
     }
@@ -611,7 +683,7 @@ impl ExprVisitor for Ladder {
             ..
         } = lhs
         {
-            Var::User(*var)
+            Var::User(**var)
         } else {
             todo!()
         };
@@ -668,7 +740,7 @@ impl ExprVisitor for Ladder {
         Expr {
             kind: ExprKind::FnCall(FuncCall {
                 func: if let AstExprKind::Variable(path) = caller.kind {
-                    ItemPath::new(path)
+                    ItemPath::new(*path)
                 } else {
                     todo!()
                 },

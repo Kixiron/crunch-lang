@@ -1,8 +1,7 @@
 {
     "repository": {
         "comment": {
-            "patterns": [
-                {
+            "patterns": [{
                     "name": "comment.line.crunch",
                     "begin": "::",
                     "end": "$"
@@ -15,10 +14,9 @@
             ]
         },
         "keyword": {
-            "patterns": [
-                {
+            "patterns": [{
                     "name": "keyword.control.crunch",
-                    "match": "\\b(break|continue|do|else|for|if|in|loop|match|return|then|where|while|with)\\b"
+                    "match": "\\b(break|continue|do|else|for|if|in|loop|match|return|then|where|while|with|extern)\\b"
                 },
                 {
                     "name": "keyword.control.import",
@@ -43,8 +41,7 @@
             ]
         },
         "storage": {
-            "patterns": [
-                {
+            "patterns": [{
                     "name": "storage.type.function.crunch",
                     "match": "\\b(fn)\\b"
                 },
@@ -67,8 +64,7 @@
             ]
         },
         "entity": {
-            "patterns": [
-                {
+            "patterns": [{
                     "match": "(?<=fn )([a-zA-Z][a-zA-Z0-9_]+)",
                     "name": "entity.name.function.crunch"
                 },
@@ -102,20 +98,17 @@
             ]
         },
         "variable": {
-            "patterns": [
-                {
-                    "match": "(let) ([a-zA-Z_][a-zA-Z0-9_]+)",
-                    "captures": {
-                        "1": {
-                            "name": "keyword.binding.crunch"
-                        }
+            "patterns": [{
+                "match": "(let) ([a-zA-Z_][a-zA-Z0-9_]+)",
+                "captures": {
+                    "1": {
+                        "name": "keyword.binding.crunch"
                     }
                 }
-            ]
+            }]
         },
         "constant": {
-            "patterns": [
-                {
+            "patterns": [{
                     "comment": "Floating point literal (fraction)",
                     "name": "constant.numeric.float.crunch",
                     "match": "\\b[0-9][0-9_]*\\.[0-9][0-9_]*([eE][+-]?[0-9_]+)?\\b"
@@ -152,8 +145,7 @@
             ]
         },
         "punctuation": {
-            "patterns": [
-                {
+            "patterns": [{
                     "name": "punctuation.separator.type.crunch",
                     "match": ":\\s+?(?=(bool|unit|int|float|str))"
                 },
@@ -168,8 +160,7 @@
             ]
         },
         "string": {
-            "patterns": [
-                {
+            "patterns": [{
                     "name": "constant.character.escape.crunch",
                     "match": "\\\\(x[0-9A-Fa-f]{2}|[0-2][0-7]{0,2}|3[0-6][0-7]?|37[0-7]?|[4-7][0-7]?|.)"
                 },
@@ -177,8 +168,7 @@
                     "name": "string.quoted.single.crunch",
                     "begin": "b?'",
                     "end": "'",
-                    "patterns": [
-                        {
+                    "patterns": [{
                             "name": "constant.character.escape.crunch",
                             "match": "\\\\(x[0-9A-Fa-f]{2}|[0-2][0-7]{0,2}|3[0-6][0-7]?|37[0-7]?|[4-7][0-7]?|.)"
                         },
@@ -192,8 +182,7 @@
                     "name": "string.quoted.double.crunch",
                     "begin": "b?\"",
                     "end": "\"",
-                    "patterns": [
-                        {
+                    "patterns": [{
                             "name": "constant.character.escape.crunch",
                             "match": "\\\\(x[0-9A-Fa-f]{2}|[0-2][0-7]{0,2}|3[0-6][0-7]?|37[0-7]?|[4-7][0-7]?|.)"
                         },
@@ -206,8 +195,7 @@
             ]
         },
         "support": {
-            "patterns": [
-                {
+            "patterns": [{
                     "name": "support.type.primitive.rust",
                     "match": "\\b(absurd|bool|unit|str|rune|[ui]reg|[ui]ptr|[iuf][0-9][0-9_]*)\\b"
                 },
@@ -226,8 +214,7 @@
             ]
         },
         "operator": {
-            "patterns": [
-                {
+            "patterns": [{
                     "name": "keyword.operator.crunch",
                     "match": "->|=>"
                 },
@@ -289,8 +276,7 @@
     "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
     "name": "crunch",
     "scopeName": "source.crunch",
-    "patterns": [
-        {
+    "patterns": [{
             "include": "#comment"
         },
         {

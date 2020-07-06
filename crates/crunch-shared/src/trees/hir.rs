@@ -1,7 +1,7 @@
 use crate::{
     error::{Location, Span},
     strings::{StrInterner, StrT},
-    trees::{Ref, Sided},
+    trees::{CallConv, Ref, Sided},
 };
 #[cfg(feature = "no-std")]
 use alloc::{
@@ -18,6 +18,7 @@ pub use super::ast::{BinaryOp, CompOp, ItemPath, Literal, Vis};
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum Item {
     Function(Function),
+    ExternFunc(ExternFunc),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -35,6 +36,16 @@ pub struct Function {
 pub struct FuncArg {
     pub name: Var,
     pub kind: TypeKind,
+    pub loc: Location,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct ExternFunc {
+    pub name: ItemPath,
+    pub vis: Vis,
+    pub args: Vec<FuncArg>,
+    pub ret: Type,
+    pub callconv: CallConv,
     pub loc: Location,
 }
 
@@ -273,7 +284,6 @@ pub struct Type {
     pub loc: Location,
 }
 
-#[allow(missing_copy_implementations)] // This eventually won't be copy
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum TypeKind {
     Infer,
@@ -281,6 +291,7 @@ pub enum TypeKind {
     String,
     Bool,
     Unit,
+    Pointer(Ref<TypeKind>),
 }
 
 impl TypeKind {
@@ -300,14 +311,19 @@ impl From<&crate::trees::ast::Type> for TypeKind {
             Type::String => Self::String,
             Type::Integer {
                 sign: Signedness::Signed,
+                width: 8,
+            } => Self::Integer,
+            Type::Integer {
+                sign: Signedness::Signed,
                 width: 32,
             } => Self::Integer,
             Type::Integer {
                 sign: Signedness::Signed,
                 width: 64,
             } => Self::Integer,
+            Type::Pointer { ty, .. } => Self::Pointer(Ref::new(Self::from(&**ty))),
 
-            _ => todo!(),
+            ty => todo!("{:?}", ty),
         }
     }
 }

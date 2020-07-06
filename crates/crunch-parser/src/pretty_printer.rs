@@ -112,6 +112,8 @@ impl PrettyPrinter {
                 f.write_str("extend ")?;
                 self.print_extend_block(f, target, extender.as_ref().map(|t| t.as_ref()), items)
             }
+
+            _ => todo!(),
         }
     }
 
@@ -422,7 +424,7 @@ impl PrettyPrinter {
         self.print_indent(f)?;
 
         if !dec.args.is_empty() {
-            write!(f, "@{}(", self.context.strings.resolve(dec.name).as_ref())?;
+            write!(f, "@{}(", self.context.strings.resolve(*dec.name).as_ref())?;
 
             let mut args = dec.args.iter();
             let last = args.next_back();
@@ -438,13 +440,13 @@ impl PrettyPrinter {
 
             f.write_char(')')
         } else {
-            write!(f, "@{}", self.context.strings.resolve(dec.name).as_ref())
+            write!(f, "@{}", self.context.strings.resolve(*dec.name).as_ref())
         }
     }
 
     pub(crate) fn print_expr(&mut self, f: &mut dyn Write, expr: &Expr) -> Result {
         match &expr.kind {
-            ExprKind::Variable(name) => f.write_str(self.context.strings.resolve(*name).as_ref()),
+            ExprKind::Variable(name) => f.write_str(self.context.strings.resolve(**name).as_ref()),
 
             ExprKind::UnaryOp(op, expr) => {
                 write!(f, "{}", op)?;
@@ -812,6 +814,8 @@ impl PrettyPrinter {
                 f.write_char(']')
             }
             Type::ItemPath(path) => self.item_path(f, path),
+
+            _ => todo!(),
         }
     }
 

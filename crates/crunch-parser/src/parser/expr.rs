@@ -182,25 +182,27 @@ impl<'src> Parser<'src> {
             },
 
             // Variables
-            TokenType::Ident => |parser, token| {
+            TokenType::Ident => |parser, ident_tok| {
                 use alloc::borrow::Cow;
                 use unicode_normalization::{IsNormalized, UnicodeNormalization};
 
                 let _frame = parser.add_stack_frame()?;
 
                 // Performs zero temp allocations if it's already NFKC-normalised.
-                let normalized = match unicode_normalization::is_nfkc_quick(token.source().chars())
-                {
-                    IsNormalized::Yes => Cow::Borrowed(token.source()),
-                    _ => Cow::Owned(token.source().nfkc().collect()),
-                };
+                let normalized =
+                    match unicode_normalization::is_nfkc_quick(ident_tok.source().chars()) {
+                        IsNormalized::Yes => Cow::Borrowed(ident_tok.source()),
+                        _ => Cow::Owned(ident_tok.source().nfkc().collect()),
+                    };
 
-                let ident = parser.context.strings.intern(&normalized);
-                let kind = ExprKind::Variable(ident);
+                let ident = Locatable::new(
+                    parser.context.strings.intern(&normalized),
+                    Location::concrete(ident_tok.span(), parser.current_file),
+                );
 
                 Ok(Expr {
-                    kind,
-                    loc: Location::concrete(token.span(), parser.current_file),
+                    kind: ExprKind::Variable(ident),
+                    loc: Location::concrete(ident_tok.span(), parser.current_file),
                 })
             },
 
@@ -212,7 +214,10 @@ impl<'src> Parser<'src> {
             | TokenType::Rune => |parser, lit| {
                 let _frame = parser.add_stack_frame()?;
 
-                let literal = ExprKind::Literal(parser.literal(&lit, parser.current_file)?);
+                let literal = ExprKind::Literal(Locatable::new(
+                    parser.literal(&lit, parser.current_file)?,
+                    Location::concrete(lit.span(), parser.current_file),
+                ));
 
                 Ok(Expr {
                     kind: literal,
@@ -521,6 +526,7 @@ impl<'src> Parser<'src> {
                 None
             };
             self.eat(TokenType::RightRocket, [TokenType::Newline])?;
+            // TODO: Make match arms an expression
             let body = self.block(&[TokenType::End], 5)?;
 
             self.eat(TokenType::End, [TokenType::Newline])?;

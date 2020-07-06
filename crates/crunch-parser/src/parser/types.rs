@@ -2,7 +2,7 @@ use crate::{
     parser::{CurrentFile, Parser},
     token::{Token, TokenType},
 };
-use alloc::{format, string::String, vec::Vec};
+use alloc::{format, vec::Vec};
 use core::convert::TryFrom;
 use crunch_shared::{
     crunch_proc::recursion_guard,
@@ -24,7 +24,7 @@ impl<'src> Parser<'src> {
     ///     | 'ureg' | 'ireg' | 'uptr' | 'iptr' | Path
     ///     | 'i' [0-9]+ | 'u' [0-9]+ | 'f' [0-9]+
     ///     | '!' Type | 'infer' | '&' 'mut'? Type
-    ///     | 'ref'? 'mut'? Type
+    ///     | 'ref'? 'mut'? Type | '*' ('const' | 'mut') Type
     ///     | '(' Type ')'
     ///     | Type '&' Type
     ///     | Type '|' Type
@@ -194,8 +194,9 @@ impl<'src> Parser<'src> {
                         && uint.len() > 1
                         && uint.chars().skip(1).all(char::is_numeric) =>
                     {
-                        let int = uint.chars().skip(1).collect::<String>();
-                        let width: u16 = lexical_core::parse(int.as_bytes()).map_err(|_| {
+                        // TODO: Return error if it's an empty string
+                        let uint = uint.get(1..).unwrap_or("");
+                        let width: u16 = lexical_core::parse(uint.as_bytes()).map_err(|_| {
                                 Locatable::new(
                                     Error::Syntax(SyntaxError::Generic(format!(
                                         "Unsigned integer types must be between `u1` and `u65536`, `{}` is out of range",
@@ -218,7 +219,8 @@ impl<'src> Parser<'src> {
                         && int.len() > 1
                         && int.chars().skip(1).all(char::is_numeric) =>
                     {
-                        let int = int.chars().skip(1).collect::<String>();
+                        // TODO: Return error if it's an empty string
+                        let int = int.get(1..).unwrap_or("");
                         let width: u16 = lexical_core::parse(int.as_bytes()).map_err(|_| {
                                 Locatable::new(
                                     Error::Syntax(SyntaxError::Generic(format!(
@@ -243,7 +245,8 @@ impl<'src> Parser<'src> {
                             && float.len() > 1
                             && float.chars().skip(1).all(char::is_numeric) =>
                     {
-                        let float = float.chars().skip(1).collect::<String>();
+                        // TODO: Return error if it's an empty string
+                        let float = float.get(1..).unwrap_or("");
                         let width: u16 = lexical_core::parse(float.as_bytes()).map_err(|_| {
                                 Locatable::new(
                                     Error::Syntax(SyntaxError::Generic(format!(
@@ -383,6 +386,18 @@ impl<'src> Parser<'src> {
                 };
 
                 Ok(Type::Const(ident, Ref::new(ty)))
+            },
+
+            TokenType::Star => |parser, _star| {
+                let _frame = parser.add_stack_frame()?;
+
+                let mutability = parser.eat_of([TokenType::Const, TokenType::Mut], [])?.ty();
+                let ty = Ref::new(parser.ascribed_type()?);
+
+                Ok(Type::Pointer {
+                    mutable: mutability == TokenType::Mut,
+                    ty,
+                })
             },
 
             _ => return None,

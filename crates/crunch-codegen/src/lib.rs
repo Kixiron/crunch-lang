@@ -1,21 +1,25 @@
+pub mod llvm;
+
 use crunch_shared::{
     crunch_proc::instrument,
     strings::StrInterner,
-    trees::mir::{
-        Block, BlockId, Constant, FuncId, Function as MirFunction, Instruction, Mir, RightValue,
-        Rval, SwitchArm, SwitchArmKind, Type as MirType, VarId,
+    trees::{
+        mir::{
+            Block, BlockId, Constant, FuncId, Function as MirFunction, Instruction, Mir,
+            RightValue, Rval, SwitchArm, SwitchArmKind, Type as MirType, VarId,
+        },
+        CallConv,
     },
-    utils::HashMap,
+    utils::{Either, HashMap},
     visitors::mir::MirVisitor,
 };
 use llvm::{
     module::{BuildingBlock, FunctionBuilder, Linkage, Module},
-    types::{IntType, Type, VoidType},
-    values::{BasicBlock, FunctionValue, InstructionValue, Value},
+    types::{AnyType, IntType, Type, VoidType},
+    utils::{AddressSpace, CallingConvention},
+    values::{AnyValue, ArrayValue, BasicBlock, FunctionValue, InstructionValue, Value},
     Context, Result,
 };
-
-pub mod llvm;
 
 pub struct CodeGenerator<'ctx> {
     module: &'ctx Module<'ctx>,
@@ -48,29 +52,71 @@ impl<'ctx> CodeGenerator<'ctx> {
     pub fn generate(mut self, mir: Mir) -> Result<()> {
         self.functions.reserve(mir.len());
         for function in mir.iter() {
-            let args: Vec<Type<'ctx>> = function
-                .args
-                .iter()
-                .map(|(_, arg)| self.visit_type(arg).unwrap())
-                .collect();
+            match function {
+                Either::Left(function) => {
+                    let args: Vec<Type<'ctx>> = function
+                        .args
+                        .iter()
+                        .map(|(_, arg)| self.visit_type(arg).unwrap())
+                        .collect();
 
-            let sig =
-                self.module
-                    .function_ty(self.visit_type(&function.ret)?, args.as_slice(), false)?;
+                    let sig = self.module.function_ty(
+                        self.visit_type(&function.ret)?,
+                        args.as_slice(),
+                        false,
+                    )?;
 
-            let function_val = self.module.create_function(
-                function
-                    .name
-                    .as_ref()
-                    .map_or_else(|| function.id.0.to_string(), |n| n.to_string(self.interner)),
-                sig,
-            )?;
+                    let function_val = self.module.create_function(
+                        function.name.as_ref().map_or_else(
+                            || function.id.0.to_string(),
+                            |n| n.to_string(self.interner),
+                        ),
+                        sig,
+                    )?;
 
-            function_val.with_linkage(Linkage::External);
-            self.functions.insert(function.id, function_val);
+                    function_val.with_linkage(Linkage::External);
+                    self.functions.insert(function.id, function_val);
+                }
+
+                Either::Right(extern_func) => {
+                    let args: Vec<Type<'ctx>> = extern_func
+                        .args
+                        .iter()
+                        .map(|(_, arg)| self.visit_type(arg).unwrap())
+                        .collect();
+
+                    let sig = self.module.function_ty(
+                        self.visit_type(&extern_func.ret)?,
+                        args.as_slice(),
+                        false,
+                    )?;
+
+                    let function_val = self.module.create_function(
+                        extern_func.name.as_ref().map_or_else(
+                            || extern_func.id.0.to_string(),
+                            |n| n.to_string(self.interner),
+                        ),
+                        sig,
+                    )?;
+
+                    function_val
+                        .with_linkage(Linkage::External)
+                        .with_calling_convention(match extern_func.callconv {
+                            CallConv::C => CallingConvention::C,
+                            CallConv::Crunch => CallingConvention::X86RegCall,
+                        });
+                    self.functions.insert(extern_func.id, function_val);
+                }
+            }
         }
 
-        for function in mir.iter() {
+        for function in mir.iter().filter_map(|func| {
+            if let Either::Left(func) = func {
+                Some(func)
+            } else {
+                None
+            }
+        }) {
             self.visit_function(function)?;
         }
 
@@ -363,6 +409,20 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
             Constant::Bool(boolean) => IntType::i1(self.ctx)?
                 .constant(*boolean as u64, true)
                 .map(|i| i.into()),
+
+            Constant::String(string) => {
+                let llvm_string = ArrayValue::const_string(self.module.context(), string, false)?;
+
+                Ok(self
+                    .module
+                    .add_global(
+                        IntType::i8(self.module.context())?.make_array(string.len() as u32)?,
+                        None,
+                        "",
+                    )?
+                    .with_initializer(llvm_string.as_value())
+                    .as_value())
+            }
         }
     }
 
@@ -372,13 +432,18 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
             MirType::U8 => IntType::u8(self.ctx).map(|i| i.into()),
             MirType::Bool => IntType::i1(self.ctx).map(|i| i.into()),
             MirType::Unit => VoidType::new(self.ctx).map(|i| i.into()),
+            MirType::Pointer(ptr) => self
+                .visit_type(ptr)?
+                .make_pointer(AddressSpace::Generic)
+                .map(|i| i.into()),
+            MirType::String => IntType::i8(self.ctx).map(|i| i.into()),
         }
     }
 }
 
 #[test]
 fn mir() {
-    use crunch_parser::Parser;
+    use crunch_parser::{ExternUnnester, Parser};
     use crunch_shared::{
         context::Context as ParseContext,
         files::{CurrentFile, FileId, Files},
@@ -397,24 +462,13 @@ fn mir() {
     simple_logger::init().ok();
 
     let source = r#"
-    fn main() -> i64
-        return fibonacci(10)
+    extern
+        @callconv("C")
+        fn puts(string: *const i8) -> i32;
     end
 
-    fn fibonacci(n: i64) -> i64
-        match n
-            0 =>
-                return 0
-            end
-
-            1 =>
-                return 1
-            end
-
-            n =>
-                return fibonacci(n - 1) + fibonacci(n - 2)
-            end
-        end
+    fn main() -> i32
+        return puts("Hello, world!")
     end
     "#;
 
@@ -433,6 +487,8 @@ fn mir() {
     {
         Ok((items, mut warnings)) => {
             warnings.emit(&files);
+
+            let items = ExternUnnester::new().unnest(items);
 
             let mut resolver = Resolver::new(vec![parse_ctx.strings().intern("<test>")].into());
             for item in items.iter() {
@@ -475,8 +531,9 @@ fn mir() {
 
             let linking = Timer::start("linking");
 
-            std::process::Command::new("lld-link")
-                .args(&["/ENTRY:main", "crunch.o"])
+            // TODO: Use `cc` to get the relevant linkers
+            std::process::Command::new("clang")
+                .args(&["crunch.o", "-o", "crunch.exe"])
                 .spawn()
                 .unwrap()
                 .wait()
@@ -485,19 +542,17 @@ fn mir() {
             linking.end();
             compilation.end();
 
-            target_machine
-                .emit_to_file(&module, "crunch.s", CodegenFileKind::Assembly)
-                .unwrap();
-
             let runtime = Timer::start("running executable");
-            let exit_code = std::process::Command::new("crunch.exe")
+            let command = std::process::Command::new("crunch.exe")
                 .spawn()
                 .unwrap()
                 .wait_with_output()
-                .unwrap()
-                .status
-                .code();
+                .unwrap();
             runtime.end();
+
+            target_machine
+                .emit_to_file(&module, "crunch.s", CodegenFileKind::Assembly)
+                .unwrap();
 
             let llvm_ir = format!("{:?}", module)
                 .trim()
@@ -505,7 +560,13 @@ fn mir() {
                 .map(|l| "    ".to_string() + l)
                 .collect::<Vec<String>>()
                 .join("\n");
-            let assembly = std::fs::read_to_string("crunch.s").unwrap();
+            let assembly = std::fs::read_to_string("crunch.s")
+                .unwrap()
+                .trim()
+                .lines()
+                .map(|l| "    ".to_string() + l)
+                .collect::<Vec<String>>()
+                .join("\n");
 
             let source_len = source.as_bytes().len();
             let object_file_len = File::open("crunch.o").unwrap().metadata().unwrap().len();
@@ -515,19 +576,18 @@ fn mir() {
                 "Source Code:{}\n\n\
                  LLVM IR:\n{}\n\n\
                  Assembly:\n{}\n\n\
-                 Exited with code {:?}\n\
                  File Sizes:\n    \
                      Source: {:>4} bytes\n    \
                      Object: {:>4} bytes\n    \
-                     Binary: {:>4} bytes
-                ",
+                     Binary: {:>4} bytes\n\n\
+                 Exited with code {:?}",
                 source,
                 llvm_ir,
-                assembly.trim(),
-                exit_code,
+                assembly,
                 source_len,
                 object_file_len,
                 executable_len,
+                command.status.code(),
             );
         }
 

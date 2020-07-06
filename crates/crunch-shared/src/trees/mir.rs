@@ -4,12 +4,13 @@ use crate::{
     trees::{
         ast::{Integer, ItemPath},
         hir::{
-            BinaryOp, Binding, Block as HirBlock, CompOp, Expr, FuncArg, FuncCall,
-            Function as HirFunction, Item, Literal, Match, MatchArm, Pattern, Return, Stmt,
-            TypeKind as HirType, TypeKind, Var, VarDecl,
+            BinaryOp, Binding, Block as HirBlock, CompOp, Expr, ExternFunc as HirExternFunc,
+            FuncArg, FuncCall, Function as HirFunction, Item, Literal, Match, MatchArm, Pattern,
+            Return, Stmt, TypeKind as HirType, TypeKind, Var, VarDecl,
         },
+        CallConv, Ref,
     },
-    utils::HashMap,
+    utils::{Either, HashMap},
     visitors::hir::{ExprVisitor, ItemVisitor, StmtVisitor},
 };
 use alloc::{boxed::Box, vec::Vec};
@@ -20,11 +21,11 @@ type Result<T> = core::result::Result<T, ()>;
 
 #[derive(Debug)]
 pub struct Mir {
-    functions: Vec<Function>,
+    functions: Vec<Either<Function, ExternFunc>>,
 }
 
 impl Mir {
-    pub fn iter(&self) -> impl Iterator<Item = &Function> {
+    pub fn iter(&self) -> impl Iterator<Item = &Either<Function, ExternFunc>> {
         self.functions.iter()
     }
 
@@ -48,6 +49,16 @@ impl Function {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExternFunc {
+    pub id: FuncId,
+    pub name: Option<ItemPath>,
+    pub args: Vec<(VarId, Type)>,
+    pub ret: Type,
+    pub callconv: CallConv,
+}
+
+// TODO: Make branching part of the basic block
 #[derive(Debug, Clone, PartialEq)]
 pub struct Block {
     pub id: BlockId,
@@ -78,9 +89,11 @@ impl Block {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
     Return(Option<RightValue>),
+    // TODO: Rename `Jump`
     Goto(BlockId),
     Assign(VarId, RightValue),
     Switch(RightValue, Vec<SwitchArm>),
+    // TODO: Add `Branch` for conditional branches
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -134,19 +147,22 @@ pub enum Rval {
     Div(Box<RightValue>, Box<RightValue>),
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Constant {
     I64(i64),
     U8(u8),
     Bool(bool),
+    String(Vec<u8>),
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     I64,
     U8,
     Bool,
     Unit,
+    Pointer(Ref<Self>),
+    String,
 }
 
 impl From<&HirType> for Type {
@@ -155,8 +171,9 @@ impl From<&HirType> for Type {
             HirType::Integer => Self::I64,
             HirType::Bool => Self::Bool,
             HirType::Unit => Self::Unit,
-            HirType::String => todo!("Slice or something"),
-            HirType::Infer => Type::Unit, // FIXME
+            HirType::Pointer(ty) => Self::Pointer(Ref::new(Self::from(&**ty))),
+            HirType::String => Self::String,
+            HirType::Infer => unreachable!("All types should have been inferred by now"),
         }
     }
 }
@@ -175,7 +192,7 @@ pub struct VarId(pub u64);
 
 #[derive(Debug)]
 pub struct MirBuilder {
-    functions: Vec<Function>,
+    functions: Vec<Either<Function, ExternFunc>>,
     blocks: Vec<Block>,
     current_block: usize,
     var_counter: u64,
@@ -196,11 +213,12 @@ impl MirBuilder {
     }
 
     #[instrument(name = "lowering to mir")]
-    #[allow(irrefutable_let_patterns)]
     pub fn lower(mut self, items: &[Item]) -> Result<Mir> {
         self.function_names =
             HashMap::from_iter(items.iter().enumerate().filter_map(|(i, item)| {
                 if let Item::Function(HirFunction { name, ret, .. }) = item {
+                    Some((name.clone(), (FuncId(i), Type::from(&ret.kind))))
+                } else if let Item::ExternFunc(HirExternFunc { name, ret, .. }) = item {
                     Some((name.clone(), (FuncId(i), Type::from(&ret.kind))))
                 } else {
                     None
@@ -272,7 +290,31 @@ impl ItemVisitor for MirBuilder {
             ret: (&func.ret.kind).into(),
             blocks: mem::take(&mut self.blocks),
         };
-        self.functions.push(func);
+        self.functions.push(Either::Left(func));
+
+        Ok(())
+    }
+
+    fn visit_extern_func(&mut self, func: &HirExternFunc) -> Self::Output {
+        let id = FuncId(self.functions.len() as usize);
+
+        let mut args = Vec::with_capacity(func.args.len());
+        for FuncArg { name, kind, .. } in func.args.iter() {
+            let id = self.next_var();
+            let ty: Type = kind.into();
+
+            self.variables.insert(*name, (id, ty.clone()));
+            args.push((id, ty));
+        }
+
+        let func = ExternFunc {
+            id,
+            name: Some(func.name.clone()),
+            args,
+            ret: (&func.ret.kind).into(),
+            callconv: func.callconv,
+        };
+        self.functions.push(Either::Right(func));
 
         Ok(())
     }
@@ -385,7 +427,7 @@ impl ExprVisitor for MirBuilder {
 
     fn visit_variable(&mut self, _loc: Location, var: Var, _ty: &TypeKind) -> Self::Output {
         Ok(self.variables.get(&var).map(|(var, ty)| RightValue {
-            ty: *ty,
+            ty: ty.clone(),
             val: Rval::Var(*var),
         }))
     }
@@ -405,7 +447,12 @@ impl ExprVisitor for MirBuilder {
                 val: Rval::Const(Constant::Bool(*b)),
             })),
 
-            _ => todo!(),
+            Literal::String(string) => Ok(Some(RightValue {
+                ty: Type::String,
+                val: Rval::Const(Constant::String(string.to_bytes())),
+            })),
+
+            lit => todo!("{:?}", lit),
         }
     }
 
@@ -446,7 +493,7 @@ impl ExprVisitor for MirBuilder {
         let new_id = self.next_var();
         assert_eq!(rval.ty, old_ty);
 
-        self.variables.insert(var, (new_id, rval.ty));
+        self.variables.insert(var, (new_id, rval.ty.clone()));
         self.current_block_mut()
             .push(Instruction::Assign(new_id, rval));
 
@@ -467,7 +514,7 @@ impl ExprVisitor for MirBuilder {
         let (lhs, rhs) = (Box::new(lhs), Box::new(rhs));
         assert_eq!(lhs.ty, rhs.ty);
 
-        let ty = lhs.ty;
+        let ty = lhs.ty.clone();
         let val = match op {
             BinaryOp::Add => Rval::Add(lhs, rhs),
             BinaryOp::Sub => Rval::Sub(lhs, rhs),

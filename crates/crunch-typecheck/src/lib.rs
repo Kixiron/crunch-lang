@@ -12,8 +12,8 @@ use crunch_shared::{
     error::{ErrorHandler, Locatable, Location, Span, TypeError, TypeResult},
     strings::StrInterner,
     trees::hir::{
-        Block, Break, CompOp, Expr, FuncArg, FuncCall, Function, Item, Literal, Match, MatchArm,
-        Return, Stmt, TypeKind, Var, VarDecl,
+        Block, Break, CompOp, Expr, ExternFunc, FuncArg, FuncCall, Function, Item, Literal, Match,
+        MatchArm, Return, Stmt, TypeKind, Var, VarDecl,
     },
     utils::HashMap,
     visitors::hir::{MutExprVisitor, MutItemVisitor, MutStmtVisitor},
@@ -197,6 +197,7 @@ impl MutItemVisitor for Engine {
     fn visit_item(&mut self, item: &mut Item) -> Self::Output {
         match item {
             Item::Function(func) => self.visit_func(func),
+            Item::ExternFunc(func) => self.visit_extern_func(func),
         }
     }
 
@@ -250,6 +251,35 @@ impl MutItemVisitor for Engine {
 
         for (i, arg) in func_args.into_iter().enumerate() {
             args[i].kind = self.reconstruct(arg)?;
+        }
+
+        Ok(())
+    }
+
+    fn visit_extern_func(&mut self, ExternFunc { args, ret, .. }: &mut ExternFunc) -> Self::Output {
+        let mut missing_arg_ty = None;
+        for arg in args.iter().filter(|a| !a.kind.is_infer()) {
+            if let Some(err) = missing_arg_ty.take() {
+                self.errors.push_err(err);
+            }
+
+            missing_arg_ty = Some(Locatable::new(
+                TypeError::MissingType("Types for external function arguments".to_owned()).into(),
+                arg.loc,
+            ));
+        }
+
+        if ret.kind.is_infer() {
+            if let Some(err) = missing_arg_ty {
+                self.errors.push_err(err);
+            }
+
+            return Err(Locatable::new(
+                TypeError::MissingType("Return types for external functions".to_owned()).into(),
+                ret.loc,
+            ));
+        } else if let Some(err) = missing_arg_ty {
+            return Err(err);
         }
 
         Ok(())
@@ -444,6 +474,7 @@ impl From<&TypeKind> for TypeInfo {
             TypeKind::String => Self::String,
             TypeKind::Bool => Self::Bool,
             TypeKind::Unit => Self::Unit,
+            TypeKind::Pointer(..) => todo!(),
         }
     }
 }

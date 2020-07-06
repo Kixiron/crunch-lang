@@ -166,11 +166,11 @@ pub fn nanopass(attrs: TokenStream1, input: TokenStream1) -> TokenStream1 {
 }
 
 fn nanopass_attr_inner(mut args: AttributeArgs, input: ItemFn) -> Result<TokenStream> {
-    let accepts: Variant = match attr_arg("accepts", &mut args)? {
+    let _accepts: Variant = match attr_arg("accepts", &mut args)? {
         Lit::Str(accepts) => accepts.parse()?,
         err => return Err(Error::new(err.span(), "expected a string literal")),
     };
-    let output: Variant = match attr_arg("outputs", &mut args)? {
+    let _output: Variant = match attr_arg("outputs", &mut args)? {
         Lit::Str(outputs) => outputs.parse()?,
         err => return Err(Error::new(err.span(), "expected a string literal")),
     };

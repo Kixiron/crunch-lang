@@ -16,7 +16,7 @@ use crate::llvm::{
 use llvm_sys::{
     core::{
         LLVMArrayType, LLVMCountParamTypes, LLVMGetElementType, LLVMGetParamTypes,
-        LLVMGetVectorSize, LLVMPointerType, LLVMSizeOf, LLVMVoidTypeInContext,
+        LLVMGetVectorSize, LLVMSizeOf, LLVMVoidTypeInContext,
     },
     LLVMType,
 };
@@ -43,12 +43,7 @@ pub trait AnyType<'ctx>: SealedAnyType<'ctx> + Sized {
     }
 
     fn make_pointer(self, address_space: AddressSpace) -> Result<PointerType<'ctx>> {
-        unsafe {
-            PointerType::from_raw(LLVMPointerType(
-                self.as_mut_ptr(),
-                address_space as u8 as u32,
-            ))
-        }
+        self.as_ty().make_pointer(address_space)
     }
 
     fn make_array(self, len: u32) -> Result<ArrayType<'ctx>> {

@@ -1,0 +1,8 @@
+extern
+    @callconv("C")
+    fn puts(string: *const i8) -> i32;
+end
+
+fn main() -> i32
+    return puts("Hello, world!")
+end

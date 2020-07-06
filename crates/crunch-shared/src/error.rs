@@ -227,7 +227,7 @@ impl<T> Locatable<T> {
     }
 
     #[inline]
-    pub fn loc(&self) -> Location {
+    pub fn location(&self) -> Location {
         self.loc
     }
 
@@ -493,6 +493,12 @@ pub enum SyntaxError {
 
     #[display(fmt = "Too many errors occurred (limit: {})", _0)]
     TooManyErrors(usize),
+
+    #[display(fmt = "{} are not allowed visibility specifiers", _0)]
+    NoVisibilityAllowed(String),
+
+    #[display(fmt = "Unrecognized calling convention: {:?}", _0)]
+    UnrecognizedCallConv(String),
 }
 
 impl SyntaxError {

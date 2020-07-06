@@ -6,6 +6,7 @@ use crate::llvm::{
     Error, ErrorKind, Result,
 };
 use llvm_sys::{
+    analysis::LLVMViewFunctionCFG,
     core::{
         LLVMBlockAddress, LLVMCountBasicBlocks, LLVMCountParams, LLVMDeleteFunction,
         LLVMGetFunctionCallConv, LLVMGetLinkage, LLVMGetParams, LLVMSetFunctionCallConv,
@@ -87,6 +88,10 @@ impl<'ctx> FunctionValue<'ctx> {
 
     pub fn delete(self) {
         unsafe { LLVMDeleteFunction(self.as_mut_ptr()) }
+    }
+
+    pub fn view_cfg(self) {
+        unsafe { LLVMViewFunctionCFG(self.as_mut_ptr()) }
     }
 }
 

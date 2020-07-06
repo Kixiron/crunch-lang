@@ -12,7 +12,7 @@ use std::{
     marker::PhantomData,
 };
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct PointerValue<'ctx, T>(Val<'ctx>, PhantomData<T>);
 
@@ -26,7 +26,7 @@ impl<'ctx, T: Copy> PointerValue<'ctx, Global<T>> {
     }
 
     pub fn with_dll_storage_class(self, storage_class: DLLStorageClass) -> Self {
-        unsafe { LLVMSetDLLStorageClass(self.0.as_mut_ptr(), storage_class.into()) };
+        self.set_dll_storage_class(storage_class);
         self
     }
 
@@ -36,6 +36,11 @@ impl<'ctx, T: Copy> PointerValue<'ctx, Global<T>> {
 
     pub fn set_thread_local(self, is_thread_local: bool) {
         unsafe { LLVMSetThreadLocal(self.0.as_mut_ptr(), is_thread_local as i32) }
+    }
+
+    pub fn with_thread_local(self, is_thread_local: bool) -> Self {
+        self.set_thread_local(is_thread_local);
+        self
     }
 
     pub fn thread_local_mode(self) -> Option<ThreadLocalMode> {
@@ -54,6 +59,11 @@ impl<'ctx, T: Copy> PointerValue<'ctx, Global<T>> {
             );
         }
     }
+
+    pub fn with_thread_local_mode(self, thread_local_mode: Option<ThreadLocalMode>) -> Self {
+        self.set_thread_local_mode(thread_local_mode);
+        self
+    }
 }
 
 impl<'ctx, T: AnyValue<'ctx>> PointerValue<'ctx, Global<T>> {
@@ -63,6 +73,12 @@ impl<'ctx, T: AnyValue<'ctx>> PointerValue<'ctx, Global<T>> {
 
     pub fn set_initializer(self, value: T) {
         unsafe { LLVMSetInitializer(self.0.as_mut_ptr(), value.as_mut_ptr()) }
+    }
+
+    pub fn with_initializer(self, value: T) -> Self {
+        self.set_initializer(value);
+
+        self
     }
 }
 
@@ -85,6 +101,14 @@ impl<T> Debug for PointerValue<'_, T> {
         Debug::fmt(&self.0, f)
     }
 }
+
+impl<'ctx, T> Clone for PointerValue<'ctx, T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'ctx, T> Copy for PointerValue<'ctx, T> {}
 
 pub trait Pointable: Sealed {}
 

@@ -1,7 +1,7 @@
 use crate::{
     error::{Locatable, Location, Span},
     strings::{StrInterner, StrT},
-    trees::{Ref, Sided},
+    trees::{CallConv, Ref, Sided},
 };
 #[cfg(feature = "no-std")]
 use alloc::{
@@ -12,7 +12,6 @@ use alloc::{
 };
 use core::{
     fmt::{Debug, Display, Formatter, Result, Write},
-    iter::FromIterator,
     ops::{Deref, Not},
 };
 use serde::{Deserialize, Serialize};
@@ -80,6 +79,17 @@ pub enum ItemKind {
     Alias {
         alias: Ref<Type>,
         actual: Ref<Type>,
+    },
+
+    ExternBlock {
+        items: Vec<Item>,
+    },
+
+    ExternFunc {
+        generics: Vec<Type>,
+        args: Vec<FuncArg>,
+        ret: Locatable<Ref<Type>>,
+        callconv: CallConv,
     },
 }
 
@@ -159,9 +169,15 @@ pub enum Variant {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct Decorator {
-    pub name: StrT,
+    pub name: Locatable<StrT>,
     pub args: Vec<Expr>,
     pub loc: Location,
+}
+
+impl Decorator {
+    pub const fn location(&self) -> Location {
+        self.loc
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -269,6 +285,14 @@ impl Expr {
     pub fn span(&self) -> Span {
         self.loc.span()
     }
+
+    pub fn as_literal(&self) -> Option<&Locatable<Literal>> {
+        if let ExprKind::Literal(ref literal) = self.kind {
+            Some(literal)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -281,8 +305,8 @@ pub enum ExprKind {
     Loop(Loop),
     For(For),
     Match(Match),
-    Variable(StrT),
-    Literal(Literal),
+    Variable(Locatable<StrT>),
+    Literal(Locatable<Literal>),
     UnaryOp(UnaryOp, Ref<Expr>),
     BinaryOp(Sided<BinaryOp, Ref<Expr>>),
     Comparison(Sided<CompOp, Ref<Expr>>),
@@ -365,6 +389,15 @@ impl Literal {
             None
         }
     }
+
+    #[inline]
+    pub fn as_string(&self) -> Option<&Text> {
+        if let Self::String(ref text) = self {
+            Some(text)
+        } else {
+            None
+        }
+    }
 }
 
 impl Display for Literal {
@@ -390,54 +423,38 @@ impl Display for Literal {
 
 #[derive(Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[repr(transparent)]
-pub struct Text(Vec<Rune>);
+pub struct Text(String);
 
 impl Text {
     #[inline]
-    pub fn new(runes: Vec<Rune>) -> Self {
-        Self(runes)
+    pub fn new(text: String) -> Self {
+        Self(text)
     }
 
     #[inline]
     pub fn to_bytes(&self) -> Vec<u8> {
-        self.to_string().into_bytes()
+        self.0.clone().into_bytes()
     }
 }
 
 impl Debug for Text {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "{:?}",
-            &String::from_iter(
-                self.0
-                    .iter()
-                    .map(|r| core::char::from_u32(r.as_u32()).unwrap()),
-            )
-        )
+        f.write_str(&self.0)
     }
 }
 
 impl Display for Text {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "{}",
-            String::from_iter(
-                self.0
-                    .iter()
-                    .map(|r| core::char::from_u32(r.as_u32()).unwrap())
-            )
-        )
+        f.write_str(&self.0)
     }
 }
 
 impl From<&str> for Text {
     #[inline]
     fn from(string: &str) -> Self {
-        Self(string.chars().map(Rune::from).collect())
+        Self(string.to_owned())
     }
 }
 
@@ -587,6 +604,7 @@ pub enum Type {
     Array(u128, Ref<Type>),
     Slice(Ref<Type>),
     Tuple(Vec<Type>),
+    Pointer { mutable: bool, ty: Ref<Type> },
 }
 
 impl Type {
@@ -716,6 +734,8 @@ impl Type {
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
+
+            _ => todo!(),
         }
     }
 }

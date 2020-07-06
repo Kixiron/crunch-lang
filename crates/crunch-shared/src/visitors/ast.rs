@@ -4,14 +4,13 @@ use crate::{
     trees::{
         ast::{
             AssignKind, BinaryOp, Block, CompOp, Dest, Exposure, Expr, ExprKind, For, FuncArg, If,
-            Item, ItemKind, ItemPath, Literal, Loop, Match, Stmt, StmtKind, Type, TypeMember,
-            UnaryOp, VarDecl, Variant, While,
+            Item, ItemKind, ItemPath, Literal, Loop, Match, Stmt, Type, TypeMember, UnaryOp,
+            VarDecl, Variant, While,
         },
-        Sided,
+        CallConv, Sided,
     },
 };
 
-#[allow(unused_variables)]
 pub trait ItemVisitor {
     type Output;
 
@@ -41,6 +40,13 @@ pub trait ItemVisitor {
                 self.visit_extend_block(item, target, extender.as_ref().map(|t| t.as_ref()), items)
             }
             ItemKind::Alias { alias, actual } => self.visit_alias(item, alias, actual),
+            ItemKind::ExternBlock { items } => self.visit_extern_block(item, items),
+            ItemKind::ExternFunc {
+                generics,
+                args,
+                ret,
+                callconv,
+            } => self.visit_extern_func(item, generics, args, ret.map(|t| &**t), *callconv),
         }
     }
 
@@ -76,25 +82,22 @@ pub trait ItemVisitor {
         items: &[Item],
     ) -> Self::Output;
     fn visit_alias(&mut self, item: &Item, alias: &Type, actual: &Type) -> Self::Output;
+    fn visit_extern_block(&mut self, item: &Item, items: &[Item]) -> Self::Output;
+    fn visit_extern_func(
+        &mut self,
+        item: &Item,
+        generics: &[Type],
+        args: &[FuncArg],
+        ret: Locatable<&Type>,
+        callconv: CallConv,
+    ) -> Self::Output;
 }
 
-pub trait StmtVisitor: ItemVisitor + ExprVisitor
-where
-    <Self as ItemVisitor>::Output: Into<<Self as StmtVisitor>::Output>,
-    <Self as ExprVisitor>::Output: Into<<Self as StmtVisitor>::Output>,
-{
+pub trait StmtVisitor {
     type Output;
 
-    #[inline]
-    fn visit_stmt(&mut self, stmt: &Stmt) -> <Self as StmtVisitor>::Output {
-        match &stmt.kind {
-            StmtKind::VarDecl(decl) => self.visit_var_decl(stmt, decl),
-            StmtKind::Item(item) => self.visit_item(item).into(),
-            StmtKind::Expr(expr) => self.visit_expr(expr).into(),
-        }
-    }
-
-    fn visit_var_decl(&mut self, stmt: &Stmt, var: &VarDecl) -> <Self as StmtVisitor>::Output;
+    fn visit_stmt(&mut self, stmt: &Stmt) -> Self::Output;
+    fn visit_var_decl(&mut self, stmt: &Stmt, var: &VarDecl) -> Self::Output;
 }
 
 pub trait ExprVisitor {
@@ -139,8 +142,8 @@ pub trait ExprVisitor {
     fn visit_loop(&mut self, expr: &Expr, loop_: &Loop) -> Self::Output;
     fn visit_for(&mut self, expr: &Expr, for_: &For) -> Self::Output;
     fn visit_match(&mut self, expr: &Expr, match_: &Match) -> Self::Output;
-    fn visit_variable(&mut self, expr: &Expr, var: StrT) -> Self::Output;
-    fn visit_literal(&mut self, expr: &Expr, literal: &Literal) -> Self::Output;
+    fn visit_variable(&mut self, expr: &Expr, var: Locatable<StrT>) -> Self::Output;
+    fn visit_literal(&mut self, expr: &Expr, literal: &Locatable<Literal>) -> Self::Output;
     fn visit_unary(&mut self, expr: &Expr, op: UnaryOp, inner: &Expr) -> Self::Output;
     fn visit_binary_op(
         &mut self,
@@ -160,4 +163,34 @@ pub trait ExprVisitor {
     fn visit_index(&mut self, expr: &Expr, var: &Expr, index: &Expr) -> Self::Output;
     fn visit_func_call(&mut self, expr: &Expr, caller: &Expr, args: &[Expr]) -> Self::Output;
     fn visit_member_func_call(&mut self, expr: &Expr, member: &Expr, func: &Expr) -> Self::Output;
+}
+
+#[allow(unused_variables)]
+pub trait ItemVisitorMut {
+    type Output;
+
+    #[inline]
+    fn visit_item(&mut self, items: &mut Vec<Item>, item: &mut Item) -> Self::Output {
+        match &item.kind {
+            ItemKind::Func { .. } => self.visit_func(items, item),
+            ItemKind::Type { .. } => self.visit_type(items, item),
+            ItemKind::Enum { .. } => self.visit_enum(items, item),
+            ItemKind::Trait { .. } => self.visit_trait(items, item),
+            ItemKind::Import { .. } => self.visit_import(items, item),
+            ItemKind::ExtendBlock { .. } => self.visit_extend_block(items, item),
+            ItemKind::Alias { .. } => self.visit_alias(items, item),
+            ItemKind::ExternBlock { .. } => self.visit_extern_block(items, item),
+            ItemKind::ExternFunc { .. } => self.visit_extern_func(items, item),
+        }
+    }
+
+    fn visit_func(&mut self, items: &mut Vec<Item>, item: &mut Item) -> Self::Output;
+    fn visit_type(&mut self, items: &mut Vec<Item>, item: &mut Item) -> Self::Output;
+    fn visit_enum(&mut self, items: &mut Vec<Item>, item: &mut Item) -> Self::Output;
+    fn visit_trait(&mut self, items: &mut Vec<Item>, item: &mut Item) -> Self::Output;
+    fn visit_import(&mut self, items: &mut Vec<Item>, item: &mut Item) -> Self::Output;
+    fn visit_extend_block(&mut self, items: &mut Vec<Item>, item: &mut Item) -> Self::Output;
+    fn visit_alias(&mut self, items: &mut Vec<Item>, item: &mut Item) -> Self::Output;
+    fn visit_extern_block(&mut self, items: &mut Vec<Item>, item: &mut Item) -> Self::Output;
+    fn visit_extern_func(&mut self, items: &mut Vec<Item>, item: &mut Item) -> Self::Output;
 }

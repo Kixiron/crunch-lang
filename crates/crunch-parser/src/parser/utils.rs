@@ -2,13 +2,7 @@ use crate::{
     parser::{string_escapes, Parser},
     token::{Token, TokenType},
 };
-use alloc::{
-    format,
-    rc::Rc,
-    string::{String, ToString},
-    vec,
-    vec::Vec,
-};
+use alloc::{format, rc::Rc, string::ToString, vec, vec::Vec};
 use crunch_shared::{
     crunch_proc::recursion_guard,
     error::{Error, Locatable, Location, ParseResult, SyntaxError},
@@ -62,9 +56,9 @@ impl<'src> Parser<'src> {
 
     #[recursion_guard]
     pub(crate) fn literal(&self, token: &Token<'_>, file: CurrentFile) -> ParseResult<Literal> {
-        let filtered: String = token.source().chars().filter(|c| *c != '_').collect();
-        let mut chars: Vec<char> = filtered.chars().collect();
-        let mut source: &str = &filtered;
+        let mut source: &str = &token.source();
+        // TODO: Const this
+        let format = lexical_core::NumberFormat::ignore(b'_').unwrap();
 
         match token.ty() {
             TokenType::Float => {
@@ -74,27 +68,26 @@ impl<'src> Parser<'src> {
                     return Ok(Literal::Float(Float(f64::to_bits(core::f64::NAN))));
                 }
 
-                let negative = if chars.get(0).copied() == Some('-') {
-                    chars.remove(0);
-                    source = &source[1..];
-
-                    true
-                } else if chars.get(0).copied() == Some('+') {
-                    chars.remove(0);
-                    source = &source[1..];
-
-                    false
-                } else {
-                    false
+                let negative = match source.chars().next() {
+                    Some('-') => {
+                        source = &source[1..];
+                        true
+                    }
+                    Some('+') => {
+                        source = &source[1..];
+                        false
+                    }
+                    _ => false,
                 };
 
-                let mut float = if chars.get(..2) == Some(&['0', 'x']) {
-                    lexical_core::parse_radix::<f64>(source[2..].as_bytes(), 16).map_err(|_| {
-                        Locatable::new(
-                            Error::Syntax(SyntaxError::InvalidLiteral("float".to_string())),
-                            Location::concrete(token, file),
-                        )
-                    })?
+                let mut float = if source.chars().take(2).eq(['0', 'x'].iter().copied()) {
+                    lexical_core::parse_format_radix::<f64>(source[2..].as_bytes(), 16, format)
+                        .map_err(|_| {
+                            Locatable::new(
+                                Error::Syntax(SyntaxError::InvalidLiteral("float".to_string())),
+                                Location::concrete(token, file),
+                            )
+                        })?
                 } else {
                     lexical_core::parse(source.as_bytes()).map_err(|_| {
                         Locatable::new(
@@ -112,18 +105,15 @@ impl<'src> Parser<'src> {
             }
 
             TokenType::Rune => {
-                let byte_rune = if chars.get(0).copied() == Some('b') {
-                    chars.remove(0);
+                let byte_rune = if source.chars().next() == Some('b') {
+                    source = &source[1..];
                     true
                 } else {
                     false
                 };
 
-                let rune = if let Some('\'') = chars.get(0) {
-                    chars.drain(..1).for_each(drop);
-                    chars.drain(chars.len() - 1..).for_each(drop);
-
-                    string_escapes::unescape_rune(chars).map_err(|(err, range)| {
+                let rune = if let Some('\'') = source.chars().next() {
+                    string_escapes::unescape_rune(source[1..].chars()).map_err(|(err, range)| {
                         Locatable::new(
                             err,
                             Location::concrete(
@@ -150,48 +140,28 @@ impl<'src> Parser<'src> {
             }
 
             TokenType::String => {
-                let byte_str = if chars.get(0).copied() == Some('b') {
-                    chars.remove(0);
+                let byte_str = if source.chars().next() == Some('b') {
+                    source = &source[1..];
                     true
                 } else {
                     false
                 };
 
-                let string = match chars.get(0) {
-                    Some('"') if chars.get(..3) == Some(&['"', '"', '"']) => {
-                        chars.drain(..3).for_each(drop);
-                        chars.drain(chars.len() - 3..).for_each(drop);
-
-                        string_escapes::unescape_string(chars).map_err(|(err, range)| {
-                            Locatable::new(
-                                err,
-                                Location::concrete(
-                                    (
-                                        token.range().start + 3 + range.start,
-                                        token.range().start + 3 + range.end,
+                let string = match (source.chars().next(), source.chars().last()) {
+                    (Some('"'), Some('"')) => {
+                        string_escapes::unescape_string(source[1..source.len() - 1].chars())
+                            .map_err(|(err, range)| {
+                                Locatable::new(
+                                    err,
+                                    Location::concrete(
+                                        (
+                                            token.range().start + 1 + range.start,
+                                            token.range().start + 1 + range.end,
+                                        ),
+                                        file,
                                     ),
-                                    file,
-                                ),
-                            )
-                        })?
-                    }
-
-                    Some('"') => {
-                        chars.drain(..1).for_each(drop);
-                        chars.drain(chars.len() - 1..).for_each(drop);
-
-                        string_escapes::unescape_string(chars).map_err(|(err, range)| {
-                            Locatable::new(
-                                err,
-                                Location::concrete(
-                                    (
-                                        token.range().start + 1 + range.start,
-                                        token.range().start + 1 + range.end,
-                                    ),
-                                    file,
-                                ),
-                            )
-                        })?
+                                )
+                            })?
                     }
 
                     _ => unreachable!(),
@@ -216,34 +186,34 @@ impl<'src> Parser<'src> {
             }
 
             TokenType::Int => {
-                let sign = if chars.get(0).copied() == Some('-') {
-                    chars.remove(0);
-                    source = &source[1..];
-
-                    Sign::Negative
-                } else if chars.get(0).copied() == Some('+') {
-                    chars.remove(0);
-                    source = &source[1..];
-
-                    Sign::Positive
-                } else {
-                    Sign::Positive
+                let sign = match source.chars().next() {
+                    Some('-') => {
+                        source = &source[1..];
+                        Sign::Negative
+                    }
+                    Some('+') => {
+                        source = &source[1..];
+                        Sign::Positive
+                    }
+                    _ => Sign::Positive,
                 };
 
-                let int = if chars.get(..2) == Some(&['0', 'x']) {
-                    lexical_core::parse_radix::<u128>(source[2..].as_bytes(), 16).map_err(|_| {
-                        Locatable::new(
-                            Error::Syntax(SyntaxError::InvalidLiteral("int".to_string())),
-                            Location::concrete(token, file),
-                        )
-                    })?
-                } else if chars.get(..2) == Some(&['0', 'b']) {
-                    lexical_core::parse_radix::<u128>(source[2..].as_bytes(), 2).map_err(|_| {
-                        Locatable::new(
-                            Error::Syntax(SyntaxError::InvalidLiteral("int".to_string())),
-                            Location::concrete(token, file),
-                        )
-                    })?
+                let int = if source.chars().take(2).eq(['0', 'x'].iter().copied()) {
+                    lexical_core::parse_format_radix::<u128>(source[2..].as_bytes(), 16, format)
+                        .map_err(|_| {
+                            Locatable::new(
+                                Error::Syntax(SyntaxError::InvalidLiteral("int".to_string())),
+                                Location::concrete(token, file),
+                            )
+                        })?
+                } else if source.chars().take(2).eq(['0', 'b'].iter().copied()) {
+                    lexical_core::parse_format_radix::<u128>(source[2..].as_bytes(), 2, format)
+                        .map_err(|_| {
+                            Locatable::new(
+                                Error::Syntax(SyntaxError::InvalidLiteral("int".to_string())),
+                                Location::concrete(token, file),
+                            )
+                        })?
                 } else {
                     lexical_core::parse_radix::<u128>(source.as_bytes(), 10).map_err(|_| {
                         Locatable::new(

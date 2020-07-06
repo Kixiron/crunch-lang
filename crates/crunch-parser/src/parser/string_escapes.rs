@@ -1,4 +1,7 @@
-use alloc::{format, string::ToString, vec::IntoIter, vec::Vec};
+use alloc::{
+    format,
+    string::{String, ToString},
+};
 use core::{char, ops::Range};
 use crunch_shared::{
     error::{Error, SyntaxError},
@@ -46,8 +49,12 @@ use crunch_shared::{
 // TODO: Have this process inlined variables & formatting
 /// Turns all escape sequences in a string into their actual representation
 #[inline]
-pub(super) fn unescape_string(queue: Vec<char>) -> Result<Text, (Error, Range<usize>)> {
-    let mut s: Vec<Rune> = Vec::with_capacity(queue.len());
+pub(super) fn unescape_string<I: Iterator<Item = char>>(
+    queue: I,
+) -> Result<Text, (Error, Range<usize>)> {
+    let (low, high) = queue.size_hint();
+    let mut s = String::with_capacity(high.unwrap_or(low));
+
     let mut queue = CharStream::new(queue.into_iter());
     let mut index = 0;
 
@@ -57,18 +64,20 @@ pub(super) fn unescape_string(queue: Vec<char>) -> Result<Text, (Error, Range<us
             continue;
         }
 
+        #[rustfmt::skip]
         match queue.next(&mut index)? {
             '\\' => s.push('\\'.into()),
-            '"' => s.push('"'.into()),
+            '"'  => s.push('"'.into()),
             '\'' => s.push('\''.into()),
-            'n' => s.push('\n'.into()),
-            'r' => s.push('\r'.into()),
-            't' => s.push('\t'.into()),
-            'x' => s.push(byte(&mut queue, &mut index)?),
-            'u' => s.push(unicode_16(&mut queue, index, &mut index)?),
-            'U' => s.push(unicode_32(&mut queue, index, &mut index)?),
-            'o' => s.push(octal(&mut queue, index, &mut index)?),
-            'b' => s.push(binary(&mut queue, &mut index)?),
+            'n'  => s.push('\n'.into()),
+            'r'  => s.push('\r'.into()),
+            't'  => s.push('\t'.into()),
+            '0'  => s.push('\0'.into()),
+            'x'  => s.push(byte(&mut queue, &mut index)?.as_char()),
+            'u'  => s.push(unicode_16(&mut queue, index, &mut index)?.as_char()),
+            'U'  => s.push(unicode_32(&mut queue, index, &mut index)?.as_char()),
+            'o'  => s.push(octal(&mut queue, index, &mut index)?.as_char()),
+            'b'  => s.push(binary(&mut queue, &mut index)?.as_char()),
 
             c => {
                 return Err((
@@ -83,19 +92,15 @@ pub(super) fn unescape_string(queue: Vec<char>) -> Result<Text, (Error, Range<us
 }
 
 #[inline]
-pub(super) fn unescape_rune(queue: Vec<char>) -> Result<Rune, (Error, Range<usize>)> {
+pub(super) fn unescape_rune<I: Iterator<Item = char>>(
+    queue: I,
+) -> Result<Rune, (Error, Range<usize>)> {
     let mut queue = CharStream::new(queue.into_iter());
     let mut index = 0;
 
     let c = queue.next(&mut index)?;
     if c != '\\' {
-        let rune = Ok(Rune::from_char(c));
-
-        if queue.is_empty() {
-            rune
-        } else {
-            Err((Error::Syntax(SyntaxError::TooManyRunes), index - 1..index))
-        }
+        Ok(Rune::from_char(c))
     } else {
         match queue.next(&mut index)? {
             '\\' => Ok(Rune::from_char('\\')),
@@ -128,8 +133,8 @@ macro_rules! missing_braces {
 }
 
 #[inline]
-fn unicode_16(
-    queue: &mut CharStream,
+fn unicode_16<I: Iterator<Item = char>>(
+    queue: &mut CharStream<I>,
     start: usize,
     index: &mut usize,
 ) -> Result<Rune, (Error, Range<usize>)> {
@@ -173,8 +178,8 @@ fn unicode_16(
 }
 
 #[inline]
-fn unicode_32(
-    queue: &mut CharStream,
+fn unicode_32<I: Iterator<Item = char>>(
+    queue: &mut CharStream<I>,
     start: usize,
     index: &mut usize,
 ) -> Result<Rune, (Error, Range<usize>)> {
@@ -218,7 +223,10 @@ fn unicode_32(
 }
 
 #[inline]
-fn byte(queue: &mut CharStream, index: &mut usize) -> Result<Rune, (Error, Range<usize>)> {
+fn byte<I: Iterator<Item = char>>(
+    queue: &mut CharStream<I>,
+    index: &mut usize,
+) -> Result<Rune, (Error, Range<usize>)> {
     if queue.next(index)? != '{' {
         return missing_braces!(index);
     }
@@ -253,8 +261,8 @@ fn byte(queue: &mut CharStream, index: &mut usize) -> Result<Rune, (Error, Range
 }
 
 #[inline]
-fn octal(
-    queue: &mut CharStream,
+fn octal<I: Iterator<Item = char>>(
+    queue: &mut CharStream<I>,
     start: usize,
     index: &mut usize,
 ) -> Result<Rune, (Error, Range<usize>)> {
@@ -292,7 +300,10 @@ fn octal(
 }
 
 #[inline]
-fn binary(queue: &mut CharStream, index: &mut usize) -> Result<Rune, (Error, Range<usize>)> {
+fn binary<I: Iterator<Item = char>>(
+    queue: &mut CharStream<I>,
+    index: &mut usize,
+) -> Result<Rune, (Error, Range<usize>)> {
     if queue.next(index)? != '{' {
         return missing_braces!(index);
     }
@@ -320,10 +331,10 @@ fn binary(queue: &mut CharStream, index: &mut usize) -> Result<Rune, (Error, Ran
     Ok(Rune::from_u32(number as u32).unwrap())
 }
 
-struct CharStream(IntoIter<char>);
+struct CharStream<I: Iterator<Item = char>>(I);
 
-impl CharStream {
-    pub fn new(chars: IntoIter<char>) -> Self {
+impl<I: Iterator<Item = char>> CharStream<I> {
+    pub fn new(chars: I) -> Self {
         Self(chars)
     }
 
@@ -339,10 +350,6 @@ impl CharStream {
             ))
         }
     }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.clone().count() == 0
-    }
 }
 
 // TODO: Test all types
@@ -350,28 +357,24 @@ impl CharStream {
 mod tests {
     use super::*;
 
-    fn chars(s: &str) -> Vec<char> {
-        s.chars().collect()
-    }
-
     #[test]
     fn unicode_16bit() {
-        assert_eq!(Some(" ".into()), unescape_string(chars(r"\u{0020}")).ok());
-        assert_eq!(Some("%".into()), unescape_string(chars(r"\u{0025}")).ok());
-        assert_eq!(Some("Z".into()), unescape_string(chars(r"\u{005A}")).ok());
-        assert_eq!(Some("}".into()), unescape_string(chars(r"\u{007D}")).ok());
-        assert_eq!(Some("®".into()), unescape_string(chars(r"\u{00AE}")).ok());
-        assert_eq!(Some("Ø".into()), unescape_string(chars(r"\u{00D8}")).ok());
-        assert_eq!(Some("Ɯ".into()), unescape_string(chars(r"\u{019C}")).ok());
-        assert_eq!(Some("Ǌ".into()), unescape_string(chars(r"\u{01CA}")).ok());
-        assert_eq!(Some("Ω".into()), unescape_string(chars(r"\u{03A9}")).ok());
-        assert_eq!(Some("Ӿ".into()), unescape_string(chars(r"\u{04FE}")).ok());
-        assert_eq!(Some("▙".into()), unescape_string(chars(r"\u{2599}")).ok());
-        assert_eq!(Some("凰".into()), unescape_string(chars(r"\u{51F0}")).ok());
-        assert_eq!(None, unescape_string(chars(r"\u2599}")).ok());
-        assert_eq!(None, unescape_string(chars(r"\u{t59ertwe}")).ok());
-        assert_eq!(None, unescape_string(chars(r"\u{tf}")).ok());
-        assert_eq!(None, unescape_string(chars(r"\u{tdftr9}")).ok());
-        assert_eq!(None, unescape_string(chars(r"\u{}")).ok());
+        assert_eq!(Some(" ".into()), unescape_string(r"\u{0020}".chars()).ok());
+        assert_eq!(Some("%".into()), unescape_string(r"\u{0025}".chars()).ok());
+        assert_eq!(Some("Z".into()), unescape_string(r"\u{005A}".chars()).ok());
+        assert_eq!(Some("}".into()), unescape_string(r"\u{007D}".chars()).ok());
+        assert_eq!(Some("®".into()), unescape_string(r"\u{00AE}".chars()).ok());
+        assert_eq!(Some("Ø".into()), unescape_string(r"\u{00D8}".chars()).ok());
+        assert_eq!(Some("Ɯ".into()), unescape_string(r"\u{019C}".chars()).ok());
+        assert_eq!(Some("Ǌ".into()), unescape_string(r"\u{01CA}".chars()).ok());
+        assert_eq!(Some("Ω".into()), unescape_string(r"\u{03A9}".chars()).ok());
+        assert_eq!(Some("Ӿ".into()), unescape_string(r"\u{04FE}".chars()).ok());
+        assert_eq!(Some("▙".into()), unescape_string(r"\u{2599}".chars()).ok());
+        assert_eq!(Some("凰".into()), unescape_string(r"\u{51F0}".chars()).ok());
+        assert_eq!(None, unescape_string(r"\u2599}".chars()).ok());
+        assert_eq!(None, unescape_string(r"\u{t59ertwe}".chars()).ok());
+        assert_eq!(None, unescape_string(r"\u{tf}".chars()).ok());
+        assert_eq!(None, unescape_string(r"\u{tdftr9}".chars()).ok());
+        assert_eq!(None, unescape_string(r"\u{}".chars()).ok());
     }
 }
