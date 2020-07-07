@@ -14,6 +14,7 @@ use llvm_sys::target_machine::{
 use std::{
     ffi::{CStr, CString},
     mem::MaybeUninit,
+    path::Path,
     ptr::NonNull,
 };
 
@@ -200,17 +201,17 @@ impl TargetMachine {
     pub fn emit_to_file(
         &self,
         module: &Module<'_>,
-        file_name: &str,
+        path: impl AsRef<Path>,
         codegen: CodegenFileKind,
     ) -> Result<()> {
-        let file_name = CString::new(file_name)?;
+        let path = CString::new(unsafe { std::mem::transmute::<&Path, &[u8]>(path.as_ref()) })?;
         let mut err_message = MaybeUninit::zeroed();
 
         let failed = unsafe {
             LLVMTargetMachineEmitToFile(
                 self.as_mut_ptr(),
                 module.as_mut_ptr(),
-                file_name.as_ptr() as *mut i8,
+                path.as_ptr() as *mut i8,
                 codegen.into(),
                 err_message.as_mut_ptr(),
             ) == 1

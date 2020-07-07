@@ -1,0 +1,35 @@
+[package]
+name = "driver"
+version = "0.1.0"
+authors = ["Chase Wilson <contact@chasewilson.dev>"]
+license = "Zlib"
+edition = "2018"
+default-run = "crunchc"
+
+[[bin]]
+name = "crunchc"
+path = "src/main.rs"
+
+[dependencies.structopt]
+version = "0.3.15"
+
+[dependencies.simple_logger]
+version = "1.6.0"
+
+[dependencies.crunch-shared]
+path = "../crunch-shared"
+
+[dependencies.crunch-parser]
+path = "../crunch-parser"
+
+# [dependencies.crunch_semantics]
+# path = "../crunch-semantics"
+
+[dependencies.ladder]
+path = "../ladder"
+
+[dependencies.crunch-typecheck]
+path = "../crunch-typecheck"
+
+[dependencies.crunch-codegen]
+path = "../crunch-codegen"

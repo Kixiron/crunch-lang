@@ -3,6 +3,8 @@ members = ["crates/*"]
 exclude = ["crates/crunch-fuzzing"]
 
 [profile.release]
+debug = false
 opt-level = 3
+debug-assertions = false
 lto = "fat"
-debug = true
+codegen-units = 1

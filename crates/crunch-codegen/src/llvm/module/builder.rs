@@ -1,13 +1,6 @@
-use crate::llvm::{
-    utils::to_non_nul,
-    values::{BasicBlock, InstructionValue, SealedAnyValue},
-    Context, Result,
-};
+use crate::llvm::{utils::to_non_nul, values::BasicBlock, Context, Result};
 use llvm_sys::{
-    core::{
-        LLVMCreateBuilderInContext, LLVMDisposeBuilder, LLVMPositionBuilder,
-        LLVMPositionBuilderAtEnd, LLVMPositionBuilderBefore,
-    },
+    core::{LLVMCreateBuilderInContext, LLVMDisposeBuilder, LLVMPositionBuilderAtEnd},
     LLVMBuilder,
 };
 use std::{marker::PhantomData, ptr::NonNull};
@@ -33,26 +26,26 @@ impl<'ctx> Builder<'ctx> {
         })
     }
 
-    #[inline]
-    pub(crate) fn move_to(&self, block: &BasicBlock<'ctx>, instruction: InstructionValue<'ctx>) {
-        unsafe {
-            LLVMPositionBuilder(
-                self.as_mut_ptr(),
-                BasicBlock::as_mut_ptr(*block),
-                instruction.as_mut_ptr(),
-            )
-        };
-    }
+    // #[inline]
+    // pub(crate) fn move_to(&self, block: &BasicBlock<'ctx>, instruction: InstructionValue<'ctx>) {
+    //     unsafe {
+    //         LLVMPositionBuilder(
+    //             self.as_mut_ptr(),
+    //             BasicBlock::as_mut_ptr(*block),
+    //             instruction.as_mut_ptr(),
+    //         )
+    //     };
+    // }
 
     #[inline]
     pub(crate) fn move_to_end(&self, block: &BasicBlock<'ctx>) {
         unsafe { LLVMPositionBuilderAtEnd(self.as_mut_ptr(), BasicBlock::as_mut_ptr(*block)) };
     }
 
-    #[inline]
-    pub(crate) fn move_before(&self, instruction: InstructionValue<'ctx>) {
-        unsafe { LLVMPositionBuilderBefore(self.as_mut_ptr(), instruction.as_mut_ptr()) };
-    }
+    // #[inline]
+    // pub(crate) fn move_before(&self, instruction: InstructionValue<'ctx>) {
+    //     unsafe { LLVMPositionBuilderBefore(self.as_mut_ptr(), instruction.as_mut_ptr()) };
+    // }
 
     #[inline]
     pub(crate) const fn as_mut_ptr(&self) -> *mut LLVMBuilder {

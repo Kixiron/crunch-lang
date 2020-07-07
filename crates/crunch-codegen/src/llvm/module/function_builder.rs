@@ -2,7 +2,7 @@ use crate::llvm::{
     module::{Builder, BuildingBlock, Module},
     types::{FunctionSig, SealedAnyType, Type},
     utils::{LLVMString, EMPTY_CSTR},
-    values::{BasicBlock, FunctionValue, SealedAnyValue, Value, ValueKind},
+    values::{BasicBlock, FunctionValue, SealedAnyValue, Value},
     Error, ErrorKind, Result,
 };
 use llvm_sys::{
@@ -105,8 +105,10 @@ impl<'ctx> FunctionBuilder<'ctx> {
 
             // TODO: Test signature types?
             debug_assert_eq!(
-                unsafe { ValueKind::from(LLVMGetValueKind(value.as_mut_ptr())) },
-                ValueKind::Argument,
+                unsafe {
+                    crate::llvm::values::ValueKind::from(LLVMGetValueKind(value.as_mut_ptr()))
+                },
+                crate::llvm::values::ValueKind::Argument,
             );
         }
 

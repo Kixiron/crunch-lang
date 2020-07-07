@@ -16,9 +16,11 @@ use crate::llvm::{
 };
 use llvm_sys::{
     analysis::{LLVMVerifierFailureAction, LLVMVerifyModule},
+    bit_writer::LLVMWriteBitcodeToFile,
     core::{
         LLVMAddFunction, LLVMAddGlobal, LLVMAddGlobalInAddressSpace, LLVMCloneModule,
-        LLVMDisposeModule, LLVMFunctionType, LLVMGetNamedFunction, LLVMPrintModuleToString,
+        LLVMDisposeModule, LLVMFunctionType, LLVMGetNamedFunction, LLVMPrintModuleToFile,
+        LLVMPrintModuleToString,
     },
     LLVMModule, LLVMType,
 };
@@ -26,6 +28,7 @@ use std::{
     ffi::{CStr, CString},
     fmt::{Debug, Formatter, Result as FmtResult},
     mem::MaybeUninit,
+    path::Path,
     ptr::NonNull,
 };
 
@@ -217,6 +220,43 @@ impl<'ctx> Module<'ctx> {
     #[inline]
     pub const fn context(&self) -> &'ctx Context {
         self.ctx
+    }
+
+    pub fn emit_ir_to_file(&self, path: impl AsRef<Path>) -> Result<()> {
+        let path = CString::new(unsafe { std::mem::transmute::<&Path, &[u8]>(path.as_ref()) })?;
+        let mut err_message = MaybeUninit::zeroed();
+
+        let failed = unsafe {
+            LLVMPrintModuleToFile(
+                self.as_mut_ptr(),
+                path.as_ptr() as *mut i8,
+                err_message.as_mut_ptr(),
+            ) == 1
+        };
+
+        if failed {
+            let err_message = unsafe { LLVMString::from_raw(err_message.assume_init())? };
+
+            Err(Error::new(err_message, ErrorKind::FailedEmission))
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn emit_bitcode_to_file(&self, path: impl AsRef<Path>) -> Result<()> {
+        let path = CString::new(unsafe { std::mem::transmute::<&Path, &[u8]>(path.as_ref()) })?;
+
+        let failed =
+            unsafe { LLVMWriteBitcodeToFile(self.as_mut_ptr(), path.as_ptr() as *mut i8) == 0 };
+
+        if failed {
+            Err(Error::new(
+                "Failed to emit bitcode to file",
+                ErrorKind::FailedEmission,
+            ))
+        } else {
+            Ok(())
+        }
     }
 }
 

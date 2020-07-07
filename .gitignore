@@ -15,3 +15,5 @@ right.dump
 seccomp-perf.json
 /fuzz-out
 **/history.txt
+
+**/build
