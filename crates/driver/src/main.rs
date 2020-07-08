@@ -13,19 +13,37 @@ use crunch_shared::{
     trees::mir::MirBuilder,
     visitors::ast::ItemVisitor,
 };
+use crunch_typecheck::Engine;
 use ladder::Ladder;
 use std::{error::Error, fs, path::PathBuf, str::FromStr};
 use structopt::StructOpt;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let args = CrunchcOpts::from_args();
-    fs::create_dir_all(&args.out_dir)?;
+    match run()? {
+        ExitStatus::Failed => std::process::exit(101),
+        ExitStatus::Custom(custom) => std::process::exit(custom),
+        ExitStatus::Succeeded => Ok(()),
+    }
+}
 
-    if args.verbose {
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum ExitStatus {
+    Failed,
+    Succeeded,
+    Custom(i32),
+}
+
+fn run() -> Result<ExitStatus, Box<dyn Error>> {
+    let args = CrunchcOpts::from_args();
+    let options = args.build_options();
+
+    fs::create_dir_all(&options.out_dir)?;
+
+    if options.verbose {
         simple_logger::init().ok();
     }
 
-    let file_name = args
+    let file_name = options
         .target_file
         .file_name()
         .ok_or("Files must be a file")?
@@ -35,7 +53,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .splitn(2, ".")
         .next()
         .ok_or("Files must end in the .crunch extension")?;
-    let source = fs::read_to_string(&args.target_file)?;
+    let source = fs::read_to_string(&options.target_file)?;
 
     let parse_ctx = ParseContext::default();
     let mut files = Files::new();
@@ -52,9 +70,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             warnings.emit(&files);
 
             let ast = ExternUnnester::new().unnest(ast);
-            if args.emit.contains(&EmissionKind::Ast) {
+            if options.emit.contains(&EmissionKind::Ast) {
                 fs::write(
-                    &args.out_dir.join(format!("{}.ast", file_name_ext)),
+                    &options.out_dir.join(format!("{}.ast", file_name_ext)),
                     format!("{:#?}", &ast),
                 )?;
             }
@@ -64,7 +82,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         Err(mut errors) => {
             errors.emit(&files);
-            return Ok(());
+            return Ok(ExitStatus::Failed);
         }
     };
 
@@ -78,26 +96,26 @@ fn main() -> Result<(), Box<dyn Error>> {
         resolver
     };
 
-    let hir = Ladder::new().lower(&ast);
-    if args.emit.contains(&EmissionKind::Hir) {
+    let mut hir = Ladder::new().lower(&ast);
+    if options.emit.contains(&EmissionKind::Hir) {
         fs::write(
-            args.out_dir.join(format!("{}.hir", file_name_ext)),
+            options.out_dir.join(format!("{}.hir", file_name_ext)),
             format!("{:#?}", &hir),
         )?;
     }
 
-    // match Engine::new(parse_ctx.strings.clone()).walk(&mut hir) {
-    //     Ok(mut warnings) => warnings.emit(&files),
-    //     Err(mut errors) => {
-    //         errors.emit(&files);
-    //         return Ok(());
-    //     }
-    // }
+    match Engine::new(parse_ctx.strings.clone()).walk(&mut hir) {
+        Ok(mut warnings) => warnings.emit(&files),
+        Err(mut errors) => {
+            errors.emit(&files);
+            return Ok(ExitStatus::Failed);
+        }
+    }
 
     let mir = MirBuilder::new().lower(&hir).unwrap();
-    if args.emit.contains(&EmissionKind::Mir) {
+    if options.emit.contains(&EmissionKind::Mir) {
         fs::write(
-            &args.out_dir.join(format!("{}.mir", file_name_ext)),
+            &options.out_dir.join(format!("{}.mir", file_name_ext)),
             format!("{:#?}", &mir),
         )?;
     }
@@ -107,12 +125,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     CodeGenerator::new(&module, &parse_ctx.strings).generate(mir)?;
     module.verify()?;
 
-    if args.emit.contains(&EmissionKind::LlvmIr) {
-        module.emit_ir_to_file(args.out_dir.join(format!("{}.ll", file_name_ext)))?;
+    if options.emit.contains(&EmissionKind::LlvmIr) {
+        module.emit_ir_to_file(options.out_dir.join(format!("{}.ll", file_name_ext)))?;
     }
 
-    if args.emit.contains(&EmissionKind::LlvmBc) {
-        module.emit_ir_to_file(args.out_dir.join(format!("{}.bc", file_name_ext)))?;
+    if options.emit.contains(&EmissionKind::LlvmBc) {
+        module.emit_ir_to_file(options.out_dir.join(format!("{}.bc", file_name_ext)))?;
     }
 
     Target::init_native(TargetConf::all())?;
@@ -129,45 +147,64 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     target_machine.emit_to_file(
         &module,
-        args.out_dir.join(format!("{}.o", file_name_ext)),
+        options.out_dir.join(format!("{}.o", file_name_ext)),
         CodegenFileKind::Object,
     )?;
 
-    if args.emit.contains(&EmissionKind::Assembly) {
+    if options.emit.contains(&EmissionKind::Assembly) {
         target_machine.emit_to_file(
             &module,
-            args.out_dir.join(format!("{}.s", file_name_ext)),
+            options.out_dir.join(format!("{}.s", file_name_ext)),
             CodegenFileKind::Assembly,
         )?;
     }
 
-    let exe_path = if let Some(ref out) = args.out_file {
-        args.out_dir.join(out)
+    let exe_path = if let Some(ref out) = options.out_file {
+        options.out_dir.join(out)
     } else {
-        args.out_dir.join(&format!("{}.exe", file_name_ext))
+        options.out_dir.join(&format!("{}.exe", file_name_ext))
     };
     // TODO: Use `cc` to get the relevant linkers
     std::process::Command::new("clang")
-        .arg(args.out_dir.join(&format!("{}.o", file_name_ext)))
+        .arg(options.out_dir.join(&format!("{}.o", file_name_ext)))
         .arg("-o")
         .arg(&exe_path)
         .spawn()?
         .wait()?;
 
-    if args.mode == CompilerMode::Run {
-        std::process::Command::new(exe_path).spawn()?.wait()?;
+    if let CrunchcOpts::Run { .. } = args {
+        let status = std::process::Command::new(exe_path).spawn()?.wait()?;
+
+        return Ok(ExitStatus::Custom(status.code().unwrap_or(0)));
     }
 
-    Ok(())
+    Ok(ExitStatus::Succeeded)
 }
 
 #[derive(Debug, Clone, StructOpt)]
 #[structopt(about = "The Crunch compiler", rename_all = "kebab-case")]
-struct CrunchcOpts {
-    /// The mode to run the compiler in
-    #[structopt(name = "MODE")]
-    pub mode: CompilerMode,
+enum CrunchcOpts {
+    Build {
+        #[structopt(flatten)]
+        options: BuildOptions,
+    },
 
+    Run {
+        #[structopt(flatten)]
+        options: BuildOptions,
+    },
+}
+
+impl CrunchcOpts {
+    pub fn build_options(&self) -> BuildOptions {
+        match self {
+            Self::Build { options, .. } | Self::Run { options, .. } => options.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, StructOpt)]
+struct BuildOptions {
     /// The file to be compiled
     #[structopt(name = "FILE")]
     pub target_file: PathBuf,
@@ -187,27 +224,6 @@ struct CrunchcOpts {
     /// The output directory
     #[structopt(default_value = "build")]
     pub out_dir: PathBuf,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-enum CompilerMode {
-    Build,
-    Run,
-}
-
-impl FromStr for CompilerMode {
-    type Err = &'static str;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let emit = match s.to_lowercase().as_ref() {
-            "build" => Self::Build,
-            "run" => Self::Run,
-
-            _ => return Err("Unrecognized run mode"),
-        };
-
-        Ok(emit)
-    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

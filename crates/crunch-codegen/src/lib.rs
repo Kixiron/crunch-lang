@@ -437,6 +437,8 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
                 .make_pointer(AddressSpace::Generic)
                 .map(|i| i.into()),
             MirType::String => IntType::i8(self.ctx).map(|i| i.into()),
+            // TODO: ???
+            MirType::Absurd => VoidType::new(self.ctx).map(|i| i.into()),
         }
     }
 }

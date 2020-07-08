@@ -644,6 +644,17 @@ pub enum TypeError {
 
     #[display(fmt = "{}", _0)]
     IncorrectType(String),
+
+    #[display(fmt = "The function '{}' was not found in this scope", _0)]
+    FuncNotInScope(String),
+
+    #[display(
+        fmt = "Expected {} argument{}, got {}",
+        _0,
+        r#"if *_0 == 1 { "" } else { "s" }"#,
+        _1
+    )]
+    NotEnoughArgs(usize, usize, Location),
 }
 
 impl TypeError {
@@ -683,6 +694,23 @@ impl TypeError {
                 );
             }
 
+            Self::NotEnoughArgs(expected, _, sig) => {
+                diag.push(
+                    Diagnostic::error()
+                        .with_message(self.to_string())
+                        .with_labels(vec![Label::primary(file, span)]),
+                );
+                diag.push(
+                    Diagnostic::note()
+                        .with_message(format!(
+                            "The function is declared here, it has {} argument{}",
+                            expected,
+                            if *expected == 1 { "" } else { "s" },
+                        ))
+                        .with_labels(vec![Label::primary(file, sig.range())]),
+                );
+            }
+
             _ => diag.push(
                 Diagnostic::error()
                     .with_message(self.to_string())
@@ -702,6 +730,9 @@ impl Into<Error> for TypeError {
 pub enum Warning {
     #[display(fmt = "The generic '{}' was not used", _0)]
     UnusedGeneric(String),
+
+    #[display(fmt = "Literals should not have more than one consecutive underscore")]
+    TooManyUnderscores,
 }
 
 impl Warning {
@@ -716,7 +747,7 @@ impl Warning {
         F: CodeFiles<'a, FileId = FileId>,
     {
         diag.push(
-            Diagnostic::error()
+            Diagnostic::warning()
                 .with_message(self.to_string())
                 .with_labels(vec![Label::primary(file, span)]),
         )

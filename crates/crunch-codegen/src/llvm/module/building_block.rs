@@ -1,4 +1,5 @@
 use crate::llvm::{
+    // instructions::instruction::{Add, IntValue, Mul, SDiv, Sub, UDiv, Valued},
     module::Builder,
     types::{IntType, Type, TypeKind},
     utils::EMPTY_CSTR,
@@ -6,14 +7,18 @@ use crate::llvm::{
         AnyValue, ArrayValue, BasicBlock, CallSiteValue, FunctionOrPointer, FunctionValue, Global,
         InstructionValue, PointerValue, SealedAnyValue, Value,
     },
-    Error, ErrorKind, Result,
+    Error,
+    ErrorKind,
+    Result,
 };
 use llvm_sys::{
     core::{
         LLVMAddCase, LLVMBuildAdd, LLVMBuildBitCast, LLVMBuildBr, LLVMBuildCall2, LLVMBuildFDiv,
         LLVMBuildGlobalString, LLVMBuildGlobalStringPtr, LLVMBuildMul, LLVMBuildPointerCast,
         LLVMBuildRet, LLVMBuildRetVoid, LLVMBuildSDiv, LLVMBuildSub, LLVMBuildSwitch,
-        LLVMBuildUDiv, LLVMBuildUnreachable,
+        LLVMBuildUDiv,
+        LLVMBuildUnreachable,
+        /* LLVMConstAdd, LLVMConstMul, LLVMConstSDiv, LLVMConstSub, LLVMConstUDiv, */
     },
     LLVMValue,
 };
@@ -128,6 +133,128 @@ impl<'ctx> BuildingBlock<'ctx> {
 
         Ok(mult)
     }
+
+    /*
+    #[inline]
+    pub fn add<T, L, R>(&self, lhs: L, rhs: R) -> Result<Add<'ctx, T>>
+    where
+        L: Into<IntValue<'ctx, T>>,
+        R: Into<IntValue<'ctx, T>>,
+    {
+        let (lhs, rhs) = (lhs.into(), rhs.into());
+
+        let add = unsafe {
+            Add::from_raw(if lhs.is_const() && rhs.is_const() {
+                LLVMConstAdd(lhs.llvm_ptr().as_ptr(), rhs.llvm_ptr().as_ptr())
+            } else {
+                LLVMBuildAdd(
+                    self.builder.as_mut_ptr(),
+                    lhs.llvm_ptr().as_ptr(),
+                    rhs.llvm_ptr().as_ptr(),
+                    EMPTY_CSTR,
+                )
+            })?
+        };
+
+        Ok(add)
+    }
+
+    #[inline]
+    pub fn sub<T, L, R>(&self, lhs: L, rhs: R) -> Result<Sub<'ctx, T>>
+    where
+        L: Into<IntValue<'ctx, T>>,
+        R: Into<IntValue<'ctx, T>>,
+    {
+        let (lhs, rhs) = (lhs.into(), rhs.into());
+
+        let sub = unsafe {
+            Sub::from_raw(if lhs.is_const() && rhs.is_const() {
+                LLVMConstSub(lhs.llvm_ptr().as_ptr(), rhs.llvm_ptr().as_ptr())
+            } else {
+                LLVMBuildSub(
+                    self.builder.as_mut_ptr(),
+                    lhs.llvm_ptr().as_ptr(),
+                    rhs.llvm_ptr().as_ptr(),
+                    EMPTY_CSTR,
+                )
+            })?
+        };
+
+        Ok(sub)
+    }
+
+    #[inline]
+    pub fn mul<T, L, R>(&self, lhs: L, rhs: R) -> Result<Mul<'ctx, T>>
+    where
+        L: Into<IntValue<'ctx, T>>,
+        R: Into<IntValue<'ctx, T>>,
+    {
+        let (lhs, rhs) = (lhs.into(), rhs.into());
+
+        let mul = unsafe {
+            Mul::from_raw(if lhs.is_const() && rhs.is_const() {
+                LLVMConstMul(lhs.llvm_ptr().as_ptr(), rhs.llvm_ptr().as_ptr())
+            } else {
+                LLVMBuildMul(
+                    self.builder.as_mut_ptr(),
+                    lhs.llvm_ptr().as_ptr(),
+                    rhs.llvm_ptr().as_ptr(),
+                    EMPTY_CSTR,
+                )
+            })?
+        };
+
+        Ok(mul)
+    }
+
+    #[inline]
+    pub fn sdiv<T, L, R>(&self, lhs: L, rhs: R) -> Result<SDiv<'ctx, T>>
+    where
+        L: Into<IntValue<'ctx, T>>,
+        R: Into<IntValue<'ctx, T>>,
+    {
+        let (lhs, rhs) = (lhs.into(), rhs.into());
+
+        let div = unsafe {
+            SDiv::from_raw(if lhs.is_const() && rhs.is_const() {
+                LLVMConstSDiv(lhs.llvm_ptr().as_ptr(), rhs.llvm_ptr().as_ptr())
+            } else {
+                LLVMBuildSDiv(
+                    self.builder.as_mut_ptr(),
+                    lhs.llvm_ptr().as_ptr(),
+                    rhs.llvm_ptr().as_ptr(),
+                    EMPTY_CSTR,
+                )
+            })?
+        };
+
+        Ok(div)
+    }
+
+    #[inline]
+    pub fn udiv<T, L, R>(&self, lhs: L, rhs: R) -> Result<UDiv<'ctx, T>>
+    where
+        L: Into<IntValue<'ctx, T>>,
+        R: Into<IntValue<'ctx, T>>,
+    {
+        let (lhs, rhs) = (lhs.into(), rhs.into());
+
+        let div = unsafe {
+            UDiv::from_raw(if lhs.is_const() && rhs.is_const() {
+                LLVMConstUDiv(lhs.llvm_ptr().as_ptr(), rhs.llvm_ptr().as_ptr())
+            } else {
+                LLVMBuildUDiv(
+                    self.builder.as_mut_ptr(),
+                    lhs.llvm_ptr().as_ptr(),
+                    rhs.llvm_ptr().as_ptr(),
+                    EMPTY_CSTR,
+                )
+            })?
+        };
+
+        Ok(div)
+    }
+    */
 
     #[inline]
     pub fn float_div(
@@ -417,29 +544,5 @@ impl<'ctx> Deref for BuildingBlock<'ctx> {
 
     fn deref(&self) -> &Self::Target {
         &self.block
-    }
-}
-
-#[cfg(test)]
-#[allow(non_snake_case)]
-mod tests {
-    use crate::llvm::{module::Linkage, types::IntType, Context};
-
-    #[test]
-    fn addition() {
-        let ctx = Context::new().unwrap();
-        let module = ctx.module("main").unwrap();
-
-        let I32 = IntType::i32(&ctx).unwrap();
-        let sig = module
-            .function_ty(I32.into(), &[I32.into(), I32.into()], false)
-            .unwrap();
-
-        let builder = module.build_function("main", sig).unwrap();
-        builder.set_linkage(Linkage::External);
-
-        let block = builder.append_block().unwrap();
-        let add = block.add(builder.args()[0], builder.args()[1]).unwrap();
-        block.ret(Some(add)).unwrap();
     }
 }

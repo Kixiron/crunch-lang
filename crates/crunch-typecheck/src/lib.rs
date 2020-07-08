@@ -11,9 +11,12 @@ use crunch_shared::{
     crunch_proc::instrument,
     error::{ErrorHandler, Locatable, Location, Span, TypeError, TypeResult},
     strings::StrInterner,
-    trees::hir::{
-        Block, Break, CompOp, Expr, ExternFunc, FuncArg, FuncCall, Function, Item, Literal, Match,
-        MatchArm, Return, Stmt, TypeKind, Var, VarDecl,
+    trees::{
+        ast::ItemPath,
+        hir::{
+            Block, Break, CompOp, Expr, ExternFunc, FuncArg, FuncCall, Function, Item, Literal,
+            Match, MatchArm, Pattern, Return, Stmt, TypeKind, Var, VarDecl,
+        },
     },
     utils::HashMap,
     visitors::hir::{MutExprVisitor, MutItemVisitor, MutStmtVisitor},
@@ -22,12 +25,21 @@ use crunch_shared::{
 type TypeId = usize;
 
 #[derive(Debug, Clone)]
+struct Func {
+    ret: TypeId,
+    args: Vec<TypeId>,
+    sig: Location,
+}
+
+#[derive(Debug, Clone)]
 pub struct Engine {
     id_counter: TypeId,
     types: HashMap<TypeId, (TypeInfo, Location)>,
     ids: HashMap<Var, TypeId>,
     errors: ErrorHandler,
     interner: StrInterner,
+    current_func: Option<Func>,
+    functions: HashMap<ItemPath, Func>,
 }
 
 impl Engine {
@@ -38,6 +50,8 @@ impl Engine {
             ids: HashMap::new(),
             errors: ErrorHandler::default(),
             interner,
+            current_func: None,
+            functions: HashMap::new(),
         }
     }
 
@@ -93,6 +107,17 @@ impl Engine {
                 Ok(())
             }
             (_, (TypeInfo::Infer, loc)) => {
+                self.types.insert(b, (TypeInfo::Ref(a), loc));
+
+                Ok(())
+            }
+
+            ((TypeInfo::Absurd, loc), _) => {
+                self.types.insert(a, (TypeInfo::Ref(b), loc));
+
+                Ok(())
+            }
+            (_, (TypeInfo::Absurd, loc)) => {
                 self.types.insert(b, (TypeInfo::Ref(a), loc));
 
                 Ok(())
@@ -161,11 +186,42 @@ impl Engine {
             (TypeInfo::Bool, _) => Ok(TypeKind::Bool),
             (TypeInfo::Unit, _) => Ok(TypeKind::Unit),
             (TypeInfo::String, _) => Ok(TypeKind::String),
+            (TypeInfo::Absurd, _) => Ok(TypeKind::Absurd),
         }
     }
 
     #[instrument(name = "type checking")]
+    #[allow(irrefutable_let_patterns)]
     pub fn walk(&mut self, items: &mut [Item]) -> Result<ErrorHandler, ErrorHandler> {
+        for item in items.iter() {
+            if let Item::Function(Function {
+                name,
+                args,
+                ret,
+                sig,
+                ..
+            })
+            | Item::ExternFunc(ExternFunc {
+                name,
+                args,
+                ret,
+                loc: sig,
+                ..
+            }) = item
+            {
+                let func = Func {
+                    ret: self.insert_bare(TypeInfo::from(&ret.kind), ret.location()),
+                    args: args
+                        .iter()
+                        .map(|FuncArg { name, kind, loc }| self.insert(*name, kind, *loc))
+                        .collect(),
+                    sig: *sig,
+                };
+
+                self.functions.insert(name.clone(), func);
+            }
+        }
+
         for item in items {
             if let Err(err) = self.visit_item(item) {
                 self.errors.push_err(err);
@@ -212,14 +268,14 @@ impl MutItemVisitor for Engine {
         }: &mut Function,
     ) -> Self::Output {
         let mut missing_arg_ty = None;
-        for arg in args.iter().filter(|a| !a.kind.is_infer()) {
+        for arg in args.iter().filter(|a| a.kind.is_infer()) {
             if let Some(err) = missing_arg_ty.take() {
                 self.errors.push_err(err);
             }
 
             missing_arg_ty = Some(Locatable::new(
                 TypeError::MissingType("Types for function arguments".to_owned()).into(),
-                arg.loc,
+                arg.location(),
             ));
         }
 
@@ -230,7 +286,7 @@ impl MutItemVisitor for Engine {
 
             return Err(Locatable::new(
                 TypeError::MissingType("Return types for functions".to_owned()).into(),
-                ret.loc,
+                ret.location(),
             ));
         } else if let Some(err) = missing_arg_ty {
             return Err(err);
@@ -241,11 +297,17 @@ impl MutItemVisitor for Engine {
             .map(|FuncArg { name, kind, loc }| self.insert(*name, kind, *loc))
             .collect();
 
+        self.current_func = Some(Func {
+            ret: self.insert_bare(TypeInfo::from(&ret.kind), ret.location()),
+            args: func_args.clone(),
+            sig: *sig,
+        });
         let ret_type = self.insert_bare(TypeInfo::from(&ret.kind), *sig);
         for stmt in body.iter_mut() {
             let ty = self.visit_stmt(stmt)?;
             self.unify(ty, ret_type)?;
         }
+        self.current_func = None;
 
         ret.kind = self.reconstruct(ret_type)?;
 
@@ -328,8 +390,16 @@ impl MutStmtVisitor for Engine {
 impl MutExprVisitor for Engine {
     type Output = TypeResult<TypeId>;
 
-    fn visit_return(&mut self, _loc: Location, _value: &mut Return) -> Self::Output {
-        todo!()
+    fn visit_return(&mut self, loc: Location, ret: &mut Return) -> Self::Output {
+        if let Some(ref mut ret) = ret.val {
+            let ret = self.visit_expr(ret)?;
+            self.unify(self.current_func.as_ref().unwrap().ret, ret)?;
+        } else {
+            let unit = self.insert_bare(TypeInfo::Unit, loc);
+            self.unify(self.current_func.as_ref().unwrap().ret, unit)?;
+        }
+
+        Ok(self.insert_bare(TypeInfo::Absurd, loc))
     }
 
     fn visit_break(&mut self, _loc: Location, _value: &mut Break) -> Self::Output {
@@ -346,23 +416,29 @@ impl MutExprVisitor for Engine {
 
     fn visit_match(&mut self, loc: Location, Match { cond, arms, ty }: &mut Match) -> Self::Output {
         let match_cond = self.visit_expr(cond)?;
-        let b = self.insert_bare(TypeInfo::Bool, cond.location());
-        if self.unify(match_cond, b).is_err() {
-            return Err(Locatable::new(
-                TypeError::IncorrectType("If conditions must be booleans".to_owned()).into(),
-                cond.location(),
-            ));
-        }
 
         let mut arm_types = Vec::new();
         for MatchArm {
-            bind: _,
+            bind,
             guard,
             body,
             ty,
             ..
         } in arms.iter_mut()
         {
+            match &mut bind.pattern {
+                Pattern::Literal(lit) => {
+                    let bind_ty = self.insert_bare(TypeInfo::from(&*lit), loc);
+                    self.unify(match_cond, bind_ty)?;
+                }
+                Pattern::Ident(var) => {
+                    self.insert(Var::User(*var), &self.reconstruct(match_cond)?, loc);
+                }
+                Pattern::ItemPath(..) => todo!(),
+                // TODO: Is this correct?
+                Pattern::Wildcard => {}
+            }
+
             let arm_ty = self.insert_bare(TypeInfo::from(&*ty), cond.location());
 
             // FIXME: Bindings
@@ -412,8 +488,36 @@ impl MutExprVisitor for Engine {
         todo!()
     }
 
-    fn visit_func_call(&mut self, _loc: Location, _call: &mut FuncCall) -> Self::Output {
-        todo!()
+    fn visit_func_call(&mut self, loc: Location, call: &mut FuncCall) -> Self::Output {
+        let func = self
+            .functions
+            .get(&call.func)
+            .ok_or_else(|| {
+                Locatable::new(
+                    TypeError::FuncNotInScope(call.func.to_string(&self.interner)).into(),
+                    loc,
+                )
+            })?
+            .clone();
+
+        let args = call
+            .args
+            .iter_mut()
+            .map(|e| self.visit_expr(e))
+            .collect::<TypeResult<Vec<TypeId>>>()?;
+
+        if func.args.len() != args.len() {
+            return Err(Locatable::new(
+                TypeError::NotEnoughArgs(func.args.len(), args.len(), func.sig).into(),
+                loc,
+            ));
+        }
+
+        for (expected, given) in func.args.iter().zip(args.iter()) {
+            self.unify(*expected, *given)?;
+        }
+
+        Ok(func.ret)
     }
 
     fn visit_comparison(
@@ -433,14 +537,19 @@ impl MutExprVisitor for Engine {
         todo!()
     }
 
+    // TODO: This is sketchy and doesn't check if they're bin-op-able
     fn visit_binop(
         &mut self,
         _loc: Location,
-        _lhs: &mut Expr,
+        lhs: &mut Expr,
         _op: crunch_shared::trees::hir::BinaryOp,
-        _rhs: &mut Expr,
+        rhs: &mut Expr,
     ) -> Self::Output {
-        todo!()
+        let lhs = self.visit_expr(lhs)?;
+        let rhs = self.visit_expr(rhs)?;
+        self.unify(lhs, rhs)?;
+
+        Ok(lhs)
     }
 }
 
@@ -452,6 +561,7 @@ enum TypeInfo {
     String,
     Bool,
     Unit,
+    Absurd,
 }
 
 impl From<&Literal> for TypeInfo {
@@ -474,6 +584,7 @@ impl From<&TypeKind> for TypeInfo {
             TypeKind::String => Self::String,
             TypeKind::Bool => Self::Bool,
             TypeKind::Unit => Self::Unit,
+            TypeKind::Absurd => Self::Absurd,
             TypeKind::Pointer(..) => todo!(),
         }
     }

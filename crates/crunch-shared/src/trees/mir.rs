@@ -163,6 +163,7 @@ pub enum Type {
     Unit,
     Pointer(Ref<Self>),
     String,
+    Absurd,
 }
 
 impl From<&HirType> for Type {
@@ -174,6 +175,7 @@ impl From<&HirType> for Type {
             HirType::Pointer(ty) => Self::Pointer(Ref::new(Self::from(&**ty))),
             HirType::String => Self::String,
             HirType::Infer => unreachable!("All types should have been inferred by now"),
+            HirType::Absurd => Self::Absurd,
         }
     }
 }

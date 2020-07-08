@@ -39,6 +39,12 @@ pub struct FuncArg {
     pub loc: Location,
 }
 
+impl FuncArg {
+    pub const fn location(&self) -> Location {
+        self.loc
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ExternFunc {
     pub name: ItemPath,
@@ -284,6 +290,12 @@ pub struct Type {
     pub loc: Location,
 }
 
+impl Type {
+    pub const fn location(&self) -> Location {
+        self.loc
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum TypeKind {
     Infer,
@@ -292,6 +304,7 @@ pub enum TypeKind {
     Bool,
     Unit,
     Pointer(Ref<TypeKind>),
+    Absurd,
 }
 
 impl TypeKind {

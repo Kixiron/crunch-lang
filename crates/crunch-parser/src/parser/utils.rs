@@ -5,7 +5,7 @@ use crate::{
 use alloc::{format, rc::Rc, string::ToString, vec, vec::Vec};
 use crunch_shared::{
     crunch_proc::recursion_guard,
-    error::{Error, Locatable, Location, ParseResult, SyntaxError},
+    error::{Error, Locatable, Location, ParseResult, Span, SyntaxError, Warning},
     files::CurrentFile,
     strings::StrT,
     trees::ast::{AssignKind, BinaryOp, CompOp, Float, Integer, ItemPath, Literal, Sign, UnaryOp},
@@ -55,7 +55,7 @@ impl<'src> Parser<'src> {
     }
 
     #[recursion_guard]
-    pub(crate) fn literal(&self, token: &Token<'_>, file: CurrentFile) -> ParseResult<Literal> {
+    pub(crate) fn literal(&mut self, token: &Token<'_>, file: CurrentFile) -> ParseResult<Literal> {
         let mut source: &str = &token.source();
         // TODO: Const this
         let format = lexical_core::NumberFormat::ignore(b'_').unwrap();
@@ -80,6 +80,17 @@ impl<'src> Parser<'src> {
                     _ => false,
                 };
 
+                // TODO: Make this detect longer strings of `_`s
+                // TODO: Factor this out into a function
+                for (idx, _) in source.match_indices("__") {
+                    let span = Span::new(token.range().start + idx, token.range().start + idx + 2);
+
+                    self.error_handler.push_warning(Locatable::new(
+                        Warning::TooManyUnderscores,
+                        Location::concrete(span, self.current_file),
+                    ));
+                }
+
                 let mut float = if source.chars().take(2).eq(['0', 'x'].iter().copied()) {
                     lexical_core::parse_format_radix::<f64>(source[2..].as_bytes(), 16, format)
                         .map_err(|_| {
@@ -89,7 +100,7 @@ impl<'src> Parser<'src> {
                             )
                         })?
                 } else {
-                    lexical_core::parse(source.as_bytes()).map_err(|_| {
+                    lexical_core::parse_format(source.as_bytes(), format).map_err(|_| {
                         Locatable::new(
                             Error::Syntax(SyntaxError::InvalidLiteral("float".to_string())),
                             Location::concrete(token, file),
@@ -198,6 +209,17 @@ impl<'src> Parser<'src> {
                     _ => Sign::Positive,
                 };
 
+                // TODO: Make this detect longer strings of `_`s
+                // TODO: Factor this out into a function
+                for (idx, _) in source.match_indices("__") {
+                    let span = Span::new(token.range().start + idx, token.range().start + idx + 2);
+
+                    self.error_handler.push_warning(Locatable::new(
+                        Warning::TooManyUnderscores,
+                        Location::concrete(span, self.current_file),
+                    ));
+                }
+
                 let int = if source.chars().take(2).eq(['0', 'x'].iter().copied()) {
                     lexical_core::parse_format_radix::<u128>(source[2..].as_bytes(), 16, format)
                         .map_err(|_| {
@@ -215,12 +237,13 @@ impl<'src> Parser<'src> {
                             )
                         })?
                 } else {
-                    lexical_core::parse_radix::<u128>(source.as_bytes(), 10).map_err(|_| {
-                        Locatable::new(
-                            Error::Syntax(SyntaxError::InvalidLiteral("int".to_string())),
-                            Location::concrete(token, file),
-                        )
-                    })?
+                    lexical_core::parse_format_radix::<u128>(source.as_bytes(), 10, format)
+                        .map_err(|_| {
+                            Locatable::new(
+                                Error::Syntax(SyntaxError::InvalidLiteral("int".to_string())),
+                                Location::concrete(token, file),
+                            )
+                        })?
                 };
 
                 Ok(Literal::Integer(Integer { sign, bits: int }))

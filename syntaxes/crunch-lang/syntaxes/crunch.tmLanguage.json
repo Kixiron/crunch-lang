@@ -24,7 +24,7 @@
                 },
                 {
                     "name": "keyword.attribute.crunch",
-                    "match": "\\b(async|dyn|mut|pkg|exposed)\\b"
+                    "match": "\\b(async|dyn|mut|const|pkg|exposed)\\b"
                 },
                 {
                     "name": "variable.empty.crunch",
