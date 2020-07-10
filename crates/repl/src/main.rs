@@ -7,7 +7,7 @@
     clippy::shadow_unrelated
 )]
 
-use crunch_parser::{Parser, PrettyPrinter};
+use crunch_parser::Parser;
 use crunch_semantics::{Correctness, SemanticAnalyzer};
 use crunch_shared::{
     context::Context,
@@ -54,10 +54,16 @@ fn main() -> rustyline::Result<()> {
 
                 match parser.parse() {
                     Ok((items, mut warnings)) => {
-                        semantic_analyzer().analyze(&items, &context, &mut warnings);
-
                         // The semantic analyzer will set an error if one occurs
                         if !warnings.is_fatal() {
+                            warnings.emit(&files);
+
+                            let mut warnings = semantic_analyzer().analyze(&items, &context);
+                            warnings.emit(&files);
+                            if warnings.is_fatal() {
+                                continue;
+                            }
+
                             let mut hir = Ladder::new().lower(&items);
 
                             warnings.extend(
@@ -84,14 +90,6 @@ fn main() -> rustyline::Result<()> {
                                         }
                                     }
                                     EvalType::Symbol => todo!(),
-                                    EvalType::Pretty => {
-                                        let mut pretty_printed = String::new();
-                                        PrettyPrinter::new(context.clone())
-                                            .pretty_print(&mut pretty_printed, &items)
-                                            .unwrap();
-
-                                        println!("{}", pretty_printed);
-                                    }
                                 }
 
                                 continue;
@@ -134,13 +132,6 @@ fn main() -> rustyline::Result<()> {
                 code.push_str(&line.trim_start_matches(".symbol"));
                 code.push('\n');
                 eval_ty = EvalType::Symbol;
-                new = false;
-            }
-
-            Ok(line) if line.starts_with(".pretty") => {
-                code.push_str(&line.trim_start_matches(".pretty"));
-                code.push('\n');
-                eval_ty = EvalType::Pretty;
                 new = false;
             }
 
@@ -309,7 +300,6 @@ enum EvalType {
     Symbol,
     Ast,
     Hir,
-    Pretty,
 }
 
 #[derive(Helper)]
