@@ -495,6 +495,39 @@ impl TargetConf {
             __private: (),
         }
     }
+
+    pub const fn base(self, base: bool) -> Self {
+        Self { base, ..self }
+    }
+
+    pub const fn info(self, info: bool) -> Self {
+        Self { info, ..self }
+    }
+
+    pub const fn asm_printer(self, asm_printer: bool) -> Self {
+        Self {
+            asm_printer,
+            ..self
+        }
+    }
+
+    pub const fn asm_parser(self, asm_parser: bool) -> Self {
+        Self { asm_parser, ..self }
+    }
+
+    pub const fn disassembler(self, disassembler: bool) -> Self {
+        Self {
+            disassembler,
+            ..self
+        }
+    }
+
+    pub const fn machine_code(self, machine_code: bool) -> Self {
+        Self {
+            machine_code,
+            ..self
+        }
+    }
 }
 
 impl Default for TargetConf {

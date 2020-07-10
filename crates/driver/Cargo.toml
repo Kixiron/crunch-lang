@@ -35,4 +35,4 @@ path = "../crunch-typecheck"
 path = "../crunch-codegen"
 
 [dev-dependencies.goldentests]
-version = "0.3.2"
+path = "../../../golden-tests"

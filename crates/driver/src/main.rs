@@ -16,50 +16,129 @@ use crunch_shared::{
 };
 use crunch_typecheck::Engine;
 use ladder::Ladder;
-use std::{error::Error, fs, path::PathBuf, str::FromStr, time::Instant};
+use std::{
+    borrow::Cow,
+    fmt, fs,
+    io::{self, Write},
+    path::PathBuf,
+    str::FromStr,
+    time::Instant,
+};
 use structopt::StructOpt;
 
-fn main() -> Result<(), Box<dyn Error>> {
-    match run()? {
-        ExitStatus::Failed => std::process::exit(101),
-        ExitStatus::Custom(custom) => std::process::exit(custom),
-        ExitStatus::Succeeded => Ok(()),
+fn main() {
+    let code;
+
+    {
+        let args = CrunchcOpts::from_args();
+        let options = args.build_options();
+        let mut stderr = Stderr::new(&options);
+
+        match run(&mut stderr, args, options) {
+            Ok(ExitStatus { message, exit_code }) => {
+                if let Some(message) = message {
+                    stderr.write(|| format!("{}", message));
+                }
+
+                code = exit_code.unwrap_or(0);
+            }
+
+            Err(ExitStatus { message, exit_code }) => {
+                if let Some(message) = message {
+                    stderr.write(|| format!("crunchc failed to compile: {}", message));
+                }
+
+                code = exit_code.unwrap_or(101);
+            }
+        }
     }
+
+    // exit immediately terminates the program, so make sure everything is cleaned
+    // up before this so that we don't leak anything
+    std::process::exit(code);
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-enum ExitStatus {
-    Failed,
-    Succeeded,
-    Custom(i32),
-}
-
-fn run() -> Result<ExitStatus, Box<dyn Error>> {
-    let args = CrunchcOpts::from_args();
-    let options = args.build_options();
-
+fn run(
+    stderr: &mut Stderr,
+    args: CrunchcOpts,
+    options: BuildOptions,
+) -> Result<ExitStatus, ExitStatus> {
     let start_time = Instant::now();
-    fs::create_dir_all(&options.out_dir)?;
 
-    if options.verbose {
-        simple_logger::init().ok();
+    // Users can't enable both the verbose and quiet flags
+    if options.is_verbose() && options.quiet {
+        return Err(ExitStatus::message(
+            "The `--verbose` and `--quiet` options are exclusive",
+        ));
+
+    // If verbose is enabled, enable logging
+    // TODO: Switch to env_logger to allow the user to better configure logging
+    //       via environmental variables
+    // TODO: Make different levels of verbosity actually do something
+    } else if options.is_verbose() {
+        if simple_logger::init().is_err() && !options.quiet {}
     }
 
-    let file_name = options
+    // Get the source file's name without an extension
+    let source_file = options
         .target_file
-        .file_name()
-        .ok_or("Files must be a file")?
-        .to_str()
-        .ok_or("File names must be valid utf-8")?;
-    let file_name_ext = file_name
-        .splitn(2, ".")
-        .next()
-        .ok_or("Files must end in the .crunch extension")?;
-    let source = fs::read_to_string(&options.target_file)?;
+        .file_stem()
+        .ok_or_else(|| {
+            ExitStatus::message(format!(
+                "the given target file must be a file, {} is not",
+                options.target_file.display(),
+            ))
+        })?
+        .to_string_lossy();
+    let out_file = options.out_dir.join(source_file.as_ref());
+    stderr.write(|| format!("Compiling {}\n", &source_file));
 
+    // Check that the given file has the `.crunch` extension
+    {
+        let source_file_extension = options
+            .target_file
+            .extension()
+            .ok_or_else(|| {
+                ExitStatus::message(format!(
+                    "Crunch files must have the '.crunch' extension, and '{}' has no extension",
+                    options.target_file.display()
+                ))
+            })?
+            .to_string_lossy();
+
+        if source_file_extension != "crunch" {
+            return Err(ExitStatus::message(format!(
+                "Crunch files must have the '.crunch' extension, and '{}' has the '.{}' extension",
+                options.target_file.display(),
+                source_file_extension,
+            )));
+        }
+    }
+
+    // Create the build directory
+    fs::create_dir_all(&options.out_dir).map_err(|err| {
+        ExitStatus::message(format!(
+            "failed to create build directory {}: {:?}",
+            options.out_dir.display(),
+            err,
+        ))
+    })?;
+
+    // Read the source of the given file into a string
+    let source = fs::read_to_string(&options.target_file).map_err(|err| {
+        ExitStatus::message(format!(
+            "failed to read the source file '{}': {:?}",
+            options.target_file.display(),
+            err,
+        ))
+    })?;
+
+    // Create the parsing context
     let parse_ctx = ParseContext::default();
+
+    // Create the files for error reporting
     let mut files = Files::new();
-    files.add(file_name, source.clone());
+    files.add(source_file.clone(), source.clone());
 
     let parser = Parser::new(
         &source,
@@ -67,16 +146,25 @@ fn run() -> Result<ExitStatus, Box<dyn Error>> {
         parse_ctx.clone(),
     );
 
+    // Parse the source file into an ast
     let ast = match parser.parse() {
         Ok((ast, mut warnings)) => {
             warnings.emit(&files);
 
+            // Unnest extern blocks
+            // TODO: Better structure for micro passes
             let ast = ExternUnnester::new().unnest(ast);
+
             if options.emit.contains(&EmissionKind::Ast) {
-                fs::write(
-                    &options.out_dir.join(format!("{}.ast", file_name_ext)),
-                    format!("{:#?}", &ast),
-                )?;
+                let path = out_file.with_extension("ast");
+
+                fs::write(&path, format!("{:#?}", &ast)).map_err(|err| {
+                    ExitStatus::message(format!(
+                        "failed to write ast to '{}': {:?}",
+                        path.display(),
+                        err,
+                    ))
+                })?;
             }
 
             ast
@@ -84,23 +172,28 @@ fn run() -> Result<ExitStatus, Box<dyn Error>> {
 
         Err(mut errors) => {
             errors.emit(&files);
-            return Ok(ExitStatus::Failed);
+            return Err(ExitStatus::default());
         }
     };
 
+    // Run semantic checking
     match SemanticAnalyzer::new()
         .pass(Correctness::new())
         .analyze(&ast, &parse_ctx)
     {
         mut errors if errors.is_fatal() => {
             errors.emit(&files);
-            return Ok(ExitStatus::Failed);
+            return Err(ExitStatus::default());
         }
+
         mut warnings => warnings.emit(&files),
     }
 
+    // Resolve all names in the ast
     let _resolver = {
-        let mut resolver = Resolver::new(vec![parse_ctx.strings().intern(file_name)].into());
+        use crunch_shared::trees::ItemPath;
+
+        let mut resolver = Resolver::new(ItemPath::new(parse_ctx.strings().intern(&source_file)));
         for node in ast.iter() {
             resolver.visit_item(node);
         }
@@ -109,102 +202,193 @@ fn run() -> Result<ExitStatus, Box<dyn Error>> {
         resolver
     };
 
+    // Lower the ast to hir
     let mut hir = Ladder::new().lower(&ast);
     if options.emit.contains(&EmissionKind::Hir) {
-        fs::write(
-            options.out_dir.join(format!("{}.hir", file_name_ext)),
-            format!("{:#?}", &hir),
-        )?;
+        let path = out_file.with_extension("hir");
+
+        fs::write(&path, format!("{:#?}", &hir)).map_err(|err| {
+            ExitStatus::message(format!(
+                "failed to write hir to '{}': {:?}",
+                path.display(),
+                err
+            ))
+        })?;
     }
 
+    // Check types and update the hir with concrete types
     match Engine::new(parse_ctx.strings.clone()).walk(&mut hir) {
         Ok(mut warnings) => warnings.emit(&files),
         Err(mut errors) => {
             errors.emit(&files);
-            return Ok(ExitStatus::Failed);
+
+            return Err(ExitStatus::default());
         }
     }
 
+    // Lower hir to mir
     let mir = MirBuilder::new().lower(&hir).unwrap();
     if options.emit.contains(&EmissionKind::Mir) {
-        fs::write(
-            &options.out_dir.join(format!("{}.mir", file_name_ext)),
-            format!("{:#?}", &mir),
-        )?;
+        let path = out_file.with_extension("mir");
+
+        fs::write(&path, format!("{:#?}", &mir)).map_err(|err| {
+            ExitStatus::message(format!(
+                "failed to write mir to '{}': {:?}",
+                path.display(),
+                err
+            ))
+        })?;
     }
 
-    let ctx = Context::new()?;
-    let module = ctx.module(file_name)?;
-    CodeGenerator::new(&module, &parse_ctx.strings).generate(mir)?;
-    module.verify()?;
+    // Create LLVM context
+    let ctx = Context::new().map_err(|err| {
+        ExitStatus::message(format!(
+            "Failed to create LLVM context for codegen: {:?}",
+            err
+        ))
+    })?;
+    let module = ctx
+        .module(&source_file)
+        .map_err(|err| ExitStatus::message(format!("error creating LLVM module: {:?}", err)))?;
+
+    // Generate LLVM ir
+    CodeGenerator::new(&module, &parse_ctx.strings)
+        .generate(mir)
+        .map_err(|err| {
+            ExitStatus::message(format!("encountered an error during codegen: {:?}", err))
+        })?;
+    // Verify the generated module
+    module
+        .verify()
+        .map_err(|err| ExitStatus::message(format!("generated invalid LLVM module: {:?}", err)))?;
 
     if options.emit.contains(&EmissionKind::LlvmIr) {
-        module.emit_ir_to_file(options.out_dir.join(format!("{}.ll", file_name_ext)))?;
+        let path = out_file.with_extension("ll");
+
+        module.emit_ir_to_file(&path).map_err(|err| {
+            ExitStatus::message(format!(
+                "encountered an error while emitting LLVM IR to '{}': {:?}",
+                path.display(),
+                err,
+            ))
+        })?;
     }
 
     if options.emit.contains(&EmissionKind::LlvmBc) {
-        module.emit_ir_to_file(options.out_dir.join(format!("{}.bc", file_name_ext)))?;
+        let path = out_file.with_extension("bc");
+
+        module
+            .emit_ir_to_file(options.out_dir.join(&path))
+            .map_err(|err| {
+                ExitStatus::message(format!(
+                    "encountered an error while emitting LLVM bitcode to '{}': {:?}",
+                    path.display(),
+                    err,
+                ))
+            })?;
     }
 
-    Target::init_native(TargetConf::all())?;
-    let target = Target::from_triple("x86_64-pc-windows-msvc")?;
-    let target_machine = TargetMachine::new(
-        &target,
-        "x86_64-pc-windows-msvc",
-        None,
-        None,
-        None,
-        None,
-        None,
-    )?;
+    // TODO: User input for all of this
+    // FIXME: This is really funky with initializing and may not even work correctly
+    const TARGET_TRIPLE: &str = "x86_64-pc-windows-msvc";
+    let llvm_config = TargetConf::all();
+    Target::init_native(llvm_config).map_err(|err| {
+        ExitStatus::message(format!("failed to initialize native target: {:?}", err))
+    })?;
 
-    target_machine.emit_to_file(
-        &module,
-        options.out_dir.join(format!("{}.o", file_name_ext)),
-        CodegenFileKind::Object,
-    )?;
+    let target = Target::from_triple(TARGET_TRIPLE)
+        .map_err(|err| ExitStatus::message(format!("failed to create LLVM target: {:?}", err)))?;
+
+    let target_machine = TargetMachine::new(&target, TARGET_TRIPLE, None, None, None, None, None)
+        .map_err(|err| {
+        ExitStatus::message(format!("failed to create LLVM target machine: {:?}", err))
+    })?;
+
+    // Emit to an object file so we can link it
+    let object_file = out_file.with_extension("o");
+    target_machine
+        .emit_to_file(&module, &object_file, CodegenFileKind::Object)
+        .map_err(|err| {
+            ExitStatus::message(format!(
+                "encountered an error while emitting object file to '{}': {:?}",
+                object_file.display(),
+                err
+            ))
+        })?;
 
     if options.emit.contains(&EmissionKind::Assembly) {
-        target_machine.emit_to_file(
-            &module,
-            options.out_dir.join(format!("{}.s", file_name_ext)),
-            CodegenFileKind::Assembly,
-        )?;
+        let path = out_file.with_extension("s");
+
+        target_machine
+            .emit_to_file(&module, &out_file, CodegenFileKind::Assembly)
+            .map_err(|err| {
+                ExitStatus::message(format!(
+                    "encountered an error while emitting assembly to '{}': {:?}",
+                    path.display(),
+                    err
+                ))
+            })?;
     }
 
     let exe_path = if let Some(ref out) = options.out_file {
         options.out_dir.join(out)
+    // TODO: Replace with seeing if the *target* is windows
+    } else if cfg!(windows) {
+        out_file.with_extension("exe")
     } else {
-        options.out_dir.join(&format!("{}.exe", file_name_ext))
+        out_file.clone()
     };
+
     // TODO: Use `cc` to get the relevant linkers
     std::process::Command::new("clang")
-        .arg(options.out_dir.join(&format!("{}.o", file_name_ext)))
+        .arg(&object_file)
         .arg("-o")
         .arg(&exe_path)
-        .spawn()?
-        .wait()?;
+        .spawn()
+        .and_then(|mut linker| linker.wait())
+        .map_err(|err| ExitStatus::message(format!("failed to link: {:?}", err)))?;
 
     let build_time = start_time.elapsed();
-    println!("Finished building in {:.2}s", build_time.as_secs_f64());
+
+    stderr.write(|| {
+        format!(
+            "Finished building in {:.2} seconds\n",
+            build_time.as_secs_f64(),
+        )
+    });
 
     if let CrunchcOpts::Run { .. } = args {
-        let status = std::process::Command::new(exe_path).spawn()?.wait()?;
+        let status = std::process::Command::new(&exe_path)
+            .spawn()
+            .and_then(|mut target| target.wait())
+            .map_err(|err| ExitStatus::message(format!("failed to run child process: {:?}", err)))?
+            .code();
 
-        return Ok(ExitStatus::Custom(status.code().unwrap_or(0)));
+        if let Some(code) = status {
+            return Ok(ExitStatus::new(
+                format!(
+                    "running '{}' exited with the status code {}",
+                    exe_path.display(),
+                    code,
+                ),
+                code,
+            ));
+        }
     }
 
-    Ok(ExitStatus::Succeeded)
+    Ok(ExitStatus::default())
 }
 
 #[derive(Debug, Clone, StructOpt)]
 #[structopt(about = "The Crunch compiler", rename_all = "kebab-case")]
 enum CrunchcOpts {
+    /// Builds a source file, producing an executable
     Build {
         #[structopt(flatten)]
         options: BuildOptions,
     },
 
+    /// Builds a source file, producing an executable and running it
     Run {
         #[structopt(flatten)]
         options: BuildOptions,
@@ -220,6 +404,7 @@ impl CrunchcOpts {
 }
 
 #[derive(Debug, Clone, StructOpt)]
+#[structopt(rename_all = "kebab-case")]
 struct BuildOptions {
     /// The file to be compiled
     #[structopt(name = "FILE")]
@@ -230,16 +415,26 @@ struct BuildOptions {
     pub out_file: Option<PathBuf>,
 
     /// Enable verbose output
-    #[structopt(short = "v", long = "verbose")]
-    pub verbose: bool,
+    #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
+    pub verbose: u8,
 
     /// A list of types for the compiler to emit
-    #[structopt(long = "emit")]
+    #[structopt(long = "emit", possible_values = &EmissionKind::VALUES)]
     pub emit: Vec<EmissionKind>,
 
     /// The output directory
     #[structopt(default_value = "build")]
     pub out_dir: PathBuf,
+
+    /// Silence all compiler output
+    #[structopt(short = "q", long = "quiet")]
+    pub quiet: bool,
+}
+
+impl BuildOptions {
+    pub fn is_verbose(&self) -> bool {
+        self.verbose != 0
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -251,6 +446,10 @@ enum EmissionKind {
     LlvmBc,
     Object,
     Assembly,
+}
+
+impl EmissionKind {
+    pub const VALUES: [&'static str; 7] = ["ast", "hir", "mir", "llvm-ir", "llvm-bc", "obj", "asm"];
 }
 
 impl FromStr for EmissionKind {
@@ -273,157 +472,56 @@ impl FromStr for EmissionKind {
     }
 }
 
-/*
-use crunch_parser::{ExternUnnester, Parser};
-use crunch_shared::{
-    context::Context as ParseContext,
-    files::{CurrentFile, FileId, Files},
-    symbol_table::Resolver,
-    trees::mir::MirBuilder,
-    utils::Timer,
-    visitors::ast::ItemVisitor,
-};
-use ladder::Ladder;
-use llvm::{
-    target_machine::{CodegenFileKind, Target, TargetConf, TargetMachine},
-    Context,
-};
-use std::fs::File;
+struct Stderr {
+    stderr: Option<io::Stderr>,
+}
 
-simple_logger::init().ok();
+impl Stderr {
+    pub fn new(options: &BuildOptions) -> Self {
+        let stderr = if options.quiet {
+            None
+        } else {
+            Some(io::stderr())
+        };
 
-let source = r#"
-extern
-    @callconv("C")
-    fn puts(string: *const i8) -> i32;
-end
-
-fn main() -> i32
-    return puts("Hello, world!")
-end
-"#;
-
-let compilation = Timer::start("compilation");
-
-let parse_ctx = ParseContext::default();
-let mut files = Files::new();
-files.add("<test>", source);
-
-match Parser::new(
-    source,
-    CurrentFile::new(FileId::new(0), source.len()),
-    parse_ctx.clone(),
-)
-.parse()
-{
-    Ok((items, mut warnings)) => {
-        warnings.emit(&files);
-
-        let items = ExternUnnester::new().unnest(items);
-
-        let mut resolver = Resolver::new(vec![parse_ctx.strings().intern("<test>")].into());
-        for item in items.iter() {
-            resolver.visit_item(item);
-        }
-        resolver.finalize();
-
-        let ladder = Ladder::new().lower(&items);
-        let mir = MirBuilder::new().lower(&ladder).unwrap();
-
-        let ctx = Context::new().unwrap();
-        let module = ctx.module("crunch-module").unwrap();
-
-        CodeGenerator::new(&module, &parse_ctx.strings)
-            .generate(mir)
-            .unwrap();
-
-        module.verify().unwrap();
-
-        let object_emission = Timer::start("object file emission");
-
-        Target::init_native(TargetConf::all()).unwrap();
-        let target = Target::from_triple("x86_64-pc-windows-msvc").unwrap();
-        let target_machine = TargetMachine::new(
-            &target,
-            "x86_64-pc-windows-msvc",
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
-        .unwrap();
-
-        target_machine
-            .emit_to_file(&module, "crunch.o", CodegenFileKind::Object)
-            .unwrap();
-
-        object_emission.end();
-
-        let linking = Timer::start("linking");
-
-        // TODO: Use `cc` to get the relevant linkers
-        std::process::Command::new("clang")
-            .args(&["crunch.o", "-o", "crunch.exe"])
-            .spawn()
-            .unwrap()
-            .wait()
-            .unwrap();
-
-        linking.end();
-        compilation.end();
-
-        let runtime = Timer::start("running executable");
-        let command = std::process::Command::new("crunch.exe")
-            .spawn()
-            .unwrap()
-            .wait_with_output()
-            .unwrap();
-        runtime.end();
-
-        target_machine
-            .emit_to_file(&module, "crunch.s", CodegenFileKind::Assembly)
-            .unwrap();
-
-        let llvm_ir = format!("{:?}", module)
-            .trim()
-            .lines()
-            .map(|l| "    ".to_string() + l)
-            .collect::<Vec<String>>()
-            .join("\n");
-        let assembly = std::fs::read_to_string("crunch.s")
-            .unwrap()
-            .trim()
-            .lines()
-            .map(|l| "    ".to_string() + l)
-            .collect::<Vec<String>>()
-            .join("\n");
-
-        let source_len = source.as_bytes().len();
-        let object_file_len = File::open("crunch.o").unwrap().metadata().unwrap().len();
-        let executable_len = File::open("crunch.exe").unwrap().metadata().unwrap().len();
-
-        println!(
-            "Source Code:{}\n\n\
-             LLVM IR:\n{}\n\n\
-             Assembly:\n{}\n\n\
-             File Sizes:\n    \
-                 Source: {:>4} bytes\n    \
-                 Object: {:>4} bytes\n    \
-                 Binary: {:>4} bytes\n\n\
-             Exited with code {:?}",
-            source,
-            llvm_ir,
-            assembly,
-            source_len,
-            object_file_len,
-            executable_len,
-            command.status.code(),
-        );
+        Self { stderr }
     }
 
-    Err(mut err) => {
-        err.emit(&files);
+    pub fn write<F, D>(&mut self, message: F)
+    where
+        F: FnOnce() -> D,
+        D: fmt::Display,
+    {
+        if let Some(ref mut stderr) = self.stderr {
+            write!(stderr, "{}", message()).expect("Encountered an error printing to stderr");
+        }
     }
 }
-*/
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct ExitStatus {
+    message: Option<Cow<'static, str>>,
+    exit_code: Option<i32>,
+}
+
+impl ExitStatus {
+    pub fn new<M>(message: M, code: i32) -> Self
+    where
+        M: Into<Cow<'static, str>>,
+    {
+        Self {
+            message: Some(message.into()),
+            exit_code: Some(code),
+        }
+    }
+
+    pub fn message<M>(message: M) -> Self
+    where
+        M: Into<Cow<'static, str>>,
+    {
+        Self {
+            message: Some(message.into()),
+            exit_code: None,
+        }
+    }
+}

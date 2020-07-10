@@ -1,4 +1,4 @@
-:: args: run
+:: args: run --quiet
 :: expected exit status: 0
 :: expected stdout: Hello, World!
 

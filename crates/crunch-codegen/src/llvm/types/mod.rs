@@ -15,8 +15,8 @@ use crate::llvm::{
 };
 use llvm_sys::{
     core::{
-        LLVMArrayType, LLVMCountParamTypes, LLVMGetElementType, LLVMGetParamTypes,
-        LLVMGetVectorSize, LLVMSizeOf, LLVMVoidTypeInContext,
+        LLVMCountParamTypes, LLVMGetElementType, LLVMGetParamTypes, LLVMGetVectorSize, LLVMSizeOf,
+        LLVMVoidTypeInContext,
     },
     LLVMType,
 };

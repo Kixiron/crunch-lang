@@ -1,6 +1,5 @@
-:: args: run
+:: args: run --quiet
 :: expected exit status: 5
-:: expected stdout:
 
 fn main() -> i64
     let mut greeting: i64 := 10
