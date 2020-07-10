@@ -2,7 +2,7 @@ use crate::{
     parser::{CurrentFile, Parser},
     token::{Token, TokenType},
 };
-use alloc::{format, string::ToString, vec::Vec};
+use alloc::{borrow::ToOwned, format, string::ToString, vec::Vec};
 use core::{mem, str::FromStr};
 use crunch_shared::{
     crunch_proc::recursion_guard,

@@ -1,0 +1,15 @@
+fn main() -> i64
+    let mut greeting: i64 := 10
+    greeting *= 10
+
+    if false
+        let test := 10
+
+        return greeting / test
+    else
+        let test := 10
+        let test := test * 2
+
+        return greeting / test
+    end
+end

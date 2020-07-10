@@ -7,7 +7,7 @@ use crate::{
     strings::{StrInterner, StrT},
 };
 #[cfg(feature = "no-std")]
-use alloc::boxed::Box;
+use alloc::{borrow::ToOwned, boxed::Box, string::String, vec, vec::Vec};
 use core::{
     fmt::{Debug, Display, Formatter, Result, Write},
     ops::{Deref, DerefMut},

@@ -10,6 +10,7 @@ use crate::{
         CallConv, ItemPath, Sided,
     },
 };
+use alloc::vec::Vec;
 
 pub trait ItemVisitor {
     type Output;

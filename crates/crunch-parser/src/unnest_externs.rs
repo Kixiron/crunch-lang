@@ -1,3 +1,4 @@
+use alloc::vec::Vec;
 use crunch_shared::{
     crunch_proc::instrument,
     trees::ast::{Item, ItemKind},

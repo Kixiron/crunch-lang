@@ -33,3 +33,6 @@ path = "../crunch-typecheck"
 
 [dependencies.crunch-codegen]
 path = "../crunch-codegen"
+
+[dev-dependencies.goldentests]
+version = "0.3.2"

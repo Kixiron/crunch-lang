@@ -5,6 +5,7 @@ use crate::{
 };
 #[cfg(feature = "no-std")]
 use alloc::{
+    borrow::ToOwned,
     format,
     string::{String, ToString},
     vec,
