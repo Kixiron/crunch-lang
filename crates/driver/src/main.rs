@@ -6,6 +6,7 @@ use crunch_codegen::{
     CodeGenerator,
 };
 use crunch_parser::{ExternUnnester, Parser};
+use crunch_semantics::{Correctness, SemanticAnalyzer};
 use crunch_shared::{
     context::Context as ParseContext,
     files::{CurrentFile, FileId, Files},
@@ -15,7 +16,7 @@ use crunch_shared::{
 };
 use crunch_typecheck::Engine;
 use ladder::Ladder;
-use std::{error::Error, fs, path::PathBuf, str::FromStr};
+use std::{error::Error, fs, path::PathBuf, str::FromStr, time::Instant};
 use structopt::StructOpt;
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -37,6 +38,7 @@ fn run() -> Result<ExitStatus, Box<dyn Error>> {
     let args = CrunchcOpts::from_args();
     let options = args.build_options();
 
+    let start_time = Instant::now();
     fs::create_dir_all(&options.out_dir)?;
 
     if options.verbose {
@@ -85,6 +87,17 @@ fn run() -> Result<ExitStatus, Box<dyn Error>> {
             return Ok(ExitStatus::Failed);
         }
     };
+
+    match SemanticAnalyzer::new()
+        .pass(Correctness::new())
+        .analyze(&ast, &parse_ctx)
+    {
+        mut errors if errors.is_fatal() => {
+            errors.emit(&files);
+            return Ok(ExitStatus::Failed);
+        }
+        mut warnings => warnings.emit(&files),
+    }
 
     let _resolver = {
         let mut resolver = Resolver::new(vec![parse_ctx.strings().intern(file_name)].into());
@@ -171,6 +184,9 @@ fn run() -> Result<ExitStatus, Box<dyn Error>> {
         .arg(&exe_path)
         .spawn()?
         .wait()?;
+
+    let build_time = start_time.elapsed();
+    println!("Finished building in {:.2}s", build_time.as_secs_f64());
 
     if let CrunchcOpts::Run { .. } = args {
         let status = std::process::Command::new(exe_path).spawn()?.wait()?;

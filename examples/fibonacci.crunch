@@ -9,7 +9,7 @@ fn fibonacci(n: i64) -> i64
         end
 
         1 =>
-            return true
+            return 1
         end
 
         n =>

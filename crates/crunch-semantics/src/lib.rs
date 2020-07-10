@@ -16,11 +16,15 @@ use crunch_shared::{
     context::Context,
     crunch_proc::instrument,
     debug,
-    error::{Error, ErrorHandler, Locatable, Location, SemanticError, Warning},
+    error::{Error, ErrorHandler, Locatable, Location, SemanticError},
     strings::{StrInterner, StrT},
-    trees::ast::{
-        AssignKind, BinaryOp, Block, CompOp, Dest, Exposure, Expr, For, FuncArg, If, Item,
-        ItemPath, Literal, Loop, Match, Stmt, Type, TypeMember, UnaryOp, VarDecl, Variant, While,
+    trees::{
+        ast::{
+            AssignKind, BinaryOp, Block, CompOp, Dest, Exposure, Expr, For, FuncArg, If, Item,
+            Literal, Loop, Match, Stmt, StmtKind, Type, TypeMember, UnaryOp, VarDecl, Variant,
+            While,
+        },
+        CallConv, ItemPath,
     },
     utils::{HashMap, Timer},
     visitors::ast::{ExprVisitor, ItemVisitor, StmtVisitor},
@@ -35,16 +39,21 @@ pub trait Analyzer: ItemVisitor {
 
 pub struct SemanticAnalyzer {
     passes: Vec<Box<dyn Analyzer<Output = ()>>>,
+    errors: ErrorHandler,
 }
 
 impl SemanticAnalyzer {
     pub fn new() -> Self {
-        Self { passes: Vec::new() }
+        Self {
+            passes: Vec::new(),
+            errors: ErrorHandler::new(),
+        }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             passes: Vec::with_capacity(capacity),
+            errors: ErrorHandler::new(),
         }
     }
 
@@ -67,7 +76,7 @@ impl SemanticAnalyzer {
     }
 
     #[instrument(name = "semantic analysis")]
-    pub fn analyze(&mut self, items: &[Item], context: &Context, errors: &mut ErrorHandler) {
+    pub fn analyze(mut self, items: &[Item], context: &Context) -> ErrorHandler {
         for pass in self.passes.iter_mut() {
             let __pass_timer = Timer::start(format!("semantic analysis pass {}", pass.name()));
 
@@ -78,8 +87,10 @@ impl SemanticAnalyzer {
             }
 
             let err = pass.unload();
-            errors.extend(err);
+            self.errors.extend(err);
         }
+
+        self.errors
     }
 }
 
@@ -143,20 +154,12 @@ impl ItemVisitor for Correctness {
     fn visit_func(
         &mut self,
         item: &Item,
-        _generics: &[Type],
-        args: &[FuncArg],
+        _generics: Option<Locatable<&[Locatable<Type>]>>,
+        args: Locatable<&[FuncArg]>,
         body: &Block,
         _ret: Locatable<&Type>,
         _loc: Location,
     ) {
-        // Errors for empty function bodies
-        if body.is_empty() {
-            self.errors().push_err(Locatable::new(
-                Error::Semantic(SemanticError::EmptyFuncBody),
-                item.loc,
-            ));
-        }
-
         // Check for duplicated function arguments
         let mut arg_map = HashMap::with_capacity(args.len());
         for FuncArg { name, .. } in args.iter() {
@@ -179,22 +182,15 @@ impl ItemVisitor for Correctness {
         }
     }
 
-    fn visit_type(&mut self, item: &Item, generics: &[Type], members: &[TypeMember]) {
-        // Errors for empty type bodies
-        if members.is_empty() {
-            self.errors().push_err(Locatable::new(
-                Error::Semantic(SemanticError::EmptyTypeBody),
-                item.loc,
-            ));
-        }
-
+    fn visit_type(
+        &mut self,
+        item: &Item,
+        _generics: Option<Locatable<&[Locatable<Type>]>>,
+        members: &[TypeMember],
+    ) {
         // Check for duplicated members, unused generics and unused attributes
         let mut member_map = HashMap::with_capacity(members.len());
-        let mut generics: Vec<_> = generics.iter().map(|g| (g, false)).collect();
-        for TypeMember {
-            name, ty: member, ..
-        } in members.iter()
-        {
+        for TypeMember { name, .. } in members.iter() {
             // If there's already a member by the same name, emit an error
             if let Some(loc) = member_map.insert(name, item.loc) {
                 let name = self.strings().resolve(*name).as_ref().to_owned();
@@ -208,22 +204,6 @@ impl ItemVisitor for Correctness {
                     item.loc,
                 ));
             }
-
-            // Mark the generic as used
-            if let Some((_, used)) = generics.iter_mut().find(|(g, _)| *g == &**member) {
-                *used = true;
-            }
-        }
-
-        // Do the actual check that all generics are used
-        for generic in generics
-            .into_iter()
-            .filter_map(|(g, used)| if used { Some(g) } else { None })
-        {
-            let msg = generic.to_string(&self.strings());
-            // FIXME: Err location
-            self.errors()
-                .push_warning(Locatable::new(Warning::UnusedGeneric(msg), item.loc));
         }
 
         // TODO: Re-add this once methods are resolved
@@ -267,14 +247,17 @@ impl ItemVisitor for Correctness {
         // }
     }
 
-    fn visit_enum(&mut self, item: &Item, generics: &[Type], variants: &[Variant]) {
+    fn visit_enum(
+        &mut self,
+        item: &Item,
+        _generics: Option<Locatable<&[Locatable<Type>]>>,
+        variants: &[Variant],
+    ) {
         // Check for duplicated variants and unused generics
         let mut variant_map = HashMap::with_capacity(variants.len());
-        let mut generics: Vec<_> = generics.iter().map(|g| (g, false)).collect();
         for variant in variants.iter() {
-            let (name, elements) = match variant {
-                Variant::Unit { name, .. } => (*name, None),
-                Variant::Tuple { name, elms, .. } => (*name, Some(elms)),
+            let name = match variant {
+                Variant::Unit { name, .. } | Variant::Tuple { name, .. } => *name,
             };
 
             // If there's already a variant by the same name, emit an error
@@ -290,30 +273,15 @@ impl ItemVisitor for Correctness {
                     item.loc,
                 ));
             }
-
-            // Mark all used generics as used
-            if let Some(elements) = elements {
-                for elm in elements {
-                    if let Some((_, used)) = generics.iter_mut().find(|(g, _)| *g == elm) {
-                        *used = true;
-                    }
-                }
-            }
-        }
-
-        // Do the actual check that all generics are used
-        for generic in generics
-            .into_iter()
-            .filter_map(|(g, used)| if used { Some(g) } else { None })
-        {
-            let msg = generic.to_string(self.strings());
-            // FIXME: Error location
-            self.errors()
-                .push_warning(Locatable::new(Warning::UnusedGeneric(msg), item.loc));
         }
     }
 
-    fn visit_trait(&mut self, _item: &Item, _generics: &[Type], methods: &[Item]) {
+    fn visit_trait(
+        &mut self,
+        _item: &Item,
+        _generics: Option<Locatable<&[Locatable<Type>]>>,
+        methods: &[Item],
+    ) {
         // Analyze all the methods
         for method in methods {
             self.visit_item(method);
@@ -325,17 +293,37 @@ impl ItemVisitor for Correctness {
     fn visit_extend_block(
         &mut self,
         _item: &Item,
-        _target: &Type,
-        _extender: Option<&Type>,
+        _target: Locatable<&Type>,
+        _extender: Option<Locatable<&Type>>,
         _items: &[Item],
     ) {
     }
 
-    fn visit_alias(&mut self, _item: &Item, _alias: &Type, _actual: &Type) {}
+    fn visit_alias(&mut self, _item: &Item, _alias: Locatable<&Type>, _actual: Locatable<&Type>) {}
+
+    fn visit_extern_block(&mut self, _item: &Item, _items: &[Item]) -> Self::Output {}
+
+    fn visit_extern_func(
+        &mut self,
+        _item: &Item,
+        _generics: Option<Locatable<&[Locatable<Type>]>>,
+        _args: Locatable<&[FuncArg]>,
+        _ret: Locatable<&Type>,
+        _callconv: CallConv,
+    ) -> Self::Output {
+    }
 }
 
 impl StmtVisitor for Correctness {
     type Output = <Self as ItemVisitor>::Output;
+
+    fn visit_stmt(&mut self, stmt: &Stmt) -> <Self as ItemVisitor>::Output {
+        match &stmt.kind {
+            StmtKind::Item(item) => self.visit_item(item),
+            StmtKind::VarDecl(var) => self.visit_var_decl(stmt, var),
+            StmtKind::Expr(expr) => self.visit_expr(expr),
+        }
+    }
 
     fn visit_var_decl(&mut self, _stmt: &Stmt, _var: &VarDecl) {}
 }
@@ -351,8 +339,8 @@ impl ExprVisitor for Correctness {
     fn visit_loop(&mut self, _expr: &Expr, _loop_: &Loop) {}
     fn visit_for(&mut self, _expr: &Expr, _for_: &For) {}
     fn visit_match(&mut self, _expr: &Expr, _match_: &Match) {}
-    fn visit_variable(&mut self, _expr: &Expr, _var: StrT) {}
-    fn visit_literal(&mut self, _expr: &Expr, _literal: &Literal) {}
+    fn visit_variable(&mut self, _expr: &Expr, _var: Locatable<StrT>) {}
+    fn visit_literal(&mut self, _expr: &Expr, _literal: &Locatable<Literal>) {}
     fn visit_unary(&mut self, _expr: &Expr, _op: UnaryOp, _inner: &Expr) {}
     fn visit_binary_op(&mut self, _expr: &Expr, _lhs: &Expr, _op: BinaryOp, _rhs: &Expr) {}
     fn visit_comparison(&mut self, _expr: &Expr, _lhs: &Expr, _op: CompOp, _rhs: &Expr) {}
@@ -364,4 +352,6 @@ impl ExprVisitor for Correctness {
     fn visit_index(&mut self, _expr: &Expr, _var: &Expr, _index: &Expr) {}
     fn visit_func_call(&mut self, _expr: &Expr, _caller: &Expr, _args: &[Expr]) {}
     fn visit_member_func_call(&mut self, _expr: &Expr, _member: &Expr, _func: &Expr) {}
+    fn visit_reference(&mut self, _expr: &Expr, _mutable: bool, _reference: &Expr) -> Self::Output {
+    }
 }

@@ -1,8 +1,8 @@
 extern
     @callconv("C")
-    fn puts(string: *const i8) -> i32;
+    fn puts(string: arr[i8; 13]) -> i32;
 end
 
 fn main() -> i32
-    return puts("Hello, world!")
+    return puts(b"Hello, world!")
 end

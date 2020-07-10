@@ -1,7 +1,7 @@
 use crate::{
     error::{Locatable, Location, Span},
     strings::{StrInterner, StrT},
-    trees::{CallConv, Ref, Sided},
+    trees::{CallConv, ItemPath, Ref, Sided, Signedness},
 };
 #[cfg(feature = "no-std")]
 use alloc::{
@@ -12,7 +12,7 @@ use alloc::{
 };
 use core::{
     fmt::{Debug, Display, Formatter, Result, Write},
-    ops::{Deref, Not},
+    ops::Not,
 };
 use serde::{Deserialize, Serialize};
 
@@ -41,25 +41,25 @@ impl Item {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub enum ItemKind {
     Func {
-        generics: Vec<Type>,
-        args: Vec<FuncArg>,
+        generics: Option<Locatable<Vec<Locatable<Type>>>>,
+        args: Locatable<Vec<FuncArg>>,
         body: Block,
-        ret: Locatable<Ref<Type>>,
+        ret: Ref<Locatable<Type>>,
         sig: Location,
     },
 
     Type {
-        generics: Vec<Type>,
+        generics: Option<Locatable<Vec<Locatable<Type>>>>,
         members: Vec<TypeMember>,
     },
 
     Enum {
-        generics: Vec<Type>,
+        generics: Option<Locatable<Vec<Locatable<Type>>>>,
         variants: Vec<Variant>,
     },
 
     Trait {
-        generics: Vec<Type>,
+        generics: Option<Locatable<Vec<Locatable<Type>>>>,
         methods: Vec<Item>,
     },
 
@@ -71,14 +71,14 @@ pub enum ItemKind {
     },
 
     ExtendBlock {
-        target: Ref<Type>,
-        extender: Option<Ref<Type>>,
+        target: Ref<Locatable<Type>>,
+        extender: Option<Ref<Locatable<Type>>>,
         items: Vec<Item>,
     },
 
     Alias {
-        alias: Ref<Type>,
-        actual: Ref<Type>,
+        alias: Ref<Locatable<Type>>,
+        actual: Ref<Locatable<Type>>,
     },
 
     ExternBlock {
@@ -86,9 +86,9 @@ pub enum ItemKind {
     },
 
     ExternFunc {
-        generics: Vec<Type>,
-        args: Vec<FuncArg>,
-        ret: Locatable<Ref<Type>>,
+        generics: Option<Locatable<Vec<Locatable<Type>>>>,
+        args: Locatable<Vec<FuncArg>>,
+        ret: Ref<Locatable<Type>>,
         callconv: CallConv,
     },
 }
@@ -149,7 +149,7 @@ pub struct TypeMember {
     pub decorators: Vec<Decorator>,
     pub attrs: Vec<Attribute>,
     pub name: StrT,
-    pub ty: Ref<Type>,
+    pub ty: Ref<Locatable<Type>>,
     // pub loc: Location,
 }
 
@@ -162,7 +162,7 @@ pub enum Variant {
 
     Tuple {
         name: StrT,
-        elms: Vec<Type>,
+        elms: Vec<Locatable<Type>>,
         decorators: Vec<Decorator>,
     },
 }
@@ -217,7 +217,7 @@ impl Default for Vis {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct FuncArg {
     pub name: StrT,
-    pub ty: Ref<Type>,
+    pub ty: Ref<Locatable<Type>>,
     pub loc: Location,
 }
 
@@ -261,7 +261,7 @@ pub enum StmtKind {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct VarDecl {
     pub name: StrT,
-    pub ty: Ref<Type>,
+    pub ty: Ref<Locatable<Type>>,
     pub val: Ref<Expr>,
     pub constant: bool,
     pub mutable: bool,
@@ -319,6 +319,7 @@ pub enum ExprKind {
     Index { var: Ref<Expr>, index: Ref<Expr> },
     FuncCall { caller: Ref<Expr>, args: Vec<Expr> },
     MemberFuncCall { member: Ref<Expr>, func: Ref<Expr> },
+    Reference { mutable: bool, expr: Ref<Expr> },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -583,28 +584,46 @@ impl Display for Float {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub enum Type {
-    Operand(Sided<TypeOp, Ref<Type>>),
-    Const(StrT, Ref<Type>),
-    Not(Ref<Type>),
-    Paren(Ref<Type>),
-    Func { params: Vec<Type>, ret: Ref<Type> },
-    Trait(Vec<Type>),
-    Bounded { path: ItemPath, bounds: Vec<Type> },
+    Operand(Sided<TypeOp, Ref<Locatable<Type>>>),
+    Const(StrT, Ref<Locatable<Type>>),
+    Not(Ref<Locatable<Type>>),
+    Paren(Ref<Locatable<Type>>),
+    Func {
+        params: Vec<Locatable<Type>>,
+        ret: Ref<Locatable<Type>>,
+    },
+    Trait(Vec<Locatable<Type>>),
+    Bounded {
+        path: ItemPath,
+        bounds: Vec<Locatable<Type>>,
+    },
     ItemPath(ItemPath),
     Infer,
-    Integer { sign: Signedness, width: u16 },
+    Integer {
+        sign: Signedness,
+        width: u16,
+    },
     IntReg(Signedness),
     IntPtr(Signedness),
-    Float { width: u16 },
+    Float {
+        width: u16,
+    },
     Bool,
     String,
     Rune,
     Absurd,
     Unit,
-    Array(u128, Ref<Type>),
-    Slice(Ref<Type>),
-    Tuple(Vec<Type>),
-    Pointer { mutable: bool, ty: Ref<Type> },
+    Array(u128, Ref<Locatable<Type>>),
+    Slice(Ref<Locatable<Type>>),
+    Tuple(Vec<Locatable<Type>>),
+    Pointer {
+        mutable: bool,
+        ty: Ref<Locatable<Type>>,
+    },
+    Reference {
+        mutable: bool,
+        ty: Ref<Locatable<Type>>,
+    },
 }
 
 impl Type {
@@ -765,90 +784,13 @@ impl Display for TypeOp {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub enum Signedness {
-    Unsigned,
-    Signed,
-}
-
-impl Display for Signedness {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        let sign = match self {
-            Self::Unsigned => 'u',
-            Self::Signed => 'i',
-        };
-
-        f.write_char(sign)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Deserialize, Serialize)]
-#[repr(transparent)]
-pub struct ItemPath(Vec<StrT>);
-
-impl ItemPath {
-    #[inline]
-    pub fn new(path: impl Into<Self>) -> Self {
-        path.into()
-    }
-
-    #[inline]
-    pub fn join(&self, other: impl Into<Self>) -> Self {
-        let mut new = self.0.clone();
-        new.extend(other.into().0.drain(..));
-
-        Self(new)
-    }
-
-    pub fn to_string(&self, interner: &StrInterner) -> String {
-        let mut string = String::with_capacity(self.len() * 2);
-        let mut segments = self.0.iter();
-        let last = segments.next_back();
-
-        for seg in segments {
-            string.push_str(interner.resolve(*seg).as_ref());
-            string.push('.');
-        }
-
-        if let Some(seg) = last {
-            string.push_str(interner.resolve(*seg).as_ref());
-        }
-
-        string
-    }
-}
-
-impl From<StrT> for ItemPath {
-    #[inline]
-    fn from(seg: StrT) -> Self {
-        Self(vec![seg])
-    }
-}
-
-impl From<Vec<StrT>> for ItemPath {
-    #[inline]
-    fn from(segs: Vec<StrT>) -> Self {
-        Self(segs)
-    }
-}
-
-impl Deref for ItemPath {
-    type Target = [StrT];
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct Binding {
     // TODO: Enum for mutability/referential status?
     pub reference: bool,
     pub mutable: bool,
     pub pattern: Pattern,
-    pub ty: Option<Ref<Type>>,
+    pub ty: Option<Ref<Locatable<Type>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]

@@ -1,11 +1,13 @@
 use crate::llvm::{
     context::Context,
-    types::{PointerType, SealedAnyType, TypeKind},
+    types::{ArrayType, PointerType, SealedAnyType, TypeKind},
     utils::{to_non_nul, AddressSpace},
     Result,
 };
 use llvm_sys::{
-    core::{LLVMGetElementType, LLVMGetTypeKind, LLVMPointerType, LLVMPrintTypeToString},
+    core::{
+        LLVMArrayType, LLVMGetElementType, LLVMGetTypeKind, LLVMPointerType, LLVMPrintTypeToString,
+    },
     LLVMType,
 };
 use std::{
@@ -34,6 +36,10 @@ impl<'ctx> Type<'ctx> {
                 address_space as u8 as u32,
             ))
         }
+    }
+
+    pub(crate) fn make_array(self, len: u32) -> Result<ArrayType<'ctx>> {
+        unsafe { ArrayType::from_raw(LLVMArrayType(self.as_mut_ptr(), len)) }
     }
 
     #[inline]

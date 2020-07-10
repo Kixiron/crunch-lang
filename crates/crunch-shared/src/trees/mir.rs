@@ -2,13 +2,13 @@ use crate as crunch_shared;
 use crate::{
     error::Location,
     trees::{
-        ast::{Integer, ItemPath},
+        ast::Integer,
         hir::{
             BinaryOp, Binding, Block as HirBlock, CompOp, Expr, ExternFunc as HirExternFunc,
             FuncArg, FuncCall, Function as HirFunction, Item, Literal, Match, MatchArm, Pattern,
             Return, Stmt, TypeKind as HirType, TypeKind, Var, VarDecl,
         },
-        CallConv, Ref,
+        CallConv, ItemPath, Ref, Signedness,
     },
     utils::{Either, HashMap},
     visitors::hir::{ExprVisitor, ItemVisitor, StmtVisitor},
@@ -133,6 +133,14 @@ impl RightValue {
     pub fn is_bool(&self) -> bool {
         matches!(self.ty, Type::Bool)
     }
+
+    pub fn into_constant(self) -> Option<Constant> {
+        if let Rval::Const(constant) = self.val {
+            Some(constant)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -153,15 +161,23 @@ pub enum Constant {
     U8(u8),
     Bool(bool),
     String(Vec<u8>),
+    Array(Vec<Constant>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
-    I64,
     U8,
+    I8,
+    U16,
+    I16,
+    U32,
+    I32,
+    U64,
+    I64,
     Bool,
     Unit,
     Pointer(Ref<Self>),
+    Array(Ref<Self>, u32),
     String,
     Absurd,
 }
@@ -169,13 +185,26 @@ pub enum Type {
 impl From<&HirType> for Type {
     fn from(ty: &HirType) -> Self {
         match ty {
-            HirType::Integer => Self::I64,
+            #[rustfmt::skip]
+            HirType::Integer { sign, width } => match (sign, width) {
+                (Signedness::Unsigned, 8)  => Self::U8,
+                (Signedness::Signed,   8)  => Self::I8,
+                (Signedness::Unsigned, 16) => Self::U16,
+                (Signedness::Signed,   16) => Self::I16,
+                (Signedness::Unsigned, 32) => Self::U32,
+                (Signedness::Signed,   32) => Self::I32,
+                (Signedness::Unsigned, 64) => Self::U64,
+                (Signedness::Signed,   64) => Self::I64,
+                (sign, width) => todo!("{}{}s are currently unsupported", sign, width),
+            },
             HirType::Bool => Self::Bool,
             HirType::Unit => Self::Unit,
             HirType::Pointer(ty) => Self::Pointer(Ref::new(Self::from(&**ty))),
             HirType::String => Self::String,
-            HirType::Infer => unreachable!("All types should have been inferred by now"),
             HirType::Absurd => Self::Absurd,
+            HirType::Array(elem, len) => Self::Array(Ref::new(Self::from(&**elem)), *len),
+
+            HirType::Infer => unreachable!("All types should have been inferred by now"),
         }
     }
 }
@@ -403,11 +432,13 @@ impl ExprVisitor for MirBuilder {
                 Pattern::Literal(lit) => {
                     SwitchArmKind::Rval(self.visit_literal(loc, lit)?.unwrap())
                 }
+
                 // TODO: Get the type somehow
                 Pattern::Ident(ident) => SwitchArmKind::Default(Some(
-                    self.visit_variable(loc, Var::User(*ident), &TypeKind::Integer)?
+                    self.visit_variable(loc, Var::User(*ident), &TypeKind::Infer)?
                         .unwrap(),
                 )),
+
                 Pattern::ItemPath(..) => todo!(),
                 Pattern::Wildcard => SwitchArmKind::Default(None),
             };
@@ -434,7 +465,7 @@ impl ExprVisitor for MirBuilder {
         }))
     }
 
-    fn visit_literal(&mut self, _loc: Location, literal: &Literal) -> Self::Output {
+    fn visit_literal(&mut self, loc: Location, literal: &Literal) -> Self::Output {
         match literal {
             Literal::Integer(Integer { sign, bits }) => {
                 // TODO: This isn't great
@@ -452,6 +483,20 @@ impl ExprVisitor for MirBuilder {
             Literal::String(string) => Ok(Some(RightValue {
                 ty: Type::String,
                 val: Rval::Const(Constant::String(string.to_bytes())),
+            })),
+
+            Literal::Array(array) => Ok(Some(RightValue {
+                // TODO: Get the actual type
+                ty: Type::Array(Ref::new(Type::U8), array.len() as u32),
+                val: Rval::Const(Constant::Array(
+                    array
+                        .into_iter()
+                        .map(|e| {
+                            self.visit_literal(loc, e)
+                                .map(|e| e.unwrap().into_constant().unwrap())
+                        })
+                        .collect::<Result<Vec<_>>>()?,
+                )),
             })),
 
             lit => todo!("{:?}", lit),

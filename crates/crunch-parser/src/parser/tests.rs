@@ -1,89 +1,12 @@
 use super::*;
-use crate::pretty_printer::PrettyPrinter;
 #[cfg(feature = "no-std")]
 use alloc::string::String;
 use core::iter;
 use crunch_shared::{
     error::{Error, Locatable, SyntaxError},
     files::FileId,
-    strings::StrT,
-    trees::{
-        ast::{
-            AssignKind, BinaryOp, CompOp, ExprKind, Integer, ItemPath, Literal, Sign, Signedness,
-            Type,
-        },
-        Ref,
-    },
+    trees::ast::{AssignKind, BinaryOp, CompOp, ExprKind, Integer, Literal, Sign},
 };
-
-fn format_expr(source: &str) -> String {
-    let context = Context::default();
-    let mut parser = Parser::new(
-        source,
-        CurrentFile::new(FileId::new(0), source.len()),
-        context.clone(),
-    );
-    let expr = parser.expr().unwrap();
-
-    let mut string = String::new();
-    PrettyPrinter::new(context)
-        .print_expr(&mut string, &expr)
-        .unwrap();
-
-    string
-}
-
-macro_rules! expr_eq {
-    ($src:literal) => {
-        assert_eq!($src, format_expr($src));
-    };
-}
-
-fn format_stmt(source: &str) -> String {
-    let context = Context::default();
-    let mut parser = Parser::new(
-        source,
-        CurrentFile::new(FileId::new(0), source.len()),
-        context.clone(),
-    );
-    let stmt = parser.stmt().unwrap().unwrap();
-
-    let mut string = String::new();
-    PrettyPrinter::new(context)
-        .print_stmt(&mut string, &stmt)
-        .unwrap();
-
-    string
-}
-
-macro_rules! stmt_eq {
-    ($src:literal) => {
-        assert_eq!($src, format_stmt($src));
-    };
-}
-
-fn format_item(source: &str) -> String {
-    let context = Context::default();
-    let mut parser = Parser::new(
-        source,
-        CurrentFile::new(FileId::new(0), source.len()),
-        context.clone(),
-    );
-    let item = parser.item().unwrap().unwrap();
-
-    let mut string = String::new();
-    PrettyPrinter::new(context)
-        .print_item(&mut string, &item)
-        .unwrap();
-
-    string
-}
-
-macro_rules! ast_eq {
-    ($src:literal) => {
-        assert_eq!($src, format_item($src));
-    };
-}
 
 macro_rules! assert_expr_eq {
     ($expr:expr, $expect:expr $(,)?) => {{
@@ -560,6 +483,7 @@ fn generics() {
     }
 }
 
+/*
 #[test]
 fn index_array_expr() {
     expr_eq!("array[0]");
@@ -731,6 +655,7 @@ fn strings() {
         format_expr(r#"" \\ \n \r \t \" ""#)
     );
 }
+*/
 
 #[test]
 fn functions_ast() {
@@ -770,6 +695,7 @@ fn functions_ast() {
     assert_eq!(func, expected);
 }
 
+/*
 #[test]
 fn extend_block() {
     println!(
@@ -783,6 +709,7 @@ fn extend_block() {
         )
     );
 }
+*/
 
 #[test]
 fn loop_follows_if() {
@@ -813,6 +740,7 @@ fn loop_follows_if() {
 
 // TODO: Test generic functions
 
+/*
 #[test]
 fn types_ast() {
     let context = Context::new();
@@ -971,6 +899,7 @@ fn import_ast() {
 fn non_ascii_idents() {
     ast_eq!("fn ȨʩӺޗઈဪ⏫㡘㢡䔹✅✨❗❓() -> infer\n    empty\nend\n");
 }
+*/
 
 #[cfg(not(any(target_arch = "wasm32", miri)))]
 mod proptests {

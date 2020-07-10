@@ -47,7 +47,7 @@ pub trait AnyType<'ctx>: SealedAnyType<'ctx> + Sized {
     }
 
     fn make_array(self, len: u32) -> Result<ArrayType<'ctx>> {
-        unsafe { ArrayType::from_raw(LLVMArrayType(self.as_mut_ptr(), len)) }
+        self.as_ty().make_array(len)
     }
 
     fn element_type(self) -> Result<Type<'ctx>> {

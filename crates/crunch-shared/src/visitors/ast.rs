@@ -4,10 +4,10 @@ use crate::{
     trees::{
         ast::{
             AssignKind, BinaryOp, Block, CompOp, Dest, Exposure, Expr, ExprKind, For, FuncArg, If,
-            Item, ItemKind, ItemPath, Literal, Loop, Match, Stmt, Type, TypeMember, UnaryOp,
-            VarDecl, Variant, While,
+            Item, ItemKind, Literal, Loop, Match, Stmt, Type, TypeMember, UnaryOp, VarDecl,
+            Variant, While,
         },
-        CallConv, Sided,
+        CallConv, ItemPath, Sided,
     },
 };
 
@@ -23,10 +23,23 @@ pub trait ItemVisitor {
                 body,
                 ret,
                 sig,
-            } => self.visit_func(item, generics, args, body, ret.map(|t| &**t), *sig),
-            ItemKind::Type { generics, members } => self.visit_type(item, generics, members),
-            ItemKind::Enum { generics, variants } => self.visit_enum(item, generics, variants),
-            ItemKind::Trait { generics, methods } => self.visit_trait(item, generics, methods),
+            } => self.visit_func(
+                item,
+                generics.as_ref().map(|g| g.as_deref()),
+                args.as_deref(),
+                body,
+                (**ret).as_ref(),
+                *sig,
+            ),
+            ItemKind::Type { generics, members } => {
+                self.visit_type(item, generics.as_ref().map(|g| g.as_deref()), members)
+            }
+            ItemKind::Enum { generics, variants } => {
+                self.visit_enum(item, generics.as_ref().map(|g| g.as_deref()), variants)
+            }
+            ItemKind::Trait { generics, methods } => {
+                self.visit_trait(item, generics.as_ref().map(|g| g.as_deref()), methods)
+            }
             ItemKind::Import {
                 file,
                 dest,
@@ -36,25 +49,36 @@ pub trait ItemVisitor {
                 target,
                 extender,
                 items,
-            } => {
-                self.visit_extend_block(item, target, extender.as_ref().map(|t| t.as_ref()), items)
+            } => self.visit_extend_block(
+                item,
+                (**target).as_ref(),
+                extender.as_ref().map(|t| (**t).as_ref()),
+                items,
+            ),
+            ItemKind::Alias { alias, actual } => {
+                self.visit_alias(item, (**alias).as_ref(), (**actual).as_ref())
             }
-            ItemKind::Alias { alias, actual } => self.visit_alias(item, alias, actual),
             ItemKind::ExternBlock { items } => self.visit_extern_block(item, items),
             ItemKind::ExternFunc {
                 generics,
                 args,
                 ret,
                 callconv,
-            } => self.visit_extern_func(item, generics, args, ret.map(|t| &**t), *callconv),
+            } => self.visit_extern_func(
+                item,
+                generics.as_ref().map(|g| g.as_deref()),
+                args.as_deref(),
+                (**ret).as_ref(),
+                *callconv,
+            ),
         }
     }
 
     fn visit_func(
         &mut self,
         item: &Item,
-        generics: &[Type],
-        args: &[FuncArg],
+        generics: Option<Locatable<&[Locatable<Type>]>>,
+        args: Locatable<&[FuncArg]>,
         body: &Block,
         ret: Locatable<&Type>,
         sig: Location,
@@ -62,11 +86,21 @@ pub trait ItemVisitor {
     fn visit_type(
         &mut self,
         item: &Item,
-        generics: &[Type],
+        generics: Option<Locatable<&[Locatable<Type>]>>,
         members: &[TypeMember],
     ) -> Self::Output;
-    fn visit_enum(&mut self, item: &Item, generics: &[Type], variants: &[Variant]) -> Self::Output;
-    fn visit_trait(&mut self, item: &Item, generics: &[Type], methods: &[Item]) -> Self::Output;
+    fn visit_enum(
+        &mut self,
+        item: &Item,
+        generics: Option<Locatable<&[Locatable<Type>]>>,
+        variants: &[Variant],
+    ) -> Self::Output;
+    fn visit_trait(
+        &mut self,
+        item: &Item,
+        generics: Option<Locatable<&[Locatable<Type>]>>,
+        methods: &[Item],
+    ) -> Self::Output;
     fn visit_import(
         &mut self,
         item: &Item,
@@ -77,17 +111,22 @@ pub trait ItemVisitor {
     fn visit_extend_block(
         &mut self,
         item: &Item,
-        target: &Type,
-        extender: Option<&Type>,
+        target: Locatable<&Type>,
+        extender: Option<Locatable<&Type>>,
         items: &[Item],
     ) -> Self::Output;
-    fn visit_alias(&mut self, item: &Item, alias: &Type, actual: &Type) -> Self::Output;
+    fn visit_alias(
+        &mut self,
+        item: &Item,
+        alias: Locatable<&Type>,
+        actual: Locatable<&Type>,
+    ) -> Self::Output;
     fn visit_extern_block(&mut self, item: &Item, items: &[Item]) -> Self::Output;
     fn visit_extern_func(
         &mut self,
         item: &Item,
-        generics: &[Type],
-        args: &[FuncArg],
+        generics: Option<Locatable<&[Locatable<Type>]>>,
+        args: Locatable<&[FuncArg]>,
         ret: Locatable<&Type>,
         callconv: CallConv,
     ) -> Self::Output;
@@ -107,8 +146,8 @@ pub trait ExprVisitor {
     fn visit_expr(&mut self, expr: &Expr) -> Self::Output {
         match &expr.kind {
             ExprKind::If(if_) => self.visit_if(expr, if_),
-            ExprKind::Return(value) => self.visit_return(expr, value.as_ref().map(|e| e.as_ref())),
-            ExprKind::Break(value) => self.visit_break(expr, value.as_ref().map(|e| e.as_ref())),
+            ExprKind::Return(value) => self.visit_return(expr, value.as_deref()),
+            ExprKind::Break(value) => self.visit_break(expr, value.as_deref()),
             ExprKind::Continue => self.visit_continue(expr),
             ExprKind::While(while_) => self.visit_while(expr, while_),
             ExprKind::Loop(loop_) => self.visit_loop(expr, loop_),
@@ -131,6 +170,10 @@ pub trait ExprVisitor {
             ExprKind::MemberFuncCall { member, func } => {
                 self.visit_member_func_call(expr, member, func)
             }
+            ExprKind::Reference {
+                mutable,
+                expr: reference,
+            } => self.visit_reference(expr, *mutable, reference.as_ref()),
         }
     }
 
@@ -163,6 +206,7 @@ pub trait ExprVisitor {
     fn visit_index(&mut self, expr: &Expr, var: &Expr, index: &Expr) -> Self::Output;
     fn visit_func_call(&mut self, expr: &Expr, caller: &Expr, args: &[Expr]) -> Self::Output;
     fn visit_member_func_call(&mut self, expr: &Expr, member: &Expr, func: &Expr) -> Self::Output;
+    fn visit_reference(&mut self, expr: &Expr, mutable: bool, reference: &Expr) -> Self::Output;
 }
 
 #[allow(unused_variables)]

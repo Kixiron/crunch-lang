@@ -1,4 +1,7 @@
-use crate::{parser::Parser, token::TokenType};
+use crate::{
+    parser::Parser,
+    token::{Token, TokenType},
+};
 #[cfg(feature = "no-std")]
 use alloc::vec::Vec;
 use crunch_shared::{
@@ -32,7 +35,7 @@ impl<'src> Parser<'src> {
                     self.eat(TokenType::Mut, [TokenType::Newline])?;
                 }
 
-                let (name, _span) = {
+                let (name, span) = {
                     let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
                     (self.context.strings.intern(ident.source()), ident.span())
                 };
@@ -44,11 +47,12 @@ impl<'src> Parser<'src> {
 
                 let ty = if self.peek()?.ty() == TokenType::Equal {
                     self.eat(TokenType::Equal, [])?;
-                    Type::Infer
+                    Locatable::new(Type::Infer, Location::new(span, self.current_file))
                 } else {
                     let ty = self.ascribed_type()?;
                     self.eat(TokenType::Colon, [TokenType::Newline])?;
                     self.eat(TokenType::Equal, [])?;
+
                     ty
                 };
 
@@ -58,14 +62,14 @@ impl<'src> Parser<'src> {
                 if constant && mutable {
                     return Err(Locatable::new(
                         Error::Semantic(SemanticError::MutableConstant),
-                        Location::concrete(
+                        Location::new(
                             Span::merge(start_token.span(), val.span()),
                             self.current_file,
                         ),
                     ));
                 }
 
-                let loc = Location::concrete(
+                let loc = Location::new(
                     Span::merge(start_token.span(), val.span()),
                     self.current_file,
                 );
@@ -103,7 +107,7 @@ impl<'src> Parser<'src> {
                 let expr = Ref::new(self.expr()?);
                 let end = self.eat(TokenType::Newline, [])?.span();
 
-                let loc = Location::concrete(Span::merge(expr.span(), end), self.current_file);
+                let loc = Location::new(Span::merge(expr.span(), end), self.current_file);
                 let kind = StmtKind::Expr(expr);
 
                 Ok(Some(Stmt { kind, loc }))
@@ -113,29 +117,33 @@ impl<'src> Parser<'src> {
 
     #[recursion_guard]
     pub(super) fn block(&mut self, breaks: &[TokenType], capacity: usize) -> ParseResult<Block> {
-        let mut stmts = Vec::with_capacity(capacity);
+        Ok(self.block_returning(breaks, capacity)?.0)
+    }
 
-        let (mut start, mut end) = (None, None);
+    pub(super) fn block_returning(
+        &mut self,
+        breaks: &[TokenType],
+        capacity: usize,
+    ) -> ParseResult<(Block, Token<'src>)> {
+        let start = self.peek()?.span();
+
+        let mut stmts = Vec::with_capacity(capacity);
         while let Ok(true) = self.peek().map(|p| !breaks.contains(&p.ty())) {
             let stmt = self.stmt()?;
 
             if let Some(stmt) = stmt {
-                start = start.or_else(|| Some(stmt.location().span()));
-                end = Some(stmt.location().span());
-
                 stmts.push(stmt);
             }
         }
 
-        Ok(Block {
-            stmts,
-            loc: Location::concrete(
-                Span::merge(
-                    start.unwrap_or(self.current_file.index_span()),
-                    end.unwrap_or(self.current_file.index_span()),
-                ),
-                self.current_file,
-            ),
-        })
+        let end = self.eat_of(breaks, [TokenType::Newline])?;
+
+        Ok((
+            Block {
+                stmts,
+                loc: Location::new(Span::merge(start, end.span()), self.current_file),
+            },
+            end,
+        ))
     }
 }

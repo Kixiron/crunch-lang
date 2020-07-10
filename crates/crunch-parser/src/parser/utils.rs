@@ -8,7 +8,10 @@ use crunch_shared::{
     error::{Error, Locatable, Location, ParseResult, Span, SyntaxError, Warning},
     files::CurrentFile,
     strings::StrT,
-    trees::ast::{AssignKind, BinaryOp, CompOp, Float, Integer, ItemPath, Literal, Sign, UnaryOp},
+    trees::{
+        ast::{AssignKind, BinaryOp, CompOp, Float, Integer, Literal, Sign, UnaryOp},
+        ItemPath,
+    },
 };
 
 #[derive(Debug, Clone)]
@@ -87,7 +90,7 @@ impl<'src> Parser<'src> {
 
                     self.error_handler.push_warning(Locatable::new(
                         Warning::TooManyUnderscores,
-                        Location::concrete(span, self.current_file),
+                        Location::new(span, self.current_file),
                     ));
                 }
 
@@ -96,14 +99,14 @@ impl<'src> Parser<'src> {
                         .map_err(|_| {
                             Locatable::new(
                                 Error::Syntax(SyntaxError::InvalidLiteral("float".to_string())),
-                                Location::concrete(token, file),
+                                Location::new(token, file),
                             )
                         })?
                 } else {
                     lexical_core::parse_format(source.as_bytes(), format).map_err(|_| {
                         Locatable::new(
                             Error::Syntax(SyntaxError::InvalidLiteral("float".to_string())),
-                            Location::concrete(token, file),
+                            Location::new(token, file),
                         )
                     })?
                 };
@@ -127,7 +130,7 @@ impl<'src> Parser<'src> {
                     string_escapes::unescape_rune(source[1..].chars()).map_err(|(err, range)| {
                         Locatable::new(
                             err,
-                            Location::concrete(
+                            Location::new(
                                 (
                                     token.range().start + 3 + range.start,
                                     token.range().start + 3 + range.end,
@@ -164,7 +167,7 @@ impl<'src> Parser<'src> {
                             .map_err(|(err, range)| {
                                 Locatable::new(
                                     err,
-                                    Location::concrete(
+                                    Location::new(
                                         (
                                             token.range().start + 1 + range.start,
                                             token.range().start + 1 + range.end,
@@ -216,7 +219,7 @@ impl<'src> Parser<'src> {
 
                     self.error_handler.push_warning(Locatable::new(
                         Warning::TooManyUnderscores,
-                        Location::concrete(span, self.current_file),
+                        Location::new(span, self.current_file),
                     ));
                 }
 
@@ -225,7 +228,7 @@ impl<'src> Parser<'src> {
                         .map_err(|_| {
                             Locatable::new(
                                 Error::Syntax(SyntaxError::InvalidLiteral("int".to_string())),
-                                Location::concrete(token, file),
+                                Location::new(token, file),
                             )
                         })?
                 } else if source.chars().take(2).eq(['0', 'b'].iter().copied()) {
@@ -233,7 +236,7 @@ impl<'src> Parser<'src> {
                         .map_err(|_| {
                             Locatable::new(
                                 Error::Syntax(SyntaxError::InvalidLiteral("int".to_string())),
-                                Location::concrete(token, file),
+                                Location::new(token, file),
                             )
                         })?
                 } else {
@@ -241,7 +244,7 @@ impl<'src> Parser<'src> {
                         .map_err(|_| {
                             Locatable::new(
                                 Error::Syntax(SyntaxError::InvalidLiteral("int".to_string())),
-                                Location::concrete(token, file),
+                                Location::new(token, file),
                             )
                         })?
                 };
@@ -253,14 +256,14 @@ impl<'src> Parser<'src> {
                 |_| {
                     Locatable::new(
                         Error::Syntax(SyntaxError::InvalidLiteral("bool".to_string())),
-                        Location::concrete(token, file),
+                        Location::new(token, file),
                     )
                 },
             )?)),
 
             ty => Err(Locatable::new(
                 Error::Syntax(SyntaxError::Generic(format!("Invalid Literal: '{}'", ty))),
-                Location::concrete(token, file),
+                Location::new(token, file),
             )),
         }
     }
@@ -311,7 +314,7 @@ impl<'src> Parser<'src> {
                             .join(", "),
                         ty,
                     ))),
-                    Location::concrete(token, file),
+                    Location::new(token, file),
                 ));
             }
         };
@@ -349,7 +352,7 @@ impl<'src> Parser<'src> {
                             .join(", "),
                         ty,
                     ))),
-                    Location::concrete(token, file),
+                    Location::new(token, file),
                 ));
             }
         };
@@ -378,7 +381,7 @@ impl<'src> Parser<'src> {
                         "Expected a binary operand, got `{}`",
                         ty
                     ))),
-                    Location::concrete(token, file),
+                    Location::new(token, file),
                 ));
             }
         };
@@ -399,7 +402,7 @@ impl<'src> Parser<'src> {
                         "Expected a unary operand, got `{}`",
                         ty
                     ))),
-                    Location::concrete(token, file),
+                    Location::new(token, file),
                 ));
             }
         };

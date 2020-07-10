@@ -158,10 +158,6 @@ impl<'src> Parser<'src> {
         mem::swap(&mut next, &mut self.peek);
         self.next = next;
 
-        if let Some(next) = self.next {
-            self.current_file.advance(next.span().width());
-        }
-
         next.ok_or_else(|| Locatable::new(Error::EndOfFile, self.current_file.eof()))
     }
 
@@ -194,7 +190,7 @@ impl<'src> Parser<'src> {
                             expected.to_str(),
                             token.source()
                         ))),
-                        Location::concrete(&token, self.current_file.file()),
+                        Location::new(&token, self.current_file.file()),
                     ));
                 }
             }
@@ -235,11 +231,11 @@ impl<'src> Parser<'src> {
 
                     return Err(Locatable::new(
                         Error::Syntax(SyntaxError::Generic(format!(
-                            "Expected one of {:?}, got {:?}",
+                            "Expected one of {}, got {:?}",
                             expected,
                             token.source()
                         ))),
-                        Location::concrete(&token, self.current_file.file()),
+                        Location::new(&token, self.current_file.file()),
                     ));
                 }
             }
@@ -282,7 +278,7 @@ impl<'src> Parser<'src> {
         if depth > MAX_DEPTH {
             Err(Locatable::new(
                 Error::Syntax(SyntaxError::RecursionLimit(depth, MAX_DEPTH)),
-                self.current_file.recursion(),
+                self.current_file.eof(),
             ))
         } else {
             Ok(guard)

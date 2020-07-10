@@ -19,7 +19,7 @@ use core::{
     fmt,
     hash::{Hash, Hasher},
     mem,
-    ops::{self, Range},
+    ops::{Deref, DerefMut, Range},
 };
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
@@ -28,75 +28,58 @@ pub type ParseResult<T> = Result<T, Locatable<Error>>;
 pub type TypeResult<T> = Result<T, Locatable<Error>>;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub enum Location {
-    Concrete { span: Span, file: FileId },
-    Implicit { span: Span, file: FileId },
+pub struct Location {
+    span: Span,
+    file: FileId,
 }
 
 impl Location {
+    #[inline]
+    pub fn new<S, F>(span: S, file: F) -> Self
+    where
+        S: Into<Span>,
+        F: Into<FileId>,
+    {
+        Self {
+            span: span.into(),
+            file: file.into(),
+        }
+    }
+
+    #[inline]
     pub fn merge(self, other: Self) -> Self {
         debug_assert_eq!(self.file(), other.file());
-        debug_assert_eq!(self.is_concrete(), other.is_concrete());
 
-        Self::Concrete {
+        Self {
             span: Span::merge(self.span(), other.span()),
             file: self.file(),
         }
     }
 
     #[inline]
-    pub fn concrete<S, F>(span: S, file: F) -> Self
+    pub const fn span(&self) -> Span {
+        self.span
+    }
+
+    #[inline]
+    pub const fn file(&self) -> FileId {
+        self.file
+    }
+
+    #[inline]
+    pub const fn range(&self) -> Range<usize> {
+        self.span().range()
+    }
+
+    #[inline]
+    pub fn map_span<F>(self, map: F) -> Self
     where
-        S: Into<Span>,
-        F: Into<FileId>,
+        F: FnOnce(Span) -> Span,
     {
-        Self::Concrete {
-            span: span.into(),
-            file: file.into(),
+        Self {
+            span: map(self.span),
+            file: self.file,
         }
-    }
-
-    #[inline]
-    pub fn implicit<S, F>(span: S, file: F) -> Self
-    where
-        S: Into<Span>,
-        F: Into<FileId>,
-    {
-        Self::Concrete {
-            span: span.into(),
-            file: file.into(),
-        }
-    }
-
-    #[inline]
-    pub fn span(&self) -> Span {
-        match self {
-            Self::Concrete { span, .. } => *span,
-            Self::Implicit { span, .. } => *span,
-        }
-    }
-
-    #[inline]
-    pub fn file(&self) -> FileId {
-        match self {
-            Self::Concrete { file, .. } => *file,
-            Self::Implicit { file, .. } => *file,
-        }
-    }
-
-    #[inline]
-    pub fn range(&self) -> Range<usize> {
-        self.span().into()
-    }
-
-    #[inline]
-    pub fn is_concrete(&self) -> bool {
-        matches!(self, Self::Concrete { .. })
-    }
-
-    #[inline]
-    pub fn is_implicit(&self) -> bool {
-        matches!(self, Self::Concrete { .. })
     }
 }
 
@@ -247,32 +230,48 @@ impl<T> Locatable<T> {
     }
 
     #[inline]
-    pub fn map<F, U>(&self, map: F) -> Locatable<&U>
+    pub fn map<F, U>(self, map: F) -> Locatable<U>
     where
-        F: FnOnce(&T) -> &U,
+        F: FnOnce(T) -> U,
     {
         Locatable {
-            data: map(&self.data),
+            data: map(self.data),
+            loc: self.loc,
+        }
+    }
+
+    #[inline]
+    pub fn as_ref(&self) -> Locatable<&T> {
+        Locatable {
+            data: &self.data,
+            loc: self.loc,
+        }
+    }
+
+    #[inline]
+    pub fn as_mut(&mut self) -> Locatable<&mut T> {
+        Locatable {
+            data: &mut self.data,
             loc: self.loc,
         }
     }
 }
 
-impl<T> AsRef<T> for Locatable<T> {
+impl<T: Deref> Locatable<T> {
     #[inline]
-    fn as_ref(&self) -> &T {
-        &self.data
+    pub fn as_deref(&self) -> Locatable<&T::Target> {
+        self.as_ref().map(|t| t.deref())
     }
 }
 
-impl<T> AsMut<T> for Locatable<T> {
+impl<T: DerefMut> Locatable<T> {
     #[inline]
-    fn as_mut(&mut self) -> &mut T {
-        &mut self.data
+    pub fn as_deref_mut(&mut self) -> Locatable<&mut T::Target> {
+        self.as_mut().map(|t| t.deref_mut())
     }
 }
 
-impl<T> ops::Deref for Locatable<T> {
+impl<T> Deref for Locatable<T> {
     type Target = T;
 
     #[inline]
@@ -281,7 +280,7 @@ impl<T> ops::Deref for Locatable<T> {
     }
 }
 
-impl<T> ops::DerefMut for Locatable<T> {
+impl<T> DerefMut for Locatable<T> {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.data
@@ -634,7 +633,11 @@ pub enum TypeError {
     VarNotInScope(String),
 
     #[display(fmt = "<Internal error, incorrectly rendered an error>")]
-    TypeConflict([(Option<String>, String, Location); 2]),
+    TypeConflict {
+        call_type: String,
+        def_type: String,
+        def_site: Location,
+    },
 
     #[display(fmt = "Failed to infer the type of '{}'", _0)]
     FailedInfer(String),
@@ -648,20 +651,19 @@ pub enum TypeError {
     #[display(fmt = "The function '{}' was not found in this scope", _0)]
     FuncNotInScope(String),
 
-    #[display(
-        fmt = "Expected {} argument{}, got {}",
-        _0,
-        r#"if *_0 == 1 { "" } else { "s" }"#,
-        _1
-    )]
-    NotEnoughArgs(usize, usize, Location),
+    #[display(fmt = "<Internal error, incorrectly rendered an error>")]
+    NotEnoughArgs {
+        expected: usize,
+        received: usize,
+        def_site: Location,
+    },
 }
 
 impl TypeError {
     #[inline]
     fn emit<'a, F>(
         &self,
-        files: &'a F,
+        _files: &'a F,
         file: FileId,
         span: Span,
         diag: &mut Vec<Diagnostic<FileId>>,
@@ -669,45 +671,46 @@ impl TypeError {
         F: CodeFiles<'a, FileId = FileId>,
     {
         match self {
-            Self::TypeConflict([(lvar, lty, lloc), (rvar, rty, rloc)]) => {
-                let source = files.source(file).expect("Received an invalid file id");
-
-                let lvar = lvar
-                    .as_deref()
-                    .unwrap_or_else(|| &source.as_ref()[lloc.span().range()]);
-                let rvar = rvar
-                    .as_deref()
-                    .unwrap_or_else(|| &source.as_ref()[rloc.span().range()]);
-
+            Self::TypeConflict {
+                call_type,
+                def_type,
+                def_site,
+            } => {
                 diag.push(
                     Diagnostic::error()
-                        .with_message(format!("Type conflict between {} and {}", lvar, rvar))
+                        .with_message("mismatched types")
                         .with_labels(
-                            [
-                                Label::primary(file, lloc.range())
-                                    .with_message(format!("Has the type of {}", lty)),
-                                Label::secondary(file, rloc.range())
-                                    .with_message(format!("Has the type of {}", rty)),
-                            ]
+                            [Label::primary(file, span)
+                                .with_message(format!("Expected {}, got {}", def_type, call_type))]
                             .into(),
                         ),
                 );
+                diag.push(
+                    Diagnostic::note()
+                        .with_message("defined here")
+                        .with_labels([Label::secondary(def_site.file(), def_site.range())].into()),
+                )
             }
 
-            Self::NotEnoughArgs(expected, _, sig) => {
+            Self::NotEnoughArgs {
+                expected,
+                received,
+                def_site,
+            } => {
                 diag.push(
                     Diagnostic::error()
-                        .with_message(self.to_string())
+                        .with_message(format!(
+                            "expected {} argument{}, got {}",
+                            expected,
+                            if *expected == 1 { "" } else { "s" },
+                            received,
+                        ))
                         .with_labels(vec![Label::primary(file, span)]),
                 );
                 diag.push(
                     Diagnostic::note()
-                        .with_message(format!(
-                            "The function is declared here, it has {} argument{}",
-                            expected,
-                            if *expected == 1 { "" } else { "s" },
-                        ))
-                        .with_labels(vec![Label::primary(file, sig.range())]),
+                        .with_message("defined here")
+                        .with_labels(vec![Label::primary(def_site.file(), def_site.range())]),
                 );
             }
 

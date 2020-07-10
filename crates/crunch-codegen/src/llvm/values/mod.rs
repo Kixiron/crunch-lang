@@ -17,8 +17,11 @@ pub(crate) use value::Val;
 pub use value::ValueUsage;
 pub use value_kind::ValueKind;
 
-use crate::llvm::{utils::Sealed, Context, Error, ErrorKind, Result};
-use llvm_sys::core::LLVMConstStringInContext;
+use crate::llvm::{types::Type, utils::Sealed, Context, Error, ErrorKind, Result};
+use llvm_sys::{
+    core::{LLVMConstArray, LLVMConstStringInContext},
+    LLVMValue,
+};
 use std::{
     convert::TryFrom,
     fmt::{Debug, Formatter, Result as FmtResult},
@@ -213,6 +216,22 @@ impl<'ctx> TryFrom<Value<'ctx>> for BlockAddress<'ctx> {
 pub struct ArrayValue<'ctx>(Val<'ctx>);
 
 impl<'ctx> ArrayValue<'ctx> {
+    pub fn const_array(
+        element_type: Type<'ctx>,
+        elements: &[Value<'ctx>],
+    ) -> Result<ArrayValue<'ctx>> {
+        let mut elements: Vec<*mut LLVMValue> =
+            elements.iter().map(|e| e.as_val().as_mut_ptr()).collect();
+
+        unsafe {
+            Self::from_raw(LLVMConstArray(
+                element_type.as_mut_ptr(),
+                elements.as_mut_ptr(),
+                elements.len() as u32,
+            ))
+        }
+    }
+
     pub fn const_string(
         ctx: &'ctx Context,
         string: &[u8],

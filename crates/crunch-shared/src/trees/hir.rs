@@ -1,5 +1,5 @@
 use crate::{
-    error::{Location, Span},
+    error::{Locatable, Location, Span},
     strings::{StrInterner, StrT},
     trees::{CallConv, Ref, Sided},
 };
@@ -13,7 +13,10 @@ use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
 
 // TODO: Make equivalents of everything in HIR, even though it's duplicated code
-pub use super::ast::{BinaryOp, CompOp, ItemPath, Literal, Vis};
+pub use crate::trees::{
+    ast::{BinaryOp, CompOp, Literal, Type as AstType, Vis},
+    ItemPath, Signedness,
+};
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum Item {
@@ -25,7 +28,7 @@ pub enum Item {
 pub struct Function {
     pub name: ItemPath,
     pub vis: Vis,
-    pub args: Vec<FuncArg>,
+    pub args: Locatable<Vec<FuncArg>>,
     pub body: Block<Stmt>,
     pub ret: Type,
     pub loc: Location,
@@ -49,7 +52,7 @@ impl FuncArg {
 pub struct ExternFunc {
     pub name: ItemPath,
     pub vis: Vis,
-    pub args: Vec<FuncArg>,
+    pub args: Locatable<Vec<FuncArg>>,
     pub ret: Type,
     pub callconv: CallConv,
     pub loc: Location,
@@ -299,11 +302,12 @@ impl Type {
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum TypeKind {
     Infer,
-    Integer,
+    Integer { sign: Signedness, width: u16 },
     String,
     Bool,
     Unit,
     Pointer(Ref<TypeKind>),
+    Array(Ref<TypeKind>, u32),
     Absurd,
 }
 
@@ -313,28 +317,19 @@ impl TypeKind {
     }
 }
 
-impl From<&crate::trees::ast::Type> for TypeKind {
-    fn from(ty: &crate::trees::ast::Type) -> Self {
-        use crate::trees::ast::{Signedness, Type};
-
+impl From<&AstType> for TypeKind {
+    fn from(ty: &AstType) -> Self {
         match ty {
-            Type::Infer => Self::Infer,
-            Type::Unit => Self::Unit,
-            Type::Bool => Self::Bool,
-            Type::String => Self::String,
-            Type::Integer {
-                sign: Signedness::Signed,
-                width: 8,
-            } => Self::Integer,
-            Type::Integer {
-                sign: Signedness::Signed,
-                width: 32,
-            } => Self::Integer,
-            Type::Integer {
-                sign: Signedness::Signed,
-                width: 64,
-            } => Self::Integer,
-            Type::Pointer { ty, .. } => Self::Pointer(Ref::new(Self::from(&**ty))),
+            AstType::Infer => Self::Infer,
+            AstType::Unit => Self::Unit,
+            AstType::Bool => Self::Bool,
+            AstType::String => Self::String,
+            AstType::Integer { sign, width } => Self::Integer {
+                sign: *sign,
+                width: *width,
+            },
+            AstType::Pointer { ty, .. } => Self::Pointer(Ref::new(Self::from(&***ty))),
+            AstType::Array(len, elem) => Self::Array(Ref::new(Self::from(&***elem)), *len as u32),
 
             ty => todo!("{:?}", ty),
         }

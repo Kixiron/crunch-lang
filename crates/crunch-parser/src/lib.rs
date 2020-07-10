@@ -11,12 +11,10 @@
 extern crate alloc;
 
 pub mod parser;
-mod pretty_printer;
 #[cfg(test)]
 mod tests;
 mod token;
 mod unnest_externs;
 
 pub use parser::{ParseConfig, Parser};
-pub use pretty_printer::PrettyPrinter;
 pub use unnest_externs::ExternUnnester;

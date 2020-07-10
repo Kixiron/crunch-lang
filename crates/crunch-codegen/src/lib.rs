@@ -423,23 +423,42 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
                     .with_initializer(llvm_string.as_value())
                     .as_value())
             }
+
+            Constant::Array(array) => Ok(ArrayValue::const_array(
+                IntType::u8(self.module.context())?.into(),
+                array
+                    .iter()
+                    .map(|c| self.visit_constant(c))
+                    .collect::<Result<Vec<Value<'ctx>>>>()?
+                    .as_slice(),
+            )?
+            .into()),
         }
     }
 
+    #[rustfmt::skip]
     fn visit_type(&mut self, ty: &MirType) -> Self::TypeOutput {
-        match ty {
-            MirType::I64 => IntType::i64(self.ctx).map(|i| i.into()),
-            MirType::U8 => IntType::u8(self.ctx).map(|i| i.into()),
-            MirType::Bool => IntType::i1(self.ctx).map(|i| i.into()),
-            MirType::Unit => VoidType::new(self.ctx).map(|i| i.into()),
+        let ty = match ty {
+            MirType::Bool   => IntType::i1(self.ctx)?.into(),
+            MirType::Unit   => VoidType::new(self.ctx)?.into(),
+            MirType::String => IntType::i8(self.ctx)?.into(),
+            MirType::Absurd => VoidType::new(self.ctx)?.into(), // TODO: ???
+            MirType::U8     => IntType::u8(self.ctx)?.into(),
+            MirType::I8     => IntType::i8(self.ctx)?.into(),
+            MirType::U16    => IntType::u16(self.ctx)?.into(),
+            MirType::I16    => IntType::i16(self.ctx)?.into(),
+            MirType::U32    => IntType::u32(self.ctx)?.into(),
+            MirType::I32    => IntType::i32(self.ctx)?.into(),
+            MirType::U64    => IntType::u64(self.ctx)?.into(),
+            MirType::I64    => IntType::i64(self.ctx)?.into(),
+            MirType::Array(elem, len) => self.visit_type(&**elem)?.make_array(*len)?.into(),
             MirType::Pointer(ptr) => self
                 .visit_type(ptr)?
-                .make_pointer(AddressSpace::Generic)
-                .map(|i| i.into()),
-            MirType::String => IntType::i8(self.ctx).map(|i| i.into()),
-            // TODO: ???
-            MirType::Absurd => VoidType::new(self.ctx).map(|i| i.into()),
-        }
+                .make_pointer(AddressSpace::Generic)?
+                .into(),
+        };
+
+        Ok(ty)
     }
 }
 

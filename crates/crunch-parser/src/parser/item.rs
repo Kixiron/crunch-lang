@@ -116,7 +116,7 @@ impl<'src> Parser<'src> {
                 if !attributes.is_empty() {
                     Err(Locatable::new(
                         Error::Syntax(SyntaxError::NoAttributesAllowed("import".to_string())),
-                        Location::concrete(&self.peek()?, self.current_file),
+                        Location::new(&self.peek()?, self.current_file),
                     ))
                 } else {
                     let import =
@@ -144,7 +144,7 @@ impl<'src> Parser<'src> {
                     // TODO: Give visibility a span
                     Err(Locatable::new(
                         SyntaxError::NoVisibilityAllowed("External blocks".to_owned()).into(),
-                        Location::concrete(extern_block.span(), self.current_file),
+                        Location::new(extern_block.span(), self.current_file),
                     ))
                 } else {
                     Ok(Some(extern_block))
@@ -158,7 +158,7 @@ impl<'src> Parser<'src> {
 
             ty => Err(Locatable::new(
                 Error::Syntax(SyntaxError::InvalidTopLevel(format!("{}", ty))),
-                Location::concrete(&self.peek()?, self.current_file),
+                Location::new(&self.peek()?, self.current_file),
             )),
         }
     }
@@ -233,7 +233,7 @@ impl<'src> Parser<'src> {
                 // Get the last segment of the path as the alias if none is supplied
                 file.iter().last().copied().ok_or(Locatable::new(
                     Error::Syntax(SyntaxError::MissingImport),
-                    Location::concrete(&self.peek()?, self.current_file),
+                    Location::new(&self.peek()?, self.current_file),
                 ))?
             };
 
@@ -253,7 +253,7 @@ impl<'src> Parser<'src> {
                     exposes,
                 },
                 name: None,
-                loc: Location::concrete(Span::merge(start_span, end_span), self.current_file),
+                loc: Location::new(Span::merge(start_span, end_span), self.current_file),
                 vis: Some(vis),
             })
         } else {
@@ -266,7 +266,7 @@ impl<'src> Parser<'src> {
 
             Err(Locatable::new(
                 Error::Syntax(SyntaxError::NoDecoratorsAllowed("import".to_string())),
-                Location::concrete(
+                Location::new(
                     Span::merge(
                         first,
                         decorators
@@ -327,7 +327,7 @@ impl<'src> Parser<'src> {
                 _ => {
                     return Err(Locatable::new(
                         Error::Syntax(SyntaxError::Generic("Only methods, attributes and decorators are allowed inside trait bodies".to_string())),
-                        Location::concrete(&self.peek()?, self.current_file),
+                        Location::new(&self.peek()?, self.current_file),
                     ));
                 }
             }
@@ -341,7 +341,7 @@ impl<'src> Parser<'src> {
             decorators,
             attrs,
             name: Some(name),
-            loc: Location::concrete(Span::merge(start_span, end_span), self.current_file),
+            loc: Location::new(Span::merge(start_span, end_span), self.current_file),
             vis: Some(vis),
         })
     }
@@ -420,7 +420,7 @@ impl<'src> Parser<'src> {
                             "Only decorators and enum variants are allowed inside enum declarations, got a `{}`", 
                             ty,
                         ))),
-                        Location::concrete(&self.peek()?, self.current_file),
+                        Location::new(&self.peek()?, self.current_file),
                     ));
                 }
             }
@@ -434,7 +434,7 @@ impl<'src> Parser<'src> {
             decorators,
             attrs,
             name: Some(name),
-            loc: Location::concrete(Span::merge(start_span, end_span), self.current_file),
+            loc: Location::new(Span::merge(start_span, end_span), self.current_file),
             vis: Some(vis),
         })
     }
@@ -448,7 +448,7 @@ impl<'src> Parser<'src> {
             (
                 Locatable::new(
                     self.context.strings.intern(ident.source()),
-                    Location::concrete(ident.span(), self.current_file),
+                    Location::new(ident.span(), self.current_file),
                 ),
                 ident.span(),
             )
@@ -483,7 +483,7 @@ impl<'src> Parser<'src> {
         decorators.push(Decorator {
             name,
             args,
-            loc: Location::concrete(
+            loc: Location::new(
                 Span::merge(start, end_span.unwrap_or(name_span)),
                 self.current_file,
             ),
@@ -534,7 +534,7 @@ impl<'src> Parser<'src> {
                 }
 
                 TokenType::Ident => {
-                    let (name, _name_span) = {
+                    let (name, name_span) = {
                         let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
                         (self.context.strings.intern(ident.source()), ident.span())
                     };
@@ -543,7 +543,7 @@ impl<'src> Parser<'src> {
                         self.eat(TokenType::Colon, [TokenType::Newline])?;
                         self.ascribed_type()?
                     } else {
-                        Type::default()
+                        Locatable::new(Type::default(), Location::new(name_span, self.current_file))
                     };
 
                     let member = TypeMember {
@@ -564,7 +564,7 @@ impl<'src> Parser<'src> {
                 ty => {
                     return Err(Locatable::new(
                         Error::Syntax(SyntaxError::InvalidTopLevel(format!("{}", ty))),
-                        Location::concrete(&self.peek()?, self.current_file),
+                        Location::new(&self.peek()?, self.current_file),
                     ));
                 }
             }
@@ -574,7 +574,7 @@ impl<'src> Parser<'src> {
         if !member_attrs.is_empty() || !member_decorators.is_empty() {
             return Err(Locatable::new(
                 Error::Syntax(SyntaxError::Generic("Attributes and functions must be before members or methods in type declarations".to_string())),
-                Location::concrete(&self.peek()?, self.current_file),
+                Location::new(&self.peek()?, self.current_file),
             ));
         }
 
@@ -585,7 +585,7 @@ impl<'src> Parser<'src> {
             decorators,
             attrs,
             name: Some(name),
-            loc: Location::concrete(Span::merge(start_span, end_span), self.current_file),
+            loc: Location::new(Span::merge(start_span, end_span), self.current_file),
             vis: Some(vis),
         })
     }
@@ -644,7 +644,7 @@ impl<'src> Parser<'src> {
             attrs,
             decorators,
             name: None,
-            loc: Location::concrete(Span::merge(start, end), self.current_file),
+            loc: Location::new(Span::merge(start, end), self.current_file),
             vis: None,
         })
     }
@@ -673,7 +673,7 @@ impl<'src> Parser<'src> {
             attrs,
             decorators,
             name: None,
-            loc: Location::concrete(Span::merge(start, end), self.current_file),
+            loc: Location::new(Span::merge(start, end), self.current_file),
             vis: Some(vis),
         })
     }
@@ -697,33 +697,38 @@ impl<'src> Parser<'src> {
             self.context.strings.intern(ident.source())
         };
         let generics = self.generics()?;
-        let (args, args_loc) = self.function_args()?;
+        let args = self.function_args()?;
 
-        let (returns, end_span) = if self.peek()?.ty() == TokenType::RightArrow {
-            self.eat(TokenType::RightArrow, [])?;
+        let (returns, ret_span) = if self.peek()?.ty() == TokenType::RightArrow {
+            let start = self.eat(TokenType::RightArrow, [])?.span();
             let ty = self.ascribed_type()?;
-            // TODO: Make types have spans
-            let janky_span = Span::double(self.peek()?.span().start());
+            // FIXME: Make types have spans
+            let janky_span = Span::merge(start, start);
 
             (Some(ty), Some(janky_span))
         } else {
             (None, None)
         };
         self.eat(TokenType::Newline, [])?;
-        let sig_span = Span::merge(start_span, end_span.unwrap_or_else(|| args_loc.span()));
-
-        let ret = Locatable::new(
-            Ref::new(returns.unwrap_or_default()),
-            Location::concrete(sig_span, self.current_file),
+        let sig_span = Span::merge(
+            start_span,
+            ret_span.unwrap_or_else(|| args.location().span()),
         );
+
+        let ret = Ref::new(returns.unwrap_or_else(|| {
+            Locatable::new(
+                Type::default(),
+                Location::new(ret_span.unwrap_or(sig_span), self.current_file),
+            )
+        }));
 
         while self.peek()?.ty() == TokenType::Newline {
             self.eat(TokenType::Newline, [])?;
         }
 
         let body = self.block(&[TokenType::End], 20)?;
-        let end_span = self.eat(TokenType::End, [TokenType::Newline])?.span();
-        let sig = Location::concrete(sig_span, self.current_file);
+        let end_span = body.location().span();
+        let sig = Location::new(sig_span, self.current_file);
 
         let kind = ItemKind::Func {
             generics,
@@ -738,7 +743,7 @@ impl<'src> Parser<'src> {
             decorators,
             attrs,
             name: Some(name),
-            loc: Location::concrete(Span::merge(start_span, end_span), self.current_file),
+            loc: Location::new(Span::merge(start_span, end_span), self.current_file),
             vis: Some(vis),
         })
     }
@@ -749,8 +754,8 @@ impl<'src> Parser<'src> {
     /// Argument ::= Ident ':' Type
     /// ```
     #[recursion_guard]
-    fn function_args(&mut self) -> ParseResult<(Vec<FuncArg>, Location)> {
-        let left = self.eat(TokenType::LeftParen, [TokenType::Newline])?.span();
+    fn function_args(&mut self) -> ParseResult<Locatable<Vec<FuncArg>>> {
+        let start = self.eat(TokenType::LeftParen, [TokenType::Newline])?.span();
 
         let mut args = Vec::with_capacity(7);
         while self.peek()?.ty() != TokenType::RightParen {
@@ -773,7 +778,7 @@ impl<'src> Parser<'src> {
             let ty = Ref::new(self.ascribed_type()?);
 
             // FIXME: Type span
-            let loc = Location::concrete(name_span, self.current_file);
+            let loc = Location::new(name_span, self.current_file);
             let arg = FuncArg { name, ty, loc };
 
             args.push(arg);
@@ -784,13 +789,13 @@ impl<'src> Parser<'src> {
                 break;
             }
         }
-        let right = self
+        let end = self
             .eat(TokenType::RightParen, [TokenType::Newline])?
             .span();
 
-        Ok((
+        Ok(Locatable::new(
             args,
-            Location::concrete(Span::merge(left, right), self.current_file),
+            Location::new(Span::merge(start, end), self.current_file),
         ))
     }
 
@@ -837,7 +842,7 @@ impl<'src> Parser<'src> {
                         Error::Syntax(SyntaxError::Generic(
                             "Only external functions are allowed in extern blocks".to_string(),
                         )),
-                        Location::concrete(&self.peek()?, self.current_file),
+                        Location::new(&self.peek()?, self.current_file),
                     ));
                 }
             }
@@ -850,7 +855,7 @@ impl<'src> Parser<'src> {
             attrs,
             decorators,
             kind: ItemKind::ExternBlock { items },
-            loc: Location::concrete(Span::merge(start, end), self.current_file),
+            loc: Location::new(Span::merge(start, end), self.current_file),
         })
     }
 
@@ -871,7 +876,7 @@ impl<'src> Parser<'src> {
             self.context.strings.intern(ident.source())
         };
         let generics = self.generics()?;
-        let (args, _args_loc) = self.function_args()?;
+        let args = self.function_args()?;
 
         let returns = if self.peek()?.ty() == TokenType::RightArrow {
             self.eat(TokenType::RightArrow, [])?;
@@ -881,10 +886,12 @@ impl<'src> Parser<'src> {
         };
         let end = self.eat(TokenType::Semicolon, [])?.span();
 
-        let ret = Locatable::new(
-            Ref::new(returns.unwrap_or_default()),
-            Location::concrete(Span::merge(start, end), self.current_file),
-        );
+        let ret = Ref::new(returns.unwrap_or_else(|| {
+            Locatable::new(
+                Type::default(),
+                Location::new(Span::merge(start, end), self.current_file),
+            )
+        }));
         let callconv = self.callconv(false, &mut decorators)?;
 
         Ok(Item {
@@ -898,7 +905,7 @@ impl<'src> Parser<'src> {
                 ret,
                 callconv,
             },
-            loc: Location::concrete(Span::merge(start, end), self.current_file),
+            loc: Location::new(Span::merge(start, end), self.current_file),
         })
     }
 
@@ -946,15 +953,15 @@ impl<'src> Parser<'src> {
     /// GenericArgs ::= Type | Type ',' GenericArgs
     /// ```
     #[recursion_guard]
-    pub(super) fn generics(&mut self) -> ParseResult<Vec<Type>> {
+    pub(super) fn generics(&mut self) -> ParseResult<Option<Locatable<Vec<Locatable<Type>>>>> {
         let peek = if let Ok(peek) = self.peek() {
             peek
         } else {
-            return Ok(Vec::new());
+            return Ok(None);
         };
 
         if peek.ty() == TokenType::LeftBrace {
-            self.eat(TokenType::LeftBrace, [TokenType::Newline])?;
+            let start = self.eat(TokenType::LeftBrace, [TokenType::Newline])?.span();
 
             let mut generics = Vec::with_capacity(5);
             while self.peek()?.ty() != TokenType::RightBrace {
@@ -967,11 +974,17 @@ impl<'src> Parser<'src> {
                     break;
                 }
             }
-            self.eat(TokenType::RightBrace, [TokenType::Newline])?;
 
-            Ok(generics)
+            let end = self
+                .eat(TokenType::RightBrace, [TokenType::Newline])?
+                .span();
+
+            Ok(Some(Locatable::new(
+                generics,
+                Location::new(Span::merge(start, end), self.current_file),
+            )))
         } else {
-            Ok(Vec::new())
+            Ok(None)
         }
     }
 
@@ -989,7 +1002,7 @@ impl<'src> Parser<'src> {
                         "Expected an attribute, got `{}`",
                         token.ty()
                     ))),
-                    Location::concrete(token, file),
+                    Location::new(token, file),
                 ));
             }
         })

@@ -3,11 +3,8 @@ use crate::{
     error::{Locatable, Location},
     strings::StrT,
     trees::{
-        ast::{
-            Block, Dest, Exposure, FuncArg, Item, ItemPath, Signedness, Type as AstType,
-            TypeMember, Variant,
-        },
-        CallConv,
+        ast::{Block, Dest, Exposure, FuncArg, Item, Type as AstType, TypeMember, Variant},
+        CallConv, ItemPath, Signedness,
     },
     utils::HashMap,
     visitors::ast::ItemVisitor,
@@ -121,7 +118,8 @@ impl Resolver {
                 sign: Signedness::Signed,
                 width: 64,
             } => Either::Left(6),
-            AstType::Pointer { mutable: _, ty: _ } => Either::Left(7),
+            AstType::Pointer { .. } => Either::Left(7),
+            AstType::Array(..) => Either::Left(7),
             AstType::ItemPath(path) => self
                 .current()
                 .lookup_type(self, *path.last().unwrap())
@@ -165,15 +163,15 @@ impl ItemVisitor for Resolver {
     fn visit_func(
         &mut self,
         item: &Item,
-        _generics: &[AstType],
-        func_args: &[FuncArg],
+        _generics: Option<Locatable<&[Locatable<AstType>]>>,
+        func_args: Locatable<&[FuncArg]>,
         _body: &Block,
         ret: Locatable<&AstType>,
         _loc: Location,
     ) -> Self::Output {
         let mut args = HashMap::with_capacity(func_args.len());
-        for FuncArg { name, ty, .. } in func_args {
-            args.insert(*name, self.ty(&**ty));
+        for FuncArg { name, ty, .. } in *func_args {
+            args.insert(*name, self.ty(ty.as_ref()));
         }
 
         let func = Function {
@@ -190,7 +188,7 @@ impl ItemVisitor for Resolver {
     fn visit_type(
         &mut self,
         item: &Item,
-        _generics: &[AstType],
+        _generics: Option<Locatable<&[Locatable<AstType>]>>,
         ty_members: &[TypeMember],
     ) -> Self::Output {
         let mut members = HashMap::with_capacity(ty_members.len());
@@ -212,7 +210,7 @@ impl ItemVisitor for Resolver {
     fn visit_enum(
         &mut self,
         _item: &Item,
-        _generics: &[AstType],
+        _generics: Option<Locatable<&[Locatable<AstType>]>>,
         _variants: &[Variant],
     ) -> Self::Output {
         todo!()
@@ -221,7 +219,7 @@ impl ItemVisitor for Resolver {
     fn visit_trait(
         &mut self,
         _item: &Item,
-        _generics: &[AstType],
+        _generics: Option<Locatable<&[Locatable<AstType>]>>,
         _methods: &[Item],
     ) -> Self::Output {
         todo!()
@@ -240,14 +238,19 @@ impl ItemVisitor for Resolver {
     fn visit_extend_block(
         &mut self,
         _item: &Item,
-        _target: &AstType,
-        _extender: Option<&AstType>,
+        _target: Locatable<&AstType>,
+        _extender: Option<Locatable<&AstType>>,
         _items: &[Item],
     ) -> Self::Output {
         todo!()
     }
 
-    fn visit_alias(&mut self, _item: &Item, _alias: &AstType, _actual: &AstType) -> Self::Output {
+    fn visit_alias(
+        &mut self,
+        _item: &Item,
+        _alias: Locatable<&AstType>,
+        _actual: Locatable<&AstType>,
+    ) -> Self::Output {
         todo!()
     }
 
@@ -260,14 +263,14 @@ impl ItemVisitor for Resolver {
     fn visit_extern_func(
         &mut self,
         item: &Item,
-        _generics: &[AstType],
-        func_args: &[FuncArg],
+        _generics: Option<Locatable<&[Locatable<AstType>]>>,
+        func_args: Locatable<&[FuncArg]>,
         ret: Locatable<&AstType>,
         _callconv: CallConv,
     ) -> Self::Output {
         let mut args = HashMap::with_capacity(func_args.len());
-        for FuncArg { name, ty, .. } in func_args {
-            args.insert(*name, self.ty(&**ty));
+        for FuncArg { name, ty, .. } in *func_args {
+            args.insert(*name, self.ty(ty.as_ref()));
         }
 
         let func = Function {

@@ -7,16 +7,17 @@
     clippy::shadow_unrelated
 )]
 
+use core::fmt::{Result as FmtResult, Write};
 use crunch_shared::{
     crunch_proc::instrument,
     error::{ErrorHandler, Locatable, Location, Span, TypeError, TypeResult},
     strings::StrInterner,
     trees::{
-        ast::ItemPath,
         hir::{
             Block, Break, CompOp, Expr, ExternFunc, FuncArg, FuncCall, Function, Item, Literal,
             Match, MatchArm, Pattern, Return, Stmt, TypeKind, Var, VarDecl,
         },
+        ItemPath, Ref, Signedness,
     },
     utils::HashMap,
     visitors::hir::{MutExprVisitor, MutItemVisitor, MutStmtVisitor},
@@ -26,8 +27,8 @@ type TypeId = usize;
 
 #[derive(Debug, Clone)]
 struct Func {
-    ret: TypeId,
-    args: Vec<TypeId>,
+    ret: Locatable<TypeId>,
+    args: Locatable<Vec<TypeId>>,
     sig: Location,
 }
 
@@ -56,27 +57,29 @@ impl Engine {
     }
 
     /// Create a new type term with whatever we have about its type
-    fn insert(&mut self, variable: Var, kind: &TypeKind, loc: Location) -> TypeId {
+    fn insert(&mut self, variable: Var, kind: &TypeKind, loc: Location) -> TypeResult<TypeId> {
         if let Some(&id) = self.ids.get(&variable) {
-            self.types.insert(id, (kind.into(), loc));
+            let ty = self.intern_type(kind, loc)?;
+            self.types.insert(id, (ty, loc));
 
-            id
+            Ok(id)
         } else {
             let id = self.id_counter;
             self.id_counter += 1;
 
-            self.types.insert(id, (kind.into(), loc));
+            let ty = self.intern_type(kind, loc)?;
+            self.types.insert(id, (ty, loc));
             self.ids.insert(variable.clone(), id);
 
-            id
+            Ok(id)
         }
     }
 
-    fn get(&self, var: &Var) -> TypeResult<TypeId> {
+    fn get(&self, var: &Var, loc: Location) -> TypeResult<TypeId> {
         self.ids.get(var).copied().ok_or_else(|| {
             Locatable::new(
                 TypeError::VarNotInScope(var.to_string(&self.interner)).into(),
-                Location::implicit(Span::new(0, 0), crunch_shared::files::FileId::new(0)),
+                loc,
             )
         })
     }
@@ -124,39 +127,86 @@ impl Engine {
             }
 
             // Primitives are trivial to unify
-            ((TypeInfo::Integer, _), (TypeInfo::Integer, _))
-            | ((TypeInfo::String, _), (TypeInfo::String, _))
+            ((TypeInfo::String, _), (TypeInfo::String, _))
             | ((TypeInfo::Bool, _), (TypeInfo::Bool, _))
             | ((TypeInfo::Unit, _), (TypeInfo::Unit, _)) => Ok(()),
 
-            // If no previous attempts to unify were successful, raise an error
-            ((a_ty, a_loc), (b_ty, b_loc)) => {
-                let a = self.ids.iter().find_map(|(name, id)| {
-                    if *id == a {
-                        Some(name.to_string(&self.interner))
-                    } else {
-                        None
-                    }
-                });
+            #[rustfmt::skip]
+            ((TypeInfo::Integer { sign: Some(left_sign), width: Some(left_width) }, _),
+                (TypeInfo::Integer { sign: Some(right_sign), width: Some(right_width) }, _))
+                if left_sign == right_sign && left_width == right_width => Ok(()),
 
-                let b = self.ids.iter().find_map(|(name, id)| {
-                    if *id == b {
-                        Some(name.to_string(&self.interner))
-                    } else {
-                        None
-                    }
-                });
+            #[rustfmt::skip]
+            (
+                (TypeInfo::Integer { sign: None, width: None }, loc),
+                (TypeInfo::Integer { sign: Some(sign), width: Some(width) }, _),
+            ) => {
+                self.types.insert(
+                    a,
+                    (
+                        TypeInfo::Integer {
+                            sign: Some(sign),
+                            width: Some(width),
+                        },
+                        loc,
+                    ),
+                );
 
-                Err(Locatable::new(
-                    TypeError::TypeConflict([
-                        // TODO: Pretty print the types
-                        (a, format!("{:?}", a_ty), a_loc),
-                        (b, format!("{:?}", b_ty), b_loc),
-                    ])
-                    .into(),
-                    b_loc,
-                ))
+                Ok(())
             }
+            #[rustfmt::skip]
+            (
+                (TypeInfo::Integer { sign: Some(sign), width: Some(width) }, _),
+                (TypeInfo::Integer { sign: None, width: None }, loc),
+            ) => {
+                self.types.insert(
+                    b,
+                    (
+                        TypeInfo::Integer {
+                            sign: Some(sign),
+                            width: Some(width),
+                        },
+                        loc,
+                    ),
+                );
+
+                Ok(())
+            }
+            #[rustfmt::skip]
+            (
+                (TypeInfo::Integer { sign: None, width: None }, _),
+                (TypeInfo::Integer { sign: None, width: None }, loc),
+            ) => {
+                self.types.insert(
+                    b,
+                    (
+                        TypeInfo::Ref(a),
+                        loc,
+                    ),
+                );
+
+                Ok(())
+            }
+
+            (
+                (TypeInfo::Array(left_elem, left_len), _),
+                (TypeInfo::Array(right_elem, right_len), _),
+            ) if left_len == right_len => {
+                self.unify(left_elem, right_elem)?;
+
+                Ok(())
+            }
+
+            // If no previous attempts to unify were successful, raise an error
+            ((call_type, call_loc), (def_type, def_loc)) => Err(Locatable::new(
+                TypeError::TypeConflict {
+                    call_type: self.display_type(&call_type),
+                    def_type: self.display_type(&def_type),
+                    def_site: def_loc,
+                }
+                .into(),
+                call_loc,
+            )),
         }
     }
 
@@ -182,11 +232,21 @@ impl Engine {
                 loc,
             )),
             (TypeInfo::Ref(id), _) => self.reconstruct(id),
-            (TypeInfo::Integer, _) => Ok(TypeKind::Integer),
+            // TODO: This seems wrong
+            (TypeInfo::Integer { sign, width }, _) => Ok(TypeKind::Integer {
+                sign: sign.unwrap_or(Signedness::Signed),
+                width: width.unwrap_or(32),
+            }),
             (TypeInfo::Bool, _) => Ok(TypeKind::Bool),
             (TypeInfo::Unit, _) => Ok(TypeKind::Unit),
             (TypeInfo::String, _) => Ok(TypeKind::String),
             (TypeInfo::Absurd, _) => Ok(TypeKind::Absurd),
+            (TypeInfo::Pointer(pointee), _) => {
+                Ok(TypeKind::Pointer(Ref::new(self.reconstruct(pointee)?)))
+            }
+            (TypeInfo::Array(elem, len), _) => {
+                Ok(TypeKind::Array(Ref::new(self.reconstruct(elem)?), len))
+            }
         }
     }
 
@@ -209,12 +269,40 @@ impl Engine {
                 ..
             }) = item
             {
+                // TODO: Use error types here
+                for arg in args.iter().filter(|a| a.kind.is_infer()) {
+                    self.errors.push_err(Locatable::new(
+                        TypeError::MissingType("Types for function arguments".to_owned()).into(),
+                        arg.location(),
+                    ));
+                }
+
+                // TODO: Use error types here
+                if ret.kind.is_infer() {
+                    self.errors.push_err(Locatable::new(
+                        TypeError::MissingType("Return types for functions".to_owned()).into(),
+                        ret.location(),
+                    ));
+                }
+
+                // TODO: Use error types here
+                let ret_type = match self.intern_type(&ret.kind, ret.location()) {
+                    Ok(ty) => ty,
+                    Err(err) => {
+                        self.errors.push_err(err);
+                        todo!()
+                    }
+                };
+
+                // TODO: Use error types here
+                let func_args = args
+                    .iter()
+                    .map(|FuncArg { name, kind, loc }| self.insert(*name, kind, *loc))
+                    .collect::<TypeResult<Vec<_>>>()?;
+
                 let func = Func {
-                    ret: self.insert_bare(TypeInfo::from(&ret.kind), ret.location()),
-                    args: args
-                        .iter()
-                        .map(|FuncArg { name, kind, loc }| self.insert(*name, kind, *loc))
-                        .collect(),
+                    ret: Locatable::new(self.insert_bare(ret_type, ret.location()), ret.location()),
+                    args: Locatable::new(func_args, args.location()),
                     sig: *sig,
                 };
 
@@ -235,14 +323,126 @@ impl Engine {
         }
     }
 
-    pub fn type_of(&self, var: &Var) -> TypeResult<TypeKind> {
-        if let Some(&id) = self.ids.get(var) {
-            self.reconstruct(id)
-        } else {
-            Err(Locatable::new(
-                TypeError::VarNotInScope(var.to_string(&self.interner)).into(),
-                Location::implicit(Span::new(0, 0), crunch_shared::files::FileId::new(0)),
-            ))
+    pub fn type_of(&self, var: &Var) -> Option<TypeKind> {
+        self.ids.get(var).and_then(|id| self.reconstruct(*id).ok())
+    }
+
+    fn intern_type(&mut self, kind: &TypeKind, loc: Location) -> TypeResult<TypeInfo> {
+        let ty = match kind {
+            TypeKind::Infer => TypeInfo::Infer,
+            TypeKind::Integer { sign, width } => TypeInfo::Integer {
+                sign: Some(*sign),
+                width: Some(*width),
+            },
+            TypeKind::String => TypeInfo::String,
+            TypeKind::Bool => TypeInfo::Bool,
+            TypeKind::Unit => TypeInfo::Unit,
+            TypeKind::Absurd => TypeInfo::Absurd,
+            TypeKind::Pointer(pointee) => {
+                if pointee.is_infer() {
+                    return Err(Locatable::new(
+                        TypeError::MissingType("pointer types".to_owned()).into(),
+                        loc,
+                    ));
+                } else {
+                    let pointee = self.intern_type(&**pointee, loc)?;
+
+                    TypeInfo::Pointer(self.insert_bare(pointee, loc))
+                }
+            }
+            TypeKind::Array(elem, len) => {
+                let elem = self.intern_type(elem, loc)?;
+                TypeInfo::Array(self.insert_bare(elem, loc), *len)
+            }
+        };
+
+        Ok(ty)
+    }
+
+    fn intern_literal(&mut self, literal: &Literal, loc: Location) -> TypeResult<TypeInfo> {
+        let ty = match literal {
+            Literal::Integer(..) => TypeInfo::Integer {
+                sign: None,
+                width: None,
+            },
+            Literal::Bool(..) => TypeInfo::Bool,
+            Literal::String(..) => TypeInfo::String,
+            Literal::Array(array) => {
+                // FIXME: Make sure all literals in the array are the same
+                let elements = array
+                    .iter()
+                    .map(|elem| {
+                        let elem = self.intern_literal(elem, loc)?;
+                        Ok(self.insert_bare(elem, loc))
+                    })
+                    .collect::<TypeResult<Vec<TypeId>>>()?;
+
+                let elem_type = self.insert_bare(TypeInfo::Infer, loc);
+                for elem in elements.iter() {
+                    self.unify(*elem, elem_type)?;
+                }
+
+                TypeInfo::Array(elem_type, elements.len() as u32)
+            }
+
+            _ => todo!(),
+        };
+
+        Ok(ty)
+    }
+
+    fn display_type(&self, ty: &TypeInfo) -> String {
+        let mut string = String::new();
+        self.display_type_inner(ty, &mut string)
+            .expect("Failed to format type");
+
+        string
+    }
+
+    fn display_type_inner<W: Write>(&self, ty: &TypeInfo, f: &mut W) -> FmtResult {
+        match ty {
+            TypeInfo::Ref(inner) => self.display_type_inner(
+                &self
+                    .types
+                    .get(inner)
+                    .expect("Tried to display type that doesn't exist")
+                    .0,
+                f,
+            ),
+            TypeInfo::Infer => f.write_str("infer"),
+            TypeInfo::Integer { sign, width } => match (sign, width) {
+                (Some(sign), Some(width)) => write!(f, "{}{}", sign, width),
+                (_, _) => f.write_str("{{integer}}"),
+            },
+            TypeInfo::String => f.write_str("str"),
+            TypeInfo::Bool => f.write_str("bool"),
+            TypeInfo::Unit => f.write_str("unit"),
+            TypeInfo::Absurd => f.write_str("absurd"),
+            TypeInfo::Pointer(pointee) => {
+                f.write_str("*const ")?;
+                self.display_type_inner(
+                    &self
+                        .types
+                        .get(pointee)
+                        .expect("Tried to display type that doesn't exist")
+                        .0,
+                    f,
+                )
+            }
+            TypeInfo::Array(elem, len) => {
+                f.write_str("arr[")?;
+                self.display_type_inner(
+                    &self
+                        .types
+                        .get(elem)
+                        .expect("Tried to display type that doesn't exist")
+                        .0,
+                    f,
+                )?;
+                f.write_str("; ")?;
+                write!(f, "{}", len)?;
+                f.write_char(']')
+            }
         }
     }
 }
@@ -257,70 +457,19 @@ impl MutItemVisitor for Engine {
         }
     }
 
-    fn visit_func(
-        &mut self,
-        Function {
-            args,
-            body,
-            ret,
-            sig,
-            ..
-        }: &mut Function,
-    ) -> Self::Output {
-        let mut missing_arg_ty = None;
-        for arg in args.iter().filter(|a| a.kind.is_infer()) {
-            if let Some(err) = missing_arg_ty.take() {
-                self.errors.push_err(err);
-            }
-
-            missing_arg_ty = Some(Locatable::new(
-                TypeError::MissingType("Types for function arguments".to_owned()).into(),
-                arg.location(),
-            ));
-        }
-
-        if ret.kind.is_infer() {
-            if let Some(err) = missing_arg_ty {
-                self.errors.push_err(err);
-            }
-
-            return Err(Locatable::new(
-                TypeError::MissingType("Return types for functions".to_owned()).into(),
-                ret.location(),
-            ));
-        } else if let Some(err) = missing_arg_ty {
-            return Err(err);
-        }
-
-        let func_args: Vec<_> = args
-            .iter()
-            .map(|FuncArg { name, kind, loc }| self.insert(*name, kind, *loc))
-            .collect();
-
-        self.current_func = Some(Func {
-            ret: self.insert_bare(TypeInfo::from(&ret.kind), ret.location()),
-            args: func_args.clone(),
-            sig: *sig,
-        });
-        let ret_type = self.insert_bare(TypeInfo::from(&ret.kind), *sig);
+    fn visit_func(&mut self, Function { name, body, .. }: &mut Function) -> Self::Output {
+        self.current_func = Some(self.functions.get(name).unwrap().clone());
         for stmt in body.iter_mut() {
-            let ty = self.visit_stmt(stmt)?;
-            self.unify(ty, ret_type)?;
+            self.visit_stmt(stmt)?;
         }
         self.current_func = None;
-
-        ret.kind = self.reconstruct(ret_type)?;
-
-        for (i, arg) in func_args.into_iter().enumerate() {
-            args[i].kind = self.reconstruct(arg)?;
-        }
 
         Ok(())
     }
 
     fn visit_extern_func(&mut self, ExternFunc { args, ret, .. }: &mut ExternFunc) -> Self::Output {
         let mut missing_arg_ty = None;
-        for arg in args.iter().filter(|a| !a.kind.is_infer()) {
+        for arg in args.iter().filter(|a| a.kind.is_infer()) {
             if let Some(err) = missing_arg_ty.take() {
                 self.errors.push_err(err);
             }
@@ -377,7 +526,7 @@ impl MutStmtVisitor for Engine {
             ..
         }: &mut VarDecl,
     ) -> <Self as MutStmtVisitor>::Output {
-        let var = self.insert(*name, &ty.kind, *loc);
+        let var = self.insert(*name, &ty.kind, *loc)?;
         let expr = self.visit_expr(value)?;
 
         self.unify(var, expr)?;
@@ -391,12 +540,14 @@ impl MutExprVisitor for Engine {
     type Output = TypeResult<TypeId>;
 
     fn visit_return(&mut self, loc: Location, ret: &mut Return) -> Self::Output {
+        let func_ret = *self.current_func.as_ref().unwrap().ret;
+
         if let Some(ref mut ret) = ret.val {
             let ret = self.visit_expr(ret)?;
-            self.unify(self.current_func.as_ref().unwrap().ret, ret)?;
+            self.unify(ret, func_ret)?;
         } else {
             let unit = self.insert_bare(TypeInfo::Unit, loc);
-            self.unify(self.current_func.as_ref().unwrap().ret, unit)?;
+            self.unify(unit, func_ret)?;
         }
 
         Ok(self.insert_bare(TypeInfo::Absurd, loc))
@@ -428,18 +579,20 @@ impl MutExprVisitor for Engine {
         {
             match &mut bind.pattern {
                 Pattern::Literal(lit) => {
-                    let bind_ty = self.insert_bare(TypeInfo::from(&*lit), loc);
+                    let lit = self.intern_literal(&*lit, loc)?;
+                    let bind_ty = self.insert_bare(lit, loc);
                     self.unify(match_cond, bind_ty)?;
                 }
                 Pattern::Ident(var) => {
-                    self.insert(Var::User(*var), &self.reconstruct(match_cond)?, loc);
+                    self.insert(Var::User(*var), &self.reconstruct(match_cond)?, loc)?;
                 }
                 Pattern::ItemPath(..) => todo!(),
                 // TODO: Is this correct?
                 Pattern::Wildcard => {}
             }
 
-            let arm_ty = self.insert_bare(TypeInfo::from(&*ty), cond.location());
+            let arm_ty = self.intern_type(&*ty, loc)?;
+            let arm_ty = self.insert_bare(arm_ty, cond.location());
 
             // FIXME: Bindings
 
@@ -463,7 +616,8 @@ impl MutExprVisitor for Engine {
             arm_types.push(arm_ty);
         }
 
-        let match_ty = self.insert_bare(TypeInfo::from(&*ty), loc);
+        let match_ty = self.intern_type(&*ty, loc)?;
+        let match_ty = self.insert_bare(match_ty, loc);
         for arm in arm_types {
             self.unify(match_ty, arm)?;
         }
@@ -473,12 +627,12 @@ impl MutExprVisitor for Engine {
         Ok(match_ty)
     }
 
-    fn visit_variable(&mut self, _loc: Location, var: Var, _ty: &mut TypeKind) -> Self::Output {
-        self.get(&var)
+    fn visit_variable(&mut self, loc: Location, var: Var, _ty: &mut TypeKind) -> Self::Output {
+        self.get(&var, loc)
     }
 
     fn visit_literal(&mut self, loc: Location, literal: &mut Literal) -> Self::Output {
-        let info = TypeInfo::from(&*literal);
+        let info = self.intern_literal(&*literal, loc)?;
         let id = self.insert_bare(info, loc);
 
         Ok(id)
@@ -507,17 +661,31 @@ impl MutExprVisitor for Engine {
             .collect::<TypeResult<Vec<TypeId>>>()?;
 
         if func.args.len() != args.len() {
+            let def_site = if func.args.is_empty() {
+                func.args.location()
+            } else {
+                // If there's 1 or more args trim off the parentheses
+                func.args
+                    .location()
+                    .map_span(|span| Span::new(span.start() + 1, span.end() - 1))
+            };
+
             return Err(Locatable::new(
-                TypeError::NotEnoughArgs(func.args.len(), args.len(), func.sig).into(),
+                TypeError::NotEnoughArgs {
+                    expected: func.args.len(),
+                    received: args.len(),
+                    def_site,
+                }
+                .into(),
                 loc,
             ));
         }
 
         for (expected, given) in func.args.iter().zip(args.iter()) {
-            self.unify(*expected, *given)?;
+            self.unify(*given, *expected)?;
         }
 
-        Ok(func.ret)
+        Ok(*func.ret)
     }
 
     fn visit_comparison(
@@ -553,41 +721,22 @@ impl MutExprVisitor for Engine {
     }
 }
 
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum TypeInfo {
     Ref(TypeId),
     Infer,
-    Integer,
+    Integer {
+        /// Will be `None` for unknown
+        sign: Option<Signedness>,
+        /// Will be `None` for unknown
+        width: Option<u16>,
+    },
     String,
     Bool,
     Unit,
     Absurd,
-}
-
-impl From<&Literal> for TypeInfo {
-    fn from(literal: &Literal) -> Self {
-        match literal {
-            Literal::Integer(..) => Self::Integer,
-            Literal::Bool(..) => Self::Bool,
-            Literal::String(..) => Self::String,
-
-            _ => todo!(),
-        }
-    }
-}
-
-impl From<&TypeKind> for TypeInfo {
-    fn from(kind: &TypeKind) -> Self {
-        match kind {
-            TypeKind::Infer => Self::Infer,
-            TypeKind::Integer => Self::Integer,
-            TypeKind::String => Self::String,
-            TypeKind::Bool => Self::Bool,
-            TypeKind::Unit => Self::Unit,
-            TypeKind::Absurd => Self::Absurd,
-            TypeKind::Pointer(..) => todo!(),
-        }
-    }
+    Pointer(TypeId),
+    Array(TypeId, u32),
 }
 
 #[test]
@@ -659,7 +808,7 @@ fn test() {
                     println!(
                         "Type of `greeting`: {:?}",
                         engine
-                            .type_of(&Var::User(ctx.strings.intern("greeting")))
+                            .type_of(&Var::User(ctx.strings.intern("greeting")),)
                             .unwrap(),
                     );
                 }

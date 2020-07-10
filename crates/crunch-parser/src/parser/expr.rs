@@ -45,6 +45,7 @@ impl<'src> Parser<'src> {
 
             if let Ok(peek) = self.peek() {
                 let postfix = Self::expr_postfix(peek);
+
                 if let Some(postfix) = postfix {
                     token = self.next()?;
                     left = postfix(self, token, left)?;
@@ -69,7 +70,7 @@ impl<'src> Parser<'src> {
                     "Could not parse `{}`",
                     token.ty()
                 ))),
-                Location::concrete(&token, self.current_file),
+                Location::new(&token, self.current_file),
             ))
         }
     }
@@ -107,10 +108,7 @@ impl<'src> Parser<'src> {
 
                     Ok(Expr {
                         kind,
-                        loc: Location::concrete(
-                            Span::merge(token.span(), end),
-                            parser.current_file,
-                        ),
+                        loc: Location::new(Span::merge(token.span(), end), parser.current_file),
                     })
                 }
             }
@@ -129,14 +127,12 @@ impl<'src> Parser<'src> {
                 if parser.peek()?.ty() == TokenType::Newline {
                     Ok(Expr {
                         kind: ExprKind::Return(None),
-                        loc: Location::concrete(token.span(), parser.current_file),
+                        loc: Location::new(token.span(), parser.current_file),
                     })
                 } else {
                     let expr = Ref::new(parser.expr()?);
-                    let loc = Location::concrete(
-                        Span::merge(token.span(), expr.span()),
-                        parser.current_file,
-                    );
+                    let loc =
+                        Location::new(Span::merge(token.span(), expr.span()), parser.current_file);
 
                     Ok(Expr {
                         kind: ExprKind::Return(Some(expr)),
@@ -151,17 +147,12 @@ impl<'src> Parser<'src> {
 
                     Ok(Expr {
                         kind: ExprKind::Break(None),
-                        loc: Location::concrete(
-                            Span::merge(token.span(), end),
-                            parser.current_file,
-                        ),
+                        loc: Location::new(Span::merge(token.span(), end), parser.current_file),
                     })
                 } else {
                     let expr = Ref::new(parser.expr()?);
-                    let loc = Location::concrete(
-                        Span::merge(token.span(), expr.span()),
-                        parser.current_file,
-                    );
+                    let loc =
+                        Location::new(Span::merge(token.span(), expr.span()), parser.current_file);
 
                     Ok(Expr {
                         kind: ExprKind::Break(Some(expr)),
@@ -175,7 +166,7 @@ impl<'src> Parser<'src> {
 
                 let stmt = Expr {
                     kind: ExprKind::Continue,
-                    loc: Location::concrete(token.span(), parser.current_file),
+                    loc: Location::new(token.span(), parser.current_file),
                 };
 
                 Ok(stmt)
@@ -197,12 +188,12 @@ impl<'src> Parser<'src> {
 
                 let ident = Locatable::new(
                     parser.context.strings.intern(&normalized),
-                    Location::concrete(ident_tok.span(), parser.current_file),
+                    Location::new(ident_tok.span(), parser.current_file),
                 );
 
                 Ok(Expr {
                     kind: ExprKind::Variable(ident),
-                    loc: Location::concrete(ident_tok.span(), parser.current_file),
+                    loc: Location::new(ident_tok.span(), parser.current_file),
                 })
             },
 
@@ -216,12 +207,12 @@ impl<'src> Parser<'src> {
 
                 let literal = ExprKind::Literal(Locatable::new(
                     parser.literal(&lit, parser.current_file)?,
-                    Location::concrete(lit.span(), parser.current_file),
+                    Location::new(lit.span(), parser.current_file),
                 ));
 
                 Ok(Expr {
                     kind: literal,
-                    loc: Location::concrete(lit.span(), parser.current_file),
+                    loc: Location::new(lit.span(), parser.current_file),
                 })
             },
 
@@ -230,7 +221,7 @@ impl<'src> Parser<'src> {
                 let _frame = parser.add_stack_frame()?;
 
                 let operand = Ref::new(parser.expr()?);
-                let loc = Location::concrete(
+                let loc = Location::new(
                     Span::merge(token.span(), operand.span()),
                     parser.current_file,
                 );
@@ -249,10 +240,28 @@ impl<'src> Parser<'src> {
                     .eat(TokenType::RightParen, [TokenType::Newline])?
                     .span();
 
-                let loc = Location::concrete(Span::merge(paren.span(), end), parser.current_file);
+                let loc = Location::new(Span::merge(paren.span(), end), parser.current_file);
                 let kind = ExprKind::Paren(expr);
 
                 Ok(Expr { kind, loc })
+            },
+
+            TokenType::Ampersand => |parser, amp| {
+                let _frame = parser.add_stack_frame()?;
+
+                let mutable = if parser.peek()?.ty() == TokenType::Mut {
+                    parser.eat(TokenType::Mut, [])?;
+                    true
+                } else {
+                    false
+                };
+                let expr = Ref::new(parser.expr()?);
+                let loc = Location::new(Span::merge(amp.span(), expr.span()), parser.current_file);
+
+                Ok(Expr {
+                    kind: ExprKind::Reference { mutable, expr },
+                    loc,
+                })
             },
 
             _ => return None,
@@ -268,6 +277,9 @@ impl<'src> Parser<'src> {
                 let _frame = parser.add_stack_frame()?;
 
                 let mut args = Vec::with_capacity(5);
+                while parser.peek()?.ty() == TokenType::Newline {
+                    parser.eat(TokenType::Newline, [])?;
+                }
                 while parser.peek()?.ty() != TokenType::RightParen {
                     let arg = parser.expr()?;
                     args.push(arg);
@@ -277,13 +289,17 @@ impl<'src> Parser<'src> {
                     } else {
                         break;
                     }
+
+                    while parser.peek()?.ty() == TokenType::Newline {
+                        parser.eat(TokenType::Newline, [])?;
+                    }
                 }
 
                 let end = parser
                     .eat(TokenType::RightParen, [TokenType::Newline])?
                     .span();
 
-                let loc = Location::concrete(Span::merge(caller.span(), end), parser.current_file);
+                let loc = Location::new(Span::merge(caller.span(), end), parser.current_file);
                 let kind = ExprKind::FuncCall {
                     caller: Ref::new(caller),
                     args,
@@ -298,10 +314,8 @@ impl<'src> Parser<'src> {
 
                 let func = Ref::new(parser.expr()?);
 
-                let loc = Location::concrete(
-                    Span::merge(member.span(), func.span()),
-                    parser.current_file,
-                );
+                let loc =
+                    Location::new(Span::merge(member.span(), func.span()), parser.current_file);
                 let kind = ExprKind::MemberFuncCall {
                     member: Ref::new(member),
                     func,
@@ -316,8 +330,7 @@ impl<'src> Parser<'src> {
 
                 let end = Ref::new(parser.expr()?);
 
-                let loc =
-                    Location::concrete(Span::merge(start.span(), end.span()), parser.current_file);
+                let loc = Location::new(Span::merge(start.span(), end.span()), parser.current_file);
                 let kind = ExprKind::Range(Ref::new(start), end);
 
                 Ok(Expr { kind, loc })
@@ -343,8 +356,7 @@ impl<'src> Parser<'src> {
                 let assign = parser.assign_kind(&assign, parser.current_file)?;
                 let rhs = Ref::new(parser.expr()?);
 
-                let loc =
-                    Location::concrete(Span::merge(left.span(), rhs.span()), parser.current_file);
+                let loc = Location::new(Span::merge(left.span(), rhs.span()), parser.current_file);
                 let kind = ExprKind::Assign(Sided {
                     lhs: Ref::new(left),
                     op: assign,
@@ -361,8 +373,7 @@ impl<'src> Parser<'src> {
                 let assign = parser.assign_kind(&equal, parser.current_file)?;
                 let rhs = Ref::new(parser.expr()?);
 
-                let loc =
-                    Location::concrete(Span::merge(left.span(), rhs.span()), parser.current_file);
+                let loc = Location::new(Span::merge(left.span(), rhs.span()), parser.current_file);
                 let kind = ExprKind::Assign(Sided {
                     lhs: Ref::new(left),
                     op: assign,
@@ -396,8 +407,7 @@ impl<'src> Parser<'src> {
 
                 let rhs = Ref::new(parser.expr()?);
 
-                let loc =
-                    Location::concrete(Span::merge(left.span(), rhs.span()), parser.current_file);
+                let loc = Location::new(Span::merge(left.span(), rhs.span()), parser.current_file);
                 let kind = ExprKind::BinaryOp(Sided {
                     lhs: Ref::new(left),
                     op: parser.bin_op(&operand, parser.current_file)?,
@@ -418,8 +428,7 @@ impl<'src> Parser<'src> {
 
                 let rhs = Ref::new(parser.expr()?);
 
-                let loc =
-                    Location::concrete(Span::merge(left.span(), rhs.span()), parser.current_file);
+                let loc = Location::new(Span::merge(left.span(), rhs.span()), parser.current_file);
                 let kind = ExprKind::Comparison(Sided {
                     lhs: Ref::new(left),
                     op: parser.comp_op(&comparison, parser.current_file)?,
@@ -445,7 +454,7 @@ impl<'src> Parser<'src> {
             .eat(TokenType::RightBrace, [TokenType::Newline])?
             .span();
 
-        let loc = Location::concrete(Span::merge(index.span(), end), self.current_file);
+        let loc = Location::new(Span::merge(index.span(), end), self.current_file);
         let expr = Expr {
             kind: ExprKind::Index {
                 var: Ref::new(var),
@@ -462,32 +471,30 @@ impl<'src> Parser<'src> {
         let cond = Ref::new(self.expr()?);
         self.eat(TokenType::Newline, [])?;
 
-        let body = self.block(&[TokenType::End, TokenType::Else], 10)?;
+        let (body, mut delimiter) = self.block_returning(&[TokenType::End, TokenType::Else], 10)?;
 
         let mut clauses = Vec::new();
         let mut else_ = None;
         let end;
         loop {
-            let delimiter = self.eat_of([TokenType::Else, TokenType::End], [TokenType::Newline])?;
-
             match delimiter.ty() {
                 TokenType::Else if self.peek()?.ty() == TokenType::If => {
                     self.eat(TokenType::If, [])?;
                     let cond = Ref::new(self.expr()?);
                     self.eat(TokenType::Newline, [])?;
 
-                    let body = self.block(&[TokenType::End, TokenType::Else], 10)?;
-                    self.eat(TokenType::End, [TokenType::Newline])?;
+                    let (body, delim) =
+                        self.block_returning(&[TokenType::End, TokenType::Else], 10)?;
+                    delimiter = delim;
 
                     clauses.push(IfCond { cond, body });
                 }
 
                 TokenType::Else => {
-                    self.eat(TokenType::Newline, [])?;
                     let body = self.block(&[TokenType::End], 10)?;
 
+                    end = body.location().span();
                     else_ = Some(body);
-                    end = self.eat(TokenType::End, [TokenType::Newline])?.span();
 
                     break;
                 }
@@ -501,7 +508,7 @@ impl<'src> Parser<'src> {
             }
         }
 
-        let loc = Location::concrete(Span::merge(cond.span(), end), self.current_file);
+        let loc = Location::new(Span::merge(cond.span(), end), self.current_file);
         clauses.push(IfCond { cond, body });
         let kind = ExprKind::If(If { clauses, else_ });
 
@@ -515,6 +522,11 @@ impl<'src> Parser<'src> {
 
         let mut arms = Vec::with_capacity(3);
         while self.peek()?.ty() != TokenType::End {
+            if self.peek()?.ty() == TokenType::Newline {
+                self.eat(TokenType::Newline, [])?;
+                continue;
+            }
+
             let bind = self.binding()?;
 
             let guard = if self.peek()?.ty() == TokenType::Where {
@@ -529,15 +541,11 @@ impl<'src> Parser<'src> {
             // TODO: Make match arms an expression
             let body = self.block(&[TokenType::End], 5)?;
 
-            self.eat(TokenType::End, [TokenType::Newline])?;
-            self.eat(TokenType::Newline, [])?;
-
             arms.push(Arm { bind, guard, body });
         }
-
         let end = self.eat(TokenType::End, [TokenType::Newline])?.span();
 
-        let loc = Location::concrete(Span::merge(var.span(), end), self.current_file);
+        let loc = Location::new(Span::merge(var.span(), end), self.current_file);
         let expr = Expr {
             kind: ExprKind::Match(Match { var, arms }),
             loc,
@@ -554,10 +562,17 @@ impl<'src> Parser<'src> {
         let body = self.block(&[TokenType::End, TokenType::Then], 10)?;
         let then = self.then_block()?;
         let else_ = self.else_block()?;
+        let end = else_
+            .as_ref()
+            .map(|e| e.location())
+            .unwrap_or_else(|| {
+                then.as_ref()
+                    .map(|t| t.location())
+                    .unwrap_or_else(|| body.location())
+            })
+            .span();
 
-        let end = self.eat(TokenType::End, [TokenType::Newline])?.span();
-
-        let loc = Location::concrete(Span::merge(cond.span(), end), self.current_file);
+        let loc = Location::new(Span::merge(cond.span(), end), self.current_file);
         let expr = Expr {
             kind: ExprKind::While(While {
                 cond,
@@ -577,11 +592,15 @@ impl<'src> Parser<'src> {
 
         let body = self.block(&[TokenType::End, TokenType::Then], 10)?;
         let else_ = self.else_block()?;
-        let end = self.eat(TokenType::End, [TokenType::Newline])?.span();
+        let end = else_
+            .as_ref()
+            .map(|e| e.location())
+            .unwrap_or_else(|| body.location())
+            .span();
 
         let expr = Expr {
             kind: ExprKind::Loop(Loop { body, else_ }),
-            loc: Location::concrete(Span::merge(start, end), self.current_file),
+            loc: Location::new(Span::merge(start, end), self.current_file),
         };
 
         Ok(expr)
@@ -597,9 +616,17 @@ impl<'src> Parser<'src> {
         let body = self.block(&[TokenType::End, TokenType::Then], 10)?;
         let then = self.then_block()?;
         let else_ = self.else_block()?;
-        let end = self.eat(TokenType::End, [TokenType::Newline])?.span();
+        let end = else_
+            .as_ref()
+            .map(|e| e.location())
+            .unwrap_or_else(|| {
+                then.as_ref()
+                    .map(|t| t.location())
+                    .unwrap_or_else(|| body.location())
+            })
+            .span();
 
-        let loc = Location::concrete(Span::merge(var.span(), end), self.current_file);
+        let loc = Location::new(Span::merge(var.span(), end), self.current_file);
         let expr = Expr {
             kind: ExprKind::For(For {
                 var,
@@ -617,9 +644,6 @@ impl<'src> Parser<'src> {
     #[recursion_guard]
     fn then_block(&mut self) -> ParseResult<Option<Block>> {
         if self.peek()?.ty() == TokenType::Then {
-            self.eat(TokenType::Then, [TokenType::Newline])?;
-            self.eat(TokenType::Newline, [])?;
-
             let then = self.block(&[TokenType::End, TokenType::Else], 3)?;
 
             Ok(Some(then))
@@ -631,9 +655,6 @@ impl<'src> Parser<'src> {
     #[recursion_guard]
     fn else_block(&mut self) -> ParseResult<Option<Block>> {
         if self.peek()?.ty() == TokenType::Else {
-            self.eat(TokenType::Else, [TokenType::Newline])?;
-            self.eat(TokenType::Newline, [])?;
-
             let else_clause = self.block(&[TokenType::End], 3)?;
 
             Ok(Some(else_clause))

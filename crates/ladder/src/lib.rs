@@ -6,8 +6,8 @@ use crunch_shared::{
         ast::{
             Arm as AstMatchArm, AssignKind, BinaryOp, Block as AstBlock, CompOp, Dest as AstDest,
             Exposure as AstExposure, Expr as AstExpr, ExprKind as AstExprKind, For as AstFor,
-            FuncArg as AstFuncArg, If as AstIf, IfCond as AstIfCond, Item as AstItem, ItemPath,
-            Literal, Loop as AstLoop, Match as AstMatch, Stmt as AstStmt, StmtKind as AstStmtKind,
+            FuncArg as AstFuncArg, If as AstIf, IfCond as AstIfCond, Item as AstItem, Literal,
+            Loop as AstLoop, Match as AstMatch, Stmt as AstStmt, StmtKind as AstStmtKind,
             Type as AstType, TypeMember as AstTypeMember, UnaryOp, VarDecl as AstVarDecl,
             Variant as AstVariant, While as AstWhile,
         },
@@ -15,7 +15,7 @@ use crunch_shared::{
             Binding, Block, Break, Expr, ExprKind, ExternFunc, FuncArg, FuncCall, Function, Item,
             Match, MatchArm, Pattern, Return, Stmt, Type, TypeKind, Var, VarDecl,
         },
-        CallConv, Ref, Sided,
+        CallConv, ItemPath, Ref, Sided,
     },
     visitors::ast::{ExprVisitor, ItemVisitor, StmtVisitor},
 };
@@ -154,25 +154,26 @@ impl ItemVisitor for Ladder {
     fn visit_func(
         &mut self,
         item: &AstItem,
-        _generics: &[AstType],
-        args: &[AstFuncArg],
+        _generics: Option<Locatable<&[Locatable<AstType>]>>,
+        args: Locatable<&[AstFuncArg]>,
         body: &AstBlock,
         ret: Locatable<&AstType>,
         sig: Location,
     ) -> Self::Output {
         let name = ItemPath::from(vec![item.name.unwrap()]);
-        let args = args
-            .iter()
-            .map(|AstFuncArg { name, ty, loc }| {
-                let kind = TypeKind::from(&**ty);
+        let args = args.map(|args| {
+            args.iter()
+                .map(|AstFuncArg { name, ty, loc }| {
+                    let kind = TypeKind::from(&***ty);
 
-                FuncArg {
-                    name: Var::User(*name),
-                    kind,
-                    loc: *loc,
-                }
-            })
-            .collect();
+                    FuncArg {
+                        name: Var::User(*name),
+                        kind,
+                        loc: *loc,
+                    }
+                })
+                .collect()
+        });
 
         let body = Block::from_iter(
             body.location(),
@@ -199,7 +200,7 @@ impl ItemVisitor for Ladder {
     fn visit_type(
         &mut self,
         _item: &AstItem,
-        _generics: &[AstType],
+        _generics: Option<Locatable<&[Locatable<AstType>]>>,
         _members: &[AstTypeMember],
     ) -> Self::Output {
         todo!()
@@ -208,7 +209,7 @@ impl ItemVisitor for Ladder {
     fn visit_enum(
         &mut self,
         _item: &AstItem,
-        _generics: &[AstType],
+        _generics: Option<Locatable<&[Locatable<AstType>]>>,
         _variants: &[AstVariant],
     ) -> Self::Output {
         todo!()
@@ -217,7 +218,7 @@ impl ItemVisitor for Ladder {
     fn visit_trait(
         &mut self,
         _item: &AstItem,
-        _generics: &[AstType],
+        _generics: Option<Locatable<&[Locatable<AstType>]>>,
         _methods: &[AstItem],
     ) -> Self::Output {
         todo!()
@@ -236,8 +237,8 @@ impl ItemVisitor for Ladder {
     fn visit_extend_block(
         &mut self,
         _item: &AstItem,
-        _target: &AstType,
-        _extender: Option<&AstType>,
+        _target: Locatable<&AstType>,
+        _extender: Option<Locatable<&AstType>>,
         _items: &[AstItem],
     ) -> Self::Output {
         todo!()
@@ -246,8 +247,8 @@ impl ItemVisitor for Ladder {
     fn visit_alias(
         &mut self,
         _item: &AstItem,
-        _alias: &AstType,
-        _actual: &AstType,
+        _alias: Locatable<&AstType>,
+        _actual: Locatable<&AstType>,
     ) -> Self::Output {
         todo!()
     }
@@ -261,24 +262,25 @@ impl ItemVisitor for Ladder {
     fn visit_extern_func(
         &mut self,
         item: &AstItem,
-        _generics: &[AstType],
-        args: &[AstFuncArg],
+        _generics: Option<Locatable<&[Locatable<AstType>]>>,
+        args: Locatable<&[AstFuncArg]>,
         ret: Locatable<&AstType>,
         callconv: CallConv,
     ) -> Self::Output {
         let name = ItemPath::from(vec![item.name.unwrap()]);
-        let args = args
-            .iter()
-            .map(|AstFuncArg { name, ty, loc }| {
-                let kind = TypeKind::from(&**ty);
+        let args = args.map(|args| {
+            args.iter()
+                .map(|AstFuncArg { name, ty, loc }| {
+                    let kind = TypeKind::from(&***ty);
 
-                FuncArg {
-                    name: Var::User(*name),
-                    kind,
-                    loc: *loc,
-                }
-            })
-            .collect();
+                    FuncArg {
+                        name: Var::User(*name),
+                        kind,
+                        loc: *loc,
+                    }
+                })
+                .collect()
+        });
 
         let func = ExternFunc {
             name,
@@ -317,7 +319,7 @@ impl StmtVisitor for Ladder {
             mutable: var.mutable,
             ty: Type {
                 name: ItemPath::new(var.name),
-                kind: TypeKind::from(&*var.ty),
+                kind: TypeKind::from(&**var.ty),
                 loc: stmt.location(),
             },
             loc: stmt.location(),
@@ -586,7 +588,7 @@ impl ExprVisitor for Ladder {
                             ty: bind.ty.as_ref().map(|ty| {
                                 Ref::new(Type {
                                     name: ItemPath::default(), // FIXME: ???
-                                    kind: TypeKind::from(&**ty),
+                                    kind: TypeKind::from(&***ty),
                                     loc: expr.location(),
                                 })
                             }),
@@ -755,6 +757,15 @@ impl ExprVisitor for Ladder {
         _expr: &AstExpr,
         _member: &AstExpr,
         _func: &AstExpr,
+    ) -> Self::Output {
+        todo!()
+    }
+
+    fn visit_reference(
+        &mut self,
+        _expr: &AstExpr,
+        _mutable: bool,
+        _reference: &AstExpr,
     ) -> Self::Output {
         todo!()
     }
