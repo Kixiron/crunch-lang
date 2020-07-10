@@ -1,3 +1,7 @@
+:: args: run
+:: expected exit status: 55
+:: expected stdout:
+
 fn main() -> i64
     return fibonacci(10)
 end

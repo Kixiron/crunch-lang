@@ -1,3 +1,7 @@
+:: args: run
+:: expected exit status: 0
+:: expected stdout: Hello, World!
+
 extern
     @callconv("C")
     fn puts(string: arr[i8; 13]) -> i32;
