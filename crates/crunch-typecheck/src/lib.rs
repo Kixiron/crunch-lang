@@ -719,6 +719,14 @@ impl MutExprVisitor for Engine {
 
         Ok(lhs)
     }
+
+    fn visit_cast(
+        &mut self,
+        _loc: Location,
+        _cast: &mut crunch_shared::trees::hir::Cast,
+    ) -> Self::Output {
+        todo!()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

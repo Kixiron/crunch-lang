@@ -12,6 +12,6 @@ pub trait MirVisitor {
     fn visit_block(&mut self, block: &Block) -> Self::BlockOutput;
     fn visit_instruction(&mut self, instruction: &Instruction) -> Self::InstructionOutput;
     fn visit_rval(&mut self, rval: &RightValue) -> Self::RvalOutput;
-    fn visit_constant(&mut self, constant: &Constant) -> Self::ConstantOutput;
+    fn visit_constant(&mut self, constant: &Constant, ty: &Type) -> Self::ConstantOutput;
     fn visit_type(&mut self, ty: &Type) -> Self::TypeOutput;
 }

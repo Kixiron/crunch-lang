@@ -15,7 +15,7 @@ use crunch_shared::{
 };
 use llvm::{
     module::{BuildingBlock, FunctionBuilder, Linkage, Module},
-    types::{AnyType, IntType, Type, VoidType},
+    types::{AnyType, IntType, SealedAnyType, Type, VoidType, I1},
     utils::{AddressSpace, CallingConvention},
     values::{AnyValue, ArrayValue, BasicBlock, FunctionValue, InstructionValue, Value},
     Context, Result,
@@ -323,9 +323,9 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
         }
     }
 
-    fn visit_rval(&mut self, RightValue { ty: _ty, val }: &RightValue) -> Self::RvalOutput {
+    fn visit_rval(&mut self, RightValue { ty, val }: &RightValue) -> Self::RvalOutput {
         match val {
-            Rval::Const(constant) => self.visit_constant(constant),
+            Rval::Const(constant) => self.visit_constant(constant, ty),
             Rval::Var(id) => Ok(self.value(id)),
 
             Rval::Add(lhs, rhs) => {
@@ -396,44 +396,52 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
         }
     }
 
-    fn visit_constant(&mut self, constant: &Constant) -> Self::ConstantOutput {
-        match constant {
-            Constant::I64(int) => IntType::i64(self.ctx)?
-                .constant(*int as u64, true)
-                .map(|i| i.into()),
+    fn visit_constant(&mut self, constant: &Constant, ty: &MirType) -> Self::ConstantOutput {
+        dbg!(constant, ty);
 
-            Constant::U8(int) => IntType::u8(self.ctx)?
-                .constant(*int as u64, true)
-                .map(|i| i.into()),
-
-            Constant::Bool(boolean) => IntType::i1(self.ctx)?
-                .constant(*boolean as u64, true)
-                .map(|i| i.into()),
+        let llvm_type = dbg!(self.visit_type(ty)?);
+        let constant = match constant {
+            // FIXME: Better mechanisms for type-safety here
+            Constant::U8(int) => IntType::<'ctx, u8>::from_ty(llvm_type)
+                .constant(*int as u64, true)?
+                .into(),
+            Constant::I8(int) => IntType::<'ctx, i8>::from_ty(llvm_type)
+                .constant(*int as u64, true)?
+                .into(),
+            // FIXME: This is a hack
+            Constant::I64(int) => IntType::<'ctx, i64>::from_ty(llvm_type)
+                .constant(*int as u64, false)?
+                .into(),
+            Constant::Bool(boolean) => IntType::<'ctx, I1>::from_ty(llvm_type)
+                .constant(*boolean as u64, true)?
+                .into(),
 
             Constant::String(string) => {
                 let llvm_string = ArrayValue::const_string(self.module.context(), string, false)?;
 
-                Ok(self
-                    .module
+                self.module
                     .add_global(
-                        IntType::i8(self.module.context())?.make_array(string.len() as u32)?,
+                        IntType::<'ctx, u8>::from_ty(llvm_type).make_array(string.len() as u32)?,
                         None,
                         "",
                     )?
                     .with_initializer(llvm_string.as_value())
-                    .as_value())
+                    .as_value()
             }
 
-            Constant::Array(array) => Ok(ArrayValue::const_array(
-                IntType::u8(self.module.context())?.into(),
-                array
+            Constant::Array(array) => {
+                dbg!();
+                let elements = array
                     .iter()
-                    .map(|c| self.visit_constant(c))
-                    .collect::<Result<Vec<Value<'ctx>>>>()?
-                    .as_slice(),
-            )?
-            .into()),
-        }
+                    .map(|c| self.visit_constant(c, ty.array_elements().unwrap()))
+                    .collect::<Result<Vec<_>>>()?;
+
+                dbg!();
+                ArrayValue::const_array(llvm_type, elements.as_slice())?.into()
+            }
+        };
+
+        Ok(dbg!(constant))
     }
 
     #[rustfmt::skip]

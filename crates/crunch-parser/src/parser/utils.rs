@@ -289,21 +289,21 @@ impl<'src> Parser<'src> {
             TokenType::XorAssign,
         ];
 
+        #[rustfmt::skip]
         let kind = match token.ty() {
-            TokenType::Equal => AssignKind::Normal,
-            TokenType::AddAssign => AssignKind::BinaryOp(BinaryOp::Add),
-            TokenType::SubAssign => AssignKind::BinaryOp(BinaryOp::Sub),
+            TokenType::Equal      => AssignKind::Normal,
+            TokenType::AddAssign  => AssignKind::BinaryOp(BinaryOp::Add),
+            TokenType::SubAssign  => AssignKind::BinaryOp(BinaryOp::Sub),
             TokenType::MultAssign => AssignKind::BinaryOp(BinaryOp::Mult),
-            TokenType::DivAssign => AssignKind::BinaryOp(BinaryOp::Div),
-            TokenType::ModAssign => AssignKind::BinaryOp(BinaryOp::Mod),
-            TokenType::PowAssign => AssignKind::BinaryOp(BinaryOp::Pow),
-            TokenType::ShlAssign => AssignKind::BinaryOp(BinaryOp::Shl),
-            TokenType::ShrAssign => AssignKind::BinaryOp(BinaryOp::Shr),
-            TokenType::OrAssign => AssignKind::BinaryOp(BinaryOp::BitOr),
-            TokenType::AndAssign => AssignKind::BinaryOp(BinaryOp::BitAnd),
-            TokenType::XorAssign => AssignKind::BinaryOp(BinaryOp::BitXor),
-
-            ty => {
+            TokenType::DivAssign  => AssignKind::BinaryOp(BinaryOp::Div),
+            TokenType::ModAssign  => AssignKind::BinaryOp(BinaryOp::Mod),
+            TokenType::PowAssign  => AssignKind::BinaryOp(BinaryOp::Pow),
+            TokenType::ShlAssign  => AssignKind::BinaryOp(BinaryOp::Shl),
+            TokenType::ShrAssign  => AssignKind::BinaryOp(BinaryOp::Shr),
+            TokenType::OrAssign   => AssignKind::BinaryOp(BinaryOp::BitOr),
+            TokenType::AndAssign  => AssignKind::BinaryOp(BinaryOp::BitAnd),
+            TokenType::XorAssign  => AssignKind::BinaryOp(BinaryOp::BitXor),
+            ty                    => {
                 return Err(Locatable::new(
                     Error::Syntax(SyntaxError::Generic(format!(
                         "Expected one of {}, got '{}'",
@@ -333,15 +333,15 @@ impl<'src> Parser<'src> {
             TokenType::IsNotEqual,
         ];
 
+        #[rustfmt::skip]
         let op = match token.ty() {
-            TokenType::RightCaret => CompOp::Greater,
-            TokenType::LeftCaret => CompOp::Less,
+            TokenType::RightCaret       => CompOp::Greater,
+            TokenType::LeftCaret        => CompOp::Less,
             TokenType::GreaterThanEqual => CompOp::GreaterEqual,
-            TokenType::LessThanEqual => CompOp::LessEqual,
-            TokenType::IsEqual => CompOp::Equal,
-            TokenType::IsNotEqual => CompOp::NotEqual,
-
-            ty => {
+            TokenType::LessThanEqual    => CompOp::LessEqual,
+            TokenType::IsEqual          => CompOp::Equal,
+            TokenType::IsNotEqual       => CompOp::NotEqual,
+            ty                          => {
                 return Err(Locatable::new(
                     Error::Syntax(SyntaxError::Generic(format!(
                         "Expected one of {}, got '{}'",
@@ -362,20 +362,20 @@ impl<'src> Parser<'src> {
 
     #[recursion_guard]
     pub(crate) fn bin_op(&self, token: &Token<'_>, file: CurrentFile) -> ParseResult<BinaryOp> {
+        #[rustfmt::skip]
         let op = match token.ty() {
-            TokenType::Plus => BinaryOp::Add,
-            TokenType::Minus => BinaryOp::Sub,
-            TokenType::Star => BinaryOp::Mult,
-            TokenType::Divide => BinaryOp::Div,
-            TokenType::Modulo => BinaryOp::Mod,
+            TokenType::Plus       => BinaryOp::Add,
+            TokenType::Minus      => BinaryOp::Sub,
+            TokenType::Star       => BinaryOp::Mult,
+            TokenType::Divide     => BinaryOp::Div,
+            TokenType::Modulo     => BinaryOp::Mod,
             TokenType::DoubleStar => BinaryOp::Pow,
-            TokenType::Ampersand => BinaryOp::BitAnd,
-            TokenType::Pipe => BinaryOp::BitOr,
-            TokenType::Caret => BinaryOp::BitXor,
-            TokenType::Shl => BinaryOp::Shl,
-            TokenType::Shr => BinaryOp::Shr,
-
-            ty => {
+            TokenType::Ampersand  => BinaryOp::BitAnd,
+            TokenType::Pipe       => BinaryOp::BitOr,
+            TokenType::Caret      => BinaryOp::BitXor,
+            TokenType::Shl        => BinaryOp::Shl,
+            TokenType::Shr        => BinaryOp::Shr,
+            ty                    => {
                 return Err(Locatable::new(
                     Error::Syntax(SyntaxError::Generic(format!(
                         "Expected a binary operand, got `{}`",
@@ -391,12 +391,12 @@ impl<'src> Parser<'src> {
 
     #[recursion_guard]
     pub(crate) fn unary_op(&self, token: &Token<'_>, file: CurrentFile) -> ParseResult<UnaryOp> {
+        #[rustfmt::skip]
         let op = match token.ty() {
-            TokenType::Plus => UnaryOp::Positive,
+            TokenType::Plus  => UnaryOp::Positive,
             TokenType::Minus => UnaryOp::Negative,
-            TokenType::Bang => UnaryOp::Not,
-
-            ty => {
+            TokenType::Bang  => UnaryOp::Not,
+            ty               => {
                 return Err(Locatable::new(
                     Error::Syntax(SyntaxError::Generic(format!(
                         "Expected a unary operand, got `{}`",

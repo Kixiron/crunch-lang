@@ -159,6 +159,7 @@ pub enum Rval {
 pub enum Constant {
     I64(i64),
     U8(u8),
+    I8(i8),
     Bool(bool),
     String(Vec<u8>),
     Array(Vec<Constant>),
@@ -182,6 +183,16 @@ pub enum Type {
     Absurd,
 }
 
+impl Type {
+    pub fn array_elements(&self) -> Option<&Self> {
+        if let Self::Array(elem, ..) = self {
+            Some(&**elem)
+        } else {
+            None
+        }
+    }
+}
+
 impl From<&HirType> for Type {
     fn from(ty: &HirType) -> Self {
         match ty {
@@ -195,6 +206,7 @@ impl From<&HirType> for Type {
                 (Signedness::Signed,   32) => Self::I32,
                 (Signedness::Unsigned, 64) => Self::U64,
                 (Signedness::Signed,   64) => Self::I64,
+
                 (sign, width) => todo!("{}{}s are currently unsupported", sign, width),
             },
             HirType::Bool => Self::Bool,
@@ -465,10 +477,11 @@ impl ExprVisitor for MirBuilder {
         }))
     }
 
+    // FIXME: Give literals their type in hir
     fn visit_literal(&mut self, loc: Location, literal: &Literal) -> Self::Output {
         match literal {
             Literal::Integer(Integer { sign, bits }) => {
-                // TODO: This isn't great
+                // FIXME: Doesn't respect types
                 let val = Rval::Const(Constant::I64(sign.maybe_negate(*bits) as i64));
                 let rval = RightValue { ty: Type::I64, val };
 
@@ -486,7 +499,7 @@ impl ExprVisitor for MirBuilder {
             })),
 
             Literal::Array(array) => Ok(Some(RightValue {
-                // TODO: Get the actual type
+                // FIXME: Doesn't respect types
                 ty: Type::Array(Ref::new(Type::U8), array.len() as u32),
                 val: Rval::Const(Constant::Array(
                     array
@@ -572,5 +585,9 @@ impl ExprVisitor for MirBuilder {
         };
 
         Ok(Some(RightValue { ty, val }))
+    }
+
+    fn visit_cast(&mut self, _loc: Location, _cast: &super::hir::Cast) -> Self::Output {
+        todo!()
     }
 }

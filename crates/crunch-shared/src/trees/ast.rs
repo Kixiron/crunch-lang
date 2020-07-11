@@ -317,10 +317,26 @@ pub enum ExprKind {
     Tuple(Vec<Expr>),
     // TODO: Add range kind (inclusive, exclusive, etc.)
     Range(Ref<Expr>, Ref<Expr>),
-    Index { var: Ref<Expr>, index: Ref<Expr> },
-    FuncCall { caller: Ref<Expr>, args: Vec<Expr> },
-    MemberFuncCall { member: Ref<Expr>, func: Ref<Expr> },
-    Reference { mutable: bool, expr: Ref<Expr> },
+    Index {
+        var: Ref<Expr>,
+        index: Ref<Expr>,
+    },
+    FuncCall {
+        caller: Ref<Expr>,
+        args: Vec<Expr>,
+    },
+    MemberFuncCall {
+        member: Ref<Expr>,
+        func: Ref<Expr>,
+    },
+    Reference {
+        mutable: bool,
+        expr: Ref<Expr>,
+    },
+    Cast {
+        expr: Ref<Expr>,
+        ty: Ref<Locatable<Type>>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]

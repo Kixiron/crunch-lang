@@ -4,9 +4,13 @@
 
 extern
     @callconv("C")
-    fn puts(string: arr[i8; 13]) -> i32;
+    fn puts(string: *const i8) -> i32;
 end
 
 fn main() -> i32
-    return puts(b"Hello, world!")
+    return puts(as_ptr(&b"Hello, world!"))
+end
+
+fn as_ptr(array: slice[u8]) -> *const u8
+    array as *const slice[u8] as *const u8
 end

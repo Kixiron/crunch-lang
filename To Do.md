@@ -61,6 +61,7 @@
 - [ ] Char escapes in char literals
 - [ ] Allow one-liner match arms delimited by commas
 - [ ] Effects?
+  - [ ] Postfix `.suspend`
 - [ ] Annotate *all* parse functions with grammar rules
 - [ ] Split Pratt sub-functions into methods on `Parser`
 - [ ] {De}serializable arena
@@ -70,7 +71,9 @@
 - [ ] Generic mutability
 - [ ] Function arguments are patterns with required types
 - [ ] Variable declarations are patterns
+  - [ ] Function parameters are patterns w/ required types?
 - [ ] Switch to structured logging via `slog`
+  - PITA because you have to pass it around, alternatives?
 - [x] Stop using `.deref()`, instead use `*`
 - [x] Re-add function generics
   - [x] `fn t[T, E, F](t: T, e: E, f: F)`

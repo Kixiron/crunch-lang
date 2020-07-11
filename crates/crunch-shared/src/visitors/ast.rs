@@ -175,6 +175,7 @@ pub trait ExprVisitor {
                 mutable,
                 expr: reference,
             } => self.visit_reference(expr, *mutable, reference.as_ref()),
+            ExprKind::Cast { expr: cast, ty } => self.visit_cast(expr, cast, ty.as_ref().as_ref()),
         }
     }
 
@@ -208,6 +209,7 @@ pub trait ExprVisitor {
     fn visit_func_call(&mut self, expr: &Expr, caller: &Expr, args: &[Expr]) -> Self::Output;
     fn visit_member_func_call(&mut self, expr: &Expr, member: &Expr, func: &Expr) -> Self::Output;
     fn visit_reference(&mut self, expr: &Expr, mutable: bool, reference: &Expr) -> Self::Output;
+    fn visit_cast(&mut self, expr: &Expr, cast: &Expr, ty: Locatable<&Type>) -> Self::Output;
 }
 
 #[allow(unused_variables)]

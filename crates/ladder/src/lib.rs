@@ -12,8 +12,8 @@ use crunch_shared::{
             Variant as AstVariant, While as AstWhile,
         },
         hir::{
-            Binding, Block, Break, Expr, ExprKind, ExternFunc, FuncArg, FuncCall, Function, Item,
-            Match, MatchArm, Pattern, Return, Stmt, Type, TypeKind, Var, VarDecl,
+            Binding, Block, Break, Cast, Expr, ExprKind, ExternFunc, FuncArg, FuncCall, Function,
+            Item, Match, MatchArm, Pattern, Return, Stmt, Type, TypeKind, Var, VarDecl,
         },
         CallConv, ItemPath, Ref, Sided,
     },
@@ -768,6 +768,25 @@ impl ExprVisitor for Ladder {
         _reference: &AstExpr,
     ) -> Self::Output {
         todo!()
+    }
+
+    fn visit_cast(
+        &mut self,
+        expr: &AstExpr,
+        cast: &AstExpr,
+        ty: Locatable<&AstType>,
+    ) -> Self::Output {
+        Expr {
+            kind: ExprKind::Cast(Cast {
+                casted: Ref::new(self.visit_expr(cast)),
+                ty: Type {
+                    name: ItemPath::default(), // FIXME: ???
+                    kind: TypeKind::from(*ty),
+                    loc: ty.location(),
+                },
+            }),
+            loc: expr.location(),
+        }
     }
 }
 

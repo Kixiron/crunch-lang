@@ -37,7 +37,7 @@ fn main() {
         match run(&mut stderr, args, options) {
             Ok(ExitStatus { message, exit_code }) => {
                 if let Some(message) = message {
-                    stderr.write(|| format!("{}", message));
+                    stderr.write(|| format!("{}\n", message));
                 }
 
                 code = exit_code.unwrap_or(0);
@@ -45,7 +45,7 @@ fn main() {
 
             Err(ExitStatus { message, exit_code }) => {
                 if let Some(message) = message {
-                    stderr.write(|| format!("crunchc failed to compile: {}", message));
+                    stderr.write(|| format!("crunchc failed to compile: {}\n", message));
                 }
 
                 code = exit_code.unwrap_or(101);
@@ -91,7 +91,7 @@ fn run(
         })?
         .to_string_lossy();
     let out_file = options.out_dir.join(source_file.as_ref());
-    stderr.write(|| format!("Compiling {}\n", &source_file));
+    stderr.write(|| format!("Compiling '{}.crunch'\n", &source_file));
 
     // Check that the given file has the `.crunch` extension
     {

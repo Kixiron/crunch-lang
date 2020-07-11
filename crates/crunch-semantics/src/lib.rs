@@ -354,4 +354,5 @@ impl ExprVisitor for Correctness {
     fn visit_member_func_call(&mut self, _expr: &Expr, _member: &Expr, _func: &Expr) {}
     fn visit_reference(&mut self, _expr: &Expr, _mutable: bool, _reference: &Expr) -> Self::Output {
     }
+    fn visit_cast(&mut self, _expr: &Expr, _cast: &Expr, _ty: Locatable<&Type>) -> Self::Output {}
 }

@@ -106,6 +106,7 @@ pub enum ExprKind {
     Variable(Var, TypeKind),
     Assign(Var, Ref<Expr>),
     BinOp(Sided<BinaryOp, Ref<Expr>>),
+    Cast(Cast),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
@@ -334,4 +335,10 @@ impl From<&AstType> for TypeKind {
             ty => todo!("{:?}", ty),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct Cast {
+    pub casted: Ref<Expr>,
+    pub ty: Type,
 }
