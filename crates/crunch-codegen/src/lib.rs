@@ -16,8 +16,10 @@ use crunch_shared::{
 use llvm::{
     module::{BuildingBlock, FunctionBuilder, Linkage, Module},
     types::{AnyType, IntType, SealedAnyType, Type, VoidType, I1},
-    utils::{AddressSpace, CallingConvention},
-    values::{AnyValue, ArrayValue, BasicBlock, FunctionValue, InstructionValue, Value},
+    utils::{AddressSpace, CallingConvention, EMPTY_CSTR},
+    values::{
+        AnyValue, ArrayValue, BasicBlock, FunctionValue, InstructionValue, SealedAnyValue, Value,
+    },
     Context, Result,
 };
 
@@ -393,13 +395,29 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
             }
 
             Rval::Phi(_, _) => todo!(),
+
+            Rval::GetPointer(var, ..) => unsafe {
+                Value::from_raw(llvm_sys::core::LLVMBuildAlloca(
+                    self.block_builder.as_ref().unwrap().builder().as_mut_ptr(),
+                    self.values.get(var).unwrap().as_type()?.as_mut_ptr(),
+                    EMPTY_CSTR,
+                ))
+            },
+
+            Rval::Cast(casted, ty) => unsafe {
+                Value::from_raw(llvm_sys::core::LLVMBuildIntCast(
+                    self.block_builder.as_ref().unwrap().builder().as_mut_ptr(),
+                    self.visit_rval(casted)?.as_mut_ptr(),
+                    self.visit_type(ty)?.as_mut_ptr(),
+                    EMPTY_CSTR,
+                ))
+            },
         }
     }
 
     fn visit_constant(&mut self, constant: &Constant, ty: &MirType) -> Self::ConstantOutput {
-        dbg!(constant, ty);
+        let llvm_type = self.visit_type(ty)?;
 
-        let llvm_type = dbg!(self.visit_type(ty)?);
         let constant = match constant {
             // FIXME: Better mechanisms for type-safety here
             Constant::U8(int) => IntType::<'ctx, u8>::from_ty(llvm_type)
@@ -430,18 +448,16 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
             }
 
             Constant::Array(array) => {
-                dbg!();
                 let elements = array
                     .iter()
                     .map(|c| self.visit_constant(c, ty.array_elements().unwrap()))
                     .collect::<Result<Vec<_>>>()?;
 
-                dbg!();
                 ArrayValue::const_array(llvm_type, elements.as_slice())?.into()
             }
         };
 
-        Ok(dbg!(constant))
+        Ok(constant)
     }
 
     #[rustfmt::skip]
@@ -459,9 +475,16 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
             MirType::I32    => IntType::i32(self.ctx)?.into(),
             MirType::U64    => IntType::u64(self.ctx)?.into(),
             MirType::I64    => IntType::i64(self.ctx)?.into(),
+            MirType::Slice(elem) => {
+                self.module.create_struct(&[self.visit_type(elem)?.make_pointer(AddressSpace::Generic)?.into(), IntType::u64(self.ctx)?.into()], false)?.into()
+            }
             MirType::Array(elem, len) => self.visit_type(&**elem)?.make_array(*len)?.into(),
             MirType::Pointer(ptr) => self
                 .visit_type(ptr)?
+                .make_pointer(AddressSpace::Generic)?
+                .into(),
+            MirType::Reference(_, ty) => self
+                .visit_type(ty)?
                 .make_pointer(AddressSpace::Generic)?
                 .into(),
         };

@@ -14,8 +14,9 @@ use crunch_shared::{
     strings::StrInterner,
     trees::{
         hir::{
-            Block, Break, CompOp, Expr, ExternFunc, FuncArg, FuncCall, Function, Item, Literal,
-            Match, MatchArm, Pattern, Return, Stmt, TypeKind, Var, VarDecl,
+            BinaryOp, Block, Break, Cast, CompOp, Expr, ExternFunc, FuncArg, FuncCall, Function,
+            Item, Literal, Match, MatchArm, Pattern, Reference, Return, Stmt, TypeKind, Var,
+            VarDecl,
         },
         ItemPath, Ref, Signedness,
     },
@@ -197,6 +198,21 @@ impl Engine {
                 Ok(())
             }
 
+            (
+                (TypeInfo::Reference(left_mut, left), _),
+                (TypeInfo::Reference(right_mut, right), _),
+            ) if left_mut == right_mut => {
+                self.unify(left, right)?;
+
+                Ok(())
+            }
+
+            ((TypeInfo::Pointer(left), _), (TypeInfo::Pointer(right), _)) => {
+                self.unify(left, right)?;
+
+                Ok(())
+            }
+
             // If no previous attempts to unify were successful, raise an error
             ((call_type, call_loc), (def_type, def_loc)) => Err(Locatable::new(
                 TypeError::TypeConflict {
@@ -247,6 +263,11 @@ impl Engine {
             (TypeInfo::Array(elem, len), _) => {
                 Ok(TypeKind::Array(Ref::new(self.reconstruct(elem)?), len))
             }
+            (TypeInfo::Slice(elem), _) => Ok(TypeKind::Slice(Ref::new(self.reconstruct(elem)?))),
+            (TypeInfo::Reference(mutable, reference), _) => Ok(TypeKind::Reference(
+                mutable,
+                Ref::new(self.reconstruct(reference)?),
+            )),
         }
     }
 
@@ -354,6 +375,14 @@ impl Engine {
                 let elem = self.intern_type(elem, loc)?;
                 TypeInfo::Array(self.insert_bare(elem, loc), *len)
             }
+            TypeKind::Slice(elem) => {
+                let elem = self.intern_type(elem, loc)?;
+                TypeInfo::Slice(self.insert_bare(elem, loc))
+            }
+            TypeKind::Reference(mutable, ty) => {
+                let ty = self.intern_type(ty, loc)?;
+                TypeInfo::Reference(*mutable, self.insert_bare(ty, loc))
+            }
         };
 
         Ok(ty)
@@ -442,6 +471,33 @@ impl Engine {
                 f.write_str("; ")?;
                 write!(f, "{}", len)?;
                 f.write_char(']')
+            }
+            TypeInfo::Slice(elem) => {
+                f.write_str("arr[")?;
+                self.display_type_inner(
+                    &self
+                        .types
+                        .get(elem)
+                        .expect("Tried to display type that doesn't exist")
+                        .0,
+                    f,
+                )?;
+                f.write_char(']')
+            }
+            TypeInfo::Reference(mutable, reference) => {
+                f.write_char('&')?;
+                if *mutable {
+                    f.write_str("mut ")?;
+                }
+
+                self.display_type_inner(
+                    &self
+                        .types
+                        .get(reference)
+                        .expect("Tried to display type that doesn't exist")
+                        .0,
+                    f,
+                )
             }
         }
     }
@@ -710,7 +766,7 @@ impl MutExprVisitor for Engine {
         &mut self,
         _loc: Location,
         lhs: &mut Expr,
-        _op: crunch_shared::trees::hir::BinaryOp,
+        _op: BinaryOp,
         rhs: &mut Expr,
     ) -> Self::Output {
         let lhs = self.visit_expr(lhs)?;
@@ -720,12 +776,21 @@ impl MutExprVisitor for Engine {
         Ok(lhs)
     }
 
-    fn visit_cast(
+    fn visit_cast(&mut self, loc: Location, Cast { casted, ty }: &mut Cast) -> Self::Output {
+        let _casted = self.visit_expr(casted)?;
+        let ty = self.intern_type(&ty.kind, loc)?;
+
+        Ok(self.insert_bare(ty, loc))
+    }
+
+    fn visit_reference(
         &mut self,
-        _loc: Location,
-        _cast: &mut crunch_shared::trees::hir::Cast,
+        loc: Location,
+        Reference { mutable, reference }: &mut Reference,
     ) -> Self::Output {
-        todo!()
+        let expr = self.visit_expr(reference)?;
+
+        Ok(self.insert_bare(TypeInfo::Reference(*mutable, expr), loc))
     }
 }
 
@@ -745,6 +810,8 @@ enum TypeInfo {
     Absurd,
     Pointer(TypeId),
     Array(TypeId, u32),
+    Slice(TypeId),
+    Reference(bool, TypeId),
 }
 
 #[test]

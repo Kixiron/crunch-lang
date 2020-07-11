@@ -13,7 +13,7 @@ use crunch_shared::{
         },
         hir::{
             Binding, Block, Break, Cast, Expr, ExprKind, ExternFunc, FuncArg, FuncCall, Function,
-            Item, Match, MatchArm, Pattern, Return, Stmt, Type, TypeKind, Var, VarDecl,
+            Item, Match, MatchArm, Pattern, Reference, Return, Stmt, Type, TypeKind, Var, VarDecl,
         },
         CallConv, ItemPath, Ref, Sided,
     },
@@ -763,11 +763,17 @@ impl ExprVisitor for Ladder {
 
     fn visit_reference(
         &mut self,
-        _expr: &AstExpr,
-        _mutable: bool,
-        _reference: &AstExpr,
+        expr: &AstExpr,
+        mutable: bool,
+        reference: &AstExpr,
     ) -> Self::Output {
-        todo!()
+        Expr {
+            kind: ExprKind::Reference(Reference {
+                mutable,
+                reference: Ref::new(self.visit_expr(reference)),
+            }),
+            loc: expr.location(),
+        }
     }
 
     fn visit_cast(

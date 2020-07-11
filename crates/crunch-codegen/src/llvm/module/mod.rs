@@ -20,7 +20,7 @@ use llvm_sys::{
     core::{
         LLVMAddFunction, LLVMAddGlobal, LLVMAddGlobalInAddressSpace, LLVMCloneModule,
         LLVMDisposeModule, LLVMFunctionType, LLVMGetNamedFunction, LLVMPrintModuleToFile,
-        LLVMPrintModuleToString,
+        LLVMPrintModuleToString, LLVMStructType,
     },
     LLVMModule, LLVMType,
 };
@@ -88,6 +88,16 @@ impl<'ctx> Module<'ctx> {
         function: FunctionValue<'ctx>,
     ) -> Result<FunctionBuilder<'ctx>> {
         FunctionBuilder::new(function, self, &function.signature()?)
+    }
+
+    pub fn create_struct(&self, elements: &[Type<'ctx>], packed: bool) -> Result<Type<'ctx>> {
+        unsafe {
+            Type::from_raw(LLVMStructType(
+                elements.as_ptr() as *mut *mut LLVMType,
+                elements.len() as u32,
+                packed as i32,
+            ))
+        }
     }
 
     #[inline]

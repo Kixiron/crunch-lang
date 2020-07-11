@@ -107,6 +107,7 @@ pub enum ExprKind {
     Assign(Var, Ref<Expr>),
     BinOp(Sided<BinaryOp, Ref<Expr>>),
     Cast(Cast),
+    Reference(Reference),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
@@ -309,6 +310,8 @@ pub enum TypeKind {
     Unit,
     Pointer(Ref<TypeKind>),
     Array(Ref<TypeKind>, u32),
+    Slice(Ref<TypeKind>),
+    Reference(bool, Ref<TypeKind>),
     Absurd,
 }
 
@@ -331,6 +334,10 @@ impl From<&AstType> for TypeKind {
             },
             AstType::Pointer { ty, .. } => Self::Pointer(Ref::new(Self::from(&***ty))),
             AstType::Array(len, elem) => Self::Array(Ref::new(Self::from(&***elem)), *len as u32),
+            AstType::Slice(elem) => Self::Slice(Ref::new(Self::from(&***elem))),
+            AstType::Reference { mutable, ty } => {
+                Self::Reference(*mutable, Ref::new(Self::from(&***ty)))
+            }
 
             ty => todo!("{:?}", ty),
         }
@@ -341,4 +348,10 @@ impl From<&AstType> for TypeKind {
 pub struct Cast {
     pub casted: Ref<Expr>,
     pub ty: Type,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct Reference {
+    pub mutable: bool,
+    pub reference: Ref<Expr>,
 }

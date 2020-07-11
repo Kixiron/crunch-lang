@@ -665,6 +665,7 @@ impl<'src> Parser<'src> {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[rustfmt::skip]
 pub enum ExprPrecedence {
+    As,
     Mul, Div, Mod, Pow,
     Add, Sub,
     Shl, Shr,
@@ -680,20 +681,28 @@ pub enum ExprPrecedence {
 }
 
 impl ExprPrecedence {
+    #[rustfmt::skip]
     pub fn precedence(self) -> usize {
         match self {
-            Self::Mul | Self::Div | Self::Mod | Self::Pow => 11,
+            Self::As              => 12,
+            Self::Mul
+            | Self::Div
+            | Self::Mod
+            | Self::Pow           => 11,
             Self::Add | Self::Sub => 10,
             Self::Shl | Self::Shr => 9,
-            Self::Less | Self::Greater | Self::LessEq | Self::GreaterEq => 8,
-            Self::Eq | Self::Ne => 7,
-            Self::BitAnd => 6,
-            Self::BitXor => 5,
-            Self::BitOr => 4,
-            Self::LogAnd => 3,
-            Self::LogOr => 2,
-            Self::Ternary => 1,
-            Self::Assignment => 0,
+            Self::Less
+            | Self::Greater
+            | Self::LessEq
+            | Self::GreaterEq     => 8,
+            Self::Eq | Self::Ne   => 7,
+            Self::BitAnd          => 6,
+            Self::BitXor          => 5,
+            Self::BitOr           => 4,
+            Self::LogAnd          => 3,
+            Self::LogOr           => 2,
+            Self::Ternary         => 1,
+            Self::Assignment      => 0,
         }
     }
 }
@@ -702,26 +711,28 @@ impl TryFrom<TokenType> for ExprPrecedence {
     type Error = ();
 
     fn try_from(t: TokenType) -> Result<ExprPrecedence, ()> {
-        Ok(match t {
-            TokenType::Star => Self::Mul,
-            TokenType::Divide => Self::Div,
-            TokenType::Modulo => Self::Mod,
-            TokenType::DoubleStar => Self::Pow,
-            TokenType::Plus => Self::Add,
-            TokenType::Minus => Self::Sub,
-            TokenType::Shl => Self::Shl,
-            TokenType::Shr => Self::Shr,
-            TokenType::LeftCaret => Self::Less,
-            TokenType::RightCaret => Self::Greater,
-            TokenType::LessThanEqual => Self::LessEq,
+        #[rustfmt::skip]
+        let precedence = match t {
+            TokenType::As               => Self::As,
+            TokenType::Star             => Self::Mul,
+            TokenType::Divide           => Self::Div,
+            TokenType::Modulo           => Self::Mod,
+            TokenType::DoubleStar       => Self::Pow,
+            TokenType::Plus             => Self::Add,
+            TokenType::Minus            => Self::Sub,
+            TokenType::Shl              => Self::Shl,
+            TokenType::Shr              => Self::Shr,
+            TokenType::LeftCaret        => Self::Less,
+            TokenType::RightCaret       => Self::Greater,
+            TokenType::LessThanEqual    => Self::LessEq,
             TokenType::GreaterThanEqual => Self::GreaterEq,
-            TokenType::IsEqual => Self::Eq,
-            TokenType::IsNotEqual => Self::Ne,
-            TokenType::Ampersand => Self::BitAnd,
-            TokenType::Caret => Self::BitXor,
-            TokenType::Pipe => Self::BitOr,
-            TokenType::And => Self::LogAnd,
-            TokenType::Or => Self::LogOr,
+            TokenType::IsEqual          => Self::Eq,
+            TokenType::IsNotEqual       => Self::Ne,
+            TokenType::Ampersand        => Self::BitAnd,
+            TokenType::Caret            => Self::BitXor,
+            TokenType::Pipe             => Self::BitOr,
+            TokenType::And              => Self::LogAnd,
+            TokenType::Or               => Self::LogOr,
             TokenType::Colon
             | TokenType::AddAssign
             | TokenType::SubAssign
@@ -732,10 +743,11 @@ impl TryFrom<TokenType> for ExprPrecedence {
             | TokenType::ShrAssign
             | TokenType::OrAssign
             | TokenType::AndAssign
-            | TokenType::XorAssign => Self::Assignment,
-            TokenType::If => Self::Ternary,
+            | TokenType::XorAssign      => Self::Assignment,
+            TokenType::If               => Self::Ternary,
+            _                           => return Err(()),
+        };
 
-            _ => return Err(()),
-        })
+        Ok(precedence)
     }
 }

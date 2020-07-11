@@ -478,6 +478,10 @@ impl<'ctx> BuildingBlock<'ctx> {
         Self { block, builder }
     }
 
+    pub(crate) const fn builder(&self) -> &Builder<'ctx> {
+        &self.builder
+    }
+
     pub(crate) fn cast_call_args(
         &self,
         values: &[Value<'ctx>],

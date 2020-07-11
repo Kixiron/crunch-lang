@@ -120,6 +120,8 @@ impl Resolver {
             } => Either::Left(6),
             AstType::Pointer { .. } => Either::Left(7),
             AstType::Array(..) => Either::Left(7),
+            AstType::Slice(..) => Either::Left(7),
+            AstType::Reference { .. } => Either::Left(7),
             AstType::ItemPath(path) => self
                 .current()
                 .lookup_type(self, *path.last().unwrap())

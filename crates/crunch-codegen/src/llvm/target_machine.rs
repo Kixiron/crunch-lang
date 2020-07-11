@@ -4,12 +4,15 @@ use crate::llvm::{
     utils::{to_non_nul, LLVMString},
     Error, ErrorKind, Result,
 };
-use llvm_sys::target_machine::{
-    LLVMCodeGenFileType, LLVMCodeGenOptLevel, LLVMCodeModel, LLVMCreateTargetMachine,
-    LLVMDisposeTargetMachine, LLVMGetHostCPUFeatures, LLVMGetHostCPUName, LLVMGetTargetFromTriple,
-    LLVMGetTargetMachineCPU, LLVMGetTargetMachineFeatureString, LLVMGetTargetMachineTarget,
-    LLVMGetTargetMachineTriple, LLVMOpaqueTargetMachine, LLVMRelocMode, LLVMTarget,
-    LLVMTargetMachineEmitToFile,
+use llvm_sys::{
+    target::{LLVMCreateTargetData, LLVMDisposeTargetData, LLVMOpaqueTargetData},
+    target_machine::{
+        LLVMCodeGenFileType, LLVMCodeGenOptLevel, LLVMCodeModel, LLVMCreateTargetMachine,
+        LLVMDisposeTargetMachine, LLVMGetHostCPUFeatures, LLVMGetHostCPUName,
+        LLVMGetTargetFromTriple, LLVMGetTargetMachineCPU, LLVMGetTargetMachineFeatureString,
+        LLVMGetTargetMachineTarget, LLVMGetTargetMachineTriple, LLVMOpaqueTargetMachine,
+        LLVMRelocMode, LLVMTarget, LLVMTargetMachineEmitToFile,
+    },
 };
 use std::{
     ffi::{CStr, CString},
@@ -148,6 +151,29 @@ impl Target {
     #[inline]
     pub(crate) const fn as_mut_ptr(&self) -> *mut LLVMTarget {
         self.target.as_ptr()
+    }
+}
+
+pub struct TargetData {
+    target_data: NonNull<LLVMOpaqueTargetData>,
+}
+
+impl TargetData {
+    pub fn new(triple: &str) -> Result<Self> {
+        unsafe {
+            Ok(Self {
+                target_data: to_non_nul(
+                    LLVMCreateTargetData(CString::new(triple)?.as_ptr()),
+                    "Failed to create LLVM target data",
+                )?,
+            })
+        }
+    }
+}
+
+impl Drop for TargetData {
+    fn drop(&mut self) {
+        unsafe { LLVMDisposeTargetData(self.target_data.as_ptr() as *mut LLVMOpaqueTargetData) }
     }
 }
 

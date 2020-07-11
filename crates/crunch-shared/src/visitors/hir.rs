@@ -4,7 +4,7 @@ use crate::{
         ast::BinaryOp,
         hir::{
             Block, Break, Cast, CompOp, Expr, ExprKind, ExternFunc, FuncCall, Function, Item,
-            Literal, Match, Return, Stmt, TypeKind, Var, VarDecl,
+            Literal, Match, Reference, Return, Stmt, TypeKind, Var, VarDecl,
         },
         Sided,
     },
@@ -56,6 +56,7 @@ pub trait MutExprVisitor {
             ExprKind::Assign(var, value) => self.visit_assign(loc, *var, value),
             ExprKind::BinOp(Sided { lhs, op, rhs }) => self.visit_binop(loc, lhs, *op, rhs),
             ExprKind::Cast(cast) => self.visit_cast(loc, cast),
+            ExprKind::Reference(reference) => self.visit_reference(loc, reference),
         }
     }
 
@@ -84,6 +85,7 @@ pub trait MutExprVisitor {
         rhs: &mut Expr,
     ) -> Self::Output;
     fn visit_cast(&mut self, loc: Location, cast: &mut Cast) -> Self::Output;
+    fn visit_reference(&mut self, loc: Location, reference: &mut Reference) -> Self::Output;
 }
 
 #[allow(unused_variables)]
@@ -132,6 +134,7 @@ pub trait ExprVisitor {
             ExprKind::Assign(var, value) => self.visit_assign(loc, *var, value),
             ExprKind::BinOp(Sided { lhs, op, rhs }) => self.visit_binop(loc, lhs, *op, rhs),
             ExprKind::Cast(cast) => self.visit_cast(loc, cast),
+            ExprKind::Reference(reference) => self.visit_reference(loc, reference),
         }
     }
 
@@ -154,4 +157,5 @@ pub trait ExprVisitor {
     fn visit_assign(&mut self, loc: Location, var: Var, value: &Expr) -> Self::Output;
     fn visit_binop(&mut self, loc: Location, lhs: &Expr, op: BinaryOp, rhs: &Expr) -> Self::Output;
     fn visit_cast(&mut self, loc: Location, cast: &Cast) -> Self::Output;
+    fn visit_reference(&mut self, loc: Location, reference: &Reference) -> Self::Output;
 }

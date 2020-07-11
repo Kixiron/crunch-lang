@@ -4,9 +4,9 @@ use crate::{
     trees::{
         ast::Integer,
         hir::{
-            BinaryOp, Binding, Block as HirBlock, CompOp, Expr, ExternFunc as HirExternFunc,
+            BinaryOp, Binding, Block as HirBlock, Cast, CompOp, Expr, ExternFunc as HirExternFunc,
             FuncArg, FuncCall, Function as HirFunction, Item, Literal, Match, MatchArm, Pattern,
-            Return, Stmt, TypeKind as HirType, TypeKind, Var, VarDecl,
+            Reference, Return, Stmt, TypeKind as HirType, TypeKind, Var, VarDecl,
         },
         CallConv, ItemPath, Ref, Signedness,
     },
@@ -144,6 +144,7 @@ impl RightValue {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[repr(u8)]
 pub enum Rval {
     Var(VarId),
     Const(Constant),
@@ -153,6 +154,8 @@ pub enum Rval {
     Sub(Box<RightValue>, Box<RightValue>),
     Mul(Box<RightValue>, Box<RightValue>),
     Div(Box<RightValue>, Box<RightValue>),
+    GetPointer(VarId, bool, Aliasable),
+    Cast(Box<RightValue>, Type),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -177,8 +180,10 @@ pub enum Type {
     I64,
     Bool,
     Unit,
-    Pointer(Ref<Self>),
-    Array(Ref<Self>, u32),
+    Pointer(Ref<Type>),
+    Array(Ref<Type>, u32),
+    Slice(Ref<Type>),
+    Reference(bool, Ref<Type>),
     String,
     Absurd,
 }
@@ -215,6 +220,10 @@ impl From<&HirType> for Type {
             HirType::String => Self::String,
             HirType::Absurd => Self::Absurd,
             HirType::Array(elem, len) => Self::Array(Ref::new(Self::from(&**elem)), *len),
+            HirType::Slice(elem) => Self::Slice(Ref::new(Self::from(&**elem))),
+            HirType::Reference(mutable, ty) => {
+                Self::Reference(*mutable, Ref::new(Self::from(&**ty)))
+            }
 
             HirType::Infer => unreachable!("All types should have been inferred by now"),
         }
@@ -587,7 +596,34 @@ impl ExprVisitor for MirBuilder {
         Ok(Some(RightValue { ty, val }))
     }
 
-    fn visit_cast(&mut self, _loc: Location, _cast: &super::hir::Cast) -> Self::Output {
-        todo!()
+    fn visit_cast(&mut self, _loc: Location, Cast { casted, ty }: &Cast) -> Self::Output {
+        let ty = Type::from(&ty.kind);
+        let casted = self.visit_expr(casted)?.unwrap();
+        let val = Rval::Cast(Box::new(casted), ty.clone());
+
+        Ok(Some(RightValue { ty, val }))
     }
+
+    fn visit_reference(
+        &mut self,
+        _loc: Location,
+        Reference { mutable, reference }: &Reference,
+    ) -> Self::Output {
+        let pointee = self.next_var();
+        let reference = self.visit_expr(reference)?.unwrap();
+
+        let ty = reference.ty.clone();
+        self.current_block_mut()
+            .push(Instruction::Assign(pointee, reference));
+
+        let val = Rval::GetPointer(pointee, *mutable, Aliasable::NoAlias);
+
+        Ok(Some(RightValue { ty, val }))
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(u8)]
+pub enum Aliasable {
+    NoAlias,
 }
