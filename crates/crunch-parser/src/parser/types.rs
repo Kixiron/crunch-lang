@@ -139,6 +139,7 @@ impl<'src> Parser<'src> {
                         let int = parser.eat(TokenType::Int, [TokenType::Newline])?;
                         let Integer { sign, bits: len } = parser
                             .literal(&int, parser.current_file)?
+                            .val
                             .into_integer()
                             .expect("An integer was eaten, so it should be parsed as well");
 

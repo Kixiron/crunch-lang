@@ -2,6 +2,10 @@
 members = ["crates/*"]
 exclude = ["crates/crunch-fuzzing"]
 
+# Speed up backtraces on debug builds
+[profile.dev.package.backtrace]
+opt-level = 3
+
 [profile.release]
 debug = false
 opt-level = 3

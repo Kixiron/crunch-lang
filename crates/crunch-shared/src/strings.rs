@@ -8,16 +8,18 @@ pub use interner::StrInterner;
 mod interner {
     use super::StrT;
     use alloc::sync::Arc;
-    use lasso::{Spur, ThreadedRodeo};
+    use lasso::{Capacity, Spur, ThreadedRodeo};
 
     #[derive(Debug, Clone)]
     #[repr(transparent)]
-    pub struct StrInterner(Arc<ThreadedRodeo<str, Spur>>);
+    pub struct StrInterner(Arc<ThreadedRodeo<Spur>>);
 
     impl StrInterner {
         #[inline]
         pub fn new() -> Self {
-            Self(Arc::new(ThreadedRodeo::with_capacity(2048)))
+            Self(Arc::new(ThreadedRodeo::with_capacity(
+                Capacity::for_strings(1000),
+            )))
         }
 
         #[inline]
@@ -47,16 +49,18 @@ mod interner {
         cell::{Ref, RefCell},
         ops::Deref,
     };
-    use lasso::{Rodeo, Spur};
+    use lasso::{Capacity, Rodeo, Spur};
 
     #[derive(Debug, Clone)]
     #[repr(transparent)]
-    pub struct StrInterner(Rc<RefCell<Rodeo<str, Spur>>>);
+    pub struct StrInterner(Rc<RefCell<Rodeo<Spur>>>);
 
     impl StrInterner {
         #[inline]
         pub fn new() -> Self {
-            Self(Rc::new(RefCell::new(Rodeo::with_capacity(2048))))
+            Self(Rc::new(RefCell::new(Rodeo::with_capacity(
+                Capacity::for_strings(1000),
+            ))))
         }
 
         #[inline]

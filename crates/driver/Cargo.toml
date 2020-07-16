@@ -16,6 +16,9 @@ version = "0.3.15"
 [dependencies.simple_logger]
 version = "1.6.0"
 
+[dependencies.color-eyre]
+version = "0.5.0"
+
 [dependencies.crunch-shared]
 path = "../crunch-shared"
 
@@ -35,4 +38,4 @@ path = "../crunch-typecheck"
 path = "../crunch-codegen"
 
 [dev-dependencies.goldentests]
-path = "../../../golden-tests"
+version = "0.3.4"

@@ -9,8 +9,8 @@ use crunch_shared::{
     files::CurrentFile,
     strings::StrT,
     trees::{
-        ast::{AssignKind, BinaryOp, CompOp, Float, Integer, Literal, Sign, UnaryOp},
-        ItemPath,
+        ast::{AssignKind, BinaryOp, CompOp, Float, Integer, Literal, LiteralVal, Type, UnaryOp},
+        ItemPath, Sign,
     },
 };
 
@@ -66,9 +66,17 @@ impl<'src> Parser<'src> {
         match token.ty() {
             TokenType::Float => {
                 if token.source() == "inf" {
-                    return Ok(Literal::Float(Float(f64::to_bits(core::f64::INFINITY))));
+                    return Ok(Literal {
+                        val: LiteralVal::Float(Float(f64::to_bits(core::f64::INFINITY))),
+                        ty: Type::String,
+                        loc: Location::new(token.span(), self.current_file),
+                    });
                 } else if token.source() == "NaN" {
-                    return Ok(Literal::Float(Float(f64::to_bits(core::f64::NAN))));
+                    return Ok(Literal {
+                        val: LiteralVal::Float(Float(f64::to_bits(core::f64::NAN))),
+                        ty: Type::String,
+                        loc: Location::new(token.span(), self.current_file),
+                    });
                 }
 
                 let negative = match source.chars().next() {
@@ -115,7 +123,11 @@ impl<'src> Parser<'src> {
                     float = -float;
                 }
 
-                Ok(Literal::Float(Float(f64::to_bits(float))))
+                Ok(Literal {
+                    val: LiteralVal::Float(Float(f64::to_bits(float))),
+                    ty: Type::String,
+                    loc: Location::new(token.span(), self.current_file),
+                })
             }
 
             TokenType::Rune => {
@@ -144,12 +156,20 @@ impl<'src> Parser<'src> {
                 };
 
                 if byte_rune {
-                    Ok(Literal::Integer(Integer {
-                        sign: Sign::Positive,
-                        bits: rune.as_u32() as u128,
-                    }))
+                    Ok(Literal {
+                        val: LiteralVal::Integer(Integer {
+                            sign: Sign::Positive,
+                            bits: rune.as_u32() as u128,
+                        }),
+                        ty: Type::String,
+                        loc: Location::new(token.span(), self.current_file),
+                    })
                 } else {
-                    Ok(Literal::Rune(rune))
+                    Ok(Literal {
+                        val: LiteralVal::Rune(rune),
+                        ty: Type::String,
+                        loc: Location::new(token.span(), self.current_file),
+                    })
                 }
             }
 
@@ -182,20 +202,30 @@ impl<'src> Parser<'src> {
                 };
 
                 if byte_str {
-                    Ok(Literal::Array(
-                        string
-                            .to_bytes()
-                            .into_iter()
-                            .map(|b| {
-                                Literal::Integer(Integer {
-                                    sign: Sign::Positive,
-                                    bits: b as u128,
+                    Ok(Literal {
+                        val: LiteralVal::Array(
+                            string
+                                .to_bytes()
+                                .into_iter()
+                                .map(|b| Literal {
+                                    val: LiteralVal::Integer(Integer {
+                                        sign: Sign::Positive,
+                                        bits: b as u128,
+                                    }),
+                                    ty: Type::Infer,
+                                    loc: Location::new(token.span(), self.current_file),
                                 })
-                            })
-                            .collect(),
-                    ))
+                                .collect(),
+                        ),
+                        ty: Type::Infer,
+                        loc: Location::new(token.span(), self.current_file),
+                    })
                 } else {
-                    Ok(Literal::String(string))
+                    Ok(Literal {
+                        val: LiteralVal::String(string),
+                        ty: Type::String,
+                        loc: Location::new(token.span(), self.current_file),
+                    })
                 }
             }
 
@@ -249,17 +279,23 @@ impl<'src> Parser<'src> {
                         })?
                 };
 
-                Ok(Literal::Integer(Integer { sign, bits: int }))
+                Ok(Literal {
+                    val: LiteralVal::Integer(Integer { sign, bits: int }),
+                    ty: Type::Infer,
+                    loc: Location::new(token.span(), self.current_file),
+                })
             }
 
-            TokenType::Bool => Ok(Literal::Bool(token.source().parse::<bool>().map_err(
-                |_| {
+            TokenType::Bool => Ok(Literal {
+                val: LiteralVal::Bool(token.source().parse::<bool>().map_err(|_| {
                     Locatable::new(
                         Error::Syntax(SyntaxError::InvalidLiteral("bool".to_string())),
                         Location::new(token, file),
                     )
-                },
-            )?)),
+                })?),
+                ty: Type::Bool,
+                loc: Location::new(token.span(), self.current_file),
+            }),
 
             ty => Err(Locatable::new(
                 Error::Syntax(SyntaxError::Generic(format!("Invalid Literal: '{}'", ty))),

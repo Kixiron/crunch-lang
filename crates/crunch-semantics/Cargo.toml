@@ -10,7 +10,3 @@ no-std = ["crunch-shared/no-std"]
 
 [dependencies.crunch-shared]
 path = "../crunch-shared"
-
-[dependencies.Inflector]
-version = "0.11.4"
-default-features = false

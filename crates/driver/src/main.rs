@@ -18,7 +18,7 @@ use crunch_typecheck::Engine;
 use ladder::Ladder;
 use std::{
     borrow::Cow,
-    fmt, fs,
+    env, fmt, fs,
     io::{self, Write},
     path::PathBuf,
     str::FromStr,
@@ -27,9 +27,17 @@ use std::{
 use structopt::StructOpt;
 
 fn main() {
-    let code;
+    match env::var("CRUNCH_BACKTRACE") {
+        Ok(backtrace) if backtrace == "1" => {
+            // TODO: Allow users to disable colors
+            color_eyre::install().ok();
+        }
 
-    {
+        // TODO: Report an error on non-unicode and incorrect settings?
+        _ => {}
+    }
+
+    let code = {
         let args = CrunchcOpts::from_args();
         let options = args.build_options();
         let mut stderr = Stderr::new(&options);
@@ -40,7 +48,7 @@ fn main() {
                     stderr.write(|| format!("{}\n", message));
                 }
 
-                code = exit_code.unwrap_or(0);
+                exit_code.unwrap_or(0)
             }
 
             Err(ExitStatus { message, exit_code }) => {
@@ -48,10 +56,10 @@ fn main() {
                     stderr.write(|| format!("crunchc failed to compile: {}\n", message));
                 }
 
-                code = exit_code.unwrap_or(101);
+                exit_code.unwrap_or(101)
             }
         }
-    }
+    };
 
     // exit immediately terminates the program, so make sure everything is cleaned
     // up before this so that we don't leak anything
@@ -248,7 +256,7 @@ fn run(
         ))
     })?;
     let module = ctx
-        .module(&source_file)
+        .module(&format!("{}.crunch", source_file))
         .map_err(|err| ExitStatus::message(format!("error creating LLVM module: {:?}", err)))?;
 
     // Generate LLVM ir
@@ -257,6 +265,7 @@ fn run(
         .map_err(|err| {
             ExitStatus::message(format!("encountered an error during codegen: {:?}", err))
         })?;
+
     // Verify the generated module
     module
         .verify()

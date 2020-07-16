@@ -2,9 +2,13 @@ use proc_macro::TokenStream as TokenStream1;
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
 use syn::{
-    parse_macro_input, parse_quote, spanned::Spanned, AttributeArgs, DeriveInput, Error, ItemFn,
-    Lit, Meta, MetaNameValue, NestedMeta, Result, Variant,
+    parse_macro_input, parse_quote, spanned::Spanned, AttributeArgs, Error, ItemFn, Lit, Meta,
+    MetaNameValue, NestedMeta, Result,
 };
+
+// mod nanopass;
+
+// use nanopass::Nanopass;
 
 /// A macro for use in the parser, inserts a stack frame recording into the function
 ///
@@ -144,111 +148,13 @@ fn instrument_inner(mut meta: AttributeArgs, mut input: ItemFn) -> Result<TokenS
     })
 }
 
-#[proc_macro_derive(Nanopass)]
-pub fn nanopass_derive(input: TokenStream1) -> TokenStream1 {
-    nanopass_derive_inner(parse_macro_input!(input as _))
-        .unwrap_or_else(|err| err.to_compile_error())
-        .into()
-}
-
-fn nanopass_derive_inner(_input: DeriveInput) -> Result<TokenStream> {
-    todo!()
-}
-
-#[proc_macro_attribute]
-pub fn nanopass(attrs: TokenStream1, input: TokenStream1) -> TokenStream1 {
-    nanopass_attr_inner(
-        parse_macro_input!(attrs as _),
-        parse_macro_input!(input as _),
-    )
-    .unwrap_or_else(|err| err.to_compile_error())
-    .into()
-}
-
-fn nanopass_attr_inner(mut args: AttributeArgs, input: ItemFn) -> Result<TokenStream> {
-    let _accepts: Variant = match attr_arg("accepts", &mut args)? {
-        Lit::Str(accepts) => accepts.parse()?,
-        err => return Err(Error::new(err.span(), "expected a string literal")),
-    };
-    let _output: Variant = match attr_arg("outputs", &mut args)? {
-        Lit::Str(outputs) => outputs.parse()?,
-        err => return Err(Error::new(err.span(), "expected a string literal")),
-    };
-
-    Ok(TokenStream::from(quote! { #input }))
-}
-
-fn attr_arg(name: &str, args: &mut AttributeArgs) -> Result<Lit> {
-    let idx = args.iter().position(|arg| {
-        matches!(arg, NestedMeta::Meta(Meta::NameValue(value)) if value.path.is_ident(name))
-    })
-    // TODO: Return error
-    .unwrap();
-
-    if let NestedMeta::Meta(Meta::NameValue(MetaNameValue { lit, .. })) = args.remove(idx) {
-        Ok(lit)
-    } else {
-        unreachable!()
-    }
-}
-
-/*
-enum Tree {
-    A(u32, u32, u32),
-    B(bool),
-    C(Box<Tree>),
-}
-
-enum FinalTree {
-    WasA(u64),
-    WasB(Box<FinalTree>),
-}
-
-enum ATree {
-    WasA(u64),
-    B(bool),
-    C(Box<ATree>),
-}
-
-fn a(t: Tree) -> ATree {
-    match t {
-        Tree::A(a, b, c) => ATree::WasA((a + b + c) as u64),
-        Tree::B(b) => ATree::B(b),
-        Tree::C(t) => ATree::C(Box::new(a(*t))),
-    }
-}
-
-enum BTree {
-    WasA(u64),
-    WasB(Box<BTree>),
-    C(Box<BTree>),
-}
-
-fn b(t: ATree) -> BTree {
-    match t {
-        ATree::WasA(a) => BTree::WasA(a),
-        ATree::B(b) => BTree::WasB(Box::new(BTree::WasA(b as u64))),
-        ATree::C(t) => BTree::C(Box::new(b(*t))),
-    }
-}
-
-enum CTree {
-    WasA(u64),
-    WasB(Box<CTree>),
-}
-
-fn c(t: BTree) -> CTree {
-    match t {
-        BTree::WasA(a) => CTree::WasA(a),
-        BTree::WasB(t) => CTree::WasB(Box::new(c(*t))),
-        BTree::C(t) => CTree::WasB(Box::new(c(*t))),
-    }
-}
-
-fn fin(t: CTree) -> FinalTree {
-    match t {
-        CTree::WasA(a) => FinalTree::WasA(a),
-        CTree::WasB(b) => FinalTree::WasB(Box::new(fin(*b))),
-    }
-}
-*/
+// #[proc_macro_attribute]
+// pub fn nanopass(args: TokenStream1, input: TokenStream1) -> TokenStream1 {
+//     let args = parse_macro_input!(args as AttributeArgs);
+//     let base_enum = parse_macro_input!(input as ItemEnum);
+//
+//     Nanopass::parse_from_attr(args, base_enum)
+//         .and_then(|nano| nano.compile())
+//         .unwrap_or_else(|err| err.to_compile_error())
+//         .into()
+// }

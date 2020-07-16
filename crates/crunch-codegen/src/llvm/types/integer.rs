@@ -43,6 +43,10 @@ impl<'ctx, W: IntWidth> IntType<'ctx, W> {
             IntValue::from_raw(value)
         }
     }
+
+    pub fn erase(self) -> IntType<'ctx, Unknown> {
+        IntType(self.0, PhantomData)
+    }
 }
 
 impl<'ctx, W: IntWidth> IntType<'ctx, W> {

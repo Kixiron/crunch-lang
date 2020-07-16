@@ -21,6 +21,7 @@ use llvm_sys::{
     LLVMType,
 };
 use std::{
+    convert::TryFrom,
     fmt::{Debug, Formatter, Result as FmtResult},
     marker::PhantomData,
     mem::MaybeUninit,
@@ -90,6 +91,21 @@ impl_any_ty! {
 pub struct ArrayType<'ctx>(Type<'ctx>);
 
 impl<'ctx> Sealed for ArrayType<'ctx> {}
+
+impl<'ctx> TryFrom<Type<'ctx>> for ArrayType<'ctx> {
+    type Error = Error;
+
+    fn try_from(ty: Type<'ctx>) -> Result<Self> {
+        if ty.kind() == TypeKind::Array {
+            Ok(Self(ty))
+        } else {
+            Err(Error::new(
+                format!("The type {:?} cannot be made into an ArrayType", ty.kind()),
+                ErrorKind::MismatchedTypes,
+            ))
+        }
+    }
+}
 
 impl Debug for ArrayType<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {

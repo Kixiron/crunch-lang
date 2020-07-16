@@ -1,7 +1,7 @@
 use crate::{
     error::{Locatable, Location, Span},
     strings::{StrInterner, StrT},
-    trees::{CallConv, ItemPath, Ref, Sided, Signedness},
+    trees::{CallConv, ItemPath, Ref, Sided, Sign, Signedness},
 };
 #[cfg(feature = "no-std")]
 use alloc::{
@@ -11,10 +11,7 @@ use alloc::{
     vec,
     vec::Vec,
 };
-use core::{
-    fmt::{Debug, Display, Formatter, Result, Write},
-    ops::Not,
-};
+use core::fmt::{Debug, Display, Formatter, Result, Write};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -388,7 +385,20 @@ pub struct Arm {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub enum Literal {
+pub struct Literal {
+    pub val: LiteralVal,
+    pub ty: Type,
+    pub loc: Location,
+}
+
+impl Literal {
+    pub fn location(&self) -> Location {
+        self.loc
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub enum LiteralVal {
     Integer(Integer),
     Bool(bool),
     String(Text),
@@ -398,7 +408,7 @@ pub enum Literal {
     // TODO: Tuples, slices, others?
 }
 
-impl Literal {
+impl LiteralVal {
     #[inline]
     pub fn into_integer(self) -> Option<Integer> {
         if let Self::Integer(int) = self {
@@ -418,7 +428,7 @@ impl Literal {
     }
 }
 
-impl Display for Literal {
+impl Display for LiteralVal {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
@@ -431,7 +441,7 @@ impl Display for Literal {
                 f,
                 "[{}]",
                 arr.iter()
-                    .map(|elm| format!("{}", elm))
+                    .map(|elm| format!("{}", elm.val))
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
@@ -546,45 +556,6 @@ impl Display for Integer {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}{}", &self.sign, &self.bits)
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub enum Sign {
-    Positive,
-    Negative,
-}
-
-impl Sign {
-    #[inline]
-    pub fn is_negative(self) -> bool {
-        self == Self::Negative
-    }
-
-    #[inline]
-    pub fn maybe_negate<T>(self, integer: T) -> T
-    where
-        T: Not<Output = T>,
-    {
-        if self.is_negative() {
-            !integer
-        } else {
-            integer
-        }
-    }
-}
-
-impl Display for Sign {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Self::Positive => "",
-                Self::Negative => "-",
-            },
-        )
     }
 }
 

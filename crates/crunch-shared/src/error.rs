@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 
 pub type ParseResult<T> = Result<T, Locatable<Error>>;
 pub type TypeResult<T> = Result<T, Locatable<Error>>;
+pub type MirResult<T> = Result<T, MirError>;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Location {
@@ -407,6 +408,9 @@ pub enum Error {
     #[display(fmt = "Type Error: {}", _0)]
     Type(TypeError),
 
+    #[display(fmt = "MIR Error: {}", _0)]
+    Mir(MirError),
+
     #[display(fmt = "Unexpected end of file")]
     EndOfFile,
 }
@@ -425,6 +429,7 @@ impl Error {
             Self::Syntax(err) => err.emit(files, file, span, diag),
             Self::Semantic(err) => err.emit(files, file, span, diag),
             Self::Type(err) => err.emit(files, file, span, diag),
+            Self::Mir(err) => err.emit(files, file, span, diag),
             Self::EndOfFile => diag.push(
                 Diagnostic::error()
                     .with_message(self.to_string())
@@ -726,6 +731,43 @@ impl TypeError {
 impl Into<Error> for TypeError {
     fn into(self) -> Error {
         Error::Type(self)
+    }
+}
+
+#[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum MirError {
+    #[display(fmt = "Out of scope variables were used: {}", _0)]
+    OutOfScopeVariables(String),
+
+    #[display(fmt = "The basic block {} is missing a terminator", _0)]
+    MissingTerminator(String),
+
+    #[display(fmt = "BasicBlock {} asks for the argument {} multiple times", _0, _1)]
+    DuplicatedBBArg(u64, u64),
+}
+
+impl MirError {
+    #[inline]
+    fn emit<'a, F>(
+        &self,
+        _files: &'a F,
+        file: FileId,
+        span: Span,
+        diag: &mut Vec<Diagnostic<FileId>>,
+    ) where
+        F: CodeFiles<'a, FileId = FileId>,
+    {
+        diag.push(
+            Diagnostic::error()
+                .with_message(self.to_string())
+                .with_labels(vec![Label::primary(file, span)]),
+        )
+    }
+}
+
+impl Into<Error> for MirError {
+    fn into(self) -> Error {
+        Error::Mir(self)
     }
 }
 

@@ -934,6 +934,7 @@ impl<'src> Parser<'src> {
                 .find_map(|arg| arg.as_literal())
                 .ok_or_else(|| expected(decorator.location()))?;
             let callconv = literal
+                .val
                 .as_string()
                 .ok_or_else(|| expected(literal.location()))?;
 

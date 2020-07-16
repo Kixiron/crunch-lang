@@ -15,8 +15,8 @@ use crunch_shared::{
     trees::{
         hir::{
             BinaryOp, Block, Break, Cast, CompOp, Expr, ExternFunc, FuncArg, FuncCall, Function,
-            Item, Literal, Match, MatchArm, Pattern, Reference, Return, Stmt, TypeKind, Var,
-            VarDecl,
+            Item, Literal, LiteralVal, Match, MatchArm, Pattern, Reference, Return, Stmt, TypeKind,
+            Var, VarDecl,
         },
         ItemPath, Ref, Signedness,
     },
@@ -388,36 +388,65 @@ impl Engine {
         Ok(ty)
     }
 
-    fn intern_literal(&mut self, literal: &Literal, loc: Location) -> TypeResult<TypeInfo> {
-        let ty = match literal {
-            Literal::Integer(..) => TypeInfo::Integer {
-                sign: None,
-                width: None,
-            },
-            Literal::Bool(..) => TypeInfo::Bool,
-            Literal::String(..) => TypeInfo::String,
-            Literal::Array(array) => {
-                // FIXME: Make sure all literals in the array are the same
-                let elements = array
-                    .iter()
-                    .map(|elem| {
-                        let elem = self.intern_literal(elem, loc)?;
-                        Ok(self.insert_bare(elem, loc))
-                    })
-                    .collect::<TypeResult<Vec<TypeId>>>()?;
+    fn intern_literal(
+        &mut self,
+        Literal { val, ty, loc }: &mut Literal,
+        _loc: Location,
+    ) -> TypeResult<TypeId> {
+        let info = self.intern_type(&ty.kind, *loc)?;
+        let info = self.insert_bare(info, *loc);
 
-                let elem_type = self.insert_bare(TypeInfo::Infer, loc);
-                for elem in elements.iter() {
-                    self.unify(*elem, elem_type)?;
-                }
-
-                TypeInfo::Array(elem_type, elements.len() as u32)
+        match val {
+            LiteralVal::Integer(_) => {
+                let int = self.insert_bare(
+                    TypeInfo::Integer {
+                        sign: None,
+                        width: None,
+                    },
+                    *loc,
+                );
+                self.unify(int, info)?;
             }
 
-            _ => todo!(),
-        };
+            LiteralVal::Bool(_) => {
+                let boolean = self.insert_bare(TypeInfo::Bool, *loc);
+                self.unify(boolean, info)?;
+            }
 
-        Ok(ty)
+            LiteralVal::String(_) => {
+                let string = self.insert_bare(TypeInfo::String, *loc);
+                self.unify(string, info)?;
+            }
+
+            LiteralVal::Array(array) => {
+                let element_types = self.insert_bare(TypeInfo::Infer, *loc);
+                let arr =
+                    self.insert_bare(TypeInfo::Array(element_types, array.len() as u32), *loc);
+
+                let elements = array
+                    .iter_mut()
+                    .map(|element| {
+                        let element = self.intern_literal(element, element.location())?;
+                        self.unify(element_types, element)?;
+
+                        Ok(element)
+                    })
+                    .collect::<TypeResult<Vec<_>>>()?;
+
+                for (element, ty) in array.iter_mut().zip(elements) {
+                    element.ty.kind = self.reconstruct(ty)?;
+                }
+
+                self.unify(arr, info)?;
+            }
+
+            lit => todo!("{:?}", lit),
+        }
+
+        ty.kind = self.reconstruct(info)?;
+
+        // TODO: Check inner types of stuff
+        Ok(info)
     }
 
     fn display_type(&self, ty: &TypeInfo) -> String {
@@ -635,8 +664,7 @@ impl MutExprVisitor for Engine {
         {
             match &mut bind.pattern {
                 Pattern::Literal(lit) => {
-                    let lit = self.intern_literal(&*lit, loc)?;
-                    let bind_ty = self.insert_bare(lit, loc);
+                    let bind_ty = self.intern_literal(&mut *lit, loc)?;
                     self.unify(match_cond, bind_ty)?;
                 }
                 Pattern::Ident(var) => {
@@ -683,15 +711,15 @@ impl MutExprVisitor for Engine {
         Ok(match_ty)
     }
 
-    fn visit_variable(&mut self, loc: Location, var: Var, _ty: &mut TypeKind) -> Self::Output {
-        self.get(&var, loc)
+    fn visit_variable(&mut self, loc: Location, var: Var, ty: &mut TypeKind) -> Self::Output {
+        let id = self.get(&var, loc)?;
+        *ty = self.reconstruct(id)?;
+
+        Ok(id)
     }
 
     fn visit_literal(&mut self, loc: Location, literal: &mut Literal) -> Self::Output {
-        let info = self.intern_literal(&*literal, loc)?;
-        let id = self.insert_bare(info, loc);
-
-        Ok(id)
+        self.intern_literal(&mut *literal, loc)
     }
 
     fn visit_scope(&mut self, _loc: Location, _body: &mut Block<Stmt>) -> Self::Output {

@@ -5,8 +5,8 @@ use crunch_shared::{
     strings::StrInterner,
     trees::{
         mir::{
-            Block, BlockId, Constant, FuncId, Function as MirFunction, Instruction, Mir,
-            RightValue, Rval, SwitchArm, SwitchArmKind, Type as MirType, VarId,
+            Assign, BasicBlock, BlockId, Constant, FnCall, FuncId, Function as MirFunction,
+            Instruction, Mir, Rval, SwitchCase, Terminator, Type, Value, VarId, Variable,
         },
         CallConv,
     },
@@ -15,24 +15,28 @@ use crunch_shared::{
 };
 use llvm::{
     module::{BuildingBlock, FunctionBuilder, Linkage, Module},
-    types::{AnyType, IntType, SealedAnyType, Type, VoidType, I1},
+    types::{ArrayType, IntType, SealedAnyType, Type as LLVMType, VoidType, I1},
     utils::{AddressSpace, CallingConvention, EMPTY_CSTR},
     values::{
-        AnyValue, ArrayValue, BasicBlock, FunctionValue, InstructionValue, SealedAnyValue, Value,
+        AnyValue, ArrayValue, BasicBlock as LLVMBasicBlock, CallSiteValue, FunctionValue,
+        InstructionValue, SealedAnyValue, Value as LLVMValue,
     },
     Context, Result,
 };
+use std::convert::TryInto;
 
 pub struct CodeGenerator<'ctx> {
     module: &'ctx Module<'ctx>,
     ctx: &'ctx Context,
-    values: HashMap<VarId, Value<'ctx>>,
-    blocks: HashMap<BlockId, BasicBlock<'ctx>>,
+
     functions: HashMap<FuncId, FunctionValue<'ctx>>,
+    blocks: HashMap<BlockId, LLVMBasicBlock<'ctx>>,
+    values: HashMap<VarId, (LLVMValue<'ctx>, Type)>,
+
     function_builder: Option<FunctionBuilder<'ctx>>,
     block_builder: Option<BuildingBlock<'ctx>>,
+
     interner: &'ctx StrInterner,
-    raw_blocks: Vec<Option<Block>>,
 }
 
 impl<'ctx> CodeGenerator<'ctx> {
@@ -46,127 +50,63 @@ impl<'ctx> CodeGenerator<'ctx> {
             function_builder: None,
             block_builder: None,
             interner,
-            raw_blocks: Vec::new(),
         }
     }
 
     #[instrument(name = "codegen")]
     pub fn generate(mut self, mir: Mir) -> Result<()> {
-        self.functions.reserve(mir.len());
-        for function in mir.iter() {
-            match function {
-                Either::Left(function) => {
-                    let args: Vec<Type<'ctx>> = function
-                        .args
-                        .iter()
-                        .map(|(_, arg)| self.visit_type(arg).unwrap())
-                        .collect();
+        for function in mir.functions() {
+            let args: Vec<LLVMType<'ctx>> = function
+                .args
+                .iter()
+                .map(|Variable { ty, .. }| self.visit_type(ty).unwrap())
+                .collect();
 
-                    let sig = self.module.function_ty(
-                        self.visit_type(&function.ret)?,
-                        args.as_slice(),
-                        false,
-                    )?;
+            let sig =
+                self.module
+                    .function_ty(self.visit_type(&function.ret)?, args.as_slice(), false)?;
 
-                    let function_val = self.module.create_function(
-                        function.name.as_ref().map_or_else(
-                            || function.id.0.to_string(),
-                            |n| n.to_string(self.interner),
-                        ),
-                        sig,
-                    )?;
+            let function_val = self.module.create_function(
+                function
+                    .name
+                    .as_ref()
+                    .map_or_else(|| function.id.to_string(), |n| n.to_string(self.interner)),
+                sig,
+            )?;
 
-                    function_val.with_linkage(Linkage::External);
-                    self.functions.insert(function.id, function_val);
-                }
-
-                Either::Right(extern_func) => {
-                    let args: Vec<Type<'ctx>> = extern_func
-                        .args
-                        .iter()
-                        .map(|(_, arg)| self.visit_type(arg).unwrap())
-                        .collect();
-
-                    let sig = self.module.function_ty(
-                        self.visit_type(&extern_func.ret)?,
-                        args.as_slice(),
-                        false,
-                    )?;
-
-                    let function_val = self.module.create_function(
-                        extern_func.name.as_ref().map_or_else(
-                            || extern_func.id.0.to_string(),
-                            |n| n.to_string(self.interner),
-                        ),
-                        sig,
-                    )?;
-
-                    function_val
-                        .with_linkage(Linkage::External)
-                        .with_calling_convention(match extern_func.callconv {
-                            CallConv::C => CallingConvention::C,
-                            CallConv::Crunch => CallingConvention::X86RegCall,
-                        });
-                    self.functions.insert(extern_func.id, function_val);
-                }
-            }
+            function_val.with_linkage(Linkage::External);
+            self.functions.insert(function.id, function_val);
         }
 
-        for function in mir.iter().filter_map(|func| {
-            if let Either::Left(func) = func {
-                Some(func)
-            } else {
-                None
-            }
-        }) {
+        for function in mir.external_functions() {
+            let args: Vec<LLVMType<'ctx>> = function
+                .args
+                .iter()
+                .map(|Variable { ty, .. }| self.visit_type(ty).unwrap())
+                .collect();
+
+            let sig =
+                self.module
+                    .function_ty(self.visit_type(&function.ret)?, args.as_slice(), false)?;
+
+            let function_val = self
+                .module
+                .create_function(function.name.to_string(self.interner), sig)?;
+
+            function_val
+                .with_linkage(Linkage::External)
+                .with_calling_convention(match function.callconv {
+                    CallConv::C => CallingConvention::C,
+                    CallConv::Crunch => CallingConvention::X86RegCall,
+                });
+            self.functions.insert(function.id, function_val);
+        }
+
+        for function in mir.functions() {
             self.visit_function(function)?;
         }
 
         Ok(())
-    }
-
-    fn value(&self, id: &VarId) -> Value<'ctx> {
-        *self
-            .values
-            .get(id)
-            .expect("attempted to get a value that doesn't exist")
-    }
-
-    fn function(&self, id: &FuncId) -> FunctionValue<'ctx> {
-        *self
-            .functions
-            .get(id)
-            .expect("attempted to get a function that doesn't exist")
-    }
-
-    fn next_block(&mut self) -> Result<BasicBlock<'ctx>> {
-        let block_builder = self
-            .function_builder
-            .as_ref()
-            .expect("called next_block outside of a function")
-            .append_block()?;
-        let basic_block = block_builder.basic_block();
-        self.block_builder = Some(block_builder);
-
-        Ok(basic_block)
-    }
-
-    fn move_to_block(&mut self, block: BasicBlock<'ctx>) -> Result<()> {
-        self.block_builder = Some(
-            self.function_builder
-                .as_ref()
-                .expect("called move_to_block outside of a function")
-                .move_to_end(block)?,
-        );
-
-        Ok(())
-    }
-
-    fn current_block(&self) -> BasicBlock<'ctx> {
-        self.block_builder
-            .as_ref()
-            .expect("called current_block outside of a basic block")
-            .basic_block()
     }
 
     fn current_function(&self) -> FunctionValue<'ctx> {
@@ -175,35 +115,70 @@ impl<'ctx> CodeGenerator<'ctx> {
             .expect("called current_function outside of a function")
             .function()
     }
+
+    fn get_function_builder(&self) -> &FunctionBuilder<'ctx> {
+        self.function_builder
+            .as_ref()
+            .expect("Called CodeGenerator::get_function_builder outside of a function")
+    }
+
+    fn get_block_builder(&self) -> &BuildingBlock<'ctx> {
+        self.block_builder
+            .as_ref()
+            .expect("called CodeGenerator::get_builder outside of a basic block")
+    }
+
+    fn get_function(&self, function: FuncId) -> FunctionValue<'ctx> {
+        *self
+            .functions
+            .get(&function)
+            .expect("attempted to get a function that doesn't exist")
+    }
+
+    fn get_block(&self, block: BlockId) -> LLVMBasicBlock<'ctx> {
+        *self
+            .blocks
+            .get(&block)
+            .expect("attempted to get a basic block that doesn't exist")
+    }
+
+    fn get_var(&self, id: VarId) -> (LLVMValue<'ctx>, &Type) {
+        let (val, ty) = self
+            .values
+            .get(&id)
+            .expect("attempted to get a var that doesn't exist");
+
+        (*val, ty)
+    }
+
+    fn get_var_value(&self, id: VarId) -> LLVMValue<'ctx> {
+        self.get_var(id).0
+    }
 }
 
 impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
     type FunctionOutput = Result<FunctionValue<'ctx>>;
-    type BlockOutput = Result<BasicBlock<'ctx>>;
-    type InstructionOutput = Result<Option<InstructionValue<'ctx>>>;
-    type RvalOutput = Result<Value<'ctx>>;
-    type ConstantOutput = Result<Value<'ctx>>;
-    type TypeOutput = Result<Type<'ctx>>;
-
     fn visit_function(&mut self, function: &MirFunction) -> Self::FunctionOutput {
+        self.block_builder = None;
         self.values.clear();
         self.blocks.clear();
-        self.block_builder = None;
 
-        // TODO: Preload blocks like functions
-        self.raw_blocks = function
-            .blocks
-            .clone()
-            .into_iter()
-            .filter_map(|b| if !b.is_empty() { Some(Some(b)) } else { None })
-            .collect();
-        self.function_builder = Some(self.module.resume_function(self.function(&function.id))?);
+        let builder = self
+            .module
+            .resume_function(self.get_function(function.id))?;
 
-        for ((arg, _), val) in function.args.iter().zip(self.current_function().args()?) {
-            self.values.insert(*arg, val);
+        for block in function.blocks.iter() {
+            self.blocks
+                .insert(block.id, builder.append_block()?.basic_block());
+        }
+        self.function_builder = Some(builder);
+
+        for (Variable { id, ty }, val) in function.args.iter().zip(self.current_function().args()?)
+        {
+            self.values.insert(*id, (val, ty.clone()));
         }
 
-        while let Some(block) = self.raw_blocks.iter_mut().find_map(|b| b.take()) {
+        for block in function.blocks.iter() {
             self.visit_block(&block)?;
         }
 
@@ -213,201 +188,137 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
             .finish()
     }
 
-    fn visit_block(&mut self, block: &Block) -> Self::BlockOutput {
-        let basic_block = self.next_block()?;
-        assert!(self.blocks.insert(block.id, basic_block).is_none());
+    type BlockOutput = Result<LLVMBasicBlock<'ctx>>;
+    fn visit_block(&mut self, block: &BasicBlock) -> Self::BlockOutput {
+        let basic_block = self.get_block(block.id);
+        let building_block = self.get_function_builder().move_to_end(basic_block)?;
+        self.block_builder = Some(building_block);
 
         for instruction in block.iter() {
             self.visit_instruction(instruction)?;
         }
 
+        self.visit_terminator(block.terminator.as_ref().unwrap())?;
+
         Ok(basic_block)
     }
 
+    type InstructionOutput = Result<Either<VarId, CallSiteValue<'ctx>>>;
     fn visit_instruction(&mut self, instruction: &Instruction) -> Self::InstructionOutput {
         match instruction {
-            Instruction::Return(ret) => {
-                // If the return value is `None` then it's interpreted as returning void
-                let return_value = if let Some(ret) = ret {
-                    Some(self.visit_rval(ret)?)
-                } else {
-                    None
-                };
-
-                self.block_builder
-                    .as_ref()
-                    .expect("instructions should be in a block")
-                    .ret(return_value)
-                    .map(Some)
-            }
-
-            Instruction::Goto(bl) => self
-                .block_builder
-                .as_ref()
-                .expect("instructions should be in a block")
-                .branch(self.blocks.get(&bl).unwrap())
-                .map(Some),
-
-            Instruction::Assign(id, val) => {
+            Instruction::Assign(Assign { var, val, ty }) => {
                 let val = self.visit_rval(val)?;
-                self.values.insert(*id, val);
+                self.values.insert(*var, (val, ty.clone()));
 
-                Ok(None)
+                Ok(Either::Left(*var))
             }
 
-            Instruction::Switch(cond, branches) => {
-                let current_block = self.current_block();
-                let cond = self.visit_rval(cond)?;
+            Instruction::Call(FnCall { function, args }) => {
+                let args = args.iter().map(|arg| self.get_var_value(*arg));
+                let call = self
+                    .get_block_builder()
+                    .call(self.get_function(*function), args)?;
 
-                if branches.len() == 2 {
-                    let true_branch = branches[0].clone();
-                    let true_branch = match self.blocks.get(&true_branch.block) {
-                        Some(block) => *block,
-                        None => {
-                            let block = self.raw_blocks[true_branch.block.0].take().unwrap();
-                            self.visit_block(&block)?
-                        }
-                    };
-
-                    let false_branch = branches[1].clone();
-                    let false_branch = match self.blocks.get(&false_branch.block) {
-                        Some(block) => *block,
-                        None => {
-                            let block = self.raw_blocks[false_branch.block.0].take().unwrap();
-                            self.visit_block(&block)?
-                        }
-                    };
-
-                    self.move_to_block(current_block)?;
-                    let instruction = self
-                        .block_builder
-                        .as_ref()
-                        .expect("instructions should be in a block")
-                        .conditional_branch(cond, true_branch, false_branch)
-                        .map(Some);
-
-                    instruction
-                } else {
-                    let mut default = None;
-                    let mut jumps = Vec::with_capacity(branches.len() - 1);
-
-                    for SwitchArm { kind, block } in branches.iter() {
-                        let block = match self.blocks.get(&block) {
-                            Some(block) => *block,
-                            None => {
-                                let block = self.raw_blocks[block.0].take().unwrap();
-                                self.visit_block(&block)?
-                            }
-                        };
-
-                        self.move_to_block(current_block)?;
-                        match kind {
-                            SwitchArmKind::Default(_default_val) => {
-                                default = Some(block);
-                            }
-                            SwitchArmKind::Rval(val) => {
-                                let val = self.visit_rval(val)?;
-                                jumps.push((val, block));
-                            }
-                        }
-                    }
-
-                    self.move_to_block(current_block)?;
-                    Ok(Some(
-                        self.block_builder
-                            .as_ref()
-                            .expect("instructions should be in a block")
-                            .switch(cond, default.unwrap(), &jumps)?
-                            .into(),
-                    ))
-                }
+                Ok(Either::Right(call))
             }
         }
     }
 
-    fn visit_rval(&mut self, RightValue { ty, val }: &RightValue) -> Self::RvalOutput {
+    type TerminatorOutput = Result<InstructionValue<'ctx>>;
+    // FIXME: Figure out BB arg -> Phi node mapping
+    fn visit_terminator(&mut self, terminator: &Terminator) -> Self::TerminatorOutput {
+        match terminator {
+            Terminator::Return(ret) => {
+                // If the return value is `None` then it's assumed to return void
+                self.get_block_builder()
+                    .ret(ret.map(|ret| self.get_var_value(ret)))
+            }
+            Terminator::Jump(block) => self.get_block_builder().branch(self.get_block(*block)),
+            Terminator::Branch {
+                condition,
+                truthy,
+                falsy,
+            } => self.get_block_builder().conditional_branch(
+                self.get_var_value(*condition),
+                self.get_block(*truthy),
+                self.get_block(*falsy),
+            ),
+            Terminator::Switch {
+                condition,
+                cases,
+                default,
+            } => {
+                let jumps = cases.iter().map(
+                    |SwitchCase {
+                         condition, block, ..
+                     }| {
+                        (self.get_var_value(*condition), self.get_block(*block))
+                    },
+                );
+
+                self.get_block_builder().switch(
+                    self.get_var_value(*condition),
+                    self.get_block(default.block),
+                    jumps,
+                )
+            }
+            Terminator::Unreachable => self.get_block_builder().unreachable(),
+        }
+    }
+
+    type RvalOutput = Result<LLVMValue<'ctx>>;
+    fn visit_rval(&mut self, Rval { ty, val }: &Rval) -> Self::RvalOutput {
         match val {
-            Rval::Const(constant) => self.visit_constant(constant, ty),
-            Rval::Var(id) => Ok(self.value(id)),
+            Value::Variable(id) => Ok(self.get_var_value(*id)),
+            Value::Const(constant) => self.visit_constant(constant, ty),
+            Value::Add(lhs, rhs) => self
+                .get_block_builder()
+                .add(self.get_var_value(*lhs), self.get_var_value(*rhs)),
+            Value::Sub(lhs, rhs) => self
+                .get_block_builder()
+                .sub(self.get_var_value(*lhs), self.get_var_value(*rhs)),
+            Value::Mul(lhs, rhs) => self
+                .get_block_builder()
+                .mul(self.get_var_value(*lhs), self.get_var_value(*rhs)),
 
-            Rval::Add(lhs, rhs) => {
-                let (lhs, rhs) = (self.visit_rval(lhs)?, self.visit_rval(rhs)?);
-                self.block_builder
-                    .as_ref()
-                    .expect("rvals should be inside blocks")
-                    .add(lhs, rhs)
-            }
+            Value::Div(lhs, rhs) => {
+                let ((lhs, lhs_type), (rhs, rhs_type)) = (self.get_var(*lhs), self.get_var(*rhs));
+                assert_eq!(lhs_type, rhs_type);
+                assert!(lhs_type.is_integer());
 
-            Rval::Sub(lhs, rhs) => {
-                let (lhs, rhs) = (self.visit_rval(lhs)?, self.visit_rval(rhs)?);
-                self.block_builder
-                    .as_ref()
-                    .expect("rvals should be inside blocks")
-                    .sub(lhs, rhs)
-            }
-
-            Rval::Mul(lhs, rhs) => {
-                let (lhs, rhs) = (self.visit_rval(lhs)?, self.visit_rval(rhs)?);
-                self.block_builder
-                    .as_ref()
-                    .expect("rvals should be inside blocks")
-                    .mult(lhs, rhs)
-            }
-
-            Rval::Div(lhs, rhs) => {
-                let div = if lhs.is_float() {
-                    assert!(rhs.is_float());
-
-                    BuildingBlock::float_div
-                } else if lhs.is_unsigned() {
-                    assert!(rhs.is_unsigned());
-
+                let div = if lhs_type.is_unsigned() {
                     BuildingBlock::unsigned_div
-                } else if lhs.is_signed() {
-                    assert!(rhs.is_signed());
-
+                } else if lhs_type.is_signed() {
                     BuildingBlock::signed_div
                 } else {
                     todo!("{:?}", lhs)
                 };
 
-                let (lhs, rhs) = (self.visit_rval(lhs)?, self.visit_rval(rhs)?);
-                div(
-                    self.block_builder
-                        .as_ref()
-                        .expect("rvals should be inside blocks"),
-                    lhs,
-                    rhs,
-                )
+                div(self.get_block_builder(), lhs, rhs)
             }
 
-            Rval::Call(function, args) => {
-                let args = args
-                    .iter()
-                    .map(|arg| self.visit_rval(arg))
-                    .collect::<Result<Vec<Value<'ctx>>>>()?;
+            Value::Call(FnCall { function, args }) => {
+                let args = args.iter().map(|arg| self.get_var_value(*arg));
+                let call = self
+                    .get_block_builder()
+                    .call(self.get_function(*function), args)?
+                    .into();
 
-                self.block_builder
-                    .as_ref()
-                    .expect("rvals should be inside blocks")
-                    .call(self.function(function), &args)
-                    .map(|f| f.into())
+                Ok(call)
             }
 
-            Rval::Phi(_, _) => todo!(),
+            // FIXME: This is so incredibly not good
+            Value::GetPointer { var, .. } => {
+                crunch_shared::warn!("Value::GetPointer is the sketchiest shit alive");
+                let val = self.get_var_value(*var);
 
-            Rval::GetPointer(var, ..) => unsafe {
-                Value::from_raw(llvm_sys::core::LLVMBuildAlloca(
-                    self.block_builder.as_ref().unwrap().builder().as_mut_ptr(),
-                    self.values.get(var).unwrap().as_type()?.as_mut_ptr(),
-                    EMPTY_CSTR,
-                ))
-            },
+                Ok(val)
+            }
 
-            Rval::Cast(casted, ty) => unsafe {
-                Value::from_raw(llvm_sys::core::LLVMBuildIntCast(
-                    self.block_builder.as_ref().unwrap().builder().as_mut_ptr(),
-                    self.visit_rval(casted)?.as_mut_ptr(),
+            Value::Cast(casted, ty) => unsafe {
+                LLVMValue::from_raw(llvm_sys::core::LLVMBuildIntCast(
+                    self.get_block_builder().builder().as_mut_ptr(),
+                    self.get_var_value(*casted).as_mut_ptr(),
                     self.visit_type(ty)?.as_mut_ptr(),
                     EMPTY_CSTR,
                 ))
@@ -415,75 +326,106 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
         }
     }
 
-    fn visit_constant(&mut self, constant: &Constant, ty: &MirType) -> Self::ConstantOutput {
-        let llvm_type = self.visit_type(ty)?;
-
+    type ConstantOutput = Result<LLVMValue<'ctx>>;
+    fn visit_constant(&mut self, constant: &Constant, ty: &Type) -> Self::ConstantOutput {
         let constant = match constant {
-            // FIXME: Better mechanisms for type-safety here
-            Constant::U8(int) => IntType::<'ctx, u8>::from_ty(llvm_type)
-                .constant(*int as u64, true)?
-                .into(),
-            Constant::I8(int) => IntType::<'ctx, i8>::from_ty(llvm_type)
-                .constant(*int as u64, true)?
-                .into(),
-            // FIXME: This is a hack
-            Constant::I64(int) => IntType::<'ctx, i64>::from_ty(llvm_type)
-                .constant(*int as u64, false)?
-                .into(),
-            Constant::Bool(boolean) => IntType::<'ctx, I1>::from_ty(llvm_type)
-                .constant(*boolean as u64, true)?
-                .into(),
+            Constant::Integer { sign, bits } => {
+                assert!(ty.is_integer());
+
+                let llvm_type = self.visit_type(ty)?;
+
+                #[rustfmt::skip]
+                let val = match ty {
+                    Type::U8  => IntType::<'ctx, u8>::from_ty(llvm_type).erase(),
+                    Type::I8  => IntType::<'ctx, i8>::from_ty(llvm_type).erase(),
+                    Type::U16 => IntType::<'ctx, u16>::from_ty(llvm_type).erase(),
+                    Type::I16 => IntType::<'ctx, i16>::from_ty(llvm_type).erase(),
+                    Type::U32 => IntType::<'ctx, u32>::from_ty(llvm_type).erase(),
+                    Type::I32 => IntType::<'ctx, i32>::from_ty(llvm_type).erase(),
+                    Type::U64 => IntType::<'ctx, u64>::from_ty(llvm_type).erase(),
+                    Type::I64 => IntType::<'ctx, i64>::from_ty(llvm_type).erase(),
+
+                    _ => unreachable!(),
+                };
+
+                val.constant(sign.maybe_negate(*bits) as u64, false)?.into()
+            }
+
+            Constant::Bool(boolean) => {
+                assert!(ty.is_bool());
+
+                let ty = self.visit_type(ty)?;
+                let val = IntType::<'ctx, I1>::from_ty(ty).constant(*boolean as u64, true)?;
+
+                val.into()
+            }
 
             Constant::String(string) => {
-                let llvm_string = ArrayValue::const_string(self.module.context(), string, false)?;
+                assert!(ty.is_string());
+
+                let string = ArrayValue::const_string(self.module.context(), string, false)?;
+                let string_type: ArrayType<'ctx> = string.as_type()?.try_into()?;
+                println!(
+                    "Made a constant string, LLVM typed it as {:?} while the type's value is {:?}",
+                    string_type,
+                    self.visit_type(ty).unwrap(),
+                );
 
                 self.module
-                    .add_global(
-                        IntType::<'ctx, u8>::from_ty(llvm_type).make_array(string.len() as u32)?,
-                        None,
-                        "",
-                    )?
-                    .with_initializer(llvm_string.as_value())
+                    .add_global(string_type, None, "")?
+                    .with_initializer(string.as_value())
                     .as_value()
             }
 
             Constant::Array(array) => {
+                assert!(ty.is_array());
+
+                let llvm_type = self.visit_type(ty)?;
+                // TODO: Assert all elements have the same type
                 let elements = array
                     .iter()
                     .map(|c| self.visit_constant(c, ty.array_elements().unwrap()))
                     .collect::<Result<Vec<_>>>()?;
 
-                ArrayValue::const_array(llvm_type, elements.as_slice())?.into()
+                let array = ArrayValue::const_array(llvm_type.into(), elements.as_slice())?;
+                assert_eq!(llvm_type, array.as_type().unwrap());
+
+                let array_type: ArrayType<'ctx> = llvm_type.try_into()?;
+                self.module
+                    .add_global(array_type, None, "")?
+                    .with_initializer(array.as_value())
+                    .as_value()
             }
         };
 
         Ok(constant)
     }
 
+    type TypeOutput = Result<LLVMType<'ctx>>;
     #[rustfmt::skip]
-    fn visit_type(&mut self, ty: &MirType) -> Self::TypeOutput {
+    fn visit_type(&mut self, ty: &Type) -> Self::TypeOutput {
         let ty = match ty {
-            MirType::Bool   => IntType::i1(self.ctx)?.into(),
-            MirType::Unit   => VoidType::new(self.ctx)?.into(),
-            MirType::String => IntType::i8(self.ctx)?.into(),
-            MirType::Absurd => VoidType::new(self.ctx)?.into(), // TODO: ???
-            MirType::U8     => IntType::u8(self.ctx)?.into(),
-            MirType::I8     => IntType::i8(self.ctx)?.into(),
-            MirType::U16    => IntType::u16(self.ctx)?.into(),
-            MirType::I16    => IntType::i16(self.ctx)?.into(),
-            MirType::U32    => IntType::u32(self.ctx)?.into(),
-            MirType::I32    => IntType::i32(self.ctx)?.into(),
-            MirType::U64    => IntType::u64(self.ctx)?.into(),
-            MirType::I64    => IntType::i64(self.ctx)?.into(),
-            MirType::Slice(elem) => {
+            Type::Bool   => IntType::i1(self.ctx)?.into(),
+            Type::Unit   => VoidType::new(self.ctx)?.into(),
+            Type::String => IntType::i8(self.ctx)?.into(),
+            Type::Absurd => VoidType::new(self.ctx)?.into(), // TODO: ???
+            Type::U8     => IntType::u8(self.ctx)?.into(),
+            Type::I8     => IntType::i8(self.ctx)?.into(),
+            Type::U16    => IntType::u16(self.ctx)?.into(),
+            Type::I16    => IntType::i16(self.ctx)?.into(),
+            Type::U32    => IntType::u32(self.ctx)?.into(),
+            Type::I32    => IntType::i32(self.ctx)?.into(),
+            Type::U64    => IntType::u64(self.ctx)?.into(),
+            Type::I64    => IntType::i64(self.ctx)?.into(),
+            Type::Slice(elem) => {
                 self.module.create_struct(&[self.visit_type(elem)?.make_pointer(AddressSpace::Generic)?.into(), IntType::u64(self.ctx)?.into()], false)?.into()
             }
-            MirType::Array(elem, len) => self.visit_type(&**elem)?.make_array(*len)?.into(),
-            MirType::Pointer(ptr) => self
+            Type::Array(elem, len) => self.visit_type(&**elem)?.make_array(*len)?.into(),
+            Type::Pointer(ptr) => self
                 .visit_type(ptr)?
                 .make_pointer(AddressSpace::Generic)?
                 .into(),
-            MirType::Reference(_, ty) => self
+            Type::Reference(_, ty) => self
                 .visit_type(ty)?
                 .make_pointer(AddressSpace::Generic)?
                 .into(),

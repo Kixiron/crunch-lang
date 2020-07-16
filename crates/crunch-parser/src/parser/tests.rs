@@ -5,7 +5,10 @@ use core::iter;
 use crunch_shared::{
     error::{Error, Locatable, SyntaxError},
     files::FileId,
-    trees::ast::{AssignKind, BinaryOp, CompOp, ExprKind, Integer, Literal, Sign},
+    trees::{
+        ast::{AssignKind, BinaryOp, CompOp, ExprKind, Integer, Literal, LiteralVal},
+        Sign,
+    },
 };
 
 macro_rules! assert_expr_eq {
@@ -167,12 +170,12 @@ fn integer_literals() {
 
     #[rustfmt::skip]
     let integers: Vec<(String, (u128, Sign))> = vec![
-        ("10".into(),    (10, Sign::Positive)),
-        ("+10".into(),   (10, Sign::Positive)),
-        ("-10".into(),   (10, Sign::Negative)),
-        ("0".into(),     (0,  Sign::Positive)),
-        ("+0".into(),    (0,  Sign::Positive)),
-        ("-0".into(),    (0,  Sign::Negative)),
+        ("10".into(),    (10,  Sign::Positive)),
+        ("+10".into(),   (10,  Sign::Positive)),
+        ("-10".into(),   (10,  Sign::Negative)),
+        ("0".into(),     (0,   Sign::Positive)),
+        ("+0".into(),    (0,   Sign::Positive)),
+        ("-0".into(),    (0,   Sign::Negative)),
         ("0x64".into(),  (100, Sign::Positive)),
         ("+0x64".into(), (100, Sign::Positive)),
         ("-0x64".into(), (100, Sign::Negative)),
@@ -914,7 +917,8 @@ mod proptests {
 
             let expr = parser.expr().map(|e| e.kind);
             match expr {
-                Ok(ExprKind::Literal(Locatable { data: Literal::String(..), .. })) | Ok(ExprKind::Literal(Locatable { data: Literal::Array(..), .. })) => {},
+                Ok(ExprKind::Literal(Locatable { data: Literal { val: LiteralVal::String(..), .. }, .. }))
+                | Ok(ExprKind::Literal(Locatable { data: Literal { val: LiteralVal::Array(..), .. }, .. })) => {},
 
                 Err(Locatable { data: _data @ Error::Syntax(SyntaxError::InvalidEscapeCharacters(..)), .. })
                 | Err(Locatable { data: _data @ Error::Syntax(SyntaxError::UnrecognizedEscapeSeq(..)), .. })
@@ -932,7 +936,8 @@ mod proptests {
 
             let expr = parser.expr().map(|e| e.kind);
             match expr {
-                Ok(ExprKind::Literal(Locatable { data: Literal::Rune(..), .. })) | Ok(ExprKind::Literal(Locatable { data: Literal::Integer(..), .. })) => {},
+                Ok(ExprKind::Literal(Locatable { data: Literal { val: LiteralVal::Rune(..), .. }, .. }))
+                | Ok(ExprKind::Literal(Locatable { data: Literal { val: LiteralVal::Integer(..), .. }, .. })) => {},
 
                 Err(Locatable { data: _data @ Error::Syntax(SyntaxError::TooManyRunes), .. })
                 | Err(Locatable { data: _data @ Error::Syntax(SyntaxError::UnrecognizedEscapeSeq(..)), .. })
@@ -949,7 +954,7 @@ mod proptests {
             let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), context);
 
             let expr = parser.expr().map(|e| e.kind);
-            let cond = matches!(expr, Ok(ExprKind::Literal(Locatable { data: Literal::Integer { .. }, .. })));
+            let cond = matches!(expr, Ok(ExprKind::Literal(Locatable { data: Literal { val: LiteralVal::Integer { .. }, .. }, .. })));
             prop_assert!(cond);
         }
 
@@ -959,7 +964,7 @@ mod proptests {
             let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), context);
 
             let expr = parser.expr().map(|e| e.kind);
-            let cond = matches!(expr, Ok(ExprKind::Literal(Locatable { data: Literal::Integer(Integer { .. }), .. }))
+            let cond = matches!(expr, Ok(ExprKind::Literal(Locatable { data: Literal { val: LiteralVal::Integer(Integer { .. }), .. }, .. }))
                 | Err(Locatable { data: Error::Syntax(SyntaxError::LiteralOverflow(..)), .. }));
             prop_assert!(cond);
         }
@@ -970,7 +975,7 @@ mod proptests {
             let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), context);
 
             let expr = parser.expr().map(|e| e.kind);
-            let cond = matches!(expr, Ok(ExprKind::Literal(Locatable { data: Literal::Integer(Integer { .. }), .. }))
+            let cond = matches!(expr, Ok(ExprKind::Literal(Locatable { data: Literal { val: LiteralVal::Integer(Integer { .. }), .. }, .. }))
                 | Err(Locatable { data: Error::Syntax(SyntaxError::LiteralOverflow(..)), .. }));
             prop_assert!(cond);
         }
@@ -981,7 +986,7 @@ mod proptests {
             let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), context);
 
             let expr = parser.expr().map(|e| e.kind);
-            let cond = matches!(expr, Ok(ExprKind::Literal(Locatable { data: Literal::Float(..), .. }))
+            let cond = matches!(expr, Ok(ExprKind::Literal(Locatable { data: Literal { val: LiteralVal::Float(..), .. }, .. }))
                 | Err(Locatable { data: Error::Syntax(SyntaxError::LiteralOverflow(..)), .. }));
             prop_assert!(cond);
         }
@@ -992,7 +997,7 @@ mod proptests {
             let mut parser = Parser::new(&s, CurrentFile::new(FileId(0), s.len()), context);
 
             let expr = parser.expr().map(|e| e.kind);
-            let cond = matches!(expr, Ok(ExprKind::Literal(Locatable { data: Literal::Float(..), .. }))
+            let cond = matches!(expr, Ok(ExprKind::Literal(Locatable { data: Literal { val: LiteralVal::Float(..), .. }, .. }))
                 | Err(Locatable { data: Error::Syntax(SyntaxError::LiteralOverflow(..)), .. }));
             prop_assert!(cond);
         }

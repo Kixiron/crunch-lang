@@ -8,11 +8,20 @@ edition = "2018"
 proc-macro = true
 
 [dependencies.syn]
-version = "1.0.23"
+version = "1.0.34"
 features = ["full"]
 
 [dependencies.quote]
-version = "1.0.6"
+version = "1.0.7"
 
 [dependencies.proc-macro2]
-version = "1.0.15"
+version = "1.0.18"
+
+# TODO: Replace with something *much* lighter
+# [dependencies.serde_dhall]
+# version = "0.5.3"
+# default-features = false
+
+# [dependencies.serde]
+# version = "1.0.114"
+# features = ["derive"]

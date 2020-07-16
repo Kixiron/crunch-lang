@@ -14,7 +14,10 @@ use serde::{Deserialize, Serialize};
 
 // TODO: Make equivalents of everything in HIR, even though it's duplicated code
 pub use crate::trees::{
-    ast::{BinaryOp, CompOp, Literal, Type as AstType, Vis},
+    ast::{
+        BinaryOp, CompOp, Float, Integer, Literal as AstLiteral, LiteralVal as AstLiteralVal, Rune,
+        Text, Type as AstType, Vis,
+    },
     ItemPath, Signedness,
 };
 
@@ -177,7 +180,18 @@ impl From<crate::trees::ast::Pattern> for Pattern {
         use crate::trees::ast::Pattern;
 
         match pat {
-            Pattern::Literal(lit) => Self::Literal(lit),
+            Pattern::Literal(lit) => {
+                let loc = lit.location();
+
+                Self::Literal(Literal {
+                    val: LiteralVal::from(lit.val),
+                    ty: Type {
+                        kind: TypeKind::from(&lit.ty),
+                        loc,
+                    },
+                    loc,
+                })
+            }
             Pattern::Ident(ident) => Self::Ident(ident),
             Pattern::ItemPath(path) => Self::ItemPath(path),
             Pattern::Wildcard => Self::Wildcard,
@@ -288,9 +302,8 @@ impl<T> Extend<T> for Block<T> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct Type {
-    pub name: ItemPath,
     pub kind: TypeKind,
     pub loc: Location,
 }
@@ -301,7 +314,16 @@ impl Type {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+impl From<Locatable<AstType>> for Type {
+    fn from(ty: Locatable<AstType>) -> Self {
+        Self {
+            kind: TypeKind::from(&*ty),
+            loc: ty.location(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub enum TypeKind {
     Infer,
     Integer { sign: Signedness, width: u16 },
@@ -318,6 +340,12 @@ pub enum TypeKind {
 impl TypeKind {
     pub fn is_infer(&self) -> bool {
         matches!(self, Self::Infer)
+    }
+}
+
+impl From<AstType> for TypeKind {
+    fn from(ty: AstType) -> Self {
+        Self::from(&ty)
     }
 }
 
@@ -354,4 +382,56 @@ pub struct Cast {
 pub struct Reference {
     pub mutable: bool,
     pub reference: Ref<Expr>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub struct Literal {
+    pub val: LiteralVal,
+    pub ty: Type,
+    pub loc: Location,
+}
+
+impl From<AstLiteral> for Literal {
+    fn from(AstLiteral { val, ty, loc }: AstLiteral) -> Self {
+        Self {
+            val: LiteralVal::from(val),
+            ty: Type {
+                kind: TypeKind::from(ty),
+                loc,
+            },
+            loc,
+        }
+    }
+}
+
+impl Literal {
+    pub fn location(&self) -> Location {
+        self.loc
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub enum LiteralVal {
+    Integer(Integer),
+    Bool(bool),
+    String(Text),
+    Rune(Rune),
+    Float(Float),
+    Array(Vec<Literal>),
+    // TODO: Tuples, slices, others?
+}
+
+impl From<AstLiteralVal> for LiteralVal {
+    fn from(val: AstLiteralVal) -> Self {
+        match val {
+            AstLiteralVal::Integer(int) => Self::Integer(int),
+            AstLiteralVal::Bool(boolean) => Self::Bool(boolean),
+            AstLiteralVal::String(text) => Self::String(text),
+            AstLiteralVal::Rune(rune) => Self::Rune(rune),
+            AstLiteralVal::Float(float) => Self::Float(float),
+            AstLiteralVal::Array(array) => {
+                Self::Array(array.into_iter().map(|e| Literal::from(e)).collect())
+            }
+        }
+    }
 }

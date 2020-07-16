@@ -8,9 +8,11 @@ extern
 end
 
 fn main() -> i32
-    return puts(as_ptr(&b"Hello, world!"))
+    let bytes: arr[u8; 13] := b"Hello, world!"
+
+    return puts(as_ptr(&bytes))
 end
 
 fn as_ptr(array: &arr[u8; 13]) -> *const u8
-    array as *const u8
+    return array as *const u8
 end

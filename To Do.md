@@ -95,6 +95,8 @@
   - [ ] Symbol table
   - [ ] Pretty printer
     - [ ] Remove this entirely in favor of better testing methods?
+- [ ] Debug blocks for debug assertions and stuff
+    - https://dlang.org/spec/version.html#debug
 
 ## AST -> HIR lowering
 

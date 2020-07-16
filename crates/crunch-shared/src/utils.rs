@@ -254,6 +254,7 @@ impl Timer {
 
     #[cfg(not(feature = "no-std"))]
     fn end_inner(&mut self) {
+        #[cfg(feature = "logging")]
         if !self.finished {
             let elapsed = self.start.elapsed();
 

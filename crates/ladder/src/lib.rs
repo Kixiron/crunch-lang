@@ -6,14 +6,15 @@ use crunch_shared::{
         ast::{
             Arm as AstMatchArm, AssignKind, BinaryOp, Block as AstBlock, CompOp, Dest as AstDest,
             Exposure as AstExposure, Expr as AstExpr, ExprKind as AstExprKind, For as AstFor,
-            FuncArg as AstFuncArg, If as AstIf, IfCond as AstIfCond, Item as AstItem, Literal,
-            Loop as AstLoop, Match as AstMatch, Stmt as AstStmt, StmtKind as AstStmtKind,
-            Type as AstType, TypeMember as AstTypeMember, UnaryOp, VarDecl as AstVarDecl,
-            Variant as AstVariant, While as AstWhile,
+            FuncArg as AstFuncArg, If as AstIf, IfCond as AstIfCond, Item as AstItem,
+            Literal as AstLiteral, Loop as AstLoop, Match as AstMatch, Stmt as AstStmt,
+            StmtKind as AstStmtKind, Type as AstType, TypeMember as AstTypeMember, UnaryOp,
+            VarDecl as AstVarDecl, Variant as AstVariant, While as AstWhile,
         },
         hir::{
             Binding, Block, Break, Cast, Expr, ExprKind, ExternFunc, FuncArg, FuncCall, Function,
-            Item, Match, MatchArm, Pattern, Reference, Return, Stmt, Type, TypeKind, Var, VarDecl,
+            Item, Literal, LiteralVal, Match, MatchArm, Pattern, Reference, Return, Stmt, Type,
+            TypeKind, Var, VarDecl,
         },
         CallConv, ItemPath, Ref, Sided,
     },
@@ -61,7 +62,14 @@ impl Ladder {
                             }),
                             op: CompOp::Equal,
                             rhs: Ref::new(Expr {
-                                kind: ExprKind::Literal(Literal::Bool(true)),
+                                kind: ExprKind::Literal(Literal {
+                                    val: LiteralVal::Bool(true),
+                                    ty: Type {
+                                        kind: TypeKind::Bool,
+                                        loc: location,
+                                    },
+                                    loc: location,
+                                }),
                                 loc: location,
                             }),
                         }),
@@ -73,7 +81,14 @@ impl Ladder {
                             bind: Binding {
                                 reference: false,
                                 mutable: false,
-                                pattern: Pattern::Literal(Literal::Bool(true)),
+                                pattern: Pattern::Literal(Literal {
+                                    val: LiteralVal::Bool(true),
+                                    ty: Type {
+                                        kind: TypeKind::Bool,
+                                        loc: location,
+                                    },
+                                    loc: location,
+                                }),
                                 ty: None,
                             },
                             guard: None,
@@ -85,7 +100,14 @@ impl Ladder {
                             bind: Binding {
                                 reference: false,
                                 mutable: false,
-                                pattern: Pattern::Literal(Literal::Bool(false)),
+                                pattern: Pattern::Literal(Literal {
+                                    val: LiteralVal::Bool(false),
+                                    ty: Type {
+                                        kind: TypeKind::Bool,
+                                        loc: location,
+                                    },
+                                    loc: location,
+                                }),
                                 ty: None,
                             },
                             guard: None,
@@ -186,7 +208,6 @@ impl ItemVisitor for Ladder {
             args,
             body,
             ret: Type {
-                name: ItemPath::default(), // FIXME: ???
                 kind: TypeKind::from(*ret.data()),
                 loc: ret.location(),
             },
@@ -289,7 +310,6 @@ impl ItemVisitor for Ladder {
                 .expect("External functions should have a visibility"),
             args,
             ret: Type {
-                name: ItemPath::default(), // FIXME: ???
                 kind: TypeKind::from(*ret.data()),
                 loc: ret.location(),
             },
@@ -318,7 +338,6 @@ impl StmtVisitor for Ladder {
             value: Ref::new(self.visit_expr(&*var.val)),
             mutable: var.mutable,
             ty: Type {
-                name: ItemPath::new(var.name),
                 kind: TypeKind::from(&**var.ty),
                 loc: stmt.location(),
             },
@@ -344,7 +363,14 @@ impl ExprVisitor for Ladder {
                     bind: Binding {
                         reference: false,
                         mutable: false,
-                        pattern: Pattern::Literal(Literal::Bool(true)),
+                        pattern: Pattern::Literal(Literal {
+                            val: LiteralVal::Bool(true),
+                            ty: Type {
+                                kind: TypeKind::Bool,
+                                loc: cond.location(),
+                            },
+                            loc: cond.location(),
+                        }),
                         ty: None,
                     },
                     guard: None,
@@ -358,7 +384,14 @@ impl ExprVisitor for Ladder {
                     bind: Binding {
                         reference: false,
                         mutable: false,
-                        pattern: Pattern::Literal(Literal::Bool(false)),
+                        pattern: Pattern::Literal(Literal {
+                            val: LiteralVal::Bool(false),
+                            ty: Type {
+                                kind: TypeKind::Bool,
+                                loc: cond.location(),
+                            },
+                            loc: cond.location(),
+                        }),
                         ty: None,
                     },
                     guard: None,
@@ -420,7 +453,14 @@ impl ExprVisitor for Ladder {
             Expr {
                 kind: ExprKind::Match(Match {
                     cond: Ref::new(Expr {
-                        kind: ExprKind::Literal(Literal::Bool(true)),
+                        kind: ExprKind::Literal(Literal {
+                            val: LiteralVal::Bool(true),
+                            ty: Type {
+                                kind: TypeKind::Bool,
+                                loc: expr.location(),
+                            },
+                            loc: expr.location(),
+                        }),
                         loc: expr.location(),
                     }),
                     arms,
@@ -475,12 +515,18 @@ impl ExprVisitor for Ladder {
         scope.push(Stmt::VarDecl(VarDecl {
             name: loop_broken,
             value: Ref::new(Expr {
-                kind: ExprKind::Literal(Literal::Bool(false)),
+                kind: ExprKind::Literal(Literal {
+                    val: LiteralVal::Bool(false),
+                    ty: Type {
+                        kind: TypeKind::Bool,
+                        loc: cond.location(),
+                    },
+                    loc: cond.location(),
+                }),
                 loc: cond.location(),
             }),
             mutable: true,
             ty: Type {
-                name: ItemPath::default(), // TODO: ????
                 kind: TypeKind::Bool,
                 loc: expr.location(),
             },
@@ -499,7 +545,14 @@ impl ExprVisitor for Ladder {
                         bind: Binding {
                             reference: false,
                             mutable: false,
-                            pattern: Pattern::Literal(Literal::Bool(true)),
+                            pattern: Pattern::Literal(Literal {
+                                val: LiteralVal::Bool(true),
+                                ty: Type {
+                                    kind: TypeKind::Bool,
+                                    loc: cond.location(),
+                                },
+                                loc: cond.location(),
+                            }),
                             ty: None,
                         },
                         guard: None,
@@ -511,7 +564,14 @@ impl ExprVisitor for Ladder {
                         bind: Binding {
                             reference: false,
                             mutable: false,
-                            pattern: Pattern::Literal(Literal::Bool(false)),
+                            pattern: Pattern::Literal(Literal {
+                                val: LiteralVal::Bool(false),
+                                ty: Type {
+                                    kind: TypeKind::Bool,
+                                    loc: cond.location(),
+                                },
+                                loc: cond.location(),
+                            }),
                             ty: None,
                         },
                         guard: None,
@@ -523,7 +583,14 @@ impl ExprVisitor for Ladder {
                                     kind: ExprKind::Assign(
                                         loop_broken,
                                         Ref::new(Expr {
-                                            kind: ExprKind::Literal(Literal::Bool(true)),
+                                            kind: ExprKind::Literal(Literal {
+                                                val: LiteralVal::Bool(true),
+                                                ty: Type {
+                                                    kind: TypeKind::Bool,
+                                                    loc: cond.location(),
+                                                },
+                                                loc: cond.location(),
+                                            }),
                                             loc: cond.location(),
                                         }),
                                     ),
@@ -587,7 +654,6 @@ impl ExprVisitor for Ladder {
                             pattern: Pattern::from(bind.pattern.clone()),
                             ty: bind.ty.as_ref().map(|ty| {
                                 Ref::new(Type {
-                                    name: ItemPath::default(), // FIXME: ???
                                     kind: TypeKind::from(&***ty),
                                     loc: expr.location(),
                                 })
@@ -628,9 +694,16 @@ impl ExprVisitor for Ladder {
         }
     }
 
-    fn visit_literal(&mut self, expr: &AstExpr, literal: &Locatable<Literal>) -> Self::Output {
+    fn visit_literal(&mut self, expr: &AstExpr, literal: &Locatable<AstLiteral>) -> Self::Output {
         Expr {
-            kind: ExprKind::Literal((**literal).clone()),
+            kind: ExprKind::Literal(Literal {
+                val: LiteralVal::from(literal.val.clone()),
+                ty: Type {
+                    kind: TypeKind::from(&literal.ty),
+                    loc: literal.location(),
+                },
+                loc: literal.location(),
+            }),
             loc: expr.location(),
         }
     }
@@ -786,7 +859,6 @@ impl ExprVisitor for Ladder {
             kind: ExprKind::Cast(Cast {
                 casted: Ref::new(self.visit_expr(cast)),
                 ty: Type {
-                    name: ItemPath::default(), // FIXME: ???
                     kind: TypeKind::from(*ty),
                     loc: ty.location(),
                 },

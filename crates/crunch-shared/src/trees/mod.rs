@@ -10,7 +10,7 @@ use crate::{
 use alloc::{borrow::ToOwned, boxed::Box, string::String, vec, vec::Vec};
 use core::{
     fmt::{Debug, Display, Formatter, Result, Write},
-    ops::{Deref, DerefMut},
+    ops::{Deref, DerefMut, Not},
     str::FromStr,
 };
 use derive_more::Display;
@@ -180,5 +180,44 @@ impl Display for Signedness {
         };
 
         f.write_char(sign)
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub enum Sign {
+    Positive,
+    Negative,
+}
+
+impl Sign {
+    #[inline]
+    pub fn is_negative(self) -> bool {
+        self == Self::Negative
+    }
+
+    #[inline]
+    pub fn maybe_negate<T>(self, integer: T) -> T
+    where
+        T: Not<Output = T>,
+    {
+        if self.is_negative() {
+            !integer
+        } else {
+            integer
+        }
+    }
+}
+
+impl Display for Sign {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Positive => "",
+                Self::Negative => "-",
+            },
+        )
     }
 }
