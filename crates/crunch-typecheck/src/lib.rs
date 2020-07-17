@@ -420,30 +420,16 @@ impl Engine {
 
             LiteralVal::Array(array) => {
                 let element_types = self.insert_bare(TypeInfo::Infer, *loc);
-                let arr =
-                    self.insert_bare(TypeInfo::Array(element_types, array.len() as u32), *loc);
+                self.insert_bare(TypeInfo::Array(element_types, array.len() as u32), *loc);
 
-                let elements = array
-                    .iter_mut()
-                    .map(|element| {
-                        let element = self.intern_literal(element, element.location())?;
-                        self.unify(element_types, element)?;
-
-                        Ok(element)
-                    })
-                    .collect::<TypeResult<Vec<_>>>()?;
-
-                for (element, ty) in array.iter_mut().zip(elements) {
-                    element.ty.kind = self.reconstruct(ty)?;
+                for element in array {
+                    let element = self.intern_literal(element, element.location())?;
+                    self.unify(element_types, element)?;
                 }
-
-                self.unify(arr, info)?;
             }
 
             lit => todo!("{:?}", lit),
         }
-
-        ty.kind = self.reconstruct(info)?;
 
         // TODO: Check inner types of stuff
         Ok(info)
@@ -613,9 +599,7 @@ impl MutStmtVisitor for Engine {
     ) -> <Self as MutStmtVisitor>::Output {
         let var = self.insert(*name, &ty.kind, *loc)?;
         let expr = self.visit_expr(value)?;
-
         self.unify(var, expr)?;
-        ty.kind = self.reconstruct(var)?;
 
         Ok(self.insert_bare(TypeInfo::Unit, *loc))
     }
@@ -653,37 +637,32 @@ impl MutExprVisitor for Engine {
     fn visit_match(&mut self, loc: Location, Match { cond, arms, ty }: &mut Match) -> Self::Output {
         let match_cond = self.visit_expr(cond)?;
 
-        let mut arm_types = Vec::new();
+        let mut arm_types = Vec::with_capacity(arms.len());
         for MatchArm {
-            bind,
-            guard,
-            body,
-            ty,
-            ..
+            bind, guard, body, ..
         } in arms.iter_mut()
         {
             match &mut bind.pattern {
                 Pattern::Literal(lit) => {
-                    let bind_ty = self.intern_literal(&mut *lit, loc)?;
+                    let bind_ty = self.intern_literal(lit, loc)?;
                     self.unify(match_cond, bind_ty)?;
                 }
                 Pattern::Ident(var) => {
-                    self.insert(Var::User(*var), &self.reconstruct(match_cond)?, loc)?;
+                    let id = self.insert_bare(TypeInfo::Ref(match_cond), loc);
+                    self.ids.insert(Var::User(*var), id);
+                    self.unify(id, match_cond)?;
                 }
                 Pattern::ItemPath(..) => todo!(),
                 // TODO: Is this correct?
-                Pattern::Wildcard => {}
+                Pattern::Wildcard => {
+                    crunch_shared::warn!("Match pattern wildcards are currently ignored");
+                }
             }
-
-            let arm_ty = self.intern_type(&*ty, loc)?;
-            let arm_ty = self.insert_bare(arm_ty, cond.location());
-
-            // FIXME: Bindings
 
             if let Some(guard) = guard {
                 let guard_ty = self.visit_expr(guard)?;
-                let boolean = self.insert_bare(TypeInfo::Bool, guard.location());
-                self.unify(guard_ty, boolean)?;
+
+                self.unify(guard_ty, match_cond)?;
             }
 
             let arm_ret = body
@@ -694,10 +673,7 @@ impl MutExprVisitor for Engine {
                 .copied()
                 .unwrap_or_else(|| self.insert_bare(TypeInfo::Unit, body.location()));
 
-            self.unify(arm_ty, arm_ret)?;
-            *ty = self.reconstruct(arm_ty)?;
-
-            arm_types.push(arm_ty);
+            arm_types.push(arm_ret);
         }
 
         let match_ty = self.intern_type(&*ty, loc)?;
@@ -706,16 +682,11 @@ impl MutExprVisitor for Engine {
             self.unify(match_ty, arm)?;
         }
 
-        *ty = self.reconstruct(match_ty)?;
-
         Ok(match_ty)
     }
 
-    fn visit_variable(&mut self, loc: Location, var: Var, ty: &mut TypeKind) -> Self::Output {
-        let id = self.get(&var, loc)?;
-        *ty = self.reconstruct(id)?;
-
-        Ok(id)
+    fn visit_variable(&mut self, loc: Location, var: Var, _ty: &mut TypeKind) -> Self::Output {
+        self.get(&var, loc)
     }
 
     fn visit_literal(&mut self, loc: Location, literal: &mut Literal) -> Self::Output {

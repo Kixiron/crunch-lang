@@ -1,25 +1,16 @@
-use crate as crunch_shared;
 use crate::{
     error,
-    error::{Location, MirError, MirResult},
-    strings::StrT,
+    error::{MirError, MirResult},
+    strings::{StrInterner, StrT},
     trees::{
-        ast::Integer,
-        hir::{
-            BinaryOp, Binding, Block as HirBlock, Cast, CompOp, Expr, ExternFunc as HirExternFunc,
-            FuncArg, FuncCall, Function as HirFunction, Item, Literal as HirLiteral,
-            LiteralVal as HirLiteralVal, Match, MatchArm, Pattern, Reference, Return, Stmt,
-            TypeKind as HirType, TypeKind, Var as HirVar, VarDecl,
-        },
+        hir::{TypeKind as HirType, Var as HirVar},
         CallConv, ItemPath, Ref, Sign, Signedness,
     },
-    utils::HashMap,
-    visitors::hir::{ExprVisitor, ItemVisitor, StmtVisitor},
 };
-use alloc::{string::ToString, vec, vec::Vec};
-use core::iter::FromIterator;
-use crunch_proc::instrument;
+use alloc::{string::ToString, vec::Vec};
+use core::iter;
 use derive_more::Display;
+use pretty::{BoxAllocator, DocAllocator, DocBuilder};
 
 #[derive(Debug)]
 pub struct Mir {
@@ -28,6 +19,12 @@ pub struct Mir {
 }
 
 impl Mir {
+    pub const fn new(functions: Vec<Function>, external_functions: Vec<ExternFunc>) -> Self {
+        Self {
+            functions,
+            external_functions,
+        }
+    }
     /// An iterator over all functions
     pub fn functions(&self) -> impl Iterator<Item = &Function> {
         self.functions.iter()
@@ -37,6 +34,44 @@ impl Mir {
     pub fn external_functions(&self) -> impl Iterator<Item = &ExternFunc> {
         self.external_functions.iter()
     }
+
+    pub fn to_doc<'a, D>(
+        &self,
+        alloc: &'a D,
+        mir: &Mir,
+        interner: &StrInterner,
+    ) -> DocBuilder<'a, D>
+    where
+        D: DocAllocator<'a>,
+        D::Doc: Clone,
+    {
+        alloc
+            .nil()
+            .append(alloc.intersperse(
+                self.functions().map(|f| f.to_doc(alloc, mir, interner)),
+                alloc.line(),
+            ))
+            .append(alloc.line())
+            .append(
+                alloc.intersperse(
+                    self.external_functions()
+                        .map(|f| f.to_doc(alloc, mir, interner)),
+                    alloc.line(),
+                ),
+            )
+    }
+
+    // FIXME: This isn't super efficient
+    pub fn write_pretty(&self, interner: &StrInterner) -> String {
+        crate::warn!(
+            "Using an inefficient method of MIR rendering, user more direct & efferent ones",
+        );
+
+        self.to_doc(&BoxAllocator, &self, interner)
+            .1
+            .pretty(80)
+            .to_string()
+    }
 }
 
 /// A function
@@ -45,7 +80,7 @@ pub struct Function {
     /// The id of the current function
     pub id: FuncId,
     /// The name of the function
-    pub name: Option<ItemPath>,
+    pub name: ItemPath,
     /// The arguments passed to the function
     pub args: Vec<Variable>,
     /// The return type of the function
@@ -59,6 +94,48 @@ impl Function {
     pub fn iter(&self) -> impl Iterator<Item = &BasicBlock> {
         self.blocks.iter()
     }
+
+    pub fn to_doc<'a, D>(
+        &self,
+        alloc: &'a D,
+        mir: &Mir,
+        interner: &StrInterner,
+    ) -> DocBuilder<'a, D>
+    where
+        D: DocAllocator<'a>,
+        D::Doc: Clone,
+    {
+        alloc
+            .text("fn")
+            .append(alloc.space())
+            .append(alloc.text(self.name.to_string(interner)))
+            .append(alloc.text("("))
+            .append(
+                alloc
+                    .intersperse(
+                        self.args.iter().map(|a| a.to_doc(alloc, mir, interner)),
+                        alloc.text(",").append(alloc.space()),
+                    )
+                    .group(),
+            )
+            .append(alloc.text(")"))
+            .append(alloc.space())
+            .append(alloc.text("->"))
+            .append(alloc.space())
+            .append(self.ret.to_doc(alloc, mir, interner))
+            .append(alloc.hardline())
+            .append(
+                alloc
+                    .intersperse(
+                        self.blocks.iter().map(|b| b.to_doc(alloc, mir, interner)),
+                        alloc.hardline(),
+                    )
+                    .indent(4),
+            )
+            .append(alloc.hardline())
+            .append(alloc.text("end"))
+            .append(alloc.line())
+    }
 }
 
 /// A typed variable
@@ -68,6 +145,26 @@ pub struct Variable {
     pub id: VarId,
     /// The type of the variable
     pub ty: Type,
+}
+
+impl Variable {
+    pub fn to_doc<'a, D>(
+        &self,
+        alloc: &'a D,
+        mir: &Mir,
+        interner: &StrInterner,
+    ) -> DocBuilder<'a, D>
+    where
+        D: DocAllocator<'a>,
+        D::Doc: Clone,
+    {
+        alloc
+            .nil()
+            .append(self.id.to_doc(alloc, interner))
+            .append(alloc.text(":"))
+            .append(alloc.space())
+            .append(self.ty.to_doc(alloc, mir, interner))
+    }
 }
 
 /// An externally defined function
@@ -83,6 +180,44 @@ pub struct ExternFunc {
     pub ret: Type,
     /// The function's calling convention
     pub callconv: CallConv,
+}
+
+impl ExternFunc {
+    pub fn to_doc<'a, D>(
+        &self,
+        alloc: &'a D,
+        mir: &Mir,
+        interner: &StrInterner,
+    ) -> DocBuilder<'a, D>
+    where
+        D: DocAllocator<'a>,
+        D::Doc: Clone,
+    {
+        alloc
+            .text("@extern(\"")
+            .append(alloc.text(self.callconv.to_string()))
+            .append(alloc.text("\")"))
+            .append(alloc.line())
+            .append(alloc.text("fn"))
+            .append(alloc.space())
+            .append(alloc.text(self.name.to_string(interner)))
+            .append(alloc.text("("))
+            .append(
+                alloc
+                    .intersperse(
+                        self.args.iter().map(|a| a.to_doc(alloc, mir, interner)),
+                        alloc.text(",").append(alloc.space()),
+                    )
+                    .group(),
+            )
+            .append(alloc.text(")"))
+            .append(alloc.space())
+            .append(alloc.text("->"))
+            .append(alloc.space())
+            .append(self.ret.to_doc(alloc, mir, interner))
+            .append(alloc.text(";"))
+            .append(alloc.line())
+    }
 }
 
 /// A basic block
@@ -174,6 +309,58 @@ impl BasicBlock {
 
         Ok(())
     }
+
+    pub fn to_doc<'a, D>(
+        &self,
+        alloc: &'a D,
+        mir: &Mir,
+        interner: &StrInterner,
+    ) -> DocBuilder<'a, D>
+    where
+        D: DocAllocator<'a>,
+        D::Doc: Clone,
+    {
+        alloc
+            .text("block")
+            .append(alloc.space())
+            .append(self.id.to_doc(alloc, interner))
+            .append(
+                self.name
+                    .map(|n| alloc.text(interner.resolve(n).as_ref().to_owned()))
+                    .unwrap_or_else(|| alloc.nil()),
+            )
+            .append(
+                alloc
+                    .intersperse(
+                        self.args.iter().map(|a| a.to_doc(alloc, mir, interner)),
+                        alloc.text(",").append(alloc.space()),
+                    )
+                    .group(),
+            )
+            .append(alloc.hardline())
+            .append(
+                alloc
+                    .intersperse(
+                        self.instructions
+                            .iter()
+                            .map(|inst| inst.to_doc(alloc, mir, interner))
+                            .chain(iter::once(
+                                alloc.hardline().append(
+                                    self.terminator
+                                        .as_ref()
+                                        .map(|term| term.to_doc(alloc, mir, interner))
+                                        .unwrap_or_else(|| {
+                                            alloc.text("<Missing block terminator>")
+                                        }),
+                                ),
+                            )),
+                        alloc.hardline(),
+                    )
+                    .indent(4),
+            )
+            .append(alloc.hardline())
+            .append(alloc.text("end"))
+    }
 }
 
 /// A block terminator, every `BasicBlock` is closed by one
@@ -205,6 +392,79 @@ pub enum Terminator {
     Unreachable,
 }
 
+impl Terminator {
+    pub fn to_doc<'a, D>(
+        &self,
+        alloc: &'a D,
+        _mir: &Mir,
+        interner: &StrInterner,
+    ) -> DocBuilder<'a, D>
+    where
+        D: DocAllocator<'a>,
+        D::Doc: Clone,
+    {
+        match self {
+            Self::Return(ret) => {
+                alloc
+                    .text("return")
+                    .append(alloc.space())
+                    .append(if let Some(ret) = ret {
+                        ret.to_doc(alloc, interner)
+                    } else {
+                        alloc.text("unit")
+                    })
+            }
+
+            Self::Jump(block) => alloc
+                .text("jump")
+                .append(alloc.space())
+                .append(block.to_doc(alloc, interner)),
+
+            Self::Branch {
+                condition,
+                truthy,
+                falsy,
+            } => alloc
+                .text("branch")
+                .append(alloc.space())
+                .append(alloc.text("if"))
+                .append(alloc.space())
+                .append(condition.to_doc(alloc, interner))
+                .append(alloc.space())
+                .append(alloc.text("then"))
+                .append(alloc.space())
+                .append(truthy.to_doc(alloc, interner))
+                .append(alloc.space())
+                .append(alloc.text("else"))
+                .append(alloc.space())
+                .append(falsy.to_doc(alloc, interner)),
+
+            Self::Switch {
+                condition,
+                cases,
+                default,
+            } => alloc
+                .text("switch")
+                .append(alloc.space())
+                .append(condition.to_doc(alloc, interner))
+                .append(
+                    alloc
+                        .intersperse(
+                            cases.iter().map(|case| case.to_doc(alloc, interner)),
+                            alloc.hardline(),
+                        )
+                        .indent(4),
+                )
+                .append(alloc.hardline())
+                .append(default.to_doc(alloc, interner).indent(4))
+                .append(alloc.hardline())
+                .append(alloc.text("end")),
+
+            Self::Unreachable => alloc.text("unreachable"),
+        }
+    }
+}
+
 /// A switch case, contains a condition and a block
 #[derive(Debug, Clone, PartialEq)]
 pub struct SwitchCase {
@@ -216,6 +476,33 @@ pub struct SwitchCase {
     pub args: Vec<VarId>,
 }
 
+impl SwitchCase {
+    pub fn to_doc<'a, D>(&self, alloc: &'a D, interner: &StrInterner) -> DocBuilder<'a, D>
+    where
+        D: DocAllocator<'a>,
+        D::Doc: Clone,
+    {
+        self.condition
+            .to_doc(alloc, interner)
+            .append(alloc.space())
+            .append(alloc.text("->"))
+            .append(alloc.space())
+            .append(self.block.to_doc(alloc, interner))
+            .append(if self.args.is_empty() {
+                alloc.nil()
+            } else {
+                alloc
+                    .space()
+                    .append(alloc.text("<|"))
+                    .append(alloc.space())
+                    .append(alloc.intersperse(
+                        self.args.iter().map(|a| a.to_doc(alloc, interner)),
+                        alloc.text(",").append(alloc.space()),
+                    ))
+            })
+    }
+}
+
 /// The default case of a switch
 #[derive(Debug, Clone, PartialEq)]
 pub struct DefaultSwitchCase {
@@ -223,6 +510,33 @@ pub struct DefaultSwitchCase {
     pub block: BlockId,
     /// The arguments passed to the basic block
     pub args: Vec<VarId>,
+}
+
+impl DefaultSwitchCase {
+    pub fn to_doc<'a, D>(&self, alloc: &'a D, interner: &StrInterner) -> DocBuilder<'a, D>
+    where
+        D: DocAllocator<'a>,
+        D::Doc: Clone,
+    {
+        alloc
+            .text("default")
+            .append(alloc.space())
+            .append(alloc.text("->"))
+            .append(alloc.space())
+            .append(self.block.to_doc(alloc, interner))
+            .append(if self.args.is_empty() {
+                alloc.nil()
+            } else {
+                alloc
+                    .space()
+                    .append(alloc.text("<|"))
+                    .append(alloc.space())
+                    .append(alloc.intersperse(
+                        self.args.iter().map(|a| a.to_doc(alloc, interner)),
+                        alloc.text(",").append(alloc.space()),
+                    ))
+            })
+    }
 }
 
 /// An instruction
@@ -253,6 +567,22 @@ impl Instruction {
             Self::Call(FnCall { args, .. }) => buf.extend(args.iter().copied()),
         }
     }
+
+    pub fn to_doc<'a, D>(
+        &self,
+        alloc: &'a D,
+        mir: &Mir,
+        interner: &StrInterner,
+    ) -> DocBuilder<'a, D>
+    where
+        D: DocAllocator<'a>,
+        D::Doc: Clone,
+    {
+        match self {
+            Self::Assign(assign) => assign.to_doc(alloc, mir, interner),
+            Self::Call(call) => call.to_doc(alloc, mir, interner),
+        }
+    }
 }
 
 /// A variable assignment
@@ -266,6 +596,31 @@ pub struct Assign {
     pub ty: Type,
 }
 
+impl Assign {
+    pub fn to_doc<'a, D>(
+        &self,
+        alloc: &'a D,
+        mir: &Mir,
+        interner: &StrInterner,
+    ) -> DocBuilder<'a, D>
+    where
+        D: DocAllocator<'a>,
+        D::Doc: Clone,
+    {
+        alloc
+            .text("let")
+            .append(alloc.space())
+            .append(self.var.to_doc(alloc, interner))
+            .append(alloc.text(":"))
+            .append(alloc.space())
+            .append(self.ty.to_doc(alloc, mir, interner))
+            .append(alloc.space())
+            .append(alloc.text(":="))
+            .append(alloc.space())
+            .append(self.val.to_doc(alloc, mir, interner))
+    }
+}
+
 /// A function call
 #[derive(Debug, Clone, PartialEq)]
 pub struct FnCall {
@@ -273,6 +628,63 @@ pub struct FnCall {
     pub function: FuncId,
     /// The arguments being passed to the function
     pub args: Vec<VarId>,
+}
+
+impl FnCall {
+    pub fn to_doc<'a, D>(
+        &self,
+        alloc: &'a D,
+        mir: &Mir,
+        interner: &StrInterner,
+    ) -> DocBuilder<'a, D>
+    where
+        D: DocAllocator<'a>,
+        D::Doc: Clone,
+    {
+        mir.functions
+            .iter()
+            .find_map(|f| {
+                if f.id == self.function {
+                    Some(&f.name)
+                } else {
+                    None
+                }
+            })
+            .map(|name| {
+                alloc
+                    .text("call")
+                    .append(alloc.space())
+                    .append(alloc.text(name.to_string(interner)))
+            })
+            .unwrap_or_else(|| {
+                mir.external_functions
+                    .iter()
+                    .find_map(|f| {
+                        if f.id == self.function {
+                            Some(&f.name)
+                        } else {
+                            None
+                        }
+                    })
+                    .map(|name| {
+                        alloc
+                            .text("extern call")
+                            .append(alloc.space())
+                            .append(alloc.text(name.to_string(interner)))
+                    })
+                    .unwrap()
+            })
+            .append(alloc.text("("))
+            .append(
+                alloc
+                    .intersperse(
+                        self.args.iter().map(|a| a.to_doc(alloc, interner)),
+                        alloc.text(",").append(alloc.space()),
+                    )
+                    .group(),
+            )
+            .append(alloc.text(")"))
+    }
 }
 
 /// The right-hand side of an expression
@@ -313,6 +725,19 @@ impl Rval {
         } else {
             None
         }
+    }
+
+    pub fn to_doc<'a, D>(
+        &self,
+        alloc: &'a D,
+        mir: &Mir,
+        interner: &StrInterner,
+    ) -> DocBuilder<'a, D>
+    where
+        D: DocAllocator<'a>,
+        D::Doc: Clone,
+    {
+        alloc.nil().append(self.val.to_doc(alloc, mir, interner))
     }
 }
 
@@ -364,6 +789,83 @@ impl Value {
             Self::Const(_) => {}
         }
     }
+
+    pub fn to_doc<'a, D>(
+        &self,
+        alloc: &'a D,
+        mir: &Mir,
+        interner: &StrInterner,
+    ) -> DocBuilder<'a, D>
+    where
+        D: DocAllocator<'a>,
+        D::Doc: Clone,
+    {
+        match self {
+            Self::Variable(var) => var.to_doc(alloc, interner),
+            Self::Const(constant) => constant.to_doc(alloc, interner),
+            Self::Call(call) => call.to_doc(alloc, mir, interner),
+
+            Self::Add(lhs, rhs) => alloc
+                .nil()
+                .append(lhs.to_doc(alloc, interner))
+                .append(alloc.space())
+                .append(alloc.text("+"))
+                .append(alloc.space())
+                .append(rhs.to_doc(alloc, interner)),
+
+            Self::Sub(lhs, rhs) => alloc
+                .nil()
+                .append(lhs.to_doc(alloc, interner))
+                .append(alloc.space())
+                .append(alloc.text("-"))
+                .append(alloc.space())
+                .append(rhs.to_doc(alloc, interner)),
+
+            Self::Mul(lhs, rhs) => alloc
+                .nil()
+                .append(lhs.to_doc(alloc, interner))
+                .append(alloc.space())
+                .append(alloc.text("*"))
+                .append(alloc.space())
+                .append(rhs.to_doc(alloc, interner)),
+
+            Self::Div(lhs, rhs) => alloc
+                .nil()
+                .append(lhs.to_doc(alloc, interner))
+                .append(alloc.space())
+                .append(alloc.text("/"))
+                .append(alloc.space())
+                .append(rhs.to_doc(alloc, interner)),
+
+            Self::GetPointer {
+                var,
+                mutable,
+                aliasable,
+            } => alloc
+                .text("ptr")
+                .append(alloc.space())
+                .append(if *mutable {
+                    alloc.text("mut").append(alloc.space())
+                } else {
+                    alloc.nil()
+                })
+                .append(if *aliasable {
+                    alloc.text("alias").append(alloc.space())
+                } else {
+                    alloc.nil()
+                })
+                .append(var.to_doc(alloc, interner)),
+
+            Self::Cast(var, ty) => alloc
+                .text("cast")
+                .append(alloc.space())
+                .append(var.to_doc(alloc, interner))
+                .append(alloc.space())
+                .append(alloc.text("as"))
+                .append(alloc.space())
+                .append(ty.to_doc(alloc, mir, interner)),
+        }
+    }
 }
 
 /// A compile time known constant value
@@ -379,6 +881,33 @@ pub enum Constant {
     String(Vec<u8>),
     /// An array of constants
     Array(Vec<Constant>),
+}
+
+impl Constant {
+    pub fn to_doc<'a, D>(&self, alloc: &'a D, interner: &StrInterner) -> DocBuilder<'a, D>
+    where
+        D: DocAllocator<'a>,
+        D::Doc: Clone,
+    {
+        match self {
+            Self::Integer { sign, bits } => alloc
+                .text(sign.to_string())
+                .append(alloc.text(bits.to_string())),
+            Self::Bool(boolean) => alloc.text(boolean.to_string()),
+            Self::String(string) => alloc.text(String::from_utf8(string.clone()).unwrap()),
+            Self::Array(array) => alloc
+                .text("arr[")
+                .append(
+                    alloc
+                        .intersperse(
+                            array.iter().map(|c| c.to_doc(alloc, interner)),
+                            alloc.text(",").append(alloc.space()),
+                        )
+                        .group(),
+                )
+                .append(alloc.text("]")),
+        }
+    }
 }
 
 macro_rules! is_type {
@@ -453,6 +982,60 @@ impl Type {
         is_array  => Self::Array(..),
         is_string => Self::String,
     }
+
+    pub fn to_doc<'a, D>(
+        &self,
+        alloc: &'a D,
+        mir: &Mir,
+        interner: &StrInterner,
+    ) -> DocBuilder<'a, D>
+    where
+        D: DocAllocator<'a>,
+        D::Doc: Clone,
+    {
+        match self {
+            Self::U8 => alloc.text("u8"),
+            Self::I8 => alloc.text("i8"),
+            Self::U16 => alloc.text("u16"),
+            Self::I16 => alloc.text("i16"),
+            Self::U32 => alloc.text("u32"),
+            Self::I32 => alloc.text("i32"),
+            Self::U64 => alloc.text("u64"),
+            Self::I64 => alloc.text("i64"),
+            Self::Bool => alloc.text("bool"),
+            Self::Unit => alloc.text("unit"),
+
+            Self::Pointer(ptr) => alloc
+                .text("*const")
+                .append(alloc.space())
+                .append(ptr.to_doc(alloc, mir, interner)),
+
+            Self::Array(elem, len) => alloc
+                .text("arr[")
+                .append(alloc.text(len.to_string()))
+                .append(alloc.text(";"))
+                .append(alloc.space())
+                .append(elem.to_doc(alloc, mir, interner))
+                .append(alloc.text("]")),
+
+            Self::Slice(elem) => alloc
+                .text("slice[")
+                .append(elem.to_doc(alloc, mir, interner))
+                .append(alloc.text("]")),
+
+            Self::Reference(mutable, ty) => alloc
+                .text("&")
+                .append(if *mutable {
+                    alloc.text("mut").append(alloc.space())
+                } else {
+                    alloc.nil()
+                })
+                .append(ty.to_doc(alloc, mir, interner)),
+
+            Self::String => alloc.text("str"),
+            Self::Absurd => alloc.text("absurd"),
+        }
+    }
 }
 
 // FIXME: Favor an actual function
@@ -492,36 +1075,60 @@ impl From<&HirType> for Type {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display)]
 #[repr(transparent)]
-pub struct FuncId(u64);
+pub struct FuncId(pub u64);
 
 impl FuncId {
     pub const fn new(id: u64) -> Self {
         Self(id)
     }
+
+    pub fn to_doc<'a, D>(&self, alloc: &'a D, _interner: &StrInterner) -> DocBuilder<'a, D>
+    where
+        D: DocAllocator<'a>,
+        D::Doc: Clone,
+    {
+        alloc.text(format!("@{}", self.0))
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display)]
 #[repr(transparent)]
-pub struct BlockId(u64);
+pub struct BlockId(pub u64);
 
 impl BlockId {
     pub const fn new(id: u64) -> Self {
         Self(id)
     }
+
+    pub fn to_doc<'a, D>(&self, alloc: &'a D, _interner: &StrInterner) -> DocBuilder<'a, D>
+    where
+        D: DocAllocator<'a>,
+        D::Doc: Clone,
+    {
+        alloc.text(format!("bb{}", self.0))
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Display)]
 #[repr(transparent)]
-pub struct VarId(u64);
+pub struct VarId(pub u64);
 
 impl VarId {
     pub const fn new(id: u64) -> Self {
         Self(id)
     }
+
+    pub fn to_doc<'a, D>(&self, alloc: &'a D, _interner: &StrInterner) -> DocBuilder<'a, D>
+    where
+        D: DocAllocator<'a>,
+        D::Doc: Clone,
+    {
+        alloc.text(format!("_{}", self.0))
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-enum Var {
+pub enum Var {
     User(StrT),
     HirAuto(usize),
     MirAuto(u64),
@@ -541,549 +1148,5 @@ impl From<&HirVar> for Var {
     #[inline]
     fn from(var: &HirVar) -> Self {
         Self::from(*var)
-    }
-}
-
-#[derive(Debug)]
-pub struct MirBuilder {
-    functions: Vec<Function>,
-    external_functions: Vec<ExternFunc>,
-    // TODO: Custom enum to represent the block superposition
-    blocks: Vec<BasicBlock>,
-    current_block: BlockId,
-    // TODO: Custom struct w/ function arg & ret types
-    function_names: HashMap<ItemPath, (FuncId, Type)>,
-    current_function: FuncId,
-    func_counter: FuncId,
-    // TODO: Reinserting variables will shadow previous ones, but is that a bad thing?
-    variables: HashMap<Var, Variable>,
-    var_counter: VarId,
-}
-
-impl MirBuilder {
-    pub fn new() -> Self {
-        Self {
-            functions: Vec::new(),
-            external_functions: Vec::new(),
-            blocks: Vec::new(),
-            current_block: BlockId::new(0),
-            function_names: HashMap::new(),
-            current_function: FuncId::new(0),
-            func_counter: FuncId::new(0),
-            variables: HashMap::new(),
-            var_counter: VarId::new(0),
-        }
-    }
-
-    #[instrument(name = "lowering to mir")]
-    pub fn lower(mut self, items: &[Item]) -> MirResult<Mir> {
-        self.function_names = HashMap::from_iter(items.iter().filter_map(|item| {
-            if let Item::Function(HirFunction { name, ret, .. }) = item {
-                Some((name.clone(), (self.next_func_id(), Type::from(&ret.kind))))
-            } else if let Item::ExternFunc(HirExternFunc { name, ret, .. }) = item {
-                Some((name.clone(), (self.next_func_id(), Type::from(&ret.kind))))
-            } else {
-                None
-            }
-        }));
-
-        for item in items {
-            self.visit_item(item)?;
-        }
-
-        Ok(Mir {
-            functions: self.functions,
-            external_functions: self.external_functions,
-        })
-    }
-
-    fn next_var(&mut self) -> VarId {
-        let id = self.var_counter;
-        self.var_counter.0 += 1;
-
-        id
-    }
-
-    fn next_func_id(&mut self) -> FuncId {
-        let id = self.func_counter;
-        self.func_counter.0 += 1;
-
-        id
-    }
-
-    fn next_block(&mut self) -> BlockId {
-        let id = BlockId(self.blocks.len() as u64);
-
-        self.blocks.push(BasicBlock::new(id, None));
-        self.current_block = id;
-
-        id
-    }
-
-    fn insert_variable(&mut self, var: Var, ty: Type) -> VarId {
-        let id = self.next_var();
-
-        // FIXME: https://github.com/rust-lang/rust/issues/62633
-        let prev_var = self.variables.insert(var, Variable { id, ty }).is_none();
-        assert!(prev_var, "Reinserted a variable into a function",);
-
-        id
-    }
-
-    fn get_function_id(&self, name: &ItemPath) -> FuncId {
-        self.function_names
-            .get(name)
-            .expect("Attempted to fetch a nonexistent function")
-            .0
-    }
-
-    fn make_assignment(&mut self, var: impl Into<Option<Var>>, val: Rval) -> VarId {
-        let var = var
-            .into()
-            .unwrap_or_else(|| Var::MirAuto(self.next_var().0));
-        let ty = val.ty.clone();
-        let id = self.insert_variable(var, ty.clone());
-
-        self.current_block_mut()
-            .push(Instruction::Assign(Assign { var: id, val, ty }));
-
-        id
-    }
-
-    fn move_to_block(&mut self, block_id: BlockId) {
-        assert!(
-            self.blocks.iter().any(|block| block.id == block_id),
-            "Attempted to move to a nonexistent block"
-        );
-
-        self.current_block = block_id;
-    }
-
-    fn current_block_mut(&mut self) -> &mut BasicBlock {
-        &mut self.blocks[self.current_block.0 as usize]
-    }
-
-    fn verify_current_block(&mut self) -> MirResult<()> {
-        self.blocks[self.current_block.0 as usize].verify()
-    }
-
-    fn get_variable(&self, var: Var) -> &Variable {
-        self.variables
-            .get(&var.into())
-            .expect("Attempted to get a variable that doesn't exist")
-    }
-}
-
-impl ItemVisitor for MirBuilder {
-    type Output = MirResult<()>;
-
-    fn visit_func(&mut self, func: &HirFunction) -> Self::Output {
-        self.blocks.clear();
-        self.blocks.push(BasicBlock::new(BlockId::new(0), None));
-        self.current_block = BlockId::new(0);
-
-        let id = self.get_function_id(&func.name);
-
-        let mut args = Vec::with_capacity(func.args.len());
-        for FuncArg { name, kind, .. } in func.args.iter() {
-            let ty: Type = kind.into();
-            let id = self.insert_variable(name.into(), ty.clone());
-
-            args.push(Variable { id, ty });
-        }
-
-        for stmt in func.body.iter() {
-            self.visit_stmt(stmt)?;
-        }
-
-        // FIXME: Use a better system of a "current block" that's an `Option<BlockId>` with operations
-        //        automatically creating a new one if needed and not relying on one to already exist.
-        //        This'd guarantee that only used blocks are ever created instead of speculatively creating
-        //        blocks for future use
-        let blocks = self
-            .blocks
-            .drain(..)
-            .filter(|block| !block.is_empty())
-            .collect();
-
-        let func = Function {
-            id,
-            name: Some(func.name.clone()),
-            args,
-            ret: (&func.ret.kind).into(),
-
-            blocks,
-        };
-        self.functions.push(func);
-
-        // TODO: Return the function's id
-        Ok(())
-    }
-
-    fn visit_extern_func(&mut self, func: &HirExternFunc) -> Self::Output {
-        let id = self.get_function_id(&func.name);
-
-        let mut args = Vec::with_capacity(func.args.len());
-        for FuncArg { name, kind, .. } in func.args.iter() {
-            let ty: Type = kind.into();
-            let id = self.insert_variable(name.into(), ty.clone());
-
-            args.push(Variable { id, ty });
-        }
-
-        let func = ExternFunc {
-            id,
-            name: func.name.clone(),
-            args,
-            ret: (&func.ret.kind).into(),
-            callconv: func.callconv,
-        };
-        self.external_functions.push(func);
-
-        // TODO: Return the function's id
-        Ok(())
-    }
-}
-
-impl StmtVisitor for MirBuilder {
-    type Output = MirResult<()>;
-
-    fn visit_stmt(&mut self, stmt: &Stmt) -> <Self as StmtVisitor>::Output {
-        match stmt {
-            Stmt::Item(item) => self.visit_item(item)?,
-            Stmt::Expr(expr) => {
-                if let Some(val) = self.visit_expr(expr)? {
-                    self.make_assignment(None, val);
-                }
-            }
-            Stmt::VarDecl(var) => self.visit_var_decl(var)?,
-        }
-
-        Ok(())
-    }
-
-    fn visit_var_decl(&mut self, var: &VarDecl) -> <Self as StmtVisitor>::Output {
-        let val = self
-            .visit_expr(&*var.value)?
-            .expect("Assigned nothing to a variable");
-        self.make_assignment(Some(var.name.into()), val);
-
-        Ok(())
-    }
-}
-
-impl ExprVisitor for MirBuilder {
-    type Output = MirResult<Option<Rval>>;
-
-    fn visit_return(&mut self, _loc: Location, ret: &Return) -> Self::Output {
-        match ret.val.as_ref() {
-            Some(val) => {
-                // Evaluate the returned value and assign it to a temp variable before returning it
-                let ret = self
-                    .visit_expr(&**val)?
-                    // TODO: This may be ok behavior in the case of something like a `return return 0`,
-                    //       may need an unnesting pass to remove those
-                    .expect("Received nothing where a value was expected");
-
-                let return_value = self.make_assignment(None, ret);
-                self.current_block_mut()
-                    .set_terminator(Terminator::Return(Some(return_value)));
-            }
-
-            None => self
-                .current_block_mut()
-                .set_terminator(Terminator::Return(None)),
-        }
-
-        self.verify_current_block()?;
-        self.next_block();
-
-        Ok(None)
-    }
-
-    fn visit_break(&mut self, _loc: Location, _value: &super::hir::Break) -> Self::Output {
-        todo!()
-    }
-
-    fn visit_continue(&mut self, _loc: Location) -> Self::Output {
-        todo!()
-    }
-
-    fn visit_loop(
-        &mut self,
-        _loc: Location,
-        _body: &super::hir::Block<super::hir::Stmt>,
-    ) -> Self::Output {
-        todo!()
-    }
-
-    fn visit_match(&mut self, loc: Location, Match { cond, arms, .. }: &Match) -> Self::Output {
-        let current_block = self.current_block;
-
-        let (condition, condition_type) = {
-            let cond = self
-                .visit_expr(cond)?
-                .expect("Received nothing where a value was expected");
-            let cond_ty = cond.ty.clone();
-            let cond = self.make_assignment(None, cond);
-
-            (cond, cond_ty)
-        };
-
-        let mut cases = Vec::with_capacity(arms.len());
-        let mut default = None;
-        for MatchArm {
-            bind: Binding { pattern, .. },
-            body,
-            ..
-        } in arms
-        {
-            let case_block = self.next_block();
-            self.move_to_block(current_block);
-
-            match pattern {
-                Pattern::Literal(lit) => {
-                    let case = self.visit_literal(loc, lit)?.unwrap();
-                    debug_assert!(condition_type == case.ty);
-
-                    cases.push(SwitchCase {
-                        condition: self.make_assignment(None, case),
-                        block: case_block,
-                        args: Vec::new(),
-                    })
-                }
-                Pattern::ItemPath(..) => todo!(),
-                Pattern::Ident(ident) => {
-                    self.move_to_block(case_block);
-
-                    let id = self.next_var();
-                    self.current_block_mut().push_argument(Variable {
-                        id,
-                        ty: condition_type.clone(),
-                    });
-
-                    self.move_to_block(current_block);
-
-                    // FIXME: https://github.com/rust-lang/rust/issues/62633
-                    let prev_default = default.replace(DefaultSwitchCase {
-                        block: case_block,
-                        args: vec![self.get_variable(Var::User(*ident)).id],
-                    });
-                    assert!(
-                        prev_default.is_none(),
-                        "Inserted multiple default cases in a switch"
-                    );
-                }
-                Pattern::Wildcard => {
-                    // FIXME: https://github.com/rust-lang/rust/issues/62633
-                    let prev_default = default.replace(DefaultSwitchCase {
-                        block: case_block,
-                        args: Vec::new(),
-                    });
-                    assert!(
-                        prev_default.is_none(),
-                        "Inserted multiple default cases in a switch"
-                    );
-                }
-            }
-
-            self.move_to_block(case_block);
-            for stmt in body.iter() {
-                self.visit_stmt(stmt)?;
-            }
-        }
-
-        self.move_to_block(current_block);
-        self.current_block_mut().set_terminator(Terminator::Switch {
-            condition,
-            default: default.expect("Created a switch with no default case"),
-            cases,
-        });
-
-        self.verify_current_block()?;
-        // TODO: Joining blocks just doesn't happen here
-        self.next_block();
-
-        // TODO: Maybe return unit?
-        Ok(None)
-    }
-
-    fn visit_variable(&mut self, _loc: Location, var: HirVar, ty: &TypeKind) -> Self::Output {
-        let Variable {
-            id: val,
-            ty: var_ty,
-        } = self.get_variable(var.into());
-        assert_eq!(var_ty, &Type::from(ty));
-
-        Ok(Some(Rval {
-            val: Value::Variable(*val),
-            ty: var_ty.clone(),
-        }))
-    }
-
-    // FIXME: Give literals their type in hir
-    fn visit_literal(
-        &mut self,
-        loc: Location,
-        HirLiteral { val, ty, .. }: &HirLiteral,
-    ) -> Self::Output {
-        match val {
-            HirLiteralVal::Integer(Integer { sign, bits }) => {
-                // FIXME: Doesn't respect types
-                let val = Value::Const(Constant::Integer {
-                    sign: *sign,
-                    bits: *bits,
-                });
-                let rval = Rval {
-                    ty: Type::from(&ty.kind),
-                    val,
-                };
-
-                Ok(Some(rval))
-            }
-
-            HirLiteralVal::Bool(b) => Ok(Some(Rval {
-                ty: Type::Bool,
-                val: Value::Const(Constant::Bool(*b)),
-            })),
-
-            HirLiteralVal::String(string) => Ok(Some(Rval {
-                ty: Type::String,
-                val: Value::Const(Constant::String(string.to_bytes())),
-            })),
-
-            HirLiteralVal::Array(array) => Ok(Some(Rval {
-                // FIXME: Doesn't respect types
-                ty: Type::Array(Ref::new(Type::U8), array.len() as u32),
-                val: Value::Const(Constant::Array(
-                    array
-                        .into_iter()
-                        .map(|e| {
-                            self.visit_literal(loc, e)
-                                .map(|e| e.unwrap().into_constant().unwrap())
-                        })
-                        .collect::<MirResult<Vec<_>>>()?,
-                )),
-            })),
-
-            lit => todo!("{:?}", lit),
-        }
-    }
-
-    fn visit_scope(&mut self, _loc: Location, _body: &HirBlock<Stmt>) -> Self::Output {
-        todo!()
-    }
-
-    fn visit_func_call(&mut self, _loc: Location, call: &FuncCall) -> Self::Output {
-        let (function, ty) = self
-            .function_names
-            .get(&call.func)
-            .expect("Attempted to call a function that doesn't exist")
-            .clone();
-
-        let args: Vec<VarId> = call
-            .args
-            .iter()
-            .map(|a| {
-                let val = self
-                    .visit_expr(a)?
-                    .expect("Received no value where one was expected");
-
-                Ok(self.make_assignment(None, val))
-            })
-            .collect::<MirResult<_>>()?;
-
-        let val = Value::Call(FnCall { function, args });
-
-        Ok(Some(Rval { ty, val }))
-    }
-
-    fn visit_comparison(
-        &mut self,
-        _loc: Location,
-        _lhs: &Expr,
-        _op: CompOp,
-        _rhs: &Expr,
-    ) -> Self::Output {
-        todo!()
-    }
-
-    fn visit_assign(&mut self, _loc: Location, var: HirVar, value: &Expr) -> Self::Output {
-        let old_var = self.get_variable(var.into()).clone();
-        let rval = self
-            .visit_expr(value)?
-            .expect("Received no value where one was expected");
-        assert_eq!(rval.ty, old_var.ty);
-
-        let ty = rval.ty.clone();
-        let id = self.make_assignment(None, rval);
-        self.variables.insert(var.into(), Variable { id, ty });
-
-        // TODO: Return unit?
-        Ok(None)
-    }
-
-    fn visit_binop(
-        &mut self,
-        _loc: Location,
-        lhs: &Expr,
-        op: BinaryOp,
-        rhs: &Expr,
-    ) -> Self::Output {
-        let (lhs, rhs) = (
-            self.visit_expr(lhs)?
-                .expect("Received no value where one was expected"),
-            self.visit_expr(rhs)?
-                .expect("Received no value where one was expected"),
-        );
-        assert_eq!(lhs.ty, rhs.ty);
-        let ty = lhs.ty.clone();
-
-        let (lhs, rhs) = (
-            self.make_assignment(None, lhs),
-            self.make_assignment(None, rhs),
-        );
-
-        #[rustfmt::skip]
-        let val = match op {
-            BinaryOp::Add  => Value::Add(lhs, rhs),
-            BinaryOp::Sub  => Value::Sub(lhs, rhs),
-            BinaryOp::Mult => Value::Mul(lhs, rhs),
-            BinaryOp::Div  => Value::Div(lhs, rhs),
-
-            _ => todo!(),
-        };
-
-        Ok(Some(Rval { ty, val }))
-    }
-
-    fn visit_cast(&mut self, _loc: Location, Cast { casted, ty }: &Cast) -> Self::Output {
-        let ty = Type::from(&ty.kind);
-        let casted = self
-            .visit_expr(casted)?
-            .expect("Received no value where one was expected");
-        let val = Value::Cast(self.make_assignment(None, casted), ty.clone());
-
-        Ok(Some(Rval { ty, val }))
-    }
-
-    fn visit_reference(
-        &mut self,
-        _loc: Location,
-        Reference { mutable, reference }: &Reference,
-    ) -> Self::Output {
-        let reference = self
-            .visit_expr(reference)?
-            .expect("Received no value where one was expected");
-        let ty = reference.ty.clone();
-
-        let pointee = self.make_assignment(None, reference);
-        let val = Value::GetPointer {
-            var: pointee,
-            mutable: *mutable,
-            aliasable: false,
-        };
-
-        Ok(Some(Rval { ty, val }))
     }
 }

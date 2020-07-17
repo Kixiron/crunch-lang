@@ -5,13 +5,13 @@ use crunch_codegen::{
     },
     CodeGenerator,
 };
+use crunch_mir::MirBuilder;
 use crunch_parser::{ExternUnnester, Parser};
 use crunch_semantics::{Correctness, SemanticAnalyzer};
 use crunch_shared::{
     context::Context as ParseContext,
     files::{CurrentFile, FileId, Files},
     symbol_table::Resolver,
-    trees::mir::MirBuilder,
     visitors::ast::ItemVisitor,
 };
 use crunch_typecheck::Engine;
@@ -175,6 +175,10 @@ fn run(
                 })?;
             }
 
+            if options.print.contains(&EmissionKind::Ast) {
+                println!("{:#?}", &ast);
+            }
+
             ast
         }
 
@@ -224,8 +228,13 @@ fn run(
         })?;
     }
 
+    if options.print.contains(&EmissionKind::Hir) {
+        println!("{:#?}", &hir);
+    }
+
     // Check types and update the hir with concrete types
-    match Engine::new(parse_ctx.strings.clone()).walk(&mut hir) {
+    let mut engine = Engine::new(parse_ctx.strings.clone());
+    match engine.walk(&mut hir) {
         Ok(mut warnings) => warnings.emit(&files),
         Err(mut errors) => {
             errors.emit(&files);
@@ -235,17 +244,21 @@ fn run(
     }
 
     // Lower hir to mir
-    let mir = MirBuilder::new().lower(&hir).unwrap();
+    let mir = MirBuilder::new(engine).lower(&hir).unwrap();
     if options.emit.contains(&EmissionKind::Mir) {
         let path = out_file.with_extension("mir");
 
-        fs::write(&path, format!("{:#?}", &mir)).map_err(|err| {
+        fs::write(&path, format!("{}", mir.write_pretty(&parse_ctx.strings))).map_err(|err| {
             ExitStatus::message(format!(
                 "failed to write mir to '{}': {:?}",
                 path.display(),
                 err
             ))
         })?;
+    }
+
+    if options.print.contains(&EmissionKind::Mir) {
+        println!("{}", mir.write_pretty(&parse_ctx.strings));
     }
 
     // Create LLVM context
@@ -283,6 +296,12 @@ fn run(
         })?;
     }
 
+    // TODO: Use native LLVM function since it's probably more efficient
+    if options.print.contains(&EmissionKind::LlvmIr) {
+        crunch_shared::warn!("Using an inefficient method of printing LLVM IR to stdout");
+        println!("{:?}", module);
+    }
+
     if options.emit.contains(&EmissionKind::LlvmBc) {
         let path = out_file.with_extension("bc");
 
@@ -295,6 +314,11 @@ fn run(
                     err,
                 ))
             })?;
+    }
+
+    if options.emit.contains(&EmissionKind::LlvmBc) {
+        // TODO: Print object file to stdout?
+        println!("Printing LLVM Bitcode to stdout is currently unsupported");
     }
 
     // TODO: User input for all of this
@@ -325,6 +349,11 @@ fn run(
             ))
         })?;
 
+    if options.emit.contains(&EmissionKind::Object) {
+        // TODO: Print object file to stdout?
+        println!("Printing object files to stdout is currently unsupported");
+    }
+
     if options.emit.contains(&EmissionKind::Assembly) {
         let path = out_file.with_extension("s");
 
@@ -337,6 +366,11 @@ fn run(
                     err
                 ))
             })?;
+    }
+
+    if options.emit.contains(&EmissionKind::Assembly) {
+        // TODO: Print assembly to stdout
+        println!("Printing assembly to stdout is currently unsupported");
     }
 
     let exe_path = if let Some(ref out) = options.out_file {
@@ -430,6 +464,10 @@ struct BuildOptions {
     /// A list of types for the compiler to emit
     #[structopt(long = "emit", possible_values = &EmissionKind::VALUES)]
     pub emit: Vec<EmissionKind>,
+
+    /// A list of types for the compiler to print
+    #[structopt(long = "print", possible_values = &EmissionKind::VALUES)]
+    pub print: Vec<EmissionKind>,
 
     /// The output directory
     #[structopt(default_value = "build")]

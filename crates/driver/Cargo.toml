@@ -34,6 +34,9 @@ path = "../ladder"
 [dependencies.crunch-typecheck]
 path = "../crunch-typecheck"
 
+[dependencies.crunch-mir]
+path = "../crunch-mir"
+
 [dependencies.crunch-codegen]
 path = "../crunch-codegen"
 
