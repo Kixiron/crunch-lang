@@ -15,8 +15,8 @@ use crunch_shared::{
     trees::{
         hir::{
             BinaryOp, Block, Break, Cast, CompOp, Expr, ExternFunc, FuncArg, FuncCall, Function,
-            Item, Literal, LiteralVal, Match, MatchArm, Pattern, Reference, Return, Stmt, Type,
-            TypeKind, Var, VarDecl,
+            Item, Literal, LiteralVal, Match, Pattern, Reference, Return, Stmt, Type, TypeKind,
+            Var, VarDecl,
         },
         ItemPath, Ref,
     },
@@ -101,13 +101,9 @@ impl Engine {
         let ((lhs, lhs_loc), (rhs, rhs_loc)) = (self.types[&a].clone(), self.types[&b].clone());
 
         match (lhs, rhs) {
-            // Follow any references
             (TypeInfo::Ref(a), _) => self.unify(a, b),
             (_, TypeInfo::Ref(b)) => self.unify(a, b),
 
-            // When we don't know anything about either term, assume that
-            // they match and make the one we know nothing about reference the
-            // one we may know something about
             (TypeInfo::Unknown, _) => {
                 self.types.insert(a, (TypeInfo::Ref(b), lhs_loc));
 
@@ -119,18 +115,7 @@ impl Engine {
                 Ok(())
             }
 
-            (TypeInfo::Absurd, _) => {
-                self.types.insert(a, (TypeInfo::Ref(b), lhs_loc));
-
-                Ok(())
-            }
-            (_, TypeInfo::Absurd) => {
-                self.types.insert(b, (TypeInfo::Ref(a), rhs_loc));
-
-                Ok(())
-            }
-
-            // Primitives are trivial to unify
+            (TypeInfo::Absurd, _) | (_, TypeInfo::Absurd) => Ok(()),
             (TypeInfo::String, TypeInfo::String)
             | (TypeInfo::Bool, TypeInfo::Bool)
             | (TypeInfo::Unit, TypeInfo::Unit) => Ok(()),
@@ -152,43 +137,25 @@ impl Engine {
                     width: None,
                 },
                 TypeInfo::Integer {
-                    signed: Some(sign),
-                    width: Some(width),
+                    signed: Some(..),
+                    width: Some(..),
                 },
             ) => {
-                self.types.insert(
-                    a,
-                    (
-                        TypeInfo::Integer {
-                            signed: Some(sign),
-                            width: Some(width),
-                        },
-                        rhs_loc,
-                    ),
-                );
+                self.types.insert(a, (TypeInfo::Ref(b), rhs_loc));
 
                 Ok(())
             }
             (
                 TypeInfo::Integer {
-                    signed: Some(sign),
-                    width: Some(width),
+                    signed: Some(..),
+                    width: Some(..),
                 },
                 TypeInfo::Integer {
                     signed: None,
                     width: None,
                 },
             ) => {
-                self.types.insert(
-                    b,
-                    (
-                        TypeInfo::Integer {
-                            signed: Some(sign),
-                            width: Some(width),
-                        },
-                        lhs_loc,
-                    ),
-                );
+                self.types.insert(b, (TypeInfo::Ref(a), lhs_loc));
 
                 Ok(())
             }
@@ -217,7 +184,6 @@ impl Engine {
                     length: right_len,
                 },
             ) if left_len == right_len => {
-                dbg!();
                 self.unify(left_elem, right_elem)?;
 
                 Ok(())
@@ -232,13 +198,8 @@ impl Engine {
                     referee: right,
                     mutable: right_mut,
                 },
-            ) if left_mut == right_mut => {
-                self.unify(left, right)?;
-
-                Ok(())
-            }
-
-            (
+            )
+            | (
                 TypeInfo::Pointer {
                     pointee: left,
                     mutable: left_mut,
@@ -720,45 +681,46 @@ impl MutExprVisitor for Engine {
     }
 
     fn visit_match(&mut self, loc: Location, Match { cond, arms, ty }: &mut Match) -> Self::Output {
-        let match_cond = self.visit_expr(cond)?;
-
         let mut arm_types = Vec::with_capacity(arms.len());
-        for MatchArm {
-            bind, guard, body, ..
-        } in arms.iter_mut()
-        {
-            match &mut bind.pattern {
-                Pattern::Literal(lit) => {
-                    let bind_ty = self.intern_literal(lit, loc)?;
-                    self.unify(match_cond, bind_ty)?;
+        let condition_type = self.visit_expr(cond)?;
+
+        for arm in arms.iter_mut() {
+            match &mut arm.bind.pattern {
+                Pattern::Literal(literal) => {
+                    let literal_type = self.visit_literal(loc, literal)?;
+                    self.unify(condition_type, literal_type)?;
                 }
-                Pattern::Ident(var) => {
-                    let id = self.insert_bare(TypeInfo::Ref(match_cond), loc);
-                    self.ids.insert(Var::User(*var), id);
-                    self.unify(id, match_cond)?;
+
+                &mut Pattern::Ident(variable) => {
+                    let variable_type = self.insert_bare(TypeInfo::Ref(condition_type), loc);
+                    self.ids.insert(Var::User(variable), variable_type);
+                    self.unify(condition_type, variable_type)?;
                 }
-                Pattern::ItemPath(..) => todo!(),
+
                 // TODO: Is this correct?
                 Pattern::Wildcard => {
                     crunch_shared::warn!("Match pattern wildcards are currently ignored");
                 }
+                Pattern::ItemPath(..) => todo!(),
             }
 
-            if let Some(guard) = guard {
+            if let Some(guard) = &mut arm.guard {
                 let guard_ty = self.visit_expr(guard)?;
+                let boolean = self.insert_bare(TypeInfo::Bool, guard.location());
 
-                self.unify(guard_ty, match_cond)?;
+                self.unify(guard_ty, boolean)?;
             }
 
-            let arm_ret = body
+            let arm_type = arm
+                .body
                 .iter_mut()
                 .map(|s| self.visit_stmt(s))
                 .collect::<TypeResult<Vec<TypeId>>>()?
-                .get(0)
+                .last()
                 .copied()
-                .unwrap_or_else(|| self.insert_bare(TypeInfo::Unit, body.location()));
+                .unwrap_or_else(|| self.insert_bare(TypeInfo::Unit, arm.body.location()));
 
-            arm_types.push(arm_ret);
+            arm_types.push(arm_type);
         }
 
         let match_ty = self.intern_type(ty)?;

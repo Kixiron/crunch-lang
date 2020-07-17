@@ -61,9 +61,7 @@ impl Mir {
 
     // FIXME: This isn't super efficient
     pub fn write_pretty(&self, interner: &StrInterner) -> String {
-        crate::warn!(
-            "Using an inefficient method of MIR rendering, user more direct & efferent ones",
-        );
+        crate::warn!("Using an inefficient method of MIR rendering");
 
         self.to_doc(&BoxAllocator, &self, interner)
             .1

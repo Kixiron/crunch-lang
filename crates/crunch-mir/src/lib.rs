@@ -107,10 +107,7 @@ impl MirBuilder {
 
     fn insert_variable(&mut self, var: Var, ty: Type) -> VarId {
         let id = self.next_var();
-
-        // FIXME: https://github.com/rust-lang/rust/issues/62633
-        let prev_var = self.variables.insert(var, Variable { id, ty }).is_none();
-        assert!(prev_var, "Reinserted a variable into a function",);
+        self.variables.insert(var, Variable { id, ty });
 
         id
     }
@@ -324,16 +321,15 @@ impl ExprVisitor for MirBuilder {
             match pattern {
                 Pattern::Literal(lit) => {
                     let case = self.visit_literal(loc, lit)?.unwrap();
-                    crunch_shared::error!("{:?}, {:?}", condition_type, case.ty);
+                    // FIXME: Sometimes things just don't work?
                     assert!(condition_type == case.ty);
 
                     cases.push(SwitchCase {
                         condition: self.make_assignment(None, case),
                         block: case_block,
                         args: Vec::new(),
-                    })
+                    });
                 }
-                Pattern::ItemPath(..) => todo!(),
                 Pattern::Ident(ident) => {
                     self.move_to_block(case_block);
 
@@ -355,6 +351,7 @@ impl ExprVisitor for MirBuilder {
                         "Inserted multiple default cases in a switch"
                     );
                 }
+                Pattern::ItemPath(..) => todo!(),
                 Pattern::Wildcard => {
                     // FIXME: https://github.com/rust-lang/rust/issues/62633
                     let prev_default = default.replace(DefaultSwitchCase {

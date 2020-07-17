@@ -149,7 +149,7 @@ impl<'src> Parser<'src> {
                             .span();
 
                         crunch_shared::warn!(
-                            "Array lengths will be truncated from a u128 to a u16 without warning, add an error if there's an overflow",
+                            "Array lengths will be truncated from a u128 to a u64 without warning, add an error if there's an overflow",
                         );
 
                         (
