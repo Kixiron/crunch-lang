@@ -25,9 +25,6 @@ path = "../crunch-shared"
 [dependencies.crunch-parser]
 path = "../crunch-parser"
 
-[dependencies.crunch-semantics]
-path = "../crunch-semantics"
-
 [dependencies.ladder]
 path = "../ladder"
 

@@ -1,7 +1,7 @@
 use crate::{
     error::{Locatable, Location, Span},
     strings::{StrInterner, StrT},
-    trees::{CallConv, ItemPath, Ref, Sided, Sign, Signedness},
+    trees::{CallConv, ItemPath, Ref, Sided, Sign},
 };
 #[cfg(feature = "no-std")]
 use alloc::{
@@ -586,13 +586,17 @@ pub enum Type {
         bounds: Vec<Locatable<Type>>,
     },
     ItemPath(ItemPath),
-    Infer,
+    Unknown,
     Integer {
-        sign: Signedness,
-        width: u16,
+        signed: Option<bool>,
+        width: Option<u16>,
     },
-    IntReg(Signedness),
-    IntPtr(Signedness),
+    IntReg {
+        signed: bool,
+    },
+    IntPtr {
+        signed: bool,
+    },
     Float {
         width: u16,
     },
@@ -601,16 +605,21 @@ pub enum Type {
     Rune,
     Absurd,
     Unit,
-    Array(u128, Ref<Locatable<Type>>),
-    Slice(Ref<Locatable<Type>>),
+    Array {
+        element: Ref<Locatable<Type>>,
+        length: u64,
+    },
+    Slice {
+        element: Ref<Locatable<Type>>,
+    },
     Tuple(Vec<Locatable<Type>>),
     Pointer {
+        pointee: Ref<Locatable<Type>>,
         mutable: bool,
-        ty: Ref<Locatable<Type>>,
     },
     Reference {
+        referee: Ref<Locatable<Type>>,
         mutable: bool,
-        ty: Ref<Locatable<Type>>,
     },
 }
 
@@ -665,7 +674,7 @@ impl Type {
     #[inline]
     pub fn to_string(&self, intern: &StrInterner) -> String {
         match self {
-            Self::Infer => "infer".to_string(),
+            Self::Unknown => "{{unknown}}".to_string(),
             Self::Not(ty) => format!("!{}", ty.to_string(intern)),
             Self::Paren(ty) => format!("({})", ty.to_string(intern)),
             Self::Const(ident, ty) => format!(
@@ -703,36 +712,23 @@ impl Type {
                     .join(", ")
             ),
             Self::ItemPath(path) => path.to_string(intern),
-            Self::Integer { sign, width } => format!(
+            Self::Integer { signed, width } => format!(
                 "{}{}",
-                match sign {
-                    Signedness::Signed => "i",
-                    Signedness::Unsigned => "u",
-                },
-                width
+                if signed.unwrap_or(true) { "i" } else { "u" },
+                width.unwrap_or(32),
             ),
-            Self::IntPtr(sign) => format!(
-                "{}ptr",
-                match sign {
-                    Signedness::Signed => "i",
-                    Signedness::Unsigned => "u",
-                },
-            ),
-            Self::IntReg(sign) => format!(
-                "{}reg",
-                match sign {
-                    Signedness::Signed => "i",
-                    Signedness::Unsigned => "u",
-                },
-            ),
+            Self::IntPtr { signed } => format!("{}ptr", if *signed { "i" } else { "u" }),
+            Self::IntReg { signed } => format!("{}reg", if *signed { "i" } else { "u" }),
             Self::Float { width } => format!("f{}", width),
             Self::Bool => "bool".to_string(),
             Self::String => "str".to_string(),
             Self::Rune => "rune".to_string(),
             Self::Unit => "unit".to_string(),
             Self::Absurd => "absurd".to_string(),
-            Self::Array(len, ty) => format!("arr[{}, {}]", len, ty.to_string(intern)),
-            Self::Slice(ty) => format!("slice[{}]", ty.to_string(intern)),
+            Self::Array { element, length } => {
+                format!("arr[{}; {}]", length, element.to_string(intern))
+            }
+            Self::Slice { element } => format!("slice[{}]", element.to_string(intern)),
             Self::Tuple(types) => format!(
                 "tup[{}]",
                 types

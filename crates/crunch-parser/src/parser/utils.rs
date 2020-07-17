@@ -10,7 +10,7 @@ use crunch_shared::{
     strings::StrT,
     trees::{
         ast::{AssignKind, BinaryOp, CompOp, Float, Integer, Literal, LiteralVal, Type, UnaryOp},
-        ItemPath, Sign,
+        ItemPath, Ref, Sign,
     },
 };
 
@@ -201,30 +201,38 @@ impl<'src> Parser<'src> {
                     _ => unreachable!(),
                 };
 
+                let loc = Location::new(token.span(), self.current_file);
                 if byte_str {
-                    Ok(Literal {
-                        val: LiteralVal::Array(
-                            string
-                                .to_bytes()
-                                .into_iter()
-                                .map(|b| Literal {
-                                    val: LiteralVal::Integer(Integer {
-                                        sign: Sign::Positive,
-                                        bits: b as u128,
-                                    }),
-                                    ty: Type::Infer,
-                                    loc: Location::new(token.span(), self.current_file),
-                                })
-                                .collect(),
-                        ),
-                        ty: Type::Infer,
-                        loc: Location::new(token.span(), self.current_file),
-                    })
+                    let string = string.to_bytes();
+                    let you_eight = Type::Integer {
+                        signed: Some(false),
+                        width: Some(8),
+                    };
+
+                    let ty = Type::Array {
+                        element: Ref::new(Locatable::new(you_eight.clone(), loc)),
+                        length: string.len() as u64,
+                    };
+                    let val = LiteralVal::Array(
+                        string
+                            .into_iter()
+                            .map(|b| Literal {
+                                val: LiteralVal::Integer(Integer {
+                                    sign: Sign::Positive,
+                                    bits: b as u128,
+                                }),
+                                ty: you_eight.clone(),
+                                loc,
+                            })
+                            .collect(),
+                    );
+
+                    Ok(Literal { val, ty, loc })
                 } else {
                     Ok(Literal {
                         val: LiteralVal::String(string),
                         ty: Type::String,
-                        loc: Location::new(token.span(), self.current_file),
+                        loc,
                     })
                 }
             }
@@ -281,7 +289,10 @@ impl<'src> Parser<'src> {
 
                 Ok(Literal {
                     val: LiteralVal::Integer(Integer { sign, bits: int }),
-                    ty: Type::Infer,
+                    ty: Type::Integer {
+                        signed: None,
+                        width: None,
+                    },
                     loc: Location::new(token.span(), self.current_file),
                 })
             }

@@ -4,12 +4,13 @@ use crunch_shared::{
     strings::StrT,
     trees::{
         ast::{
-            Arm as AstMatchArm, AssignKind, BinaryOp, Block as AstBlock, CompOp, Dest as AstDest,
-            Exposure as AstExposure, Expr as AstExpr, ExprKind as AstExprKind, For as AstFor,
-            FuncArg as AstFuncArg, If as AstIf, IfCond as AstIfCond, Item as AstItem,
-            Literal as AstLiteral, Loop as AstLoop, Match as AstMatch, Stmt as AstStmt,
-            StmtKind as AstStmtKind, Type as AstType, TypeMember as AstTypeMember, UnaryOp,
-            VarDecl as AstVarDecl, Variant as AstVariant, While as AstWhile,
+            Arm as AstMatchArm, AssignKind, BinaryOp, Binding as AstBinding, Block as AstBlock,
+            CompOp, Dest as AstDest, Exposure as AstExposure, Expr as AstExpr,
+            ExprKind as AstExprKind, For as AstFor, FuncArg as AstFuncArg, If as AstIf,
+            IfCond as AstIfCond, Item as AstItem, Literal as AstLiteral,
+            LiteralVal as AstLiteralVal, Loop as AstLoop, Match as AstMatch, Pattern as AstPattern,
+            Stmt as AstStmt, StmtKind as AstStmtKind, Type as AstType, TypeMember as AstTypeMember,
+            UnaryOp, VarDecl as AstVarDecl, Variant as AstVariant, While as AstWhile,
         },
         hir::{
             Binding, Block, Break, Cast, Expr, ExprKind, ExternFunc, FuncArg, FuncCall, Function,
@@ -18,7 +19,7 @@ use crunch_shared::{
         },
         CallConv, ItemPath, Ref, Sided,
     },
-    visitors::ast::{ExprVisitor, ItemVisitor, StmtVisitor},
+    visitors::ast::{ExprVisitor, ItemVisitor, StmtVisitor, TypeVisitor},
 };
 
 pub struct Ladder {}
@@ -50,6 +51,7 @@ impl Ladder {
             then_block: Block<Stmt>,
             else_block: Block<Stmt>,
         ) -> Stmt {
+            crunch_shared::warn!("Returning values from loops is currently ignored");
             let location = Location::merge(then_loc, else_loc);
 
             Stmt::Expr(Expr {
@@ -57,7 +59,13 @@ impl Ladder {
                     cond: Ref::new(Expr {
                         kind: ExprKind::Comparison(Sided {
                             lhs: Ref::new(Expr {
-                                kind: ExprKind::Variable(loop_broken, TypeKind::Bool),
+                                kind: ExprKind::Variable(
+                                    loop_broken,
+                                    Type {
+                                        kind: TypeKind::Bool,
+                                        loc: location,
+                                    },
+                                ),
                                 loc: location,
                             }),
                             op: CompOp::Equal,
@@ -93,7 +101,11 @@ impl Ladder {
                             },
                             guard: None,
                             body: else_block,
-                            ty: TypeKind::Unit, // TODO: Allow returning values from loops
+                            // TODO: Allow returning values from loops
+                            ty: Type {
+                                kind: TypeKind::Unknown,
+                                loc: location,
+                            },
                         },
                         // If the loop was unbroken, execute the `then` block
                         MatchArm {
@@ -112,10 +124,18 @@ impl Ladder {
                             },
                             guard: None,
                             body: then_block,
-                            ty: TypeKind::Unit, // TODO: Allow returning values from loops
+                            // TODO: Allow returning values from loops
+                            ty: Type {
+                                kind: TypeKind::Unknown,
+                                loc: location,
+                            },
                         },
                     ],
-                    ty: TypeKind::Unit, // TODO: Allow returning values from loops
+                    // TODO: Allow returning values from loops
+                    ty: Type {
+                        kind: TypeKind::Unknown,
+                        loc: location,
+                    },
                 }),
                 loc: location,
             })
@@ -185,14 +205,10 @@ impl ItemVisitor for Ladder {
         let name = ItemPath::from(vec![item.name.unwrap()]);
         let args = args.map(|args| {
             args.iter()
-                .map(|AstFuncArg { name, ty, loc }| {
-                    let kind = TypeKind::from(&***ty);
-
-                    FuncArg {
-                        name: Var::User(*name),
-                        kind,
-                        loc: *loc,
-                    }
+                .map(|&AstFuncArg { name, ref ty, loc }| FuncArg {
+                    name: Var::User(name),
+                    kind: self.visit_type(ty.as_ref().as_ref()),
+                    loc,
                 })
                 .collect()
         });
@@ -207,10 +223,7 @@ impl ItemVisitor for Ladder {
             vis: item.vis.expect("Functions should have a visibility"),
             args,
             body,
-            ret: Type {
-                kind: TypeKind::from(*ret.data()),
-                loc: ret.location(),
-            },
+            ret: self.visit_type(ret),
             loc: item.location(),
             sig,
         };
@@ -218,7 +231,7 @@ impl ItemVisitor for Ladder {
         Some(Item::Function(func))
     }
 
-    fn visit_type(
+    fn visit_type_decl(
         &mut self,
         _item: &AstItem,
         _generics: Option<Locatable<&[Locatable<AstType>]>>,
@@ -292,7 +305,7 @@ impl ItemVisitor for Ladder {
         let args = args.map(|args| {
             args.iter()
                 .map(|AstFuncArg { name, ty, loc }| {
-                    let kind = TypeKind::from(&***ty);
+                    let kind = self.visit_type(ty.as_ref().as_ref());
 
                     FuncArg {
                         name: Var::User(*name),
@@ -309,10 +322,7 @@ impl ItemVisitor for Ladder {
                 .vis
                 .expect("External functions should have a visibility"),
             args,
-            ret: Type {
-                kind: TypeKind::from(*ret.data()),
-                loc: ret.location(),
-            },
+            ret: self.visit_type(ret),
             callconv,
             loc: item.location(),
         };
@@ -337,10 +347,7 @@ impl StmtVisitor for Ladder {
             name: Var::User(var.name),
             value: Ref::new(self.visit_expr(&*var.val)),
             mutable: var.mutable,
-            ty: Type {
-                kind: TypeKind::from(&**var.ty),
-                loc: stmt.location(),
-            },
+            ty: self.visit_type(var.ty.as_ref().as_ref()),
             loc: stmt.location(),
         }))
     }
@@ -348,6 +355,48 @@ impl StmtVisitor for Ladder {
 
 impl ExprVisitor for Ladder {
     type Output = Expr;
+
+    fn visit_expr(&mut self, expr: &AstExpr) -> Self::Output {
+        match &expr.kind {
+            AstExprKind::If(if_) => self.visit_if(expr, if_),
+            AstExprKind::Return(value) => self.visit_return(expr, value.as_deref()),
+            AstExprKind::Break(value) => self.visit_break(expr, value.as_deref()),
+            AstExprKind::Continue => self.visit_continue(expr),
+            AstExprKind::While(while_) => self.visit_while(expr, while_),
+            AstExprKind::Loop(loop_) => self.visit_loop(expr, loop_),
+            AstExprKind::For(for_) => self.visit_for(expr, for_),
+            AstExprKind::Match(match_) => self.visit_match(expr, match_),
+            AstExprKind::Variable(var) => self.visit_variable(expr, *var),
+            AstExprKind::Literal(literal) => Expr {
+                kind: ExprKind::Literal(self.visit_literal(literal)),
+                loc: expr.location(),
+            },
+            AstExprKind::UnaryOp(op, inner) => self.visit_unary(expr, *op, inner),
+            AstExprKind::BinaryOp(Sided { lhs, op, rhs }) => {
+                self.visit_binary_op(expr, lhs, *op, rhs)
+            }
+            AstExprKind::Comparison(Sided { lhs, op, rhs }) => {
+                self.visit_comparison(expr, lhs, *op, rhs)
+            }
+            AstExprKind::Assign(Sided { lhs, op, rhs }) => self.visit_assign(expr, lhs, *op, rhs),
+            AstExprKind::Paren(inner) => self.visit_paren(expr, inner),
+            AstExprKind::Array(elements) => self.visit_array(expr, elements),
+            AstExprKind::Tuple(elements) => self.visit_tuple(expr, elements),
+            AstExprKind::Range(start, end) => self.visit_range(expr, start, end),
+            AstExprKind::Index { var, index } => self.visit_index(expr, var, index),
+            AstExprKind::FuncCall { caller, args } => self.visit_func_call(expr, caller, args),
+            AstExprKind::MemberFuncCall { member, func } => {
+                self.visit_member_func_call(expr, member, func)
+            }
+            AstExprKind::Reference {
+                mutable,
+                expr: reference,
+            } => self.visit_reference(expr, *mutable, reference.as_ref()),
+            AstExprKind::Cast { expr: cast, ty } => {
+                self.visit_cast(expr, cast, ty.as_ref().as_ref())
+            }
+        }
+    }
 
     fn visit_if(&mut self, expr: &AstExpr, AstIf { clauses, else_ }: &AstIf) -> Self::Output {
         let mut clauses = clauses.iter();
@@ -378,7 +427,10 @@ impl ExprVisitor for Ladder {
                         body.location(),
                         body.iter().filter_map(|stmt| self.visit_stmt(stmt)),
                     ),
-                    ty: TypeKind::Infer,
+                    ty: Type {
+                        kind: TypeKind::Unknown,
+                        loc: cond.location(),
+                    },
                 },
                 MatchArm {
                     bind: Binding {
@@ -403,7 +455,10 @@ impl ExprVisitor for Ladder {
                     } else {
                         Block::new(cond.location())
                     },
-                    ty: TypeKind::Infer,
+                    ty: Type {
+                        kind: TypeKind::Unknown,
+                        loc: cond.location(),
+                    },
                 },
             ]);
 
@@ -411,7 +466,10 @@ impl ExprVisitor for Ladder {
                 kind: ExprKind::Match(Match {
                     cond: Ref::new(self.visit_expr(&*cond)),
                     arms,
-                    ty: TypeKind::Infer,
+                    ty: Type {
+                        kind: TypeKind::Unknown,
+                        loc: expr.location(),
+                    },
                 }),
                 loc: expr.location(),
             }
@@ -429,7 +487,10 @@ impl ExprVisitor for Ladder {
                         body.location(),
                         body.iter().filter_map(|stmt| self.visit_stmt(stmt)),
                     ),
-                    ty: TypeKind::Infer,
+                    ty: Type {
+                        kind: TypeKind::Unknown,
+                        loc: body.location(),
+                    },
                 });
             }
 
@@ -446,7 +507,10 @@ impl ExprVisitor for Ladder {
                         body.location(),
                         body.iter().filter_map(|s| self.visit_stmt(s)),
                     ),
-                    ty: TypeKind::Infer,
+                    ty: Type {
+                        kind: TypeKind::Unknown,
+                        loc: body.location(),
+                    },
                 });
             }
 
@@ -464,7 +528,10 @@ impl ExprVisitor for Ladder {
                         loc: expr.location(),
                     }),
                     arms,
-                    ty: TypeKind::Infer,
+                    ty: Type {
+                        kind: TypeKind::Unknown,
+                        loc: expr.location(),
+                    },
                 }),
                 loc: expr.location(),
             }
@@ -557,7 +624,10 @@ impl ExprVisitor for Ladder {
                         },
                         guard: None,
                         body: Block::new(cond.location()),
-                        ty: TypeKind::Infer,
+                        ty: Type {
+                            kind: TypeKind::Unknown,
+                            loc: cond.location(),
+                        },
                     },
                     // If the `while` condition returns false, set the status and break
                     MatchArm {
@@ -603,10 +673,16 @@ impl ExprVisitor for Ladder {
                                 }),
                             ],
                         ),
-                        ty: TypeKind::Infer,
+                        ty: Type {
+                            kind: TypeKind::Unknown,
+                            loc: cond.location(),
+                        },
                     },
                 ],
-                ty: TypeKind::Infer,
+                ty: Type {
+                    kind: TypeKind::Unknown,
+                    loc: cond.location(),
+                },
             }),
             loc: cond.location(),
         }));
@@ -644,21 +720,10 @@ impl ExprVisitor for Ladder {
         Expr {
             kind: ExprKind::Match(Match {
                 cond: Ref::new(self.visit_expr(&*var)),
-
                 arms: arms
                     .iter()
                     .map(|AstMatchArm { bind, guard, body }| MatchArm {
-                        bind: Binding {
-                            reference: bind.reference,
-                            mutable: bind.mutable,
-                            pattern: Pattern::from(bind.pattern.clone()),
-                            ty: bind.ty.as_ref().map(|ty| {
-                                Ref::new(Type {
-                                    kind: TypeKind::from(&***ty),
-                                    loc: expr.location(),
-                                })
-                            }),
-                        },
+                        bind: self.visit_binding(bind),
                         guard: guard
                             .as_ref()
                             .map(|guard| Ref::new(self.visit_expr(&**guard))),
@@ -666,22 +731,16 @@ impl ExprVisitor for Ladder {
                             body.location(),
                             body.iter().filter_map(|stmt| self.visit_stmt(stmt)),
                         ),
-                        ty: TypeKind::Infer,
+                        ty: Type {
+                            kind: TypeKind::Unknown,
+                            loc: expr.location(),
+                        },
                     })
                     .collect(),
-
-                // arms
-                // .iter()
-                // // TODO: Patterns with matches
-                // .map(|(var, _clause, body)| MatchArm {
-                //     condition: self.lower_expr(&AstExpr::Variable(*var)),
-                //     body: body
-                //         .iter()
-                //         .filter_map(|stmt| self.lower_statement(stmt))
-                //         .collect(),
-                // })
-                // .collect(),
-                ty: TypeKind::Infer,
+                ty: Type {
+                    kind: TypeKind::Unknown,
+                    loc: expr.location(),
+                },
             }),
             loc: expr.location(),
         }
@@ -689,22 +748,42 @@ impl ExprVisitor for Ladder {
 
     fn visit_variable(&mut self, expr: &AstExpr, var: Locatable<StrT>) -> Self::Output {
         Expr {
-            kind: ExprKind::Variable(Var::User(*var), TypeKind::Infer),
+            kind: ExprKind::Variable(
+                Var::User(*var),
+                Type {
+                    kind: TypeKind::Unknown,
+                    loc: expr.location(),
+                },
+            ),
             loc: expr.location(),
         }
     }
 
-    fn visit_literal(&mut self, expr: &AstExpr, literal: &Locatable<AstLiteral>) -> Self::Output {
-        Expr {
-            kind: ExprKind::Literal(Literal {
-                val: LiteralVal::from(literal.val.clone()),
-                ty: Type {
-                    kind: TypeKind::from(&literal.ty),
-                    loc: literal.location(),
-                },
-                loc: literal.location(),
-            }),
-            loc: expr.location(),
+    type LiteralOutput = Literal;
+    fn visit_literal(&mut self, literal: &AstLiteral) -> Self::LiteralOutput {
+        Literal {
+            val: self.visit_literal_val(&literal.val),
+            ty: self.visit_type(Locatable::new(&literal.ty, literal.location())),
+            loc: literal.location(),
+        }
+    }
+
+    type LiteralValOutput = LiteralVal;
+    fn visit_literal_val(&mut self, val: &AstLiteralVal) -> Self::LiteralValOutput {
+        match val {
+            &AstLiteralVal::Integer(int) => LiteralVal::Integer(int),
+            &AstLiteralVal::Bool(boolean) => LiteralVal::Bool(boolean),
+            AstLiteralVal::String(text) => LiteralVal::String(text.clone()),
+            &AstLiteralVal::Rune(rune) => LiteralVal::Rune(rune),
+            &AstLiteralVal::Float(float) => LiteralVal::Float(float),
+            AstLiteralVal::Array(array) => {
+                let elements = array
+                    .into_iter()
+                    .map(|literal| self.visit_literal(literal))
+                    .collect();
+
+                LiteralVal::Array { elements }
+            }
         }
     }
 
@@ -858,12 +937,97 @@ impl ExprVisitor for Ladder {
         Expr {
             kind: ExprKind::Cast(Cast {
                 casted: Ref::new(self.visit_expr(cast)),
-                ty: Type {
-                    kind: TypeKind::from(*ty),
-                    loc: ty.location(),
-                },
+                ty: self.visit_type(ty),
             }),
             loc: expr.location(),
+        }
+    }
+
+    type BindingOutput = Binding;
+    fn visit_binding(
+        &mut self,
+        &AstBinding {
+            reference,
+            mutable,
+            ref pattern,
+            ref ty,
+        }: &AstBinding,
+    ) -> Self::BindingOutput {
+        Binding {
+            reference,
+            mutable,
+            pattern: self.visit_pattern(pattern),
+            ty: ty
+                .as_ref()
+                .map(|ty| Ref::new(self.visit_type(ty.as_ref().as_ref()))),
+        }
+    }
+
+    type PatternOutput = Pattern;
+    fn visit_pattern(&mut self, pattern: &AstPattern) -> Self::PatternOutput {
+        match pattern {
+            AstPattern::Literal(lit) => Pattern::Literal(self.visit_literal(lit)),
+            &AstPattern::Ident(ident) => Pattern::Ident(ident),
+            AstPattern::ItemPath(path) => Pattern::ItemPath(path.clone()),
+            AstPattern::Wildcard => Pattern::Wildcard,
+        }
+    }
+}
+
+impl TypeVisitor for Ladder {
+    type Output = Type;
+
+    fn visit_type(&mut self, r#type: Locatable<&AstType>) -> Type {
+        Type {
+            kind: self.visit_type_kind(*r#type),
+            loc: r#type.location(),
+        }
+    }
+}
+
+impl Ladder {
+    fn visit_type_kind(&mut self, r#type: &AstType) -> TypeKind {
+        match r#type {
+            AstType::Unknown => TypeKind::Unknown,
+            AstType::Unit => TypeKind::Unit,
+            AstType::Bool => TypeKind::Bool,
+            AstType::String => TypeKind::String,
+            &AstType::Integer { signed, width } => TypeKind::Integer { signed, width },
+
+            &AstType::Array {
+                ref element,
+                length,
+            } => {
+                let element = Ref::new(TypeVisitor::visit_type(self, element.as_ref().as_ref()));
+
+                TypeKind::Array { element, length }
+            }
+
+            AstType::Slice { element } => {
+                let element = Ref::new(TypeVisitor::visit_type(self, element.as_ref().as_ref()));
+
+                TypeKind::Slice { element }
+            }
+
+            &AstType::Pointer {
+                ref pointee,
+                mutable,
+            } => {
+                let pointee = Ref::new(TypeVisitor::visit_type(self, pointee.as_ref().as_ref()));
+
+                TypeKind::Pointer { pointee, mutable }
+            }
+
+            &AstType::Reference {
+                ref referee,
+                mutable,
+            } => {
+                let referee = Ref::new(TypeVisitor::visit_type(self, referee.as_ref().as_ref()));
+
+                TypeKind::Reference { referee, mutable }
+            }
+
+            ty => todo!("{:?}", ty),
         }
     }
 }

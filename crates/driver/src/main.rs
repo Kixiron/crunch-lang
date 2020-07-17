@@ -7,7 +7,6 @@ use crunch_codegen::{
 };
 use crunch_mir::MirBuilder;
 use crunch_parser::{ExternUnnester, Parser};
-use crunch_semantics::{Correctness, SemanticAnalyzer};
 use crunch_shared::{
     context::Context as ParseContext,
     files::{CurrentFile, FileId, Files},
@@ -187,19 +186,6 @@ fn run(
             return Err(ExitStatus::default());
         }
     };
-
-    // Run semantic checking
-    match SemanticAnalyzer::new()
-        .pass(Correctness::new())
-        .analyze(&ast, &parse_ctx)
-    {
-        mut errors if errors.is_fatal() => {
-            errors.emit(&files);
-            return Err(ExitStatus::default());
-        }
-
-        mut warnings => warnings.emit(&files),
-    }
 
     // Resolve all names in the ast
     let _resolver = {

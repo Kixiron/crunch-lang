@@ -9,7 +9,7 @@ use crunch_shared::{
     error::{Error, Locatable, Location, ParseResult, Span, SyntaxError},
     trees::{
         ast::{Integer, Type, TypeOp},
-        Ref, Sided, Signedness,
+        Ref, Sided,
     },
 };
 
@@ -19,6 +19,7 @@ type PostfixParselet<'src> =
 type InfixParselet<'src> =
     fn(&mut Parser<'src>, Token<'src>, Locatable<Type>) -> ParseResult<Locatable<Type>>;
 
+// REFACTOR: Split all this into separate functions and share code across them
 impl<'src> Parser<'src> {
     /// ```ebnf
     /// Type ::=
@@ -108,36 +109,29 @@ impl<'src> Parser<'src> {
                     "bool" => (Type::Bool, None),
                     "unit" => (Type::Unit, None),
                     "absurd" => (Type::Absurd, None),
-                    "infer" => (Type::Infer, None),
 
-                    "ureg" | "ireg" => {
-                        let sign = if token.source() == "ureg" {
-                            Signedness::Unsigned
-                        } else {
-                            Signedness::Signed
-                        };
+                    "ureg" | "ireg" => (
+                        Type::IntReg {
+                            signed: token.source() == "ireg",
+                        },
+                        None,
+                    ),
 
-                        (Type::IntReg(sign), None)
-                    }
-
-                    "uptr" | "iptr" => {
-                        let sign = if token.source() == "uptr" {
-                            Signedness::Unsigned
-                        } else {
-                            Signedness::Signed
-                        };
-
-                        (Type::IntPtr(sign), None)
-                    }
+                    "uptr" | "iptr" => (
+                        Type::IntPtr {
+                            signed: token.source() == "iptr",
+                        },
+                        None,
+                    ),
 
                     "arr" => {
                         parser.eat(TokenType::LeftBrace, [TokenType::Newline])?;
 
-                        let ty = Ref::new(parser.ascribed_type()?);
+                        let element = Ref::new(parser.ascribed_type()?);
                         parser.eat(TokenType::Semicolon, [TokenType::Newline])?;
 
                         let int = parser.eat(TokenType::Int, [TokenType::Newline])?;
-                        let Integer { sign, bits: len } = parser
+                        let Integer { sign, bits: length } = parser
                             .literal(&int, parser.current_file)?
                             .val
                             .into_integer()
@@ -154,17 +148,27 @@ impl<'src> Parser<'src> {
                             .eat(TokenType::RightBrace, [TokenType::Newline])?
                             .span();
 
-                        (Type::Array(len, ty), Some(end))
+                        crunch_shared::warn!(
+                            "Array lengths will be truncated from a u128 to a u16 without warning, add an error if there's an overflow",
+                        );
+
+                        (
+                            Type::Array {
+                                element,
+                                length: length as u64,
+                            },
+                            Some(end),
+                        )
                     }
 
                     "slice" => {
                         parser.eat(TokenType::LeftBrace, [TokenType::Newline])?;
-                        let ty = Ref::new(parser.ascribed_type()?);
+                        let element = Ref::new(parser.ascribed_type()?);
                         let end = parser
                             .eat(TokenType::RightBrace, [TokenType::Newline])?
                             .span();
 
-                        (Type::Slice(ty), Some(end))
+                        (Type::Slice { element }, Some(end))
                     }
 
                     "tup" => {
@@ -211,8 +215,8 @@ impl<'src> Parser<'src> {
 
                         (
                             Type::Integer {
-                                sign: Signedness::Unsigned,
-                                width,
+                                signed: Some(false),
+                                width: Some(width),
                             },
                             None,
                         )
@@ -236,8 +240,8 @@ impl<'src> Parser<'src> {
 
                         (
                             Type::Integer {
-                                sign: Signedness::Signed,
-                                width,
+                                signed: Some(true),
+                                width: Some(width),
                             },
                             None,
                         )
@@ -418,10 +422,13 @@ impl<'src> Parser<'src> {
                 } else {
                     false
                 };
-                let ty = Ref::new(parser.ascribed_type()?);
-                let loc = Location::new(Span::merge(star.span(), ty.span()), parser.current_file);
+                let referee = Ref::new(parser.ascribed_type()?);
+                let loc = Location::new(
+                    Span::merge(star.span(), referee.span()),
+                    parser.current_file,
+                );
 
-                Ok(Locatable::new(Type::Reference { mutable, ty }, loc))
+                Ok(Locatable::new(Type::Reference { referee, mutable }, loc))
             },
 
             // Raw pointers
@@ -430,10 +437,13 @@ impl<'src> Parser<'src> {
 
                 let mutable =
                     parser.eat_of([TokenType::Const, TokenType::Mut], [])?.ty() == TokenType::Mut;
-                let ty = Ref::new(parser.ascribed_type()?);
-                let loc = Location::new(Span::merge(star.span(), ty.span()), parser.current_file);
+                let pointee = Ref::new(parser.ascribed_type()?);
+                let loc = Location::new(
+                    Span::merge(star.span(), pointee.span()),
+                    parser.current_file,
+                );
 
-                Ok(Locatable::new(Type::Pointer { mutable, ty }, loc))
+                Ok(Locatable::new(Type::Pointer { pointee, mutable }, loc))
             },
 
             _ => return None,

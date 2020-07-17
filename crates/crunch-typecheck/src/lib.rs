@@ -15,10 +15,10 @@ use crunch_shared::{
     trees::{
         hir::{
             BinaryOp, Block, Break, Cast, CompOp, Expr, ExternFunc, FuncArg, FuncCall, Function,
-            Item, Literal, LiteralVal, Match, MatchArm, Pattern, Reference, Return, Stmt, TypeKind,
-            Var, VarDecl,
+            Item, Literal, LiteralVal, Match, MatchArm, Pattern, Reference, Return, Stmt, Type,
+            TypeKind, Var, VarDecl,
         },
-        ItemPath, Ref, Signedness,
+        ItemPath, Ref,
     },
     utils::HashMap,
     visitors::hir::{MutExprVisitor, MutItemVisitor, MutStmtVisitor},
@@ -58,19 +58,20 @@ impl Engine {
     }
 
     /// Create a new type term with whatever we have about its type
-    fn insert(&mut self, variable: Var, kind: &TypeKind, loc: Location) -> TypeResult<TypeId> {
+    fn insert(&mut self, variable: Var, ty: &Type) -> TypeResult<TypeId> {
+        let location = ty.location();
+        let info = self.intern_type(ty)?;
+
         if let Some(&id) = self.ids.get(&variable) {
-            let ty = self.intern_type(kind, loc)?;
-            self.types.insert(id, (ty, loc));
+            self.types.insert(id, (info, location));
 
             Ok(id)
         } else {
             let id = self.id_counter;
             self.id_counter += 1;
 
-            let ty = self.intern_type(kind, loc)?;
-            self.types.insert(id, (ty, loc));
-            self.ids.insert(variable.clone(), id);
+            self.types.insert(id, (info, location));
+            self.ids.insert(variable, id);
 
             Ok(id)
         }
@@ -97,131 +98,170 @@ impl Engine {
     /// Make the types of two type terms equivalent (or produce an error if
     /// there is a conflict between them)
     fn unify(&mut self, a: TypeId, b: TypeId) -> TypeResult<()> {
-        match (self.types[&a].clone(), self.types[&b].clone()) {
+        let ((lhs, lhs_loc), (rhs, rhs_loc)) = (self.types[&a].clone(), self.types[&b].clone());
+
+        match (lhs, rhs) {
             // Follow any references
-            ((TypeInfo::Ref(a), _), _) => self.unify(a, b),
-            (_, (TypeInfo::Ref(b), _)) => self.unify(a, b),
+            (TypeInfo::Ref(a), _) => self.unify(a, b),
+            (_, TypeInfo::Ref(b)) => self.unify(a, b),
 
             // When we don't know anything about either term, assume that
             // they match and make the one we know nothing about reference the
             // one we may know something about
-            ((TypeInfo::Infer, loc), _) => {
-                self.types.insert(a, (TypeInfo::Ref(b), loc));
+            (TypeInfo::Unknown, _) => {
+                self.types.insert(a, (TypeInfo::Ref(b), lhs_loc));
 
                 Ok(())
             }
-            (_, (TypeInfo::Infer, loc)) => {
-                self.types.insert(b, (TypeInfo::Ref(a), loc));
+            (_, TypeInfo::Unknown) => {
+                self.types.insert(b, (TypeInfo::Ref(a), rhs_loc));
 
                 Ok(())
             }
 
-            ((TypeInfo::Absurd, loc), _) => {
-                self.types.insert(a, (TypeInfo::Ref(b), loc));
+            (TypeInfo::Absurd, _) => {
+                self.types.insert(a, (TypeInfo::Ref(b), lhs_loc));
 
                 Ok(())
             }
-            (_, (TypeInfo::Absurd, loc)) => {
-                self.types.insert(b, (TypeInfo::Ref(a), loc));
+            (_, TypeInfo::Absurd) => {
+                self.types.insert(b, (TypeInfo::Ref(a), rhs_loc));
 
                 Ok(())
             }
 
             // Primitives are trivial to unify
-            ((TypeInfo::String, _), (TypeInfo::String, _))
-            | ((TypeInfo::Bool, _), (TypeInfo::Bool, _))
-            | ((TypeInfo::Unit, _), (TypeInfo::Unit, _)) => Ok(()),
+            (TypeInfo::String, TypeInfo::String)
+            | (TypeInfo::Bool, TypeInfo::Bool)
+            | (TypeInfo::Unit, TypeInfo::Unit) => Ok(()),
 
-            #[rustfmt::skip]
-            ((TypeInfo::Integer { sign: Some(left_sign), width: Some(left_width) }, _),
-                (TypeInfo::Integer { sign: Some(right_sign), width: Some(right_width) }, _))
-                if left_sign == right_sign && left_width == right_width => Ok(()),
-
-            #[rustfmt::skip]
             (
-                (TypeInfo::Integer { sign: None, width: None }, loc),
-                (TypeInfo::Integer { sign: Some(sign), width: Some(width) }, _),
+                TypeInfo::Integer {
+                    signed: Some(left_sign),
+                    width: Some(left_width),
+                },
+                TypeInfo::Integer {
+                    signed: Some(right_sign),
+                    width: Some(right_width),
+                },
+            ) if left_sign == right_sign && left_width == right_width => Ok(()),
+
+            (
+                TypeInfo::Integer {
+                    signed: None,
+                    width: None,
+                },
+                TypeInfo::Integer {
+                    signed: Some(sign),
+                    width: Some(width),
+                },
             ) => {
                 self.types.insert(
                     a,
                     (
                         TypeInfo::Integer {
-                            sign: Some(sign),
+                            signed: Some(sign),
                             width: Some(width),
                         },
-                        loc,
+                        rhs_loc,
                     ),
                 );
 
                 Ok(())
             }
-            #[rustfmt::skip]
             (
-                (TypeInfo::Integer { sign: Some(sign), width: Some(width) }, _),
-                (TypeInfo::Integer { sign: None, width: None }, loc),
+                TypeInfo::Integer {
+                    signed: Some(sign),
+                    width: Some(width),
+                },
+                TypeInfo::Integer {
+                    signed: None,
+                    width: None,
+                },
             ) => {
                 self.types.insert(
                     b,
                     (
                         TypeInfo::Integer {
-                            sign: Some(sign),
+                            signed: Some(sign),
                             width: Some(width),
                         },
-                        loc,
+                        lhs_loc,
                     ),
                 );
 
                 Ok(())
             }
-            #[rustfmt::skip]
             (
-                (TypeInfo::Integer { sign: None, width: None }, _),
-                (TypeInfo::Integer { sign: None, width: None }, loc),
+                TypeInfo::Integer {
+                    signed: None,
+                    width: None,
+                },
+                TypeInfo::Integer {
+                    signed: None,
+                    width: None,
+                },
             ) => {
-                self.types.insert(
-                    b,
-                    (
-                        TypeInfo::Ref(a),
-                        loc,
-                    ),
-                );
+                self.types.insert(b, (TypeInfo::Ref(a), lhs_loc));
 
                 Ok(())
             }
 
             (
-                (TypeInfo::Array(left_elem, left_len), _),
-                (TypeInfo::Array(right_elem, right_len), _),
+                TypeInfo::Array {
+                    element: left_elem,
+                    length: left_len,
+                },
+                TypeInfo::Array {
+                    element: right_elem,
+                    length: right_len,
+                },
             ) if left_len == right_len => {
+                dbg!();
                 self.unify(left_elem, right_elem)?;
 
                 Ok(())
             }
 
             (
-                (TypeInfo::Reference(left_mut, left), _),
-                (TypeInfo::Reference(right_mut, right), _),
+                TypeInfo::Reference {
+                    referee: left,
+                    mutable: left_mut,
+                },
+                TypeInfo::Reference {
+                    referee: right,
+                    mutable: right_mut,
+                },
             ) if left_mut == right_mut => {
                 self.unify(left, right)?;
 
                 Ok(())
             }
 
-            ((TypeInfo::Pointer(left), _), (TypeInfo::Pointer(right), _)) => {
+            (
+                TypeInfo::Pointer {
+                    pointee: left,
+                    mutable: left_mut,
+                },
+                TypeInfo::Pointer {
+                    pointee: right,
+                    mutable: right_mut,
+                },
+            ) if left_mut == right_mut => {
                 self.unify(left, right)?;
 
                 Ok(())
             }
 
             // If no previous attempts to unify were successful, raise an error
-            ((call_type, call_loc), (def_type, def_loc)) => Err(Locatable::new(
+            (call_type, def_type) => Err(Locatable::new(
                 TypeError::TypeConflict {
                     call_type: self.display_type(&call_type),
                     def_type: self.display_type(&def_type),
-                    def_site: def_loc,
+                    def_site: rhs_loc,
                 }
                 .into(),
-                call_loc,
+                lhs_loc,
             )),
         }
     }
@@ -229,46 +269,52 @@ impl Engine {
     /// Attempt to reconstruct a concrete type from the given type term ID. This
     /// may fail if we don't yet have enough information to figure out what the
     /// type is.
-    fn reconstruct(&self, id: TypeId) -> TypeResult<TypeKind> {
-        match self.types[&id].clone() {
-            (TypeInfo::Infer, loc) => Err(Locatable::new(
-                TypeError::FailedInfer(
-                    self.ids
-                        .iter()
-                        .find_map(|(name, _id)| {
-                            if *_id == id {
-                                Some(name.to_string(&self.interner))
-                            } else {
-                                None
-                            }
-                        })
-                        .unwrap_or("<anonymous type>".to_owned()),
-                )
-                .into(),
-                loc,
-            )),
-            (TypeInfo::Ref(id), _) => self.reconstruct(id),
-            // TODO: This seems wrong
-            (TypeInfo::Integer { sign, width }, _) => Ok(TypeKind::Integer {
-                sign: sign.unwrap_or(Signedness::Signed),
-                width: width.unwrap_or(32),
-            }),
-            (TypeInfo::Bool, _) => Ok(TypeKind::Bool),
-            (TypeInfo::Unit, _) => Ok(TypeKind::Unit),
-            (TypeInfo::String, _) => Ok(TypeKind::String),
-            (TypeInfo::Absurd, _) => Ok(TypeKind::Absurd),
-            (TypeInfo::Pointer(pointee), _) => {
-                Ok(TypeKind::Pointer(Ref::new(self.reconstruct(pointee)?)))
+    fn reconstruct(&self, id: TypeId) -> TypeResult<Type> {
+        let &(ref info, loc) = &self.types[&id];
+
+        let kind = match info {
+            TypeInfo::Unknown => {
+                return Err(Locatable::new(
+                    TypeError::FailedInfer(
+                        self.ids
+                            .iter()
+                            .find_map(|(name, _id)| {
+                                if *_id == id {
+                                    Some(name.to_string(&self.interner))
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap_or("{{unknown}}".to_owned()),
+                    )
+                    .into(),
+                    loc,
+                ));
             }
-            (TypeInfo::Array(elem, len), _) => {
-                Ok(TypeKind::Array(Ref::new(self.reconstruct(elem)?), len))
-            }
-            (TypeInfo::Slice(elem), _) => Ok(TypeKind::Slice(Ref::new(self.reconstruct(elem)?))),
-            (TypeInfo::Reference(mutable, reference), _) => Ok(TypeKind::Reference(
+            &TypeInfo::Ref(id) => return self.reconstruct(id),
+            &TypeInfo::Integer { signed, width } => TypeKind::Integer { signed, width },
+            TypeInfo::Bool => TypeKind::Bool,
+            TypeInfo::Unit => TypeKind::Unit,
+            TypeInfo::String => TypeKind::String,
+            TypeInfo::Absurd => TypeKind::Absurd,
+            &TypeInfo::Pointer { pointee, mutable } => TypeKind::Pointer {
+                pointee: Ref::new(self.reconstruct(pointee)?),
                 mutable,
-                Ref::new(self.reconstruct(reference)?),
-            )),
-        }
+            },
+            &TypeInfo::Array { element, length } => TypeKind::Array {
+                element: Ref::new(self.reconstruct(element)?),
+                length,
+            },
+            &TypeInfo::Slice { element } => TypeKind::Slice {
+                element: Ref::new(self.reconstruct(element)?),
+            },
+            &TypeInfo::Reference { referee, mutable } => TypeKind::Reference {
+                referee: Ref::new(self.reconstruct(referee)?),
+                mutable,
+            },
+        };
+
+        Ok(Type { kind, loc })
     }
 
     #[instrument(name = "type checking")]
@@ -291,7 +337,7 @@ impl Engine {
             }) = item
             {
                 // TODO: Use error types here
-                for arg in args.iter().filter(|a| a.kind.is_infer()) {
+                for arg in args.iter().filter(|a| a.kind.is_unknown()) {
                     self.errors.push_err(Locatable::new(
                         TypeError::MissingType("Types for function arguments".to_owned()).into(),
                         arg.location(),
@@ -299,7 +345,7 @@ impl Engine {
                 }
 
                 // TODO: Use error types here
-                if ret.kind.is_infer() {
+                if ret.kind.is_unknown() {
                     self.errors.push_err(Locatable::new(
                         TypeError::MissingType("Return types for functions".to_owned()).into(),
                         ret.location(),
@@ -307,7 +353,7 @@ impl Engine {
                 }
 
                 // TODO: Use error types here
-                let ret_type = match self.intern_type(&ret.kind, ret.location()) {
+                let ret_type = match self.intern_type(&ret) {
                     Ok(ty) => ty,
                     Err(err) => {
                         self.errors.push_err(err);
@@ -318,7 +364,7 @@ impl Engine {
                 // TODO: Use error types here
                 let func_args = args
                     .iter()
-                    .map(|FuncArg { name, kind, loc }| self.insert(*name, kind, *loc))
+                    .map(|FuncArg { name, kind, .. }| self.insert(*name, kind))
                     .collect::<TypeResult<Vec<_>>>()?;
 
                 let func = Func {
@@ -344,44 +390,65 @@ impl Engine {
         }
     }
 
-    pub fn type_of(&self, var: &Var) -> Option<TypeKind> {
+    pub fn type_of(&self, var: &Var) -> Option<Type> {
         self.ids.get(var).and_then(|id| self.reconstruct(*id).ok())
     }
 
-    fn intern_type(&mut self, kind: &TypeKind, loc: Location) -> TypeResult<TypeInfo> {
-        let ty = match kind {
-            TypeKind::Infer => TypeInfo::Infer,
-            TypeKind::Integer { sign, width } => TypeInfo::Integer {
-                sign: Some(*sign),
-                width: Some(*width),
-            },
+    fn intern_type(&mut self, ty: &Type) -> TypeResult<TypeInfo> {
+        let ty = match &ty.kind {
+            TypeKind::Unknown => TypeInfo::Unknown,
+            &TypeKind::Integer { signed, width } => TypeInfo::Integer { signed, width },
             TypeKind::String => TypeInfo::String,
             TypeKind::Bool => TypeInfo::Bool,
             TypeKind::Unit => TypeInfo::Unit,
             TypeKind::Absurd => TypeInfo::Absurd,
-            TypeKind::Pointer(pointee) => {
-                if pointee.is_infer() {
+
+            &TypeKind::Pointer {
+                ref pointee,
+                mutable,
+            } => {
+                if pointee.is_unknown() {
                     return Err(Locatable::new(
                         TypeError::MissingType("pointer types".to_owned()).into(),
-                        loc,
+                        ty.location(),
                     ));
                 } else {
-                    let pointee = self.intern_type(&**pointee, loc)?;
+                    let pointee = self.intern_type(pointee.as_ref())?;
 
-                    TypeInfo::Pointer(self.insert_bare(pointee, loc))
+                    TypeInfo::Pointer {
+                        pointee: self.insert_bare(pointee, ty.location()),
+                        mutable,
+                    }
                 }
             }
-            TypeKind::Array(elem, len) => {
-                let elem = self.intern_type(elem, loc)?;
-                TypeInfo::Array(self.insert_bare(elem, loc), *len)
+
+            &TypeKind::Array {
+                ref element,
+                length,
+            } => {
+                let elem = self.intern_type(element.as_ref())?;
+
+                TypeInfo::Array {
+                    element: self.insert_bare(elem, ty.location()),
+                    length,
+                }
             }
-            TypeKind::Slice(elem) => {
-                let elem = self.intern_type(elem, loc)?;
-                TypeInfo::Slice(self.insert_bare(elem, loc))
+
+            TypeKind::Slice { element } => {
+                let element = self.intern_type(element.as_ref())?;
+
+                TypeInfo::Slice {
+                    element: self.insert_bare(element, ty.location()),
+                }
             }
-            TypeKind::Reference(mutable, ty) => {
-                let ty = self.intern_type(ty, loc)?;
-                TypeInfo::Reference(*mutable, self.insert_bare(ty, loc))
+
+            TypeKind::Reference { referee, mutable } => {
+                let referee = self.intern_type(referee.as_ref())?;
+
+                TypeInfo::Reference {
+                    referee: self.insert_bare(referee, ty.location()),
+                    mutable: *mutable,
+                }
             }
         };
 
@@ -393,14 +460,14 @@ impl Engine {
         Literal { val, ty, loc }: &mut Literal,
         _loc: Location,
     ) -> TypeResult<TypeId> {
-        let info = self.intern_type(&ty.kind, *loc)?;
+        let info = self.intern_type(ty)?;
         let info = self.insert_bare(info, *loc);
 
         match val {
             LiteralVal::Integer(_) => {
                 let int = self.insert_bare(
                     TypeInfo::Integer {
-                        sign: None,
+                        signed: None,
                         width: None,
                     },
                     *loc,
@@ -418,13 +485,20 @@ impl Engine {
                 self.unify(string, info)?;
             }
 
-            LiteralVal::Array(array) => {
-                let element_types = self.insert_bare(TypeInfo::Infer, *loc);
-                self.insert_bare(TypeInfo::Array(element_types, array.len() as u32), *loc);
+            LiteralVal::Array { elements } => {
+                let element = self.insert_bare(TypeInfo::Unknown, *loc);
 
-                for element in array {
-                    let element = self.intern_literal(element, element.location())?;
-                    self.unify(element_types, element)?;
+                self.insert_bare(
+                    TypeInfo::Array {
+                        element,
+                        length: elements.len() as u64,
+                    },
+                    *loc,
+                );
+
+                for elem in elements {
+                    let elem = self.intern_literal(elem, elem.location())?;
+                    self.unify(element, elem)?;
                 }
             }
 
@@ -453,62 +527,73 @@ impl Engine {
                     .0,
                 f,
             ),
-            TypeInfo::Infer => f.write_str("infer"),
-            TypeInfo::Integer { sign, width } => match (sign, width) {
-                (Some(sign), Some(width)) => write!(f, "{}{}", sign, width),
+            TypeInfo::Unknown => f.write_str("infer"),
+            &TypeInfo::Integer { signed, width } => match (signed, width) {
+                (Some(signed), Some(width)) => {
+                    write!(f, "{}{}", if signed { "i" } else { "u" }, width)
+                }
                 (_, _) => f.write_str("{{integer}}"),
             },
             TypeInfo::String => f.write_str("str"),
             TypeInfo::Bool => f.write_str("bool"),
             TypeInfo::Unit => f.write_str("unit"),
             TypeInfo::Absurd => f.write_str("absurd"),
-            TypeInfo::Pointer(pointee) => {
-                f.write_str("*const ")?;
-                self.display_type_inner(
-                    &self
-                        .types
-                        .get(pointee)
-                        .expect("Tried to display type that doesn't exist")
-                        .0,
-                    f,
-                )
-            }
-            TypeInfo::Array(elem, len) => {
+
+            TypeInfo::Array { element, length } => {
                 f.write_str("arr[")?;
                 self.display_type_inner(
                     &self
                         .types
-                        .get(elem)
+                        .get(element)
                         .expect("Tried to display type that doesn't exist")
                         .0,
                     f,
                 )?;
                 f.write_str("; ")?;
-                write!(f, "{}", len)?;
+                write!(f, "{}", length)?;
                 f.write_char(']')
             }
-            TypeInfo::Slice(elem) => {
+
+            TypeInfo::Slice { element } => {
                 f.write_str("arr[")?;
                 self.display_type_inner(
                     &self
                         .types
-                        .get(elem)
+                        .get(element)
                         .expect("Tried to display type that doesn't exist")
                         .0,
                     f,
                 )?;
                 f.write_char(']')
             }
-            TypeInfo::Reference(mutable, reference) => {
+
+            &TypeInfo::Reference { mutable, referee } => {
                 f.write_char('&')?;
-                if *mutable {
+                if mutable {
                     f.write_str("mut ")?;
                 }
 
                 self.display_type_inner(
                     &self
                         .types
-                        .get(reference)
+                        .get(&referee)
+                        .expect("Tried to display type that doesn't exist")
+                        .0,
+                    f,
+                )
+            }
+
+            &TypeInfo::Pointer { mutable, pointee } => {
+                if mutable {
+                    f.write_str("*const ")?;
+                } else {
+                    f.write_str("*mut ")?;
+                }
+
+                self.display_type_inner(
+                    &self
+                        .types
+                        .get(&pointee)
                         .expect("Tried to display type that doesn't exist")
                         .0,
                     f,
@@ -540,7 +625,7 @@ impl MutItemVisitor for Engine {
 
     fn visit_extern_func(&mut self, ExternFunc { args, ret, .. }: &mut ExternFunc) -> Self::Output {
         let mut missing_arg_ty = None;
-        for arg in args.iter().filter(|a| a.kind.is_infer()) {
+        for arg in args.iter().filter(|a| a.kind.is_unknown()) {
             if let Some(err) = missing_arg_ty.take() {
                 self.errors.push_err(err);
             }
@@ -551,7 +636,7 @@ impl MutItemVisitor for Engine {
             ));
         }
 
-        if ret.kind.is_infer() {
+        if ret.kind.is_unknown() {
             if let Some(err) = missing_arg_ty {
                 self.errors.push_err(err);
             }
@@ -597,9 +682,9 @@ impl MutStmtVisitor for Engine {
             ..
         }: &mut VarDecl,
     ) -> <Self as MutStmtVisitor>::Output {
-        let var = self.insert(*name, &ty.kind, *loc)?;
+        let var = self.insert(*name, ty)?;
         let expr = self.visit_expr(value)?;
-        self.unify(var, expr)?;
+        self.unify(expr, var)?;
 
         Ok(self.insert_bare(TypeInfo::Unit, *loc))
     }
@@ -676,7 +761,7 @@ impl MutExprVisitor for Engine {
             arm_types.push(arm_ret);
         }
 
-        let match_ty = self.intern_type(&*ty, loc)?;
+        let match_ty = self.intern_type(ty)?;
         let match_ty = self.insert_bare(match_ty, loc);
         for arm in arm_types {
             self.unify(match_ty, arm)?;
@@ -685,7 +770,7 @@ impl MutExprVisitor for Engine {
         Ok(match_ty)
     }
 
-    fn visit_variable(&mut self, loc: Location, var: Var, _ty: &mut TypeKind) -> Self::Output {
+    fn visit_variable(&mut self, loc: Location, var: Var, _ty: &mut Type) -> Self::Output {
         self.get(&var, loc)
     }
 
@@ -777,7 +862,7 @@ impl MutExprVisitor for Engine {
 
     fn visit_cast(&mut self, loc: Location, Cast { casted, ty }: &mut Cast) -> Self::Output {
         let _casted = self.visit_expr(casted)?;
-        let ty = self.intern_type(&ty.kind, loc)?;
+        let ty = self.intern_type(ty)?;
 
         Ok(self.insert_bare(ty, loc))
     }
@@ -785,32 +870,44 @@ impl MutExprVisitor for Engine {
     fn visit_reference(
         &mut self,
         loc: Location,
-        Reference { mutable, reference }: &mut Reference,
+        &mut Reference {
+            mutable,
+            ref mut reference,
+        }: &mut Reference,
     ) -> Self::Output {
-        let expr = self.visit_expr(reference)?;
+        let referee = self.visit_expr(reference)?;
 
-        Ok(self.insert_bare(TypeInfo::Reference(*mutable, expr), loc))
+        Ok(self.insert_bare(TypeInfo::Reference { referee, mutable }, loc))
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum TypeInfo {
     Ref(TypeId),
-    Infer,
+    Unknown,
     Integer {
-        /// Will be `None` for unknown
-        sign: Option<Signedness>,
-        /// Will be `None` for unknown
+        signed: Option<bool>,
         width: Option<u16>,
     },
     String,
     Bool,
     Unit,
     Absurd,
-    Pointer(TypeId),
-    Array(TypeId, u32),
-    Slice(TypeId),
-    Reference(bool, TypeId),
+    Pointer {
+        pointee: TypeId,
+        mutable: bool,
+    },
+    Array {
+        element: TypeId,
+        length: u64,
+    },
+    Slice {
+        element: TypeId,
+    },
+    Reference {
+        referee: TypeId,
+        mutable: bool,
+    },
 }
 
 #[test]

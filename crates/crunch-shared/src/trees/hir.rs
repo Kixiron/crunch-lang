@@ -41,7 +41,7 @@ pub struct Function {
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct FuncArg {
     pub name: Var,
-    pub kind: TypeKind,
+    pub kind: Type,
     pub loc: Location,
 }
 
@@ -106,7 +106,7 @@ pub enum ExprKind {
     FnCall(FuncCall),
     Literal(Literal),
     Comparison(Sided<CompOp, Ref<Expr>>),
-    Variable(Var, TypeKind),
+    Variable(Var, Type),
     Assign(Var, Ref<Expr>),
     BinOp(Sided<BinaryOp, Ref<Expr>>),
     Cast(Cast),
@@ -147,7 +147,7 @@ pub struct FuncCall {
 pub struct Match {
     pub cond: Ref<Expr>,
     pub arms: Vec<MatchArm>,
-    pub ty: TypeKind,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -155,7 +155,7 @@ pub struct MatchArm {
     pub bind: Binding,
     pub guard: Option<Ref<Expr>>,
     pub body: Block<Stmt>,
-    pub ty: TypeKind,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -173,30 +173,6 @@ pub enum Pattern {
     Ident(StrT),
     ItemPath(ItemPath),
     Wildcard,
-}
-
-impl From<crate::trees::ast::Pattern> for Pattern {
-    fn from(pat: crate::trees::ast::Pattern) -> Self {
-        use crate::trees::ast::Pattern;
-
-        match pat {
-            Pattern::Literal(lit) => {
-                let loc = lit.location();
-
-                Self::Literal(Literal {
-                    val: LiteralVal::from(lit.val),
-                    ty: Type {
-                        kind: TypeKind::from(&lit.ty),
-                        loc,
-                    },
-                    loc,
-                })
-            }
-            Pattern::Ident(ident) => Self::Ident(ident),
-            Pattern::ItemPath(path) => Self::ItemPath(path),
-            Pattern::Wildcard => Self::Wildcard,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -312,63 +288,43 @@ impl Type {
     pub const fn location(&self) -> Location {
         self.loc
     }
-}
 
-impl From<Locatable<AstType>> for Type {
-    fn from(ty: Locatable<AstType>) -> Self {
-        Self {
-            kind: TypeKind::from(&*ty),
-            loc: ty.location(),
-        }
+    pub fn is_unknown(&self) -> bool {
+        self.kind.is_unknown()
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub enum TypeKind {
-    Infer,
-    Integer { sign: Signedness, width: u16 },
+    Unknown,
+    Integer {
+        signed: Option<bool>,
+        width: Option<u16>,
+    },
     String,
     Bool,
     Unit,
-    Pointer(Ref<TypeKind>),
-    Array(Ref<TypeKind>, u32),
-    Slice(Ref<TypeKind>),
-    Reference(bool, Ref<TypeKind>),
     Absurd,
+    Pointer {
+        pointee: Ref<Type>,
+        mutable: bool,
+    },
+    Array {
+        element: Ref<Type>,
+        length: u64,
+    },
+    Slice {
+        element: Ref<Type>,
+    },
+    Reference {
+        referee: Ref<Type>,
+        mutable: bool,
+    },
 }
 
 impl TypeKind {
-    pub fn is_infer(&self) -> bool {
-        matches!(self, Self::Infer)
-    }
-}
-
-impl From<AstType> for TypeKind {
-    fn from(ty: AstType) -> Self {
-        Self::from(&ty)
-    }
-}
-
-impl From<&AstType> for TypeKind {
-    fn from(ty: &AstType) -> Self {
-        match ty {
-            AstType::Infer => Self::Infer,
-            AstType::Unit => Self::Unit,
-            AstType::Bool => Self::Bool,
-            AstType::String => Self::String,
-            AstType::Integer { sign, width } => Self::Integer {
-                sign: *sign,
-                width: *width,
-            },
-            AstType::Pointer { ty, .. } => Self::Pointer(Ref::new(Self::from(&***ty))),
-            AstType::Array(len, elem) => Self::Array(Ref::new(Self::from(&***elem)), *len as u32),
-            AstType::Slice(elem) => Self::Slice(Ref::new(Self::from(&***elem))),
-            AstType::Reference { mutable, ty } => {
-                Self::Reference(*mutable, Ref::new(Self::from(&***ty)))
-            }
-
-            ty => todo!("{:?}", ty),
-        }
+    pub fn is_unknown(&self) -> bool {
+        matches!(self, Self::Unknown)
     }
 }
 
@@ -391,19 +347,6 @@ pub struct Literal {
     pub loc: Location,
 }
 
-impl From<AstLiteral> for Literal {
-    fn from(AstLiteral { val, ty, loc }: AstLiteral) -> Self {
-        Self {
-            val: LiteralVal::from(val),
-            ty: Type {
-                kind: TypeKind::from(ty),
-                loc,
-            },
-            loc,
-        }
-    }
-}
-
 impl Literal {
     pub fn location(&self) -> Location {
         self.loc
@@ -417,21 +360,6 @@ pub enum LiteralVal {
     String(Text),
     Rune(Rune),
     Float(Float),
-    Array(Vec<Literal>),
+    Array { elements: Vec<Literal> },
     // TODO: Tuples, slices, others?
-}
-
-impl From<AstLiteralVal> for LiteralVal {
-    fn from(val: AstLiteralVal) -> Self {
-        match val {
-            AstLiteralVal::Integer(int) => Self::Integer(int),
-            AstLiteralVal::Bool(boolean) => Self::Bool(boolean),
-            AstLiteralVal::String(text) => Self::String(text),
-            AstLiteralVal::Rune(rune) => Self::Rune(rune),
-            AstLiteralVal::Float(float) => Self::Float(float),
-            AstLiteralVal::Array(array) => {
-                Self::Array(array.into_iter().map(|e| Literal::from(e)).collect())
-            }
-        }
-    }
 }

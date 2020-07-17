@@ -9,9 +9,6 @@ edition = "2018"
 [dependencies.crunch-parser]
 path = "../crunch-parser"
 
-[dependencies.crunch-semantics]
-path = "../crunch-semantics"
-
 [dependencies.crunch-shared]
 path = "../crunch-shared"
 

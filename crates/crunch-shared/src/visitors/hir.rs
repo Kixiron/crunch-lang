@@ -4,7 +4,7 @@ use crate::{
         ast::BinaryOp,
         hir::{
             Block, Break, Cast, CompOp, Expr, ExprKind, ExternFunc, FuncCall, Function, Item,
-            Literal, Match, Reference, Return, Stmt, TypeKind, Var, VarDecl,
+            Literal, Match, Reference, Return, Stmt, Type, Var, VarDecl,
         },
         Sided,
     },
@@ -65,7 +65,7 @@ pub trait MutExprVisitor {
     fn visit_continue(&mut self, loc: Location) -> Self::Output;
     fn visit_loop(&mut self, loc: Location, body: &mut Block<Stmt>) -> Self::Output;
     fn visit_match(&mut self, loc: Location, match_: &mut Match) -> Self::Output;
-    fn visit_variable(&mut self, loc: Location, var: Var, ty: &mut TypeKind) -> Self::Output;
+    fn visit_variable(&mut self, loc: Location, var: Var, ty: &mut Type) -> Self::Output;
     fn visit_literal(&mut self, loc: Location, literal: &mut Literal) -> Self::Output;
     fn visit_scope(&mut self, loc: Location, body: &mut Block<Stmt>) -> Self::Output;
     fn visit_func_call(&mut self, loc: Location, call: &mut FuncCall) -> Self::Output;
@@ -86,6 +86,12 @@ pub trait MutExprVisitor {
     ) -> Self::Output;
     fn visit_cast(&mut self, loc: Location, cast: &mut Cast) -> Self::Output;
     fn visit_reference(&mut self, loc: Location, reference: &mut Reference) -> Self::Output;
+}
+
+pub trait MutTypeVisitor {
+    type Output;
+
+    fn visit_type(&mut self, r#type: &Type) -> Self::Output;
 }
 
 #[allow(unused_variables)]
@@ -143,7 +149,7 @@ pub trait ExprVisitor {
     fn visit_continue(&mut self, loc: Location) -> Self::Output;
     fn visit_loop(&mut self, loc: Location, body: &Block<Stmt>) -> Self::Output;
     fn visit_match(&mut self, loc: Location, match_: &Match) -> Self::Output;
-    fn visit_variable(&mut self, loc: Location, var: Var, ty: &TypeKind) -> Self::Output;
+    fn visit_variable(&mut self, loc: Location, var: Var, ty: &Type) -> Self::Output;
     fn visit_literal(&mut self, loc: Location, literal: &Literal) -> Self::Output;
     fn visit_scope(&mut self, loc: Location, body: &Block<Stmt>) -> Self::Output;
     fn visit_func_call(&mut self, loc: Location, call: &FuncCall) -> Self::Output;
@@ -158,4 +164,10 @@ pub trait ExprVisitor {
     fn visit_binop(&mut self, loc: Location, lhs: &Expr, op: BinaryOp, rhs: &Expr) -> Self::Output;
     fn visit_cast(&mut self, loc: Location, cast: &Cast) -> Self::Output;
     fn visit_reference(&mut self, loc: Location, reference: &Reference) -> Self::Output;
+}
+
+pub trait TypeVisitor {
+    type Output;
+
+    fn visit_type(&mut self, r#type: &Type) -> Self::Output;
 }

@@ -2,10 +2,7 @@ use crate::{
     error,
     error::{MirError, MirResult},
     strings::{StrInterner, StrT},
-    trees::{
-        hir::{TypeKind as HirType, Var as HirVar},
-        CallConv, ItemPath, Ref, Sign, Signedness,
-    },
+    trees::{hir::Var as HirVar, CallConv, ItemPath, Ref, Sign},
 };
 use alloc::{string::ToString, vec::Vec};
 use core::iter;
@@ -25,6 +22,7 @@ impl Mir {
             external_functions,
         }
     }
+
     /// An iterator over all functions
     pub fn functions(&self) -> impl Iterator<Item = &Function> {
         self.functions.iter()
@@ -933,10 +931,10 @@ pub enum Type {
     I64,
     Bool,
     Unit,
-    Pointer(Ref<Type>),
-    Array(Ref<Type>, u32),
-    Slice(Ref<Type>),
-    Reference(bool, Ref<Type>),
+    Array { element: Ref<Type>, length: u64 },
+    Slice { element: Ref<Type> },
+    Reference { referee: Ref<Type>, mutable: bool },
+    Pointer { pointee: Ref<Type>, mutable: bool },
     String,
     Absurd,
 }
@@ -944,8 +942,8 @@ pub enum Type {
 impl Type {
     /// If the current type is an array, get the type of the elements it contains
     pub fn array_elements(&self) -> Option<&Self> {
-        if let Self::Array(elem, ..) = self {
-            Some(&**elem)
+        if let Self::Array { element, .. } = self {
+            Some(&**element)
         } else {
             None
         }
@@ -979,7 +977,7 @@ impl Type {
         is_u64    => Self::U64,
         is_i64    => Self::I64,
         is_bool   => Self::Bool,
-        is_array  => Self::Array(..),
+        is_array  => Self::Array { .. },
         is_string => Self::String,
     }
 
@@ -1005,68 +1003,49 @@ impl Type {
             Self::Bool => alloc.text("bool"),
             Self::Unit => alloc.text("unit"),
 
-            Self::Pointer(ptr) => alloc
-                .text("*const")
+            &Self::Pointer {
+                ref pointee,
+                mutable,
+            } => alloc
+                .nil()
+                .append(if mutable {
+                    alloc.text("*mut")
+                } else {
+                    alloc.text("*const")
+                })
                 .append(alloc.space())
-                .append(ptr.to_doc(alloc, mir, interner)),
+                .append(pointee.to_doc(alloc, mir, interner)),
 
-            Self::Array(elem, len) => alloc
+            &Self::Array {
+                ref element,
+                length,
+            } => alloc
                 .text("arr[")
-                .append(alloc.text(len.to_string()))
+                .append(alloc.text(length.to_string()))
                 .append(alloc.text(";"))
                 .append(alloc.space())
-                .append(elem.to_doc(alloc, mir, interner))
+                .append(element.to_doc(alloc, mir, interner))
                 .append(alloc.text("]")),
 
-            Self::Slice(elem) => alloc
+            Self::Slice { element } => alloc
                 .text("slice[")
-                .append(elem.to_doc(alloc, mir, interner))
+                .append(element.to_doc(alloc, mir, interner))
                 .append(alloc.text("]")),
 
-            Self::Reference(mutable, ty) => alloc
+            &Self::Reference {
+                ref referee,
+                mutable,
+            } => alloc
                 .text("&")
-                .append(if *mutable {
+                .append(if mutable {
                     alloc.text("mut").append(alloc.space())
                 } else {
                     alloc.nil()
                 })
-                .append(ty.to_doc(alloc, mir, interner)),
+                .append(referee.to_doc(alloc, mir, interner)),
 
             Self::String => alloc.text("str"),
             Self::Absurd => alloc.text("absurd"),
-        }
-    }
-}
-
-// FIXME: Favor an actual function
-impl From<&HirType> for Type {
-    fn from(ty: &HirType) -> Self {
-        match ty {
-            #[rustfmt::skip]
-            HirType::Integer { sign, width } => match (sign, width) {
-                (Signedness::Unsigned, 8)  => Self::U8,
-                (Signedness::Signed,   8)  => Self::I8,
-                (Signedness::Unsigned, 16) => Self::U16,
-                (Signedness::Signed,   16) => Self::I16,
-                (Signedness::Unsigned, 32) => Self::U32,
-                (Signedness::Signed,   32) => Self::I32,
-                (Signedness::Unsigned, 64) => Self::U64,
-                (Signedness::Signed,   64) => Self::I64,
-
-                (sign, width) => todo!("{}{}s are currently unsupported", sign, width),
-            },
-            HirType::Bool => Self::Bool,
-            HirType::Unit => Self::Unit,
-            HirType::Pointer(ty) => Self::Pointer(Ref::new(Self::from(&**ty))),
-            HirType::String => Self::String,
-            HirType::Absurd => Self::Absurd,
-            HirType::Array(elem, len) => Self::Array(Ref::new(Self::from(&**elem)), *len),
-            HirType::Slice(elem) => Self::Slice(Ref::new(Self::from(&**elem))),
-            HirType::Reference(mutable, ty) => {
-                Self::Reference(*mutable, Ref::new(Self::from(&**ty)))
-            }
-
-            HirType::Infer => unreachable!("All types should have been inferred by now"),
         }
     }
 }

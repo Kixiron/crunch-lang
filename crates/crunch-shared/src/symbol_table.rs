@@ -4,7 +4,7 @@ use crate::{
     strings::StrT,
     trees::{
         ast::{Block, Dest, Exposure, FuncArg, Item, Type as AstType, TypeMember, Variant},
-        CallConv, ItemPath, Signedness,
+        CallConv, ItemPath,
     },
     utils::HashMap,
     visitors::ast::ItemVisitor,
@@ -109,18 +109,18 @@ impl Resolver {
             AstType::Rune => Either::Left(2),
             AstType::Unit => Either::Left(3),
             AstType::Absurd => Either::Left(4),
-            AstType::Infer => Either::Left(5),
+            AstType::Unknown => Either::Left(5),
             AstType::Integer {
-                sign: Signedness::Signed,
-                width: 32,
+                signed: Some(true),
+                width: Some(32),
             } => Either::Left(6),
             AstType::Integer {
-                sign: Signedness::Signed,
-                width: 64,
+                signed: Some(true),
+                width: Some(64),
             } => Either::Left(6),
             AstType::Pointer { .. } => Either::Left(7),
-            AstType::Array(..) => Either::Left(7),
-            AstType::Slice(..) => Either::Left(7),
+            AstType::Array { .. } => Either::Left(7),
+            AstType::Slice { .. } => Either::Left(7),
             AstType::Reference { .. } => Either::Left(7),
             AstType::ItemPath(path) => self
                 .current()
@@ -187,7 +187,7 @@ impl ItemVisitor for Resolver {
         self.current_mut().functions.push(func);
     }
 
-    fn visit_type(
+    fn visit_type_decl(
         &mut self,
         item: &Item,
         _generics: Option<Locatable<&[Locatable<AstType>]>>,

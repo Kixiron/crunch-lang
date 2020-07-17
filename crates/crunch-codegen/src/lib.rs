@@ -413,16 +413,16 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
             Type::I32    => IntType::i32(self.ctx)?.into(),
             Type::U64    => IntType::u64(self.ctx)?.into(),
             Type::I64    => IntType::i64(self.ctx)?.into(),
-            Type::Slice(elem) => {
-                self.module.create_struct(&[self.visit_type(elem)?.make_pointer(AddressSpace::Generic)?.into(), IntType::u64(self.ctx)?.into()], false)?.into()
+            Type::Slice { element } => {
+                self.module.create_struct(&[self.visit_type(element)?.make_pointer(AddressSpace::Generic)?.into(), IntType::u64(self.ctx)?.into()], false)?.into()
             }
-            Type::Array(elem, len) => self.visit_type(&**elem)?.make_array(*len)?.into(),
-            Type::Pointer(ptr) => self
-                .visit_type(ptr)?
+            &Type::Array { ref element, length } => self.visit_type(element)?.make_array(length as u32)?.into(),
+            Type::Pointer { pointee, .. } => self
+                .visit_type(pointee)?
                 .make_pointer(AddressSpace::Generic)?
                 .into(),
-            Type::Reference(_, ty) => self
-                .visit_type(ty)?
+            Type::Reference { referee, .. } => self
+                .visit_type(referee)?
                 .make_pointer(AddressSpace::Generic)?
                 .into(),
         };

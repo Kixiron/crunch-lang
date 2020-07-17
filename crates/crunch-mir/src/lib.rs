@@ -13,7 +13,8 @@ use crunch_shared::{
             BinaryOp, Binding, Block as HirBlock, Block, Break, Cast, CompOp, Expr,
             ExternFunc as HirExternFunc, FuncArg, FuncCall, Function as HirFunction, Item,
             Literal as HirLiteral, LiteralVal as HirLiteralVal, Match, MatchArm, Pattern,
-            Reference, Return, Stmt, TypeKind, Var as HirVar, VarDecl,
+            Reference, Return, Stmt, Type as HirType, TypeKind as HirTypeKind, Var as HirVar,
+            VarDecl,
         },
         mir::{
             Assign, BasicBlock, BlockId, Constant, DefaultSwitchCase, ExternFunc, FnCall, FuncId,
@@ -23,7 +24,7 @@ use crunch_shared::{
         ItemPath, Ref,
     },
     utils::HashMap,
-    visitors::hir::{ExprVisitor, ItemVisitor, StmtVisitor},
+    visitors::hir::{ExprVisitor, ItemVisitor, StmtVisitor, TypeVisitor},
 };
 use crunch_typecheck::Engine;
 
@@ -66,9 +67,9 @@ impl MirBuilder {
     pub fn lower(mut self, items: &[Item]) -> MirResult<Mir> {
         self.function_names = HashMap::from_iter(items.iter().filter_map(|item| {
             if let Item::Function(HirFunction { name, ret, .. }) = item {
-                Some((name.clone(), (self.next_func_id(), Type::from(&ret.kind))))
+                Some((name.clone(), (self.next_func_id(), self.visit_type(ret))))
             } else if let Item::ExternFunc(HirExternFunc { name, ret, .. }) = item {
-                Some((name.clone(), (self.next_func_id(), Type::from(&ret.kind))))
+                Some((name.clone(), (self.next_func_id(), self.visit_type(ret))))
             } else {
                 None
             }
@@ -170,7 +171,7 @@ impl ItemVisitor for MirBuilder {
 
         let mut args = Vec::with_capacity(func.args.len());
         for FuncArg { name, kind, .. } in func.args.iter() {
-            let ty: Type = kind.into();
+            let ty = self.visit_type(kind);
             let id = self.insert_variable(name.into(), ty.clone());
 
             args.push(Variable { id, ty });
@@ -194,7 +195,7 @@ impl ItemVisitor for MirBuilder {
             id,
             name: func.name.clone(),
             args,
-            ret: (&func.ret.kind).into(),
+            ret: self.visit_type(&func.ret),
             blocks,
         };
         self.functions.push(func);
@@ -208,7 +209,7 @@ impl ItemVisitor for MirBuilder {
 
         let mut args = Vec::with_capacity(func.args.len());
         for FuncArg { name, kind, .. } in func.args.iter() {
-            let ty: Type = kind.into();
+            let ty = self.visit_type(kind);
             let id = self.insert_variable(name.into(), ty.clone());
 
             args.push(Variable { id, ty });
@@ -218,7 +219,7 @@ impl ItemVisitor for MirBuilder {
             id,
             name: func.name.clone(),
             args,
-            ret: (&func.ret.kind).into(),
+            ret: self.visit_type(&func.ret),
             callconv: func.callconv,
         };
         self.external_functions.push(func);
@@ -323,6 +324,7 @@ impl ExprVisitor for MirBuilder {
             match pattern {
                 Pattern::Literal(lit) => {
                     let case = self.visit_literal(loc, lit)?.unwrap();
+                    crunch_shared::error!("{:?}, {:?}", condition_type, case.ty);
                     assert!(condition_type == case.ty);
 
                     cases.push(SwitchCase {
@@ -387,12 +389,11 @@ impl ExprVisitor for MirBuilder {
         Ok(None)
     }
 
-    fn visit_variable(&mut self, _loc: Location, var: HirVar, ty: &TypeKind) -> Self::Output {
+    fn visit_variable(&mut self, _loc: Location, var: HirVar, _ty: &HirType) -> Self::Output {
         let Variable {
             id: val,
             ty: var_ty,
         } = self.get_variable(var.into());
-        assert_eq!(var_ty, &Type::from(ty));
 
         Ok(Some(Rval {
             val: Value::Variable(*val),
@@ -407,14 +408,11 @@ impl ExprVisitor for MirBuilder {
         HirLiteral { val, ty, .. }: &HirLiteral,
     ) -> Self::Output {
         match val {
-            HirLiteralVal::Integer(Integer { sign, bits }) => {
+            &HirLiteralVal::Integer(Integer { sign, bits }) => {
                 // FIXME: Doesn't respect types
-                let val = Value::Const(Constant::Integer {
-                    sign: *sign,
-                    bits: *bits,
-                });
+                let val = Value::Const(Constant::Integer { sign, bits });
                 let rval = Rval {
-                    ty: Type::from(&ty.kind),
+                    ty: self.visit_type(ty),
                     val,
                 };
 
@@ -431,11 +429,14 @@ impl ExprVisitor for MirBuilder {
                 val: Value::Const(Constant::String(string.to_bytes())),
             })),
 
-            HirLiteralVal::Array(array) => Ok(Some(Rval {
+            HirLiteralVal::Array { elements } => Ok(Some(Rval {
                 // FIXME: Doesn't respect types
-                ty: Type::Array(Ref::new(Type::U8), array.len() as u32),
+                ty: Type::Array {
+                    element: Ref::new(Type::U8),
+                    length: elements.len() as u64,
+                },
                 val: Value::Const(Constant::Array(
-                    array
+                    elements
                         .into_iter()
                         .map(|e| {
                             self.visit_literal(loc, e)
@@ -537,7 +538,7 @@ impl ExprVisitor for MirBuilder {
     }
 
     fn visit_cast(&mut self, _loc: Location, Cast { casted, ty }: &Cast) -> Self::Output {
-        let ty = Type::from(&ty.kind);
+        let ty = self.visit_type(ty);
         let casted = self
             .visit_expr(casted)?
             .expect("Received no value where one was expected");
@@ -564,5 +565,62 @@ impl ExprVisitor for MirBuilder {
         };
 
         Ok(Some(Rval { ty, val }))
+    }
+}
+
+impl TypeVisitor for MirBuilder {
+    type Output = Type;
+
+    fn visit_type(&mut self, r#type: &HirType) -> Self::Output {
+        match &r#type.kind {
+            HirTypeKind::Integer { signed, width } => {
+                match (signed.unwrap_or(true), width.unwrap_or(32)) {
+                    (false, 8) => Type::U8,
+                    (true, 8) => Type::I8,
+                    (false, 16) => Type::U16,
+                    (true, 16) => Type::I16,
+                    (false, 32) => Type::U32,
+                    (true, 32) => Type::I32,
+                    (false, 64) => Type::U64,
+                    (true, 64) => Type::I64,
+
+                    (sign, width) => todo!("{}{}", sign, width),
+                }
+            }
+            HirTypeKind::Bool => Type::Bool,
+            HirTypeKind::Unit => Type::Unit,
+            &HirTypeKind::Pointer {
+                ref pointee,
+                mutable,
+            } => Type::Pointer {
+                pointee: Ref::new(self.visit_type(pointee.as_ref())),
+                mutable,
+            },
+            HirTypeKind::String => Type::String,
+            HirTypeKind::Absurd => Type::Absurd,
+            &HirTypeKind::Array {
+                ref element,
+                length,
+            } => Type::Array {
+                element: Ref::new(self.visit_type(element.as_ref())),
+                length,
+            },
+            HirTypeKind::Slice { element } => Type::Slice {
+                element: Ref::new(self.visit_type(element.as_ref())),
+            },
+            &HirTypeKind::Reference {
+                ref referee,
+                mutable,
+            } => Type::Reference {
+                referee: Ref::new(self.visit_type(referee.as_ref())),
+                mutable,
+            },
+
+            // FIXME: This should be an error for the user
+            HirTypeKind::Unknown => {
+                crunch_shared::warn!("This should be an error for the user");
+                unreachable!("All types should have been inferred by now");
+            }
+        }
     }
 }

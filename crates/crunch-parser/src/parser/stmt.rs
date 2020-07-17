@@ -47,7 +47,7 @@ impl<'src> Parser<'src> {
 
                 let ty = if self.peek()?.ty() == TokenType::Equal {
                     self.eat(TokenType::Equal, [])?;
-                    Locatable::new(Type::Infer, Location::new(span, self.current_file))
+                    Locatable::new(Type::Unknown, Location::new(span, self.current_file))
                 } else {
                     let ty = self.ascribed_type()?;
                     self.eat(TokenType::Colon, [TokenType::Newline])?;

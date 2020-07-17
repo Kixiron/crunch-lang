@@ -3,11 +3,11 @@ use crate::{
     strings::StrT,
     trees::{
         ast::{
-            AssignKind, BinaryOp, Block, CompOp, Dest, Exposure, Expr, ExprKind, For, FuncArg, If,
-            Item, ItemKind, Literal, Loop, Match, Stmt, Type, TypeMember, UnaryOp, VarDecl,
-            Variant, While,
+            AssignKind, BinaryOp, Binding, Block, CompOp, Dest, Exposure, Expr, For, FuncArg, If,
+            Item, ItemKind, Literal, LiteralVal, Loop, Match, Pattern, Stmt, Type, TypeMember,
+            UnaryOp, VarDecl, Variant, While,
         },
-        CallConv, ItemPath, Sided,
+        CallConv, ItemPath,
     },
 };
 use alloc::vec::Vec;
@@ -33,7 +33,7 @@ pub trait ItemVisitor {
                 *sig,
             ),
             ItemKind::Type { generics, members } => {
-                self.visit_type(item, generics.as_ref().map(|g| g.as_deref()), members)
+                self.visit_type_decl(item, generics.as_ref().map(|g| g.as_deref()), members)
             }
             ItemKind::Enum { generics, variants } => {
                 self.visit_enum(item, generics.as_ref().map(|g| g.as_deref()), variants)
@@ -84,7 +84,7 @@ pub trait ItemVisitor {
         ret: Locatable<&Type>,
         sig: Location,
     ) -> Self::Output;
-    fn visit_type(
+    fn visit_type_decl(
         &mut self,
         item: &Item,
         generics: Option<Locatable<&[Locatable<Type>]>>,
@@ -143,42 +143,7 @@ pub trait StmtVisitor {
 pub trait ExprVisitor {
     type Output;
 
-    #[inline]
-    fn visit_expr(&mut self, expr: &Expr) -> Self::Output {
-        match &expr.kind {
-            ExprKind::If(if_) => self.visit_if(expr, if_),
-            ExprKind::Return(value) => self.visit_return(expr, value.as_deref()),
-            ExprKind::Break(value) => self.visit_break(expr, value.as_deref()),
-            ExprKind::Continue => self.visit_continue(expr),
-            ExprKind::While(while_) => self.visit_while(expr, while_),
-            ExprKind::Loop(loop_) => self.visit_loop(expr, loop_),
-            ExprKind::For(for_) => self.visit_for(expr, for_),
-            ExprKind::Match(match_) => self.visit_match(expr, match_),
-            ExprKind::Variable(var) => self.visit_variable(expr, *var),
-            ExprKind::Literal(literal) => self.visit_literal(expr, literal),
-            ExprKind::UnaryOp(op, inner) => self.visit_unary(expr, *op, inner),
-            ExprKind::BinaryOp(Sided { lhs, op, rhs }) => self.visit_binary_op(expr, lhs, *op, rhs),
-            ExprKind::Comparison(Sided { lhs, op, rhs }) => {
-                self.visit_comparison(expr, lhs, *op, rhs)
-            }
-            ExprKind::Assign(Sided { lhs, op, rhs }) => self.visit_assign(expr, lhs, *op, rhs),
-            ExprKind::Paren(inner) => self.visit_paren(expr, inner),
-            ExprKind::Array(elements) => self.visit_array(expr, elements),
-            ExprKind::Tuple(elements) => self.visit_tuple(expr, elements),
-            ExprKind::Range(start, end) => self.visit_range(expr, start, end),
-            ExprKind::Index { var, index } => self.visit_index(expr, var, index),
-            ExprKind::FuncCall { caller, args } => self.visit_func_call(expr, caller, args),
-            ExprKind::MemberFuncCall { member, func } => {
-                self.visit_member_func_call(expr, member, func)
-            }
-            ExprKind::Reference {
-                mutable,
-                expr: reference,
-            } => self.visit_reference(expr, *mutable, reference.as_ref()),
-            ExprKind::Cast { expr: cast, ty } => self.visit_cast(expr, cast, ty.as_ref().as_ref()),
-        }
-    }
-
+    fn visit_expr(&mut self, expr: &Expr) -> Self::Output;
     fn visit_if(&mut self, expr: &Expr, if_: &If) -> Self::Output;
     fn visit_return(&mut self, expr: &Expr, value: Option<&Expr>) -> Self::Output;
     fn visit_break(&mut self, expr: &Expr, value: Option<&Expr>) -> Self::Output;
@@ -188,7 +153,13 @@ pub trait ExprVisitor {
     fn visit_for(&mut self, expr: &Expr, for_: &For) -> Self::Output;
     fn visit_match(&mut self, expr: &Expr, match_: &Match) -> Self::Output;
     fn visit_variable(&mut self, expr: &Expr, var: Locatable<StrT>) -> Self::Output;
-    fn visit_literal(&mut self, expr: &Expr, literal: &Locatable<Literal>) -> Self::Output;
+
+    type LiteralOutput;
+    fn visit_literal(&mut self, literal: &Literal) -> Self::LiteralOutput;
+
+    type LiteralValOutput;
+    fn visit_literal_val(&mut self, val: &LiteralVal) -> Self::LiteralValOutput;
+
     fn visit_unary(&mut self, expr: &Expr, op: UnaryOp, inner: &Expr) -> Self::Output;
     fn visit_binary_op(
         &mut self,
@@ -210,6 +181,11 @@ pub trait ExprVisitor {
     fn visit_member_func_call(&mut self, expr: &Expr, member: &Expr, func: &Expr) -> Self::Output;
     fn visit_reference(&mut self, expr: &Expr, mutable: bool, reference: &Expr) -> Self::Output;
     fn visit_cast(&mut self, expr: &Expr, cast: &Expr, ty: Locatable<&Type>) -> Self::Output;
+
+    type BindingOutput;
+    fn visit_binding(&mut self, binding: &Binding) -> Self::BindingOutput;
+    type PatternOutput;
+    fn visit_pattern(&mut self, pattern: &Pattern) -> Self::PatternOutput;
 }
 
 #[allow(unused_variables)]
@@ -240,4 +216,10 @@ pub trait ItemVisitorMut {
     fn visit_alias(&mut self, items: &mut Vec<Item>, item: &mut Item) -> Self::Output;
     fn visit_extern_block(&mut self, items: &mut Vec<Item>, item: &mut Item) -> Self::Output;
     fn visit_extern_func(&mut self, items: &mut Vec<Item>, item: &mut Item) -> Self::Output;
+}
+
+pub trait TypeVisitor {
+    type Output;
+
+    fn visit_type(&mut self, r#type: Locatable<&Type>) -> Self::Output;
 }

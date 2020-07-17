@@ -8,7 +8,6 @@
 )]
 
 use crunch_parser::Parser;
-use crunch_semantics::{Correctness, SemanticAnalyzer};
 use crunch_shared::{
     context::Context,
     error::ErrorHandler,
@@ -58,14 +57,7 @@ fn main() -> rustyline::Result<()> {
                         if !warnings.is_fatal() {
                             warnings.emit(&files);
 
-                            let mut warnings = semantic_analyzer().analyze(&items, &context);
-                            warnings.emit(&files);
-                            if warnings.is_fatal() {
-                                continue;
-                            }
-
                             let mut hir = Ladder::new().lower(&items);
-
                             warnings.extend(
                                 Engine::new(context.strings.clone())
                                     .walk(&mut hir)
@@ -288,10 +280,6 @@ fn prompt(new: bool, rusty_line: &mut Editor<CrunchHelper>) -> &'static str {
         format!("\x1b[1;32m{}\x1b[0m", prompt);
 
     prompt
-}
-
-fn semantic_analyzer() -> SemanticAnalyzer {
-    SemanticAnalyzer::new().pass(Correctness::new())
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
