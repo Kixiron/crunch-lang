@@ -9,13 +9,16 @@ proc-macro = true
 
 [dependencies.syn]
 version = "1.0.34"
+default-features = false
 features = ["full"]
 
 [dependencies.quote]
 version = "1.0.7"
+default-features = false
 
 [dependencies.proc-macro2]
 version = "1.0.18"
+default-features = false
 
 # TODO: Replace with something *much* lighter
 # [dependencies.serde_dhall]

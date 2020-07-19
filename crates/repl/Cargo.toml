@@ -20,6 +20,8 @@ path = "../crunch-typecheck"
 
 [dependencies.rustyline]
 version = "6.2.0"
+default-features = false
 
 [dependencies.rustyline-derive]
 version = "0.3.1"
+default-features = false

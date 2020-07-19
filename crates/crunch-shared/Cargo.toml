@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Chase Wilson <me@chasewilson.dev>"]
 license = "Zlib"
 edition = "2018"
+build = "build.rs"
 
 [features]
 default = []
@@ -14,27 +15,40 @@ logging = ["log"]
 [dependencies.hashbrown]
 version = "0.8.1"
 optional = true
+default-features = false
 
 [dependencies.log]
 version = "0.4.11"
 optional = true
+default-features = false
 
 [dependencies.serde]
 version = "1.0.114"
 features = ["derive"]
+default-features = false
 
 [dependencies.derive_more]
 version = "0.99.9"
+features = ["display"]
+default-features = false
 
 [dependencies.codespan-reporting]
 version = "0.9.5"
+default-features = false
 
 [dependencies.pretty]
 version = "0.10.0"
+default-features = false
 
 [dependencies.lasso]
 git = "https://github.com/Kixiron/lasso.git"
+default-features = false
 features = ["serialize"]
 
 [dependencies.crunch-proc]
 path = "../crunch-proc"
+
+[build-dependencies.chrono]
+version = "0.4"
+default-features = false
+features = ["clock"]

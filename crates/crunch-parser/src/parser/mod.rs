@@ -14,8 +14,6 @@ mod item;
 mod patterns;
 mod stmt;
 mod string_escapes;
-#[cfg(test)]
-mod tests;
 mod types;
 mod utils;
 

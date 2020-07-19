@@ -17,6 +17,8 @@ concurrent = ["crunch-shared/concurrent"]
 # Lexing
 [dependencies.logos]
 version = "0.11.4"
+default-features = false
+features = ["export_derive"]
 
 # Integer parsing
 [dependencies.lexical-core]
@@ -27,13 +29,11 @@ features = ["radix", "ryu", "format", "std"]
 # NFKC Normalization
 [dependencies.unicode-normalization]
 version = "0.1.13"
+default-features = false
 
 # Abstract Syntax Tree and Errors
 [dependencies.crunch-shared]
 path = "../crunch-shared"
-
-[dev-dependencies.ron]
-version = "0.6.0"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies.proptest]
 version = "0.10.0"

@@ -12,9 +12,11 @@ path = "src/main.rs"
 
 [dependencies.structopt]
 version = "0.3.15"
+default-features = false
 
 [dependencies.simple_logger]
 version = "1.6.0"
+default-features = false
 
 [dependencies.crunch-shared]
 path = "../crunch-shared"

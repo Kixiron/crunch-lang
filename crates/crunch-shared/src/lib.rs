@@ -17,6 +17,7 @@ pub use log::{debug, error, info, trace, warn};
 pub mod context;
 pub mod error;
 pub mod files;
+pub mod meta;
 pub mod strings;
 pub mod symbol_table;
 pub mod trees;
