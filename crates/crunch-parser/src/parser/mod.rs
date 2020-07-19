@@ -19,11 +19,11 @@ mod utils;
 
 use utils::StackGuard;
 
-type ReturnData = (Vec<Item>, ErrorHandler);
+pub type ParserReturn = (Vec<Item>, ErrorHandler);
 
 // TODO: Make the parser a little more lax, it's kinda strict about whitespace
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ParseConfig {
     pub max_errors: usize,
     #[doc(hidden)]
@@ -53,6 +53,7 @@ pub struct Parser<'src> {
 
 /// Initialization and high-level usage
 impl<'src> Parser<'src> {
+    // TODO: Take in a `ParseConfig`
     pub fn new(source: &'src str, current_file: CurrentFile, context: Context) -> Self {
         let (token_stream, next, peek) = Self::lex(source);
 
@@ -88,7 +89,7 @@ impl<'src> Parser<'src> {
     }
 
     #[instrument(name = "parsing")]
-    pub fn parse(mut self) -> Result<ReturnData, ErrorHandler> {
+    pub fn parse(mut self) -> Result<ParserReturn, ErrorHandler> {
         let (mut items, mut errors) = (Vec::with_capacity(20), 0);
 
         while self.peek().is_ok() {

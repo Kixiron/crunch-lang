@@ -5,11 +5,11 @@ use crunch_codegen::{
     },
     CodeGenerator,
 };
+use crunch_database::{ContextDatabase, CrunchDatabase, ParseDatabase, SourceDatabase};
 use crunch_mir::MirBuilder;
-use crunch_parser::{ExternUnnester, Parser};
 use crunch_shared::{
     context::Context as ParseContext,
-    files::{CurrentFile, FileId, Files},
+    files::{FileId, Files},
     symbol_table::Resolver,
     visitors::ast::ItemVisitor,
 };
@@ -73,7 +73,7 @@ fn run(
     //       via environmental variables
     // TODO: Make different levels of verbosity actually do something
     } else if options.is_verbose() {
-        if simple_logger::init().is_err() && !options.quiet {}
+        env_logger::try_init().ok();
     }
 
     // Get the source file's name without an extension
@@ -133,24 +133,20 @@ fn run(
     // Create the parsing context
     let parse_ctx = ParseContext::default();
 
+    let mut database = CrunchDatabase::default();
+    database.set_context(parse_ctx.clone());
+    database.set_source_text(FileId::new(0), std::sync::Arc::new(source.clone()));
+    database.set_file_name(FileId::new(0), source_file.clone().to_string());
+
     // Create the files for error reporting
     let mut files = Files::new();
     files.add(source_file.clone(), source.clone());
 
-    let parser = Parser::new(
-        &source,
-        CurrentFile::new(FileId::new(0), source.len()),
-        parse_ctx.clone(),
-    );
-
     // Parse the source file into an ast
-    let ast = match parser.parse() {
-        Ok((ast, mut warnings)) => {
+    let ast = match database.parse(FileId::new(0)) {
+        Ok(ok) => {
+            let (ast, mut warnings) = ok.as_ref().clone();
             warnings.emit(&files);
-
-            // Unnest extern blocks
-            // TODO: Better structure for micro passes
-            let ast = ExternUnnester::new().unnest(ast);
 
             if options.emit.contains(&EmissionKind::Ast) {
                 let path = out_file.with_extension("ast");
@@ -171,8 +167,8 @@ fn run(
             ast
         }
 
-        Err(mut errors) => {
-            errors.emit(&files);
+        Err(errors) => {
+            errors.as_ref().clone().emit(&files);
             return Err(ExitStatus::default());
         }
     };

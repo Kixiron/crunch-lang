@@ -298,7 +298,7 @@ where
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Deserialize, Serialize)]
 pub struct ErrorHandler {
     errors: VecDeque<Locatable<Error>>,
     warnings: VecDeque<Locatable<Warning>>,
@@ -397,7 +397,7 @@ impl From<Locatable<Error>> for ErrorHandler {
     }
 }
 
-#[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Error {
     #[display(fmt = "Invalid Syntax: {}", _0)]
     Syntax(SyntaxError),
@@ -439,7 +439,7 @@ impl Error {
     }
 }
 
-#[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum SyntaxError {
     #[display(fmt = "{}", _0)]
     Generic(String),
@@ -530,7 +530,7 @@ impl Into<Error> for SyntaxError {
     }
 }
 
-#[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum SemanticError {
     #[display(fmt = "{} was previously defined", name)]
     Redefinition {
@@ -631,7 +631,7 @@ impl Into<Error> for SemanticError {
     }
 }
 
-#[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[allow(missing_copy_implementations)]
 pub enum TypeError {
     #[display(fmt = "The variable '{}' was not found in this scope", _0)]
@@ -734,7 +734,7 @@ impl Into<Error> for TypeError {
     }
 }
 
-#[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum MirError {
     #[display(fmt = "Out of scope variables were used: {}", _0)]
     OutOfScopeVariables(String),
@@ -771,7 +771,7 @@ impl Into<Error> for MirError {
     }
 }
 
-#[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Warning {
     #[display(fmt = "The generic '{}' was not used", _0)]
     UnusedGeneric(String),

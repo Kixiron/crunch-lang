@@ -1,3 +1,4 @@
+#[no_mangle]
 pub static CRUNCHC_VERSION: &str = concat!(
     "crunchc v",
     env!("CARGO_PKG_VERSION"),

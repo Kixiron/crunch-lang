@@ -1,0 +1,15 @@
+[package]
+name = "crunch-database"
+version = "0.1.0"
+authors = ["Chase Wilson <me@chasewilson.dev>"]
+edition = "2018"
+
+[dependencies.salsa]
+version = "0.15.0"
+default-features = false
+
+[dependencies.crunch-shared]
+path = "../crunch-shared"
+
+[dependencies.crunch-parser]
+path = "../crunch-parser"

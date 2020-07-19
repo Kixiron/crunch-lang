@@ -17,3 +17,4 @@ seccomp-perf.json
 **/history.txt
 
 **/build
+.env

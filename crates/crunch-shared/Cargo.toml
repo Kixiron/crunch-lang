@@ -45,6 +45,14 @@ git = "https://github.com/Kixiron/lasso.git"
 default-features = false
 features = ["serialize"]
 
+[dependencies.fnv]
+version = "1.0.7"
+default-features = false
+
+[dependencies.cfg-if]
+version = "0.1.10"
+default-features = false
+
 [dependencies.crunch-proc]
 path = "../crunch-proc"
 

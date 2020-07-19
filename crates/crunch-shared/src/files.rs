@@ -5,7 +5,7 @@ use core::ops::Range;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-struct File {
+pub struct File {
     name: String,
     source: String,
     line_starts: Vec<usize>,

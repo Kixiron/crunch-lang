@@ -16,5 +16,5 @@ mod tests;
 mod token;
 mod unnest_externs;
 
-pub use parser::{ParseConfig, Parser};
+pub use parser::{ParseConfig, Parser, ParserReturn};
 pub use unnest_externs::ExternUnnester;
