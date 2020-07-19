@@ -42,6 +42,7 @@ pub struct Engine {
     interner: StrInterner,
     current_func: Option<Func>,
     functions: HashMap<ItemPath, Func>,
+    check: Option<TypeId>,
 }
 
 impl Engine {
@@ -54,6 +55,7 @@ impl Engine {
             interner,
             current_func: None,
             functions: HashMap::new(),
+            check: None,
         }
     }
 
@@ -100,6 +102,10 @@ impl Engine {
     fn unify(&mut self, a: TypeId, b: TypeId) -> TypeResult<()> {
         let ((lhs, lhs_loc), (rhs, rhs_loc)) = (self.types[&a].clone(), self.types[&b].clone());
 
+        if a == b {
+            return Ok(());
+        }
+
         match (lhs, rhs) {
             (TypeInfo::Ref(a), _) => self.unify(a, b),
             (_, TypeInfo::Ref(b)) => self.unify(a, b),
@@ -122,54 +128,28 @@ impl Engine {
 
             (
                 TypeInfo::Integer {
-                    signed: Some(left_sign),
-                    width: Some(left_width),
+                    signed: signed_a,
+                    width: width_a,
                 },
                 TypeInfo::Integer {
-                    signed: Some(right_sign),
-                    width: Some(right_width),
-                },
-            ) if left_sign == right_sign && left_width == right_width => Ok(()),
-
-            (
-                TypeInfo::Integer {
-                    signed: None,
-                    width: None,
-                },
-                TypeInfo::Integer {
-                    signed: Some(..),
-                    width: Some(..),
+                    signed: signed_b,
+                    width: width_b,
                 },
             ) => {
+                match (signed_a, signed_b) {
+                    (Some(signed_a), Some(signed_b)) if signed_a != signed_b => {
+                        todo!("Conflicting sign, return error")
+                    }
+                    _ => {}
+                }
+                match (width_a, width_b) {
+                    (Some(width_a), Some(width_b)) if width_a != width_b => {
+                        todo!("Conflicting width, return error")
+                    }
+                    _ => {}
+                }
+
                 self.types.insert(a, (TypeInfo::Ref(b), rhs_loc));
-
-                Ok(())
-            }
-            (
-                TypeInfo::Integer {
-                    signed: Some(..),
-                    width: Some(..),
-                },
-                TypeInfo::Integer {
-                    signed: None,
-                    width: None,
-                },
-            ) => {
-                self.types.insert(b, (TypeInfo::Ref(a), lhs_loc));
-
-                Ok(())
-            }
-            (
-                TypeInfo::Integer {
-                    signed: None,
-                    width: None,
-                },
-                TypeInfo::Integer {
-                    signed: None,
-                    width: None,
-                },
-            ) => {
-                self.types.insert(b, (TypeInfo::Ref(a), lhs_loc));
 
                 Ok(())
             }
@@ -425,27 +405,6 @@ impl Engine {
         let info = self.insert_bare(info, *loc);
 
         match val {
-            LiteralVal::Integer(_) => {
-                let int = self.insert_bare(
-                    TypeInfo::Integer {
-                        signed: None,
-                        width: None,
-                    },
-                    *loc,
-                );
-                self.unify(int, info)?;
-            }
-
-            LiteralVal::Bool(_) => {
-                let boolean = self.insert_bare(TypeInfo::Bool, *loc);
-                self.unify(boolean, info)?;
-            }
-
-            LiteralVal::String(_) => {
-                let string = self.insert_bare(TypeInfo::String, *loc);
-                self.unify(string, info)?;
-            }
-
             LiteralVal::Array { elements } => {
                 let element = self.insert_bare(TypeInfo::Unknown, *loc);
 
@@ -463,7 +422,12 @@ impl Engine {
                 }
             }
 
-            lit => todo!("{:?}", lit),
+            ignored => crunch_shared::debug!("Ignoring {:?} in intern_literal", ignored),
+        }
+
+        if let Some(check) = self.check {
+            self.unify(info, check)?;
+            *ty = self.reconstruct(info)?;
         }
 
         // TODO: Check inner types of stuff
@@ -574,11 +538,23 @@ impl MutItemVisitor for Engine {
         }
     }
 
-    fn visit_func(&mut self, Function { name, body, .. }: &mut Function) -> Self::Output {
+    fn visit_func(
+        &mut self,
+        Function {
+            name, body, args, ..
+        }: &mut Function,
+    ) -> Self::Output {
+        self.ids.clear();
         self.current_func = Some(self.functions.get(name).unwrap().clone());
+
+        for arg in args.iter_mut() {
+            self.insert(arg.name, &arg.kind)?;
+        }
+
         for stmt in body.iter_mut() {
             self.visit_stmt(stmt)?;
         }
+
         self.current_func = None;
 
         Ok(())
@@ -656,6 +632,7 @@ impl MutExprVisitor for Engine {
 
     fn visit_return(&mut self, loc: Location, ret: &mut Return) -> Self::Output {
         let func_ret = *self.current_func.as_ref().unwrap().ret;
+        self.check = Some(func_ret);
 
         if let Some(ref mut ret) = ret.val {
             let ret = self.visit_expr(ret)?;
@@ -664,6 +641,7 @@ impl MutExprVisitor for Engine {
             let unit = self.insert_bare(TypeInfo::Unit, loc);
             self.unify(unit, func_ret)?;
         }
+        self.check.take();
 
         Ok(self.insert_bare(TypeInfo::Absurd, loc))
     }
@@ -687,14 +665,17 @@ impl MutExprVisitor for Engine {
         for arm in arms.iter_mut() {
             match &mut arm.bind.pattern {
                 Pattern::Literal(literal) => {
+                    self.check = Some(condition_type);
                     let literal_type = self.visit_literal(loc, literal)?;
                     self.unify(condition_type, literal_type)?;
+                    self.check.take();
                 }
 
                 &mut Pattern::Ident(variable) => {
+                    self.check = Some(condition_type);
                     let variable_type = self.insert_bare(TypeInfo::Ref(condition_type), loc);
                     self.ids.insert(Var::User(variable), variable_type);
-                    self.unify(condition_type, variable_type)?;
+                    self.check.take();
                 }
 
                 // TODO: Is this correct?
@@ -756,13 +737,7 @@ impl MutExprVisitor for Engine {
             })?
             .clone();
 
-        let args = call
-            .args
-            .iter_mut()
-            .map(|e| self.visit_expr(e))
-            .collect::<TypeResult<Vec<TypeId>>>()?;
-
-        if func.args.len() != args.len() {
+        if func.args.len() != call.args.len() {
             let def_site = if func.args.is_empty() {
                 func.args.location()
             } else {
@@ -775,7 +750,7 @@ impl MutExprVisitor for Engine {
             return Err(Locatable::new(
                 TypeError::NotEnoughArgs {
                     expected: func.args.len(),
-                    received: args.len(),
+                    received: call.args.len(),
                     def_site,
                 }
                 .into(),
@@ -783,8 +758,12 @@ impl MutExprVisitor for Engine {
             ));
         }
 
-        for (expected, given) in func.args.iter().zip(args.iter()) {
-            self.unify(*given, *expected)?;
+        for (expr, check) in call.args.iter_mut().zip(func.args.iter().cloned()) {
+            self.check = Some(check);
+            let expr = self.visit_expr(expr)?;
+            self.check.take();
+
+            self.unify(expr, check)?;
         }
 
         Ok(*func.ret)
@@ -815,9 +794,15 @@ impl MutExprVisitor for Engine {
         _op: BinaryOp,
         rhs: &mut Expr,
     ) -> Self::Output {
+        let check = self.check;
+
         let lhs = self.visit_expr(lhs)?;
         let rhs = self.visit_expr(rhs)?;
         self.unify(lhs, rhs)?;
+
+        if let Some(check) = check {
+            self.unify(lhs, check)?;
+        }
 
         Ok(lhs)
     }
@@ -870,95 +855,4 @@ enum TypeInfo {
         referee: TypeId,
         mutable: bool,
     },
-}
-
-#[test]
-fn test() {
-    use crunch_parser::Parser;
-    use crunch_shared::{
-        context::Context,
-        files::{CurrentFile, FileId, Files},
-    };
-    use ladder::Ladder;
-
-    simple_logger::init().ok();
-
-    let source = r#"
-    fn main()
-        let mut greeting := "Hello from Crunch!"
-        :: println(greeting)
-
-        if greeting == "Hello"
-            "test"
-        else
-            "test2"
-        end
-
-        :: match greeting
-        ::     string where string == "some string" =>
-        ::         :: println("this can't happen")
-        ::     end
-        :: 
-        ::     greeting =>
-        ::         :: println("{}", greeting)
-        ::     end
-        :: end
-    end
-    "#;
-
-    let ctx = Context::default();
-    let mut files = Files::new();
-    files.add("<test>", source);
-
-    match Parser::new(
-        source,
-        CurrentFile::new(FileId::new(0), source.len()),
-        ctx.clone(),
-    )
-    .parse()
-    {
-        Ok((ast, mut warnings)) => {
-            warnings.emit(&files);
-
-            // println!("Nodes: {:#?}", &ast);
-            // println!("Symbols: {:#?}", &module_scope);
-
-            let mut ladder = Ladder::new();
-
-            let mut hir = ladder.lower(&ast);
-            println!("HIR: {:#?}", hir);
-
-            let mut engine = Engine::new(ctx.strings.clone());
-
-            match engine.walk(&mut hir) {
-                Ok(mut warnings) => {
-                    println!(
-                        "Type checking completed successfully with {} warnings",
-                        warnings.warn_len(),
-                    );
-                    warnings.emit(&files);
-
-                    println!(
-                        "Type of `greeting`: {:?}",
-                        engine
-                            .type_of(&Var::User(ctx.strings.intern("greeting")),)
-                            .unwrap(),
-                    );
-                }
-
-                Err(mut errors) => {
-                    println!(
-                        "Type checking failed with {} warnings and {} errors",
-                        errors.warn_len(),
-                        errors.err_len(),
-                    );
-                    errors.emit(&files);
-                }
-            }
-        }
-
-        Err(mut err) => {
-            err.emit(&files);
-        }
-    }
 }

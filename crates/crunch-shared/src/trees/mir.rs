@@ -124,7 +124,7 @@ impl Function {
                 alloc
                     .intersperse(
                         self.blocks.iter().map(|b| b.to_doc(alloc, mir, interner)),
-                        alloc.hardline(),
+                        alloc.hardline().append(alloc.hardline()),
                     )
                     .indent(4),
             )
@@ -317,22 +317,33 @@ impl BasicBlock {
         D::Doc: Clone,
     {
         alloc
-            .text("block")
-            .append(alloc.space())
-            .append(self.id.to_doc(alloc, interner))
+            .nil()
             .append(
                 self.name
-                    .map(|n| alloc.text(interner.resolve(n).as_ref().to_owned()))
+                    .map(|n| {
+                        alloc
+                            .text("@named(\"")
+                            .append(alloc.text(interner.resolve(n).as_ref().to_owned()))
+                            .append(alloc.text("\")"))
+                            .append(alloc.hardline())
+                    })
                     .unwrap_or_else(|| alloc.nil()),
             )
-            .append(
-                alloc
-                    .intersperse(
-                        self.args.iter().map(|a| a.to_doc(alloc, mir, interner)),
-                        alloc.text(",").append(alloc.space()),
-                    )
-                    .group(),
-            )
+            .append(alloc.text("block"))
+            .append(alloc.space())
+            .append(self.id.to_doc(alloc, interner))
+            .append(if self.args.is_empty() {
+                alloc.nil()
+            } else {
+                alloc.text(" << ").append(
+                    alloc
+                        .intersperse(
+                            self.args.iter().map(|a| a.to_doc(alloc, mir, interner)),
+                            alloc.text(",").append(alloc.space()),
+                        )
+                        .group(),
+                )
+            })
             .append(alloc.hardline())
             .append(
                 alloc
@@ -443,6 +454,7 @@ impl Terminator {
                 .text("switch")
                 .append(alloc.space())
                 .append(condition.to_doc(alloc, interner))
+                .append(alloc.hardline())
                 .append(
                     alloc
                         .intersperse(
@@ -489,7 +501,7 @@ impl SwitchCase {
             } else {
                 alloc
                     .space()
-                    .append(alloc.text("<|"))
+                    .append(alloc.text("<<"))
                     .append(alloc.space())
                     .append(alloc.intersperse(
                         self.args.iter().map(|a| a.to_doc(alloc, interner)),
@@ -525,7 +537,7 @@ impl DefaultSwitchCase {
             } else {
                 alloc
                     .space()
-                    .append(alloc.text("<|"))
+                    .append(alloc.text("<<"))
                     .append(alloc.space())
                     .append(alloc.intersperse(
                         self.args.iter().map(|a| a.to_doc(alloc, interner)),
@@ -802,34 +814,34 @@ impl Value {
             Self::Call(call) => call.to_doc(alloc, mir, interner),
 
             Self::Add(lhs, rhs) => alloc
-                .nil()
-                .append(lhs.to_doc(alloc, interner))
+                .text("add")
                 .append(alloc.space())
-                .append(alloc.text("+"))
+                .append(lhs.to_doc(alloc, interner))
+                .append(alloc.text(","))
                 .append(alloc.space())
                 .append(rhs.to_doc(alloc, interner)),
 
             Self::Sub(lhs, rhs) => alloc
-                .nil()
-                .append(lhs.to_doc(alloc, interner))
+                .text("sub")
                 .append(alloc.space())
-                .append(alloc.text("-"))
+                .append(lhs.to_doc(alloc, interner))
+                .append(alloc.text(","))
                 .append(alloc.space())
                 .append(rhs.to_doc(alloc, interner)),
 
             Self::Mul(lhs, rhs) => alloc
-                .nil()
-                .append(lhs.to_doc(alloc, interner))
+                .text("mul")
                 .append(alloc.space())
-                .append(alloc.text("*"))
+                .append(lhs.to_doc(alloc, interner))
+                .append(alloc.text(","))
                 .append(alloc.space())
                 .append(rhs.to_doc(alloc, interner)),
 
             Self::Div(lhs, rhs) => alloc
-                .nil()
-                .append(lhs.to_doc(alloc, interner))
+                .text("div")
                 .append(alloc.space())
-                .append(alloc.text("/"))
+                .append(lhs.to_doc(alloc, interner))
+                .append(alloc.text(","))
                 .append(alloc.space())
                 .append(rhs.to_doc(alloc, interner)),
 
@@ -885,7 +897,7 @@ impl Constant {
         D: DocAllocator<'a>,
         D::Doc: Clone,
     {
-        match self {
+        let constant = match self {
             Self::Integer { sign, bits } => alloc
                 .text(sign.to_string())
                 .append(alloc.text(bits.to_string())),
@@ -902,7 +914,9 @@ impl Constant {
                         .group(),
                 )
                 .append(alloc.text("]")),
-        }
+        };
+
+        alloc.text("const").append(alloc.space()).append(constant)
     }
 }
 

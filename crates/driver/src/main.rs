@@ -17,7 +17,7 @@ use crunch_typecheck::Engine;
 use ladder::Ladder;
 use std::{
     borrow::Cow,
-    env, fmt, fs,
+    fmt, fs,
     io::{self, Write},
     path::PathBuf,
     str::FromStr,
@@ -26,16 +26,6 @@ use std::{
 use structopt::StructOpt;
 
 fn main() {
-    match env::var("CRUNCH_BACKTRACE") {
-        Ok(backtrace) if backtrace == "1" => {
-            // TODO: Allow users to disable colors
-            color_eyre::install().ok();
-        }
-
-        // TODO: Report an error on non-unicode and incorrect settings?
-        _ => {}
-    }
-
     let code = {
         let args = CrunchcOpts::from_args();
         let options = args.build_options();

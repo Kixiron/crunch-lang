@@ -2,7 +2,7 @@
 
 extern crate alloc;
 
-use alloc::{vec, vec::Vec};
+use alloc::vec::Vec;
 use core::iter::FromIterator;
 use crunch_shared::{
     crunch_proc::instrument,
@@ -120,16 +120,27 @@ impl MirBuilder {
     }
 
     fn make_assignment(&mut self, var: impl Into<Option<Var>>, val: Rval) -> VarId {
-        let var = var
-            .into()
-            .unwrap_or_else(|| Var::MirAuto(self.next_var().0));
-        let ty = val.ty.clone();
-        let id = self.insert_variable(var, ty.clone());
+        if let &Value::Variable(var) = &val.val {
+            var
+        } else {
+            let var = if let Some(var) = var.into() {
+                if let Some(var) = self.get_variable(var) {
+                    return var.id;
+                } else {
+                    var
+                }
+            } else {
+                Var::MirAuto(self.next_var().0)
+            };
 
-        self.current_block_mut()
-            .push(Instruction::Assign(Assign { var: id, val, ty }));
+            let ty = val.ty.clone();
+            let id = self.insert_variable(var, ty.clone());
 
-        id
+            self.current_block_mut()
+                .push(Instruction::Assign(Assign { var: id, val, ty }));
+
+            id
+        }
     }
 
     fn move_to_block(&mut self, block_id: BlockId) {
@@ -149,10 +160,8 @@ impl MirBuilder {
         self.blocks[self.current_block.0 as usize].verify()
     }
 
-    fn get_variable(&self, var: Var) -> &Variable {
-        self.variables
-            .get(&var.into())
-            .expect("Attempted to get a variable that doesn't exist")
+    fn get_variable(&self, var: Var) -> Option<&Variable> {
+        self.variables.get(&var.into())
     }
 }
 
@@ -330,21 +339,11 @@ impl ExprVisitor for MirBuilder {
                         args: Vec::new(),
                     });
                 }
-                Pattern::Ident(ident) => {
-                    self.move_to_block(case_block);
-
-                    let id = self.next_var();
-                    self.current_block_mut().push_argument(Variable {
-                        id,
-                        ty: condition_type.clone(),
-                    });
-
-                    self.move_to_block(current_block);
-
+                Pattern::Ident(_ident) => {
                     // FIXME: https://github.com/rust-lang/rust/issues/62633
                     let prev_default = default.replace(DefaultSwitchCase {
                         block: case_block,
-                        args: vec![self.get_variable(Var::User(*ident)).id],
+                        args: Vec::new(),
                     });
                     assert!(
                         prev_default.is_none(),
@@ -387,13 +386,15 @@ impl ExprVisitor for MirBuilder {
     }
 
     fn visit_variable(&mut self, _loc: Location, var: HirVar, _ty: &HirType) -> Self::Output {
-        let Variable {
+        let &Variable {
             id: val,
-            ty: var_ty,
-        } = self.get_variable(var.into());
+            ty: ref var_ty,
+        } = self
+            .get_variable(var.into())
+            .expect("Attempted to get a variable that doesn't exist");
 
         Ok(Some(Rval {
-            val: Value::Variable(*val),
+            val: Value::Variable(val),
             ty: var_ty.clone(),
         }))
     }
@@ -486,7 +487,10 @@ impl ExprVisitor for MirBuilder {
     }
 
     fn visit_assign(&mut self, _loc: Location, var: HirVar, value: &Expr) -> Self::Output {
-        let old_var = self.get_variable(var.into()).clone();
+        let old_var = self
+            .get_variable(var.into())
+            .expect("Attempted to get a variable that doesn't exist")
+            .clone();
         let rval = self
             .visit_expr(value)?
             .expect("Received no value where one was expected");

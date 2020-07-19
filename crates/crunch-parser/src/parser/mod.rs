@@ -130,7 +130,6 @@ impl<'src> Parser<'src> {
         }
     }
 
-    #[instrument(name = "lexing")]
     pub fn lex(source: &'src str) -> (TokenStream<'src>, Option<Token<'src>>, Option<Token<'src>>) {
         let mut token_stream = TokenStream::new(source, true, true);
         let next = None;

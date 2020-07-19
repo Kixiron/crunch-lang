@@ -1,4 +1,4 @@
-use alloc::string::String;
+use alloc::borrow::Cow;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "no-std")]
@@ -215,20 +215,18 @@ mod log {
 #[allow(missing_copy_implementations)]
 pub struct Timer {
     #[cfg(not(feature = "no-std"))]
-    name: String,
+    name: Cow<'static, str>,
 
     #[cfg(not(feature = "no-std"))]
     start: std::time::Instant,
 
     #[cfg(not(feature = "no-std"))]
     finished: bool,
-
-    __private: (),
 }
 
 impl Timer {
     #[allow(unused_variables)]
-    pub fn start(name: impl Into<String>) -> Self {
+    pub fn start(name: impl Into<Cow<'static, str>>) -> Self {
         #[cfg(not(feature = "no-std"))]
         {
             let name = name.into();
@@ -238,12 +236,11 @@ impl Timer {
                 name,
                 start: std::time::Instant::now(),
                 finished: false,
-                __private: (),
             };
         }
 
         #[cfg(feature = "no-std")]
-        return Self { __private: () };
+        return Self {};
     }
 
     #[allow(unused_mut)]
