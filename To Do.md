@@ -128,6 +128,7 @@
 - [ ] SSA IR for compilation to LLVM
 - [ ] https://github.com/rust-lang/rust/pull/45920
 - [ ] https://github.com/rust-lang/rust/tree/master/src/librustc_codegen_llvm/llvm
+- [ ] Size, align and stride
 
 ### Optimizations
 

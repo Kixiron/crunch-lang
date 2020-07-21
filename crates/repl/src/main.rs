@@ -7,7 +7,7 @@
     clippy::shadow_unrelated
 )]
 
-use crunch_parser::Parser;
+use crunch_parser::{ParseConfig, Parser};
 use crunch_shared::{
     context::Context,
     error::ErrorHandler,
@@ -47,6 +47,7 @@ fn main() -> rustyline::Result<()> {
                 let context = Context::new();
                 let parser = Parser::new(
                     &code,
+                    ParseConfig::default(),
                     CurrentFile::new(FileId::new(0), code.len()),
                     context.clone(),
                 );
@@ -57,9 +58,9 @@ fn main() -> rustyline::Result<()> {
                         if !warnings.is_fatal() {
                             warnings.emit(&files);
 
-                            let mut hir = Ladder::new().lower(&items);
+                            let mut hir = Ladder::new(context.clone()).lower(&items);
                             warnings.extend(
-                                Engine::new(context.strings.clone())
+                                Engine::new(context.clone())
                                     .walk(&mut hir)
                                     .map_or_else(|warn| warn, |err| err),
                             );
@@ -136,6 +137,7 @@ fn main() -> rustyline::Result<()> {
                 line.push('\n');
                 let mut parser = Parser::new(
                     &line,
+                    ParseConfig::default(),
                     CurrentFile::new(FileId::new(0), line.len()),
                     context.clone(),
                 );
@@ -158,6 +160,7 @@ fn main() -> rustyline::Result<()> {
                 let line = line.trim_start_matches(".expr");
                 let mut parser = Parser::new(
                     &line,
+                    ParseConfig::default(),
                     CurrentFile::new(FileId::new(0), line.len()),
                     context.clone(),
                 );

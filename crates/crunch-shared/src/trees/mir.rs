@@ -766,6 +766,8 @@ pub enum Value {
     Mul(VarId, VarId),
     /// The division of two values
     Div(VarId, VarId),
+    /// Returns a `true` boolean if the values are equal
+    Eq(VarId, VarId),
     /// Fetches a pointer to a variable, returning a `Pointer` value
     GetPointer {
         /// The variable being pointed to
@@ -787,7 +789,8 @@ impl Value {
             Self::Add(lhs, rhs)
             | Self::Sub(lhs, rhs)
             | Self::Mul(lhs, rhs)
-            | Self::Div(lhs, rhs) => {
+            | Self::Div(lhs, rhs)
+            | Self::Eq(lhs, rhs) => {
                 buf.push(*lhs);
                 buf.push(*rhs);
             }
@@ -839,6 +842,14 @@ impl Value {
 
             Self::Div(lhs, rhs) => alloc
                 .text("div")
+                .append(alloc.space())
+                .append(lhs.to_doc(alloc, interner))
+                .append(alloc.text(","))
+                .append(alloc.space())
+                .append(rhs.to_doc(alloc, interner)),
+
+            Self::Eq(lhs, rhs) => alloc
+                .text("eq")
                 .append(alloc.space())
                 .append(lhs.to_doc(alloc, interner))
                 .append(alloc.text(","))
@@ -966,7 +977,7 @@ impl Type {
     }
 
     pub fn is_signed(&self) -> bool {
-        matches!(self, Self::U8 | Self::U16 | Self::U32 | Self::U64)
+        matches!(self, Self::I8 | Self::I16 | Self::I32 | Self::I64)
     }
 
     pub fn is_integer(&self) -> bool {

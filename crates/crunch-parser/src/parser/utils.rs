@@ -27,7 +27,7 @@ impl StackGuard {
     }
 }
 
-impl<'src> Parser<'src> {
+impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// ```ebnf
     /// ItemPath ::= Ident | Ident '.' Path
     /// ```

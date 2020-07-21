@@ -2,13 +2,13 @@ use proc_macro::TokenStream as TokenStream1;
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
 use syn::{
-    parse_macro_input, parse_quote, spanned::Spanned, AttributeArgs, Error, ItemFn, Lit, Meta,
-    MetaNameValue, NestedMeta, Result,
+    parse_macro_input, parse_quote, spanned::Spanned, AttributeArgs, Error, ItemEnum, ItemFn, Lit,
+    Meta, MetaNameValue, NestedMeta, Result,
 };
 
-// mod nanopass;
+mod nanopass;
 
-// use nanopass::Nanopass;
+use nanopass::Nanopass;
 
 /// A macro for use in the parser, inserts a stack frame recording into the function
 ///
@@ -148,13 +148,13 @@ fn instrument_inner(mut meta: AttributeArgs, mut input: ItemFn) -> Result<TokenS
     })
 }
 
-// #[proc_macro_attribute]
-// pub fn nanopass(args: TokenStream1, input: TokenStream1) -> TokenStream1 {
-//     let args = parse_macro_input!(args as AttributeArgs);
-//     let base_enum = parse_macro_input!(input as ItemEnum);
-//
-//     Nanopass::parse_from_attr(args, base_enum)
-//         .and_then(|nano| nano.compile())
-//         .unwrap_or_else(|err| err.to_compile_error())
-//         .into()
-// }
+#[proc_macro_attribute]
+pub fn nanopass(args: TokenStream1, input: TokenStream1) -> TokenStream1 {
+    let args = parse_macro_input!(args as AttributeArgs);
+    let base_enum = parse_macro_input!(input as ItemEnum);
+
+    Nanopass::parse_from_attr(args, base_enum)
+        .and_then(|nano| nano.compile())
+        .unwrap_or_else(|err| err.to_compile_error())
+        .into()
+}

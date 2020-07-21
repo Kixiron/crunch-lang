@@ -13,14 +13,15 @@ use crunch_shared::{
     },
 };
 
-type PrefixParselet<'src> = fn(&mut Parser<'src>, Token<'src>) -> ParseResult<Locatable<Type>>;
-type PostfixParselet<'src> =
-    fn(&mut Parser<'src>, Token<'src>, Locatable<Type>) -> ParseResult<Locatable<Type>>;
-type InfixParselet<'src> =
-    fn(&mut Parser<'src>, Token<'src>, Locatable<Type>) -> ParseResult<Locatable<Type>>;
+type PrefixParselet<'src, 'ctx> =
+    fn(&mut Parser<'src, 'ctx>, Token<'src>) -> ParseResult<Locatable<Type>>;
+type PostfixParselet<'src, 'ctx> =
+    fn(&mut Parser<'src, 'ctx>, Token<'src>, Locatable<Type>) -> ParseResult<Locatable<Type>>;
+type InfixParselet<'src, 'ctx> =
+    fn(&mut Parser<'src, 'ctx>, Token<'src>, Locatable<Type>) -> ParseResult<Locatable<Type>>;
 
 // REFACTOR: Split all this into separate functions and share code across them
-impl<'src> Parser<'src> {
+impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// ```ebnf
     /// Type ::=
     ///     'str' | 'rune' | 'bool' | 'unit' | 'absurd'
@@ -97,7 +98,7 @@ impl<'src> Parser<'src> {
         }
     }
 
-    fn type_prefix(ty: TokenType) -> Option<PrefixParselet<'src>> {
+    fn type_prefix(ty: TokenType) -> Option<PrefixParselet<'src, 'ctx>> {
         let prefix: PrefixParselet = match ty {
             // Types and builtins
             TokenType::Ident => |parser, token| {
@@ -452,11 +453,11 @@ impl<'src> Parser<'src> {
         Some(prefix)
     }
 
-    fn type_postfix(_ty: TokenType) -> Option<PostfixParselet<'src>> {
+    fn type_postfix(_ty: TokenType) -> Option<PostfixParselet<'src, 'ctx>> {
         None
     }
 
-    fn type_infix(ty: TokenType) -> Option<InfixParselet<'src>> {
+    fn type_infix(ty: TokenType) -> Option<InfixParselet<'src, 'ctx>> {
         let infix: InfixParselet = match ty {
             TokenType::Ampersand | TokenType::Pipe => |parser, operand, left| {
                 let _frame = parser.add_stack_frame()?;

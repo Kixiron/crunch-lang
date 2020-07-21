@@ -1,0 +1,18 @@
+[config]
+logging = false
+
+[[passes]]
+name = "Flatten External Blocks"
+description = """
+Removes the `ExternBlock` variant, flattening all `ExternFunc`s that were inside of it
+"""
+function_name = "flatten_extern_blocks"
+function_vis = "pub"
+function_context = { Mutable = "Vec<Item>" }
+input_enum = "ItemKind"
+output_enum = "ItemKind2"
+
+[[passes.transformations]]
+input_variant = "ExternBlock"
+operation = { Delete = {} }
+user_function = "crate::passes::ast::flatten_external_blocks"

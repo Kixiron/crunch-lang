@@ -223,7 +223,15 @@ impl Nanopass {
         if !transform.operation.is_scan() {
             self.current_variants
                 .get_mut(&transform.input_variant)
-                .unwrap()
+                .ok_or_else(|| {
+                    Error::new(
+                        transform.input_variant.span(),
+                        format!(
+                            "The variant '{}' does not exist on '{}'",
+                            transform.input_variant, pass.input_enum,
+                        ),
+                    )
+                })?
                 .modified = true;
         }
 
@@ -287,13 +295,46 @@ impl Nanopass {
                                 None
                             }
                         })
-                        .unwrap(),
+                        .expect("No output variant provided for a merge"),
                     output_variant,
                 )?;
             }
 
+            Operation::Delete => {
+                let output_enum = self.output_enum.as_ref().expect("Merge require an output");
+
+                let fields = output_enum
+                    .variants
+                    .iter()
+                    .find_map(|v| {
+                        if v.ident == transform.input_variant {
+                            Some(&v.fields)
+                        } else {
+                            None
+                        }
+                    })
+                    .expect("No output variant provided for a merge");
+
+                // We need bracing for the pattern match but not for the function call
+                let fields_braced = get_field_names(fields, true);
+                let fields_unbraced = get_field_names(fields, false);
+
+                // Get all the stuff for quoting
+                let user_function = &transform.user_function;
+                let (input_enum, input_variant) = (&pass.input_enum, &transform.input_variant);
+                let context = if pass.function_context.is_none() {
+                    quote! {}
+                } else {
+                    quote! { __user_context, }
+                };
+
+                match_arms.extend(quote! {
+                    #input_enum::#input_variant #fields_braced => #user_function(#context #fields_unbraced),
+                });
+            }
+
             // FIXME: Some sort of bookkeeping for all the functions that want to scan each variant has to happen
-            Operation::Scan => todo!(),
+            Operation::Scan => todo!("Scan is unimplemented"),
         }
 
         Ok(())
@@ -407,7 +448,7 @@ fn get_field_names(fields: &Fields, bracing: bool) -> TokenStream {
         Fields::Named(FieldsNamed { named: fields, .. }) => {
             let field_names = fields
                 .into_iter()
-                .map(|Field { ident, .. }| ident.as_ref().unwrap());
+                .map(|Field { ident, .. }| ident.as_ref().expect("Failed to get field name"));
 
             if bracing {
                 quote! {

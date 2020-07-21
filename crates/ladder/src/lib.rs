@@ -1,4 +1,5 @@
 use crunch_shared::{
+    context::Context,
     crunch_proc::instrument,
     error::{Locatable, Location},
     strings::StrT,
@@ -15,67 +16,64 @@ use crunch_shared::{
         hir::{
             Binding, Block, Break, Cast, Expr, ExprKind, ExternFunc, FuncArg, FuncCall, Function,
             Item, Literal, LiteralVal, Match, MatchArm, Pattern, Reference, Return, Stmt, Type,
-            TypeKind, Var, VarDecl,
+            TypeId, TypeKind, Var, VarDecl,
         },
-        CallConv, ItemPath, Ref, Sided,
+        CallConv, ItemPath, Sided,
     },
     visitors::ast::{ExprVisitor, ItemVisitor, StmtVisitor, TypeVisitor},
 };
 
-pub struct Ladder {}
+pub struct Ladder<'ctx> {
+    context: Context<'ctx>,
+}
 
-impl Ladder {
-    pub fn new() -> Self {
-        Self {}
+impl<'ctx> Ladder<'ctx> {
+    pub fn new(context: Context<'ctx>) -> Self {
+        Self { context }
     }
 
     #[instrument(name = "hir lowering")]
-    pub fn lower(&mut self, items: &[AstItem]) -> Vec<Item> {
+    pub fn lower(&mut self, items: &[AstItem]) -> Vec<&'ctx Item<'ctx>> {
         items
             .iter()
             .filter_map(|item| self.visit_item(item))
             .collect()
     }
 
-    fn visit_then_and_else(
+    fn block_statement(
         &mut self,
-        scope: &mut Block<Stmt>,
+        then_loc: Location,
+        else_loc: Location,
         loop_broken: Var,
-        then: &Option<AstBlock>,
-        else_: &Option<AstBlock>,
-    ) {
-        fn block_statement(
-            then_loc: Location,
-            else_loc: Location,
-            loop_broken: Var,
-            then_block: Block<Stmt>,
-            else_block: Block<Stmt>,
-        ) -> Stmt {
-            crunch_shared::warn!("Returning values from loops is currently ignored");
-            let location = Location::merge(then_loc, else_loc);
+        then_block: Block<&'ctx Stmt<'ctx>>,
+        else_block: Block<&'ctx Stmt<'ctx>>,
+    ) -> &'ctx Stmt<'ctx> {
+        crunch_shared::warn!("Returning values from loops is currently ignored");
+        let location = Location::merge(then_loc, else_loc);
 
-            Stmt::Expr(Expr {
+        self.context
+            .hir_stmt(Stmt::Expr(self.context.hir_expr(Expr {
                 kind: ExprKind::Match(Match {
-                    cond: Ref::new(Expr {
+                    cond: self.context.hir_expr(Expr {
                         kind: ExprKind::Comparison(Sided {
-                            lhs: Ref::new(Expr {
+                            lhs: self.context.hir_expr(Expr {
                                 kind: ExprKind::Variable(
                                     loop_broken,
-                                    Type {
+                                    self.context.hir_type(Type {
                                         kind: TypeKind::Bool,
                                         loc: location,
-                                    },
+                                    }),
                                 ),
                                 loc: location,
                             }),
                             op: CompOp::Equal,
-                            rhs: Ref::new(Expr {
+                            rhs: self.context.hir_expr(Expr {
                                 kind: ExprKind::Literal(Literal {
                                     val: LiteralVal::Bool(true),
-                                    ty: Type {
+                                    ty: self.context.hir_type(Type {
                                         kind: TypeKind::Bool,
                                         loc: location,
-                                    },
+                                    }),
                                     loc: location,
                                 }),
                                 loc: location,
@@ -91,10 +89,10 @@ impl Ladder {
                                 mutable: false,
                                 pattern: Pattern::Literal(Literal {
                                     val: LiteralVal::Bool(true),
-                                    ty: Type {
+                                    ty: self.context.hir_type(Type {
                                         kind: TypeKind::Bool,
                                         loc: location,
-                                    },
+                                    }),
                                     loc: location,
                                 }),
                                 ty: None,
@@ -102,10 +100,10 @@ impl Ladder {
                             guard: None,
                             body: else_block,
                             // TODO: Allow returning values from loops
-                            ty: Type {
+                            ty: self.context.hir_type(Type {
                                 kind: TypeKind::Unknown,
                                 loc: location,
-                            },
+                            }),
                         },
                         // If the loop was unbroken, execute the `then` block
                         MatchArm {
@@ -114,10 +112,10 @@ impl Ladder {
                                 mutable: false,
                                 pattern: Pattern::Literal(Literal {
                                     val: LiteralVal::Bool(false),
-                                    ty: Type {
+                                    ty: self.context.hir_type(Type {
                                         kind: TypeKind::Bool,
                                         loc: location,
-                                    },
+                                    }),
                                     loc: location,
                                 }),
                                 ty: None,
@@ -125,63 +123,77 @@ impl Ladder {
                             guard: None,
                             body: then_block,
                             // TODO: Allow returning values from loops
-                            ty: Type {
+                            ty: self.context.hir_type(Type {
                                 kind: TypeKind::Unknown,
                                 loc: location,
-                            },
+                            }),
                         },
                     ],
                     // TODO: Allow returning values from loops
-                    ty: Type {
+                    ty: self.context.hir_type(Type {
                         kind: TypeKind::Unknown,
                         loc: location,
-                    },
+                    }),
                 }),
                 loc: location,
-            })
-        }
+            })))
+    }
 
+    fn visit_then_and_else(
+        &mut self,
+        scope: &mut Block<&'ctx Stmt<'ctx>>,
+        loop_broken: Var,
+        then: &Option<AstBlock>,
+        else_: &Option<AstBlock>,
+    ) {
         // TODO: Handle these blocks for *any* breaks, not just condition ones
         match (then, else_) {
             (Some(then), Some(else_)) => {
-                scope.push(block_statement(
+                let then_block = Block::from_iter(
+                    then.location(),
+                    then.iter().filter_map(|s| self.visit_stmt(s)),
+                );
+                let else_block = Block::from_iter(
+                    else_.location(),
+                    else_.iter().filter_map(|s| self.visit_stmt(s)),
+                );
+
+                scope.push(self.block_statement(
                     then.location(),
                     else_.location(),
                     loop_broken,
-                    Block::from_iter(
-                        then.location(),
-                        then.iter().filter_map(|s| self.visit_stmt(s)),
-                    ),
-                    Block::from_iter(
-                        else_.location(),
-                        else_.iter().filter_map(|s| self.visit_stmt(s)),
-                    ),
+                    then_block,
+                    else_block,
                 ));
             }
 
             (Some(then), None) => {
-                scope.push(block_statement(
+                let then_block = Block::from_iter(
+                    then.location(),
+                    then.iter().filter_map(|s| self.visit_stmt(s)),
+                );
+
+                scope.push(self.block_statement(
                     then.location(),
                     then.location(),
                     loop_broken,
-                    Block::from_iter(
-                        then.location(),
-                        then.iter().filter_map(|s| self.visit_stmt(s)),
-                    ),
+                    then_block,
                     Block::new(then.location()),
                 ));
             }
 
             (None, Some(else_)) => {
-                scope.push(block_statement(
+                let else_block = Block::from_iter(
+                    else_.location(),
+                    else_.iter().filter_map(|s| self.visit_stmt(s)),
+                );
+
+                scope.push(self.block_statement(
                     else_.location(),
                     else_.location(),
                     loop_broken,
                     Block::new(else_.location()),
-                    Block::from_iter(
-                        else_.location(),
-                        else_.iter().filter_map(|s| self.visit_stmt(s)),
-                    ),
+                    else_block,
                 ));
             }
 
@@ -190,8 +202,8 @@ impl Ladder {
     }
 }
 
-impl ItemVisitor for Ladder {
-    type Output = Option<Item>;
+impl<'ctx> ItemVisitor for Ladder<'ctx> {
+    type Output = Option<&'ctx Item<'ctx>>;
 
     fn visit_func(
         &mut self,
@@ -228,7 +240,7 @@ impl ItemVisitor for Ladder {
             sig,
         };
 
-        Some(Item::Function(func))
+        Some(self.context.hir_item(Item::Function(func)))
     }
 
     fn visit_type_decl(
@@ -327,34 +339,45 @@ impl ItemVisitor for Ladder {
             loc: item.location(),
         };
 
-        Some(Item::ExternFunc(func))
+        Some(self.context.hir_item(Item::ExternFunc(func)))
     }
 }
 
-impl StmtVisitor for Ladder {
-    type Output = Option<Stmt>;
+impl<'ctx> StmtVisitor for Ladder<'ctx> {
+    type Output = Option<&'ctx Stmt<'ctx>>;
 
     fn visit_stmt(&mut self, stmt: &AstStmt) -> Self::Output {
         match &stmt.kind {
             AstStmtKind::VarDecl(decl) => self.visit_var_decl(stmt, decl),
-            AstStmtKind::Item(item) => self.visit_item(item).map(|i| Stmt::Item(i)),
-            AstStmtKind::Expr(expr) => Some(Stmt::Expr(self.visit_expr(expr))),
+
+            AstStmtKind::Item(item) => self
+                .visit_item(item)
+                .map(|i| self.context.hir_stmt(Stmt::Item(i))),
+
+            AstStmtKind::Expr(expr) => {
+                let expr = self.visit_expr(expr);
+
+                Some(self.context.hir_stmt(Stmt::Expr(expr)))
+            }
         }
     }
 
     fn visit_var_decl(&mut self, stmt: &AstStmt, var: &AstVarDecl) -> Self::Output {
-        Some(Stmt::VarDecl(VarDecl {
+        let value = self.visit_expr(&*var.val);
+        let ty = self.visit_type(var.ty.as_ref().as_ref());
+
+        Some(self.context.hir_stmt(Stmt::VarDecl(VarDecl {
             name: Var::User(var.name),
-            value: Ref::new(self.visit_expr(&*var.val)),
+            value,
             mutable: var.mutable,
-            ty: self.visit_type(var.ty.as_ref().as_ref()),
+            ty,
             loc: stmt.location(),
-        }))
+        })))
     }
 }
 
-impl ExprVisitor for Ladder {
-    type Output = Expr;
+impl<'ctx> ExprVisitor for Ladder<'ctx> {
+    type Output = &'ctx Expr<'ctx>;
 
     fn visit_expr(&mut self, expr: &AstExpr) -> Self::Output {
         match &expr.kind {
@@ -367,10 +390,14 @@ impl ExprVisitor for Ladder {
             AstExprKind::For(for_) => self.visit_for(expr, for_),
             AstExprKind::Match(match_) => self.visit_match(expr, match_),
             AstExprKind::Variable(var) => self.visit_variable(expr, *var),
-            AstExprKind::Literal(literal) => Expr {
-                kind: ExprKind::Literal(self.visit_literal(literal)),
-                loc: expr.location(),
-            },
+            AstExprKind::Literal(literal) => {
+                let kind = ExprKind::Literal(self.visit_literal(literal));
+
+                self.context.hir_expr(Expr {
+                    kind,
+                    loc: expr.location(),
+                })
+            }
             AstExprKind::UnaryOp(op, inner) => self.visit_unary(expr, *op, inner),
             AstExprKind::BinaryOp(Sided { lhs, op, rhs }) => {
                 self.visit_binary_op(expr, lhs, *op, rhs)
@@ -414,10 +441,10 @@ impl ExprVisitor for Ladder {
                         mutable: false,
                         pattern: Pattern::Literal(Literal {
                             val: LiteralVal::Bool(true),
-                            ty: Type {
+                            ty: self.context.hir_type(Type {
                                 kind: TypeKind::Bool,
                                 loc: cond.location(),
-                            },
+                            }),
                             loc: cond.location(),
                         }),
                         ty: None,
@@ -427,10 +454,10 @@ impl ExprVisitor for Ladder {
                         body.location(),
                         body.iter().filter_map(|stmt| self.visit_stmt(stmt)),
                     ),
-                    ty: Type {
+                    ty: self.context.hir_type(Type {
                         kind: TypeKind::Unknown,
                         loc: cond.location(),
-                    },
+                    }),
                 },
                 MatchArm {
                     bind: Binding {
@@ -438,10 +465,10 @@ impl ExprVisitor for Ladder {
                         mutable: false,
                         pattern: Pattern::Literal(Literal {
                             val: LiteralVal::Bool(false),
-                            ty: Type {
+                            ty: self.context.hir_type(Type {
                                 kind: TypeKind::Bool,
                                 loc: cond.location(),
-                            },
+                            }),
                             loc: cond.location(),
                         }),
                         ty: None,
@@ -455,24 +482,25 @@ impl ExprVisitor for Ladder {
                     } else {
                         Block::new(cond.location())
                     },
-                    ty: Type {
+                    ty: self.context.hir_type(Type {
                         kind: TypeKind::Unknown,
                         loc: cond.location(),
-                    },
+                    }),
                 },
             ]);
 
-            Expr {
+            let cond = self.visit_expr(&*cond);
+            self.context.hir_expr(Expr {
                 kind: ExprKind::Match(Match {
-                    cond: Ref::new(self.visit_expr(&*cond)),
+                    cond,
                     arms,
-                    ty: Type {
+                    ty: self.context.hir_type(Type {
                         kind: TypeKind::Unknown,
                         loc: expr.location(),
-                    },
+                    }),
                 }),
                 loc: expr.location(),
-            }
+            })
         } else {
             for AstIfCond { cond, body } in clauses {
                 arms.push(MatchArm {
@@ -482,15 +510,15 @@ impl ExprVisitor for Ladder {
                         pattern: Pattern::Wildcard,
                         ty: None,
                     },
-                    guard: Some(Ref::new(self.visit_expr(cond))),
+                    guard: Some(self.visit_expr(cond)),
                     body: Block::from_iter(
                         body.location(),
                         body.iter().filter_map(|stmt| self.visit_stmt(stmt)),
                     ),
-                    ty: Type {
+                    ty: self.context.hir_type(Type {
                         kind: TypeKind::Unknown,
                         loc: body.location(),
-                    },
+                    }),
                 });
             }
 
@@ -507,60 +535,64 @@ impl ExprVisitor for Ladder {
                         body.location(),
                         body.iter().filter_map(|s| self.visit_stmt(s)),
                     ),
-                    ty: Type {
+                    ty: self.context.hir_type(Type {
                         kind: TypeKind::Unknown,
                         loc: body.location(),
-                    },
+                    }),
                 });
             }
 
-            Expr {
+            self.context.hir_expr(Expr {
                 kind: ExprKind::Match(Match {
-                    cond: Ref::new(Expr {
+                    cond: self.context.hir_expr(Expr {
                         kind: ExprKind::Literal(Literal {
                             val: LiteralVal::Bool(true),
-                            ty: Type {
+                            ty: self.context.hir_type(Type {
                                 kind: TypeKind::Bool,
                                 loc: expr.location(),
-                            },
+                            }),
                             loc: expr.location(),
                         }),
                         loc: expr.location(),
                     }),
                     arms,
-                    ty: Type {
+                    ty: self.context.hir_type(Type {
                         kind: TypeKind::Unknown,
                         loc: expr.location(),
-                    },
+                    }),
                 }),
                 loc: expr.location(),
-            }
+            })
         }
     }
 
     fn visit_return(&mut self, expr: &AstExpr, value: Option<&AstExpr>) -> Self::Output {
-        Expr {
-            kind: ExprKind::Return(Return {
-                val: value.map(|expr| Ref::new(self.visit_expr(expr))),
-            }),
+        let kind = ExprKind::Return(Return {
+            val: value.map(|expr| self.visit_expr(expr)),
+        });
+
+        self.context.hir_expr(Expr {
+            kind,
             loc: expr.location(),
-        }
+        })
     }
 
     fn visit_break(&mut self, expr: &AstExpr, value: Option<&AstExpr>) -> Self::Output {
-        Expr {
-            kind: ExprKind::Break(Break {
-                val: value.map(|expr| Ref::new(self.visit_expr(expr))),
-            }),
+        let kind = ExprKind::Break(Break {
+            val: value.map(|expr| self.visit_expr(expr)),
+        });
+
+        self.context.hir_expr(Expr {
+            kind,
             loc: expr.location(),
-        }
+        })
     }
 
     fn visit_continue(&mut self, expr: &AstExpr) -> Self::Output {
-        Expr {
+        self.context.hir_expr(Expr {
             kind: ExprKind::Continue,
             loc: expr.location(),
-        }
+        })
     }
 
     fn visit_while(
@@ -573,143 +605,158 @@ impl ExprVisitor for Ladder {
             else_,
         }: &AstWhile,
     ) -> Self::Output {
-        let mut scope: Block<Stmt> = Block::with_capacity(
+        let mut scope: Block<&'ctx Stmt<'ctx>> = Block::with_capacity(
             expr.location(),
             2 + (then.is_some() as usize * 2) + (else_.is_some() as usize * 2),
         );
 
         let loop_broken = Var::Auto(0);
-        scope.push(Stmt::VarDecl(VarDecl {
+        scope.push(self.context.hir_stmt(Stmt::VarDecl(VarDecl {
             name: loop_broken,
-            value: Ref::new(Expr {
+            value: self.context.hir_expr(Expr {
                 kind: ExprKind::Literal(Literal {
                     val: LiteralVal::Bool(false),
-                    ty: Type {
+                    ty: self.context.hir_type(Type {
                         kind: TypeKind::Bool,
                         loc: cond.location(),
-                    },
+                    }),
                     loc: cond.location(),
                 }),
                 loc: cond.location(),
             }),
             mutable: true,
-            ty: Type {
+            ty: self.context.hir_type(Type {
                 kind: TypeKind::Bool,
                 loc: expr.location(),
-            },
-            loc: cond.location(),
-        }));
-
-        let mut body: Block<Stmt> = Block::with_capacity(ast_body.location(), ast_body.len() + 1);
-        body.push(Stmt::Expr(Expr {
-            kind: ExprKind::Match(Match {
-                cond: Ref::new(self.visit_expr(cond)),
-                arms: vec![
-                    // If the `while` condition is true, do nothing
-                    // TODO: `likely` annotation?
-                    // TODO: `generated` annotation?
-                    MatchArm {
-                        bind: Binding {
-                            reference: false,
-                            mutable: false,
-                            pattern: Pattern::Literal(Literal {
-                                val: LiteralVal::Bool(true),
-                                ty: Type {
-                                    kind: TypeKind::Bool,
-                                    loc: cond.location(),
-                                },
-                                loc: cond.location(),
-                            }),
-                            ty: None,
-                        },
-                        guard: None,
-                        body: Block::new(cond.location()),
-                        ty: Type {
-                            kind: TypeKind::Unknown,
-                            loc: cond.location(),
-                        },
-                    },
-                    // If the `while` condition returns false, set the status and break
-                    MatchArm {
-                        bind: Binding {
-                            reference: false,
-                            mutable: false,
-                            pattern: Pattern::Literal(Literal {
-                                val: LiteralVal::Bool(false),
-                                ty: Type {
-                                    kind: TypeKind::Bool,
-                                    loc: cond.location(),
-                                },
-                                loc: cond.location(),
-                            }),
-                            ty: None,
-                        },
-                        guard: None,
-                        body: Block::from_iter(
-                            cond.location(),
-                            vec![
-                                // Set the loop status to true since we've broken it
-                                Stmt::Expr(Expr {
-                                    kind: ExprKind::Assign(
-                                        loop_broken,
-                                        Ref::new(Expr {
-                                            kind: ExprKind::Literal(Literal {
-                                                val: LiteralVal::Bool(true),
-                                                ty: Type {
-                                                    kind: TypeKind::Bool,
-                                                    loc: cond.location(),
-                                                },
-                                                loc: cond.location(),
-                                            }),
-                                            loc: cond.location(),
-                                        }),
-                                    ),
-                                    loc: cond.location(),
-                                }),
-                                // Break from the loop
-                                Stmt::Expr(Expr {
-                                    kind: ExprKind::Break(Break { val: None }),
-                                    loc: cond.location(),
-                                }),
-                            ],
-                        ),
-                        ty: Type {
-                            kind: TypeKind::Unknown,
-                            loc: cond.location(),
-                        },
-                    },
-                ],
-                ty: Type {
-                    kind: TypeKind::Unknown,
-                    loc: cond.location(),
-                },
             }),
             loc: cond.location(),
-        }));
+        })));
+
+        let mut body: Block<&'ctx Stmt<'ctx>> =
+            Block::with_capacity(ast_body.location(), ast_body.len() + 1);
+
+        let cond = self.visit_expr(cond);
+        body.push(
+            self.context
+                .hir_stmt(Stmt::Expr(self.context.hir_expr(Expr {
+                    kind: ExprKind::Match(Match {
+                        cond,
+                        arms: vec![
+                            // If the `while` condition is true, do nothing
+                            // TODO: `likely` annotation?
+                            // TODO: `generated` annotation?
+                            MatchArm {
+                                bind: Binding {
+                                    reference: false,
+                                    mutable: false,
+                                    pattern: Pattern::Literal(Literal {
+                                        val: LiteralVal::Bool(true),
+                                        ty: self.context.hir_type(Type {
+                                            kind: TypeKind::Bool,
+                                            loc: cond.location(),
+                                        }),
+                                        loc: cond.location(),
+                                    }),
+                                    ty: None,
+                                },
+                                guard: None,
+                                body: Block::new(cond.location()),
+                                ty: self.context.hir_type(Type {
+                                    kind: TypeKind::Unknown,
+                                    loc: cond.location(),
+                                }),
+                            },
+                            // If the `while` condition returns false, set the status and break
+                            MatchArm {
+                                bind: Binding {
+                                    reference: false,
+                                    mutable: false,
+                                    pattern: Pattern::Literal(Literal {
+                                        val: LiteralVal::Bool(false),
+                                        ty: self.context.hir_type(Type {
+                                            kind: TypeKind::Bool,
+                                            loc: cond.location(),
+                                        }),
+                                        loc: cond.location(),
+                                    }),
+                                    ty: None,
+                                },
+                                guard: None,
+                                body: Block::from_iter(
+                                    cond.location(),
+                                    vec![
+                                        // Set the loop status to true since we've broken it
+                                        self.context.hir_stmt(Stmt::Expr(self.context.hir_expr(
+                                            Expr {
+                                                kind: ExprKind::Assign(
+                                                    loop_broken,
+                                                    self.context.hir_expr(Expr {
+                                                        kind: ExprKind::Literal(Literal {
+                                                            val: LiteralVal::Bool(true),
+                                                            ty: self.context.hir_type(Type {
+                                                                kind: TypeKind::Bool,
+                                                                loc: cond.location(),
+                                                            }),
+                                                            loc: cond.location(),
+                                                        }),
+                                                        loc: cond.location(),
+                                                    }),
+                                                ),
+                                                loc: cond.location(),
+                                            },
+                                        ))),
+                                        // Break from the loop
+                                        self.context.hir_stmt(Stmt::Expr(self.context.hir_expr(
+                                            Expr {
+                                                kind: ExprKind::Break(Break { val: None }),
+                                                loc: cond.location(),
+                                            },
+                                        ))),
+                                    ],
+                                ),
+                                ty: self.context.hir_type(Type {
+                                    kind: TypeKind::Unknown,
+                                    loc: cond.location(),
+                                }),
+                            },
+                        ],
+                        ty: self.context.hir_type(Type {
+                            kind: TypeKind::Unknown,
+                            loc: cond.location(),
+                        }),
+                    }),
+                    loc: cond.location(),
+                }))),
+        );
 
         body.extend(ast_body.iter().filter_map(|s| self.visit_stmt(s)));
 
-        scope.push(Stmt::Expr(Expr {
-            kind: ExprKind::Loop(body),
-            loc: expr.location(),
-        }));
+        scope.push(
+            self.context
+                .hir_stmt(Stmt::Expr(self.context.hir_expr(Expr {
+                    kind: ExprKind::Loop(body),
+                    loc: expr.location(),
+                }))),
+        );
 
         self.visit_then_and_else(&mut scope, loop_broken, then, else_);
 
-        Expr {
+        self.context.hir_expr(Expr {
             kind: ExprKind::Scope(scope),
             loc: expr.location(),
-        }
+        })
     }
 
     fn visit_loop(&mut self, expr: &AstExpr, AstLoop { body, else_: _ }: &AstLoop) -> Self::Output {
-        Expr {
-            kind: ExprKind::Loop(Block::from_iter(
-                body.location(),
-                body.iter().filter_map(|stmt| self.visit_stmt(stmt)),
-            )),
+        let kind = ExprKind::Loop(Block::from_iter(
+            body.location(),
+            body.iter().filter_map(|stmt| self.visit_stmt(stmt)),
+        ));
+
+        self.context.hir_expr(Expr {
+            kind,
             loc: expr.location(),
-        }
+        })
     }
 
     fn visit_for(&mut self, _expr: &AstExpr, _for: &AstFor) -> Self::Output {
@@ -717,46 +764,47 @@ impl ExprVisitor for Ladder {
     }
 
     fn visit_match(&mut self, expr: &AstExpr, AstMatch { var, arms }: &AstMatch) -> Self::Output {
-        Expr {
-            kind: ExprKind::Match(Match {
-                cond: Ref::new(self.visit_expr(&*var)),
-                arms: arms
-                    .iter()
-                    .map(|AstMatchArm { bind, guard, body }| MatchArm {
-                        bind: self.visit_binding(bind),
-                        guard: guard
-                            .as_ref()
-                            .map(|guard| Ref::new(self.visit_expr(&**guard))),
-                        body: Block::from_iter(
-                            body.location(),
-                            body.iter().filter_map(|stmt| self.visit_stmt(stmt)),
-                        ),
-                        ty: Type {
-                            kind: TypeKind::Unknown,
-                            loc: expr.location(),
-                        },
-                    })
-                    .collect(),
-                ty: Type {
+        let cond = self.visit_expr(&*var);
+        let arms = arms
+            .iter()
+            .map(|AstMatchArm { bind, guard, body }| MatchArm {
+                bind: self.visit_binding(bind),
+                guard: guard.as_ref().map(|guard| self.visit_expr(&**guard)),
+                body: Block::from_iter(
+                    body.location(),
+                    body.iter().filter_map(|stmt| self.visit_stmt(stmt)),
+                ),
+                ty: self.context.hir_type(Type {
                     kind: TypeKind::Unknown,
                     loc: expr.location(),
-                },
+                }),
+            })
+            .collect();
+
+        self.context.hir_expr(Expr {
+            kind: ExprKind::Match(Match {
+                cond,
+                arms,
+                ty: self.context.hir_type(Type {
+                    kind: TypeKind::Unknown,
+                    loc: expr.location(),
+                }),
             }),
             loc: expr.location(),
-        }
+        })
     }
 
     fn visit_variable(&mut self, expr: &AstExpr, var: Locatable<StrT>) -> Self::Output {
-        Expr {
+        self.context.hir_expr(Expr {
             kind: ExprKind::Variable(
                 Var::User(*var),
-                Type {
+                self.context.hir_type(Type {
                     kind: TypeKind::Unknown,
                     loc: expr.location(),
-                },
+                }),
             ),
             loc: expr.location(),
-        }
+        })
     }
 
     type LiteralOutput = Literal;
@@ -798,14 +846,13 @@ impl ExprVisitor for Ladder {
         op: BinaryOp,
         rhs: &AstExpr,
     ) -> Self::Output {
-        Expr {
-            kind: ExprKind::BinOp(Sided {
-                lhs: Ref::new(self.visit_expr(lhs)),
-                op,
-                rhs: Ref::new(self.visit_expr(rhs)),
-            }),
+        let lhs = self.visit_expr(lhs);
+        let rhs = self.visit_expr(rhs);
+
+        self.context.hir_expr(Expr {
+            kind: ExprKind::BinOp(Sided { lhs, op, rhs }),
             loc: expr.location(),
-        }
+        })
     }
 
     fn visit_comparison(
@@ -815,14 +862,13 @@ impl ExprVisitor for Ladder {
         op: CompOp,
         rhs: &AstExpr,
     ) -> Self::Output {
-        Expr {
-            kind: ExprKind::Comparison(Sided {
-                lhs: Ref::new(self.visit_expr(lhs)),
-                op,
-                rhs: Ref::new(self.visit_expr(rhs)),
-            }),
+        let lhs = self.visit_expr(lhs);
+        let rhs = self.visit_expr(rhs);
+
+        self.context.hir_expr(Expr {
+            kind: ExprKind::Comparison(Sided { lhs, op, rhs }),
             loc: expr.location(),
-        }
+        })
     }
 
     fn visit_assign(
@@ -843,25 +889,26 @@ impl ExprVisitor for Ladder {
         };
 
         if let AssignKind::BinaryOp(op) = op {
-            Expr {
+            let lhs = self.visit_expr(lhs);
+            let rhs = self.visit_expr(rhs);
+
+            self.context.hir_expr(Expr {
                 kind: ExprKind::Assign(
                     var,
-                    Ref::new(Expr {
-                        kind: ExprKind::BinOp(Sided {
-                            lhs: Ref::new(self.visit_expr(lhs)),
-                            op: op,
-                            rhs: Ref::new(self.visit_expr(rhs)),
-                        }),
+                    self.context.hir_expr(Expr {
+                        kind: ExprKind::BinOp(Sided { lhs, op, rhs }),
                         loc: expr.location(),
                     }),
                 ),
                 loc: expr.location(),
-            }
+            })
         } else {
-            Expr {
-                kind: ExprKind::Assign(var, Ref::new(self.visit_expr(rhs))),
+            let kind = ExprKind::Assign(var, self.visit_expr(rhs));
+
+            self.context.hir_expr(Expr {
+                kind,
                 loc: expr.location(),
-            }
+            })
         }
     }
 
@@ -891,17 +938,19 @@ impl ExprVisitor for Ladder {
         caller: &AstExpr,
         args: &[AstExpr],
     ) -> Self::Output {
-        Expr {
+        let args = args.iter().map(|a| self.visit_expr(a)).collect();
+
+        self.context.hir_expr(Expr {
             kind: ExprKind::FnCall(FuncCall {
                 func: if let AstExprKind::Variable(path) = caller.kind {
                     ItemPath::new(*path)
                 } else {
                     todo!()
                 },
-                args: args.iter().map(|a| self.visit_expr(a)).collect(),
+                args,
             }),
             loc: expr.location(),
-        }
+        })
     }
 
     fn visit_member_func_call(
@@ -919,13 +968,12 @@ impl ExprVisitor for Ladder {
         mutable: bool,
         reference: &AstExpr,
     ) -> Self::Output {
-        Expr {
-            kind: ExprKind::Reference(Reference {
-                mutable,
-                reference: Ref::new(self.visit_expr(reference)),
-            }),
+        let reference = self.visit_expr(reference);
+
+        self.context.hir_expr(Expr {
+            kind: ExprKind::Reference(Reference { mutable, reference }),
             loc: expr.location(),
-        }
+        })
     }
 
     fn visit_cast(
@@ -934,13 +982,13 @@ impl ExprVisitor for Ladder {
         cast: &AstExpr,
         ty: Locatable<&AstType>,
     ) -> Self::Output {
-        Expr {
-            kind: ExprKind::Cast(Cast {
-                casted: Ref::new(self.visit_expr(cast)),
-                ty: self.visit_type(ty),
-            }),
+        let casted = self.visit_expr(cast);
+        let ty = self.visit_type(ty);
+
+        self.context.hir_expr(Expr {
+            kind: ExprKind::Cast(Cast { casted, ty }),
             loc: expr.location(),
-        }
+        })
     }
 
     type BindingOutput = Binding;
@@ -957,9 +1005,7 @@ impl ExprVisitor for Ladder {
             reference,
             mutable,
             pattern: self.visit_pattern(pattern),
-            ty: ty
-                .as_ref()
-                .map(|ty| Ref::new(self.visit_type(ty.as_ref().as_ref()))),
+            ty: ty.as_ref().map(|ty| self.visit_type(ty.as_ref().as_ref())),
         }
     }
 
@@ -974,18 +1020,20 @@ impl ExprVisitor for Ladder {
     }
 }
 
-impl TypeVisitor for Ladder {
-    type Output = Type;
+impl<'ctx> TypeVisitor for Ladder<'ctx> {
+    type Output = TypeId;
 
-    fn visit_type(&mut self, r#type: Locatable<&AstType>) -> Type {
-        Type {
-            kind: self.visit_type_kind(*r#type),
+    fn visit_type(&mut self, r#type: Locatable<&AstType>) -> TypeId {
+        let kind = self.visit_type_kind(*r#type);
+
+        self.context.hir_type(Type {
+            kind,
             loc: r#type.location(),
-        }
+        })
     }
 }
 
-impl Ladder {
+impl<'ctx> Ladder<'ctx> {
     fn visit_type_kind(&mut self, r#type: &AstType) -> TypeKind {
         match r#type {
             AstType::Unknown => TypeKind::Unknown,
@@ -998,13 +1046,13 @@ impl Ladder {
                 ref element,
                 length,
             } => {
-                let element = Ref::new(TypeVisitor::visit_type(self, element.as_ref().as_ref()));
+                let element = self.visit_type(element.as_ref().as_ref());
 
                 TypeKind::Array { element, length }
             }
 
             AstType::Slice { element } => {
-                let element = Ref::new(TypeVisitor::visit_type(self, element.as_ref().as_ref()));
+                let element = self.visit_type(element.as_ref().as_ref());
 
                 TypeKind::Slice { element }
             }
@@ -1013,7 +1061,7 @@ impl Ladder {
                 ref pointee,
                 mutable,
             } => {
-                let pointee = Ref::new(TypeVisitor::visit_type(self, pointee.as_ref().as_ref()));
+                let pointee = self.visit_type(pointee.as_ref().as_ref());
 
                 TypeKind::Pointer { pointee, mutable }
             }
@@ -1022,63 +1070,12 @@ impl Ladder {
                 ref referee,
                 mutable,
             } => {
-                let referee = Ref::new(TypeVisitor::visit_type(self, referee.as_ref().as_ref()));
+                let referee = self.visit_type(referee.as_ref().as_ref());
 
                 TypeKind::Reference { referee, mutable }
             }
 
             ty => todo!("{:?}", ty),
-        }
-    }
-}
-
-#[test]
-fn test() {
-    use crunch_parser::Parser;
-    use crunch_shared::{
-        context::Context,
-        files::{CurrentFile, FileId},
-        symbol_table::Resolver,
-    };
-
-    let source = r#"
-    fn main()
-        let greeting := 10
-        printf(greeting)
-    end
-    "#;
-
-    let ctx = Context::default();
-    let mut files = crunch_shared::files::Files::new();
-    files.add("<test>", source);
-
-    match Parser::new(
-        source,
-        CurrentFile::new(FileId::new(0), source.len()),
-        ctx.clone(),
-    )
-    .parse()
-    {
-        Ok((items, mut warnings)) => {
-            warnings.emit(&files);
-
-            let mut resolver = Resolver::new(vec![ctx.strings.intern("<test>")].into());
-            for item in items.iter() {
-                resolver.visit_item(item);
-            }
-            resolver.finalize();
-            println!("{:#?}", resolver);
-
-            // println!("Nodes: {:#?}", &items);
-            // println!("Symbols: {:#?}", &module_scope);
-
-            let mut _ladder = Ladder::new();
-
-            // println!("HIR: {:#?}", ladder.lower(&items));
-        }
-
-        Err(mut err) => {
-            err.emit(&files);
         }
     }
 }

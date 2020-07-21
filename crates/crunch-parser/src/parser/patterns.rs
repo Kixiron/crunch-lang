@@ -8,7 +8,7 @@ use crunch_shared::{
     },
 };
 
-impl<'src> Parser<'src> {
+impl<'src, 'ctx> Parser<'src, 'ctx> {
     // TODO: Binding via patterns
     /// ```ebnf
     /// Binding ::= 'ref'? 'mut'? Pattern (':' Type)?

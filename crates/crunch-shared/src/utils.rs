@@ -178,39 +178,6 @@ impl<L, R> Either<L, R> {
     }
 }
 
-#[cfg(not(feature = "logging"))]
-mod log {
-    #[macro_export]
-    macro_rules! error {
-        (target: $target:expr, $($arg:tt)+) => {};
-        ($($arg:tt)+) => {};
-    }
-
-    #[macro_export]
-    macro_rules! warn {
-        (target: $target:expr, $($arg:tt)+) => {};
-        ($($arg:tt)+) => {};
-    }
-
-    #[macro_export]
-    macro_rules! info {
-        (target: $target:expr, $($arg:tt)+) => {};
-        ($($arg:tt)+) => {};
-    }
-
-    #[macro_export]
-    macro_rules! trace {
-        (target: $target:expr, $($arg:tt)+) => {};
-        ($($arg:tt)+) => {};
-    }
-
-    #[macro_export]
-    macro_rules! debug {
-        (target: $target:expr, $($arg:tt)+) => {};
-        ($($arg:tt)+) => {};
-    }
-}
-
 #[derive(Debug)]
 #[allow(missing_copy_implementations)]
 pub struct Timer {
@@ -251,7 +218,6 @@ impl Timer {
 
     #[cfg(not(feature = "no-std"))]
     fn end_inner(&mut self) {
-        #[cfg(feature = "logging")]
         if !self.finished {
             let elapsed = self.start.elapsed();
 

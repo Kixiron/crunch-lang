@@ -1,6 +1,5 @@
 use proc_macro2::{Span, TokenStream};
 use serde::Deserialize;
-use serde_dhall::SimpleType;
 use std::{fs, path::PathBuf};
 use syn::{
     spanned::Spanned, AttributeArgs, Error, Ident, ItemEnum, Lit, Meta, MetaNameValue, NestedMeta,
@@ -32,7 +31,7 @@ impl Passes {
         let manifest_dir: PathBuf = std::env::var("CARGO_MANIFEST_DIR")
             .expect("Cargo should set CARGO_MANIFEST DIR")
             .into();
-        let dhall = fs::read_to_string(manifest_dir.join(&file_path)).map_err(|err| {
+        let toml = fs::read_to_string(manifest_dir.join(&file_path)).map_err(|err| {
             Error::new(
                 file_span,
                 format!(
@@ -43,15 +42,8 @@ impl Passes {
                 ),
             )
         })?;
-
-        let dhall_schema: SimpleType = serde_dhall::from_str(include_str!("./schema.dhall"))
-            .parse()
-            .expect("Invalid nanopass schema");
-
-        let raw::RawNanopass { config, passes } = serde_dhall::from_str(&dhall)
-            .type_annotation(&dhall_schema)
-            .parse()
-            .map_err(|err| Error::new(file_span, format!("Dhall error: {}", err)))?;
+        let raw::RawNanopass { config, passes } = toml::from_str(&toml)
+            .map_err(|err| Error::new(file_span, format!("Toml error: {}", err)))?;
 
         let passes = passes
             .into_iter()
@@ -112,6 +104,7 @@ pub enum Operation {
     Create(Variant),
     Replace(Variant),
     Merge(Ident),
+    Delete,
     Scan,
 }
 
@@ -122,22 +115,16 @@ impl Operation {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename = "Config", rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct NanopassConfig {
     pub logging: bool,
 }
 
 mod raw {
     use super::{Context, NanopassConfig, Operation, Pass, Transformation};
-    use proc_macro2::TokenStream;
-    use quote::quote;
     use serde::Deserialize;
-    use serde_dhall::SimpleType;
     use std::fmt::Display;
-    use syn::{
-        parse::{Parse, ParseStream},
-        Error, Result,
-    };
+    use syn::{parse::Parse, Error, Result};
 
     fn maybe_parse<T: Parse, M: Display>(input: Option<&str>, msg: M) -> Result<Option<T>> {
         input
@@ -153,29 +140,10 @@ mod raw {
     }
 
     #[derive(Deserialize)]
-    #[serde(rename = "Pass", rename_all = "camelCase")]
+    #[serde(rename = "Nanopass", rename_all = "snake_case")]
     pub struct RawNanopass {
         pub config: NanopassConfig,
         pub passes: Vec<RawPass>,
-    }
-
-    impl Parse for RawNanopass {
-        fn parse(input: ParseStream) -> Result<Self> {
-            let dhall_schema: SimpleType = serde_dhall::from_str(include_str!("./schema.dhall"))
-                .parse()
-                .expect("Invalid nanopass schema");
-
-            let dhall_span = input.span();
-            let dhall = input.to_string();
-
-            // Eat the tokens of the string we just grabbed so we don't error out
-            let _: TokenStream = input.parse().expect("Unreachable");
-
-            serde_dhall::from_str(&dhall)
-                .type_annotation(&dhall_schema)
-                .parse()
-                .map_err(|err| Error::new(dhall_span, err))
-        }
     }
 
     #[derive(Deserialize)]
@@ -212,36 +180,13 @@ mod raw {
         }
     }
 
-    // TODO: More visibilities
     #[derive(Deserialize)]
-    #[serde(rename = "Visibility")]
-    enum RawVisibility {
-        Private,
-        Public,
-        Crate,
-        Super,
-    }
-
-    impl RawVisibility {
-        fn parse(self) -> Result<TokenStream> {
-            let vis = match self {
-                Self::Private => quote! {},
-                Self::Public => quote! { pub },
-                Self::Crate => quote! { pub(crate) },
-                Self::Super => quote! { pub(super) },
-            };
-
-            Ok(vis)
-        }
-    }
-
-    #[derive(Deserialize)]
-    #[serde(rename = "Pass", rename_all = "camelCase")]
+    #[serde(rename = "Pass", rename_all = "snake_case")]
     pub struct RawPass {
         name: String,
         description: Option<String>,
         function_name: String,
-        function_vis: RawVisibility,
+        function_vis: String,
         function_context: RawContext,
         input_enum: String,
         output_enum: Option<String>,
@@ -287,6 +232,7 @@ mod raw {
         Create(String),
         Merge(String),
         Replace(String),
+        Delete,
         Scan,
     }
 
@@ -314,6 +260,7 @@ mod raw {
 
                     Operation::Replace(variant)
                 }
+                Self::Delete => Operation::Delete,
                 Self::Scan => Operation::Scan,
             };
 
@@ -322,7 +269,7 @@ mod raw {
     }
 
     #[derive(Deserialize)]
-    #[serde(rename = "Transformation", rename_all = "camelCase")]
+    #[serde(rename = "Transformation", rename_all = "snake_case")]
     struct RawTransformation {
         input_variant: String,
         operation: RawOperation,

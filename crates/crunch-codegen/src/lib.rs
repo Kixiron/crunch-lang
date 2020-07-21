@@ -16,7 +16,7 @@ use crunch_shared::{
 use llvm::{
     module::{BuildingBlock, FunctionBuilder, Linkage, Module},
     types::{ArrayType, IntType, SealedAnyType, Type as LLVMType, VoidType, I1},
-    utils::{AddressSpace, CallingConvention, EMPTY_CSTR},
+    utils::{AddressSpace, CallingConvention, IntOperand, EMPTY_CSTR},
     values::{
         AnyValue, ArrayValue, BasicBlock as LLVMBasicBlock, CallSiteValue, FunctionValue,
         InstructionValue, SealedAnyValue, Value as LLVMValue,
@@ -265,20 +265,23 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
     type RvalOutput = Result<LLVMValue<'ctx>>;
     fn visit_rval(&mut self, Rval { ty, val }: &Rval) -> Self::RvalOutput {
         match val {
-            Value::Variable(id) => Ok(self.get_var_value(*id)),
+            &Value::Variable(id) => Ok(self.get_var_value(id)),
             Value::Const(constant) => self.visit_constant(constant, ty),
-            Value::Add(lhs, rhs) => self
-                .get_block_builder()
-                .add(self.get_var_value(*lhs), self.get_var_value(*rhs)),
-            Value::Sub(lhs, rhs) => self
-                .get_block_builder()
-                .sub(self.get_var_value(*lhs), self.get_var_value(*rhs)),
-            Value::Mul(lhs, rhs) => self
-                .get_block_builder()
-                .mul(self.get_var_value(*lhs), self.get_var_value(*rhs)),
 
-            Value::Div(lhs, rhs) => {
-                let ((lhs, lhs_type), (rhs, rhs_type)) = (self.get_var(*lhs), self.get_var(*rhs));
+            &Value::Add(lhs, rhs) => self
+                .get_block_builder()
+                .add(self.get_var_value(lhs), self.get_var_value(rhs)),
+
+            &Value::Sub(lhs, rhs) => self
+                .get_block_builder()
+                .sub(self.get_var_value(lhs), self.get_var_value(rhs)),
+
+            &Value::Mul(lhs, rhs) => self
+                .get_block_builder()
+                .mul(self.get_var_value(lhs), self.get_var_value(rhs)),
+
+            &Value::Div(lhs, rhs) => {
+                let ((lhs, lhs_type), (rhs, rhs_type)) = (self.get_var(lhs), self.get_var(rhs));
                 assert_eq!(lhs_type, rhs_type);
                 assert!(lhs_type.is_integer());
 
@@ -293,6 +296,16 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
                 div(self.get_block_builder(), lhs, rhs)
             }
 
+            &Value::Eq(lhs, rhs) => {
+                let ((lhs, lhs_type), (rhs, rhs_type)) = (self.get_var(lhs), self.get_var(rhs));
+                assert_eq!(lhs_type, rhs_type);
+                // Booleans are i1s to LLVM, so it counts as an integer here
+                assert!(lhs_type.is_integer() || lhs_type.is_bool());
+
+                self.get_block_builder()
+                    .integer_cmp(lhs, IntOperand::Equal, rhs)
+            }
+
             Value::Call(FnCall { function, args }) => {
                 let args = args.iter().map(|arg| self.get_var_value(*arg));
                 let call = self
@@ -304,9 +317,9 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
             }
 
             // FIXME: This is so incredibly not good
-            Value::GetPointer { var, .. } => {
+            &Value::GetPointer { var, .. } => {
                 crunch_shared::warn!("Value::GetPointer is the sketchiest shit alive");
-                let val = self.get_var_value(*var);
+                let val = self.get_var_value(var);
 
                 Ok(val)
             }

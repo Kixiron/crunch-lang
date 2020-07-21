@@ -5,15 +5,6 @@ authors = ["Chase Wilson <contact@chasewilson.dev>"]
 license = "Zlib"
 edition = "2018"
 
-[[bin]]
-name = "crunch-parser"
-
-[features]
-default = []
-no-std = ["crunch-shared/no-std"]
-logging = ["crunch-shared/logging"]
-concurrent = ["crunch-shared/concurrent"]
-
 # Lexing
 [dependencies.logos]
 version = "0.11.4"

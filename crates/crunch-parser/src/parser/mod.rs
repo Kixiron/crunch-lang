@@ -40,21 +40,26 @@ impl Default for ParseConfig {
 }
 
 #[derive(Debug)]
-pub struct Parser<'src> {
+pub struct Parser<'src, 'ctx> {
     token_stream: TokenStream<'src>,
     next: Option<Token<'src>>,
     peek: Option<Token<'src>>,
     error_handler: ErrorHandler,
     stack_frames: StackGuard,
     current_file: CurrentFile,
-    context: Context,
+    context: Context<'ctx>,
     config: ParseConfig,
 }
 
 /// Initialization and high-level usage
-impl<'src> Parser<'src> {
+impl<'src, 'ctx> Parser<'src, 'ctx> {
     // TODO: Take in a `ParseConfig`
-    pub fn new(source: &'src str, current_file: CurrentFile, context: Context) -> Self {
+    pub fn new(
+        source: &'src str,
+        config: ParseConfig,
+        current_file: CurrentFile,
+        context: Context<'ctx>,
+    ) -> Self {
         let (token_stream, next, peek) = Self::lex(source);
 
         Self {
@@ -65,7 +70,7 @@ impl<'src> Parser<'src> {
             stack_frames: StackGuard::new(),
             current_file,
             context,
-            config: ParseConfig::default(),
+            config,
         }
     }
 
@@ -74,7 +79,7 @@ impl<'src> Parser<'src> {
         next: Option<Token<'src>>,
         peek: Option<Token<'src>>,
         current_file: CurrentFile,
-        context: Context,
+        context: Context<'ctx>,
     ) -> Self {
         Self {
             token_stream,
@@ -149,7 +154,7 @@ impl<'src> Parser<'src> {
 }
 
 /// Utility functions
-impl<'src> Parser<'src> {
+impl<'src, 'ctx> Parser<'src, 'ctx> {
     #[inline(always)]
     fn next(&mut self) -> ParseResult<Token<'src>> {
         let mut next = self.token_stream.next();

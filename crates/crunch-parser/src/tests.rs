@@ -1,6 +1,6 @@
 //! Regression tests for found crashes
 
-use crate::parser::Parser;
+use crate::parser::{ParseConfig, Parser};
 use crunch_shared::{
     context::Context,
     error::ErrorHandler,
@@ -9,7 +9,13 @@ use crunch_shared::{
 };
 
 fn run(src: &str, ctx: Context) -> Result<(Vec<Item>, ErrorHandler), ErrorHandler> {
-    Parser::new(src, CurrentFile::new(FileId::new(0), 0), ctx).parse()
+    Parser::new(
+        src,
+        ParseConfig::default(),
+        CurrentFile::new(FileId::new(0), 0),
+        ctx,
+    )
+    .parse()
 }
 
 #[test]

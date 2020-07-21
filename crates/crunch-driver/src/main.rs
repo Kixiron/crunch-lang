@@ -51,7 +51,7 @@ fn main() {
     };
 
     // exit immediately terminates the program, so make sure everything is cleaned
-    // up before this so that we don't leak anything
+    // up before that so that we don't leak anything
     std::process::exit(code);
 }
 
@@ -73,7 +73,13 @@ fn run(
     //       via environmental variables
     // TODO: Make different levels of verbosity actually do something
     } else if options.is_verbose() {
-        env_logger::try_init().ok();
+        use simplelog::{ConfigBuilder, LevelFilter, TermLogger, TerminalMode};
+
+        let log_level = LevelFilter::Trace;
+        let config = ConfigBuilder::new().add_filter_ignore_str("salsa").build();
+        let terminal_mode = TerminalMode::Stderr;
+
+        TermLogger::init(log_level, config, terminal_mode).ok();
     }
 
     // Get the source file's name without an extension
@@ -131,10 +137,10 @@ fn run(
     })?;
 
     // Create the parsing context
-    let parse_ctx = ParseContext::default();
+    let context = ParseContext::default();
 
     let mut database = CrunchDatabase::default();
-    database.set_context(parse_ctx.clone());
+    database.set_context(context.clone());
     database.set_source_text(FileId::new(0), std::sync::Arc::new(source.clone()));
     database.set_file_name(FileId::new(0), source_file.clone().to_string());
 
@@ -145,6 +151,7 @@ fn run(
     // Parse the source file into an ast
     let ast = match database.parse(FileId::new(0)) {
         Ok(ok) => {
+            // TODO: Stop cloning things
             let (ast, mut warnings) = ok.as_ref().clone();
             warnings.emit(&files);
 
@@ -177,7 +184,7 @@ fn run(
     let _resolver = {
         use crunch_shared::trees::ItemPath;
 
-        let mut resolver = Resolver::new(ItemPath::new(parse_ctx.strings().intern(&source_file)));
+        let mut resolver = Resolver::new(ItemPath::new(context.strings().intern(&source_file)));
         for node in ast.iter() {
             resolver.visit_item(node);
         }
@@ -187,7 +194,7 @@ fn run(
     };
 
     // Lower the ast to hir
-    let mut hir = Ladder::new().lower(&ast);
+    let mut hir = Ladder::new(context.clone()).lower(&ast);
     if options.emit.contains(&EmissionKind::Hir) {
         let path = out_file.with_extension("hir");
 
@@ -205,7 +212,7 @@ fn run(
     }
 
     // Check types and update the hir with concrete types
-    let mut engine = Engine::new(parse_ctx.strings.clone());
+    let mut engine = Engine::new(context.clone());
     match engine.walk(&mut hir) {
         Ok(mut warnings) => warnings.emit(&files),
         Err(mut errors) => {
@@ -216,11 +223,13 @@ fn run(
     }
 
     // Lower hir to mir
-    let mir = MirBuilder::new(engine).lower(&hir).unwrap();
+    let mir = MirBuilder::new(context.clone(), engine)
+        .lower(&hir)
+        .unwrap();
     if options.emit.contains(&EmissionKind::Mir) {
         let path = out_file.with_extension("mir");
 
-        fs::write(&path, format!("{}", mir.write_pretty(&parse_ctx.strings))).map_err(|err| {
+        fs::write(&path, format!("{}", mir.write_pretty(&context.strings))).map_err(|err| {
             ExitStatus::message(format!(
                 "failed to write mir to '{}': {:?}",
                 path.display(),
@@ -230,22 +239,22 @@ fn run(
     }
 
     if options.print.contains(&EmissionKind::Mir) {
-        println!("{}", mir.write_pretty(&parse_ctx.strings));
+        println!("{}", mir.write_pretty(&context.strings));
     }
 
     // Create LLVM context
-    let ctx = Context::new().map_err(|err| {
+    let llvm_context = Context::new().map_err(|err| {
         ExitStatus::message(format!(
             "Failed to create LLVM context for codegen: {:?}",
             err
         ))
     })?;
-    let module = ctx
+    let module = llvm_context
         .module(&format!("{}.crunch", source_file))
         .map_err(|err| ExitStatus::message(format!("error creating LLVM module: {:?}", err)))?;
 
     // Generate LLVM ir
-    CodeGenerator::new(&module, &parse_ctx.strings)
+    CodeGenerator::new(&module, &context.strings)
         .generate(mir)
         .map_err(|err| {
             ExitStatus::message(format!("encountered an error during codegen: {:?}", err))

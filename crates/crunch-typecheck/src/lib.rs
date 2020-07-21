@@ -7,131 +7,126 @@
     clippy::shadow_unrelated
 )]
 
+mod bidirectional;
+
 use core::fmt::{Result as FmtResult, Write};
 use crunch_shared::{
+    context::Context,
     crunch_proc::instrument,
     error::{ErrorHandler, Locatable, Location, Span, TypeError, TypeResult},
-    strings::StrInterner,
     trees::{
         hir::{
             BinaryOp, Block, Break, Cast, CompOp, Expr, ExternFunc, FuncArg, FuncCall, Function,
-            Item, Literal, LiteralVal, Match, Pattern, Reference, Return, Stmt, Type, TypeKind,
-            Var, VarDecl,
+            Item, Literal, LiteralVal, Match, Pattern, Reference, Return, Stmt, Type, TypeId,
+            TypeKind, Var, VarDecl,
         },
-        ItemPath, Ref,
+        ItemPath,
     },
     utils::HashMap,
-    visitors::hir::{MutExprVisitor, MutItemVisitor, MutStmtVisitor},
+    visitors::hir::{ExprVisitor, ItemVisitor, StmtVisitor},
 };
-
-type TypeId = usize;
 
 #[derive(Debug, Clone)]
 struct Func {
-    ret: Locatable<TypeId>,
-    args: Locatable<Vec<TypeId>>,
+    ret: TypeId,
+    args: Vec<TypeId>,
+    arg_span: Location,
     sig: Location,
 }
 
 #[derive(Debug, Clone)]
-pub struct Engine {
-    id_counter: TypeId,
-    types: HashMap<TypeId, (TypeInfo, Location)>,
-    ids: HashMap<Var, TypeId>,
+pub struct Engine<'ctx> {
     errors: ErrorHandler,
-    interner: StrInterner,
     current_func: Option<Func>,
     functions: HashMap<ItemPath, Func>,
+    variables: HashMap<Var, TypeId>,
     check: Option<TypeId>,
+    context: Context<'ctx>,
 }
 
-impl Engine {
-    pub fn new(interner: StrInterner) -> Self {
+impl<'ctx> Engine<'ctx> {
+    pub fn new(context: Context<'ctx>) -> Self {
         Self {
-            id_counter: 0,
-            types: HashMap::new(),
-            ids: HashMap::new(),
             errors: ErrorHandler::default(),
-            interner,
             current_func: None,
             functions: HashMap::new(),
+            variables: HashMap::new(),
             check: None,
+            context,
         }
     }
 
     /// Create a new type term with whatever we have about its type
-    fn insert(&mut self, variable: Var, ty: &Type) -> TypeResult<TypeId> {
-        let location = ty.location();
-        let info = self.intern_type(ty)?;
-
-        if let Some(&id) = self.ids.get(&variable) {
-            self.types.insert(id, (info, location));
-
-            Ok(id)
-        } else {
-            let id = self.id_counter;
-            self.id_counter += 1;
-
-            self.types.insert(id, (info, location));
-            self.ids.insert(variable, id);
-
-            Ok(id)
+    fn insert(&mut self, var: Var, type_id: TypeId) {
+        if let Some(old_type) = self.variables.insert(var, type_id) {
+            crunch_shared::warn!(
+                "The variable {:?} previously had the type {:?} but it was overwritten with {:?}",
+                var,
+                type_id,
+                old_type,
+            );
         }
     }
 
-    fn get(&self, var: &Var, loc: Location) -> TypeResult<TypeId> {
-        self.ids.get(var).copied().ok_or_else(|| {
+    fn var_type(&self, var: &Var, loc: Location) -> TypeResult<TypeId> {
+        self.variables.get(var).copied().ok_or_else(|| {
             Locatable::new(
-                TypeError::VarNotInScope(var.to_string(&self.interner)).into(),
+                TypeError::VarNotInScope(var.to_string(&self.context.strings)).into(),
                 loc,
             )
         })
     }
 
-    fn insert_bare(&mut self, info: TypeInfo, loc: Location) -> TypeId {
-        let id = self.id_counter;
-        self.id_counter += 1;
-
-        self.types.insert(id, (info, loc));
-
-        id
+    fn create_type(&mut self, ty: Type) -> TypeId {
+        self.context.hir_type(ty)
     }
 
     /// Make the types of two type terms equivalent (or produce an error if
     /// there is a conflict between them)
-    fn unify(&mut self, a: TypeId, b: TypeId) -> TypeResult<()> {
-        let ((lhs, lhs_loc), (rhs, rhs_loc)) = (self.types[&a].clone(), self.types[&b].clone());
-
-        if a == b {
+    fn unify(&mut self, left: TypeId, right: TypeId) -> TypeResult<()> {
+        if left == right {
             return Ok(());
         }
 
-        match (lhs, rhs) {
-            (TypeInfo::Ref(a), _) => self.unify(a, b),
-            (_, TypeInfo::Ref(b)) => self.unify(a, b),
+        const EXPECT_MSG: &str = "Attempted to get a type that does not exist";
+        let (left_ty, right_ty) = (
+            self.context.get_hir_type(left).expect(EXPECT_MSG),
+            self.context.get_hir_type(right).expect(EXPECT_MSG),
+        );
 
-            (TypeInfo::Unknown, _) => {
-                self.types.insert(a, (TypeInfo::Ref(b), lhs_loc));
+        // TODO: Cycle detection
+        match (left_ty.kind, right_ty.kind) {
+            (TypeKind::Variable(left), _) => self.unify(left, right),
+            (_, TypeKind::Variable(right)) => self.unify(left, right),
+
+            (TypeKind::Unknown, _) => {
+                let ty = self
+                    .context
+                    .hir_type(Type::new(TypeKind::Variable(right), left_ty.location()));
+                self.context.overwrite_hir_type(left, ty);
 
                 Ok(())
             }
-            (_, TypeInfo::Unknown) => {
-                self.types.insert(b, (TypeInfo::Ref(a), rhs_loc));
+            (_, TypeKind::Unknown) => {
+                let ty = self
+                    .context
+                    .hir_type(Type::new(TypeKind::Variable(left), right_ty.location()));
+                self.context.overwrite_hir_type(right, ty);
 
                 Ok(())
             }
 
-            (TypeInfo::Absurd, _) | (_, TypeInfo::Absurd) => Ok(()),
-            (TypeInfo::String, TypeInfo::String)
-            | (TypeInfo::Bool, TypeInfo::Bool)
-            | (TypeInfo::Unit, TypeInfo::Unit) => Ok(()),
+            (TypeKind::Absurd, _) | (_, TypeKind::Absurd) => Ok(()),
+            (TypeKind::String, TypeKind::String)
+            | (TypeKind::Bool, TypeKind::Bool)
+            | (TypeKind::Unit, TypeKind::Unit) => Ok(()),
 
             (
-                TypeInfo::Integer {
+                TypeKind::Integer {
                     signed: signed_a,
                     width: width_a,
                 },
-                TypeInfo::Integer {
+                TypeKind::Integer {
                     signed: signed_b,
                     width: width_b,
                 },
@@ -149,17 +144,20 @@ impl Engine {
                     _ => {}
                 }
 
-                self.types.insert(a, (TypeInfo::Ref(b), rhs_loc));
+                let ty = self
+                    .context
+                    .hir_type(Type::new(TypeKind::Variable(right), right_ty.location()));
+                self.context.overwrite_hir_type(left, ty);
 
                 Ok(())
             }
 
             (
-                TypeInfo::Array {
+                TypeKind::Array {
                     element: left_elem,
                     length: left_len,
                 },
-                TypeInfo::Array {
+                TypeKind::Array {
                     element: right_elem,
                     length: right_len,
                 },
@@ -170,21 +168,21 @@ impl Engine {
             }
 
             (
-                TypeInfo::Reference {
+                TypeKind::Reference {
                     referee: left,
                     mutable: left_mut,
                 },
-                TypeInfo::Reference {
+                TypeKind::Reference {
                     referee: right,
                     mutable: right_mut,
                 },
             )
             | (
-                TypeInfo::Pointer {
+                TypeKind::Pointer {
                     pointee: left,
                     mutable: left_mut,
                 },
-                TypeInfo::Pointer {
+                TypeKind::Pointer {
                     pointee: right,
                     mutable: right_mut,
                 },
@@ -199,119 +197,70 @@ impl Engine {
                 TypeError::TypeConflict {
                     call_type: self.display_type(&call_type),
                     def_type: self.display_type(&def_type),
-                    def_site: rhs_loc,
+                    def_site: right_ty.location(),
                 }
                 .into(),
-                lhs_loc,
+                left_ty.location(),
             )),
         }
     }
 
-    /// Attempt to reconstruct a concrete type from the given type term ID. This
-    /// may fail if we don't yet have enough information to figure out what the
-    /// type is.
-    fn reconstruct(&self, id: TypeId) -> TypeResult<Type> {
-        let &(ref info, loc) = &self.types[&id];
-
-        let kind = match info {
-            TypeInfo::Unknown => {
-                return Err(Locatable::new(
-                    TypeError::FailedInfer(
-                        self.ids
-                            .iter()
-                            .find_map(|(name, _id)| {
-                                if *_id == id {
-                                    Some(name.to_string(&self.interner))
-                                } else {
-                                    None
-                                }
-                            })
-                            .unwrap_or("{{unknown}}".to_owned()),
-                    )
-                    .into(),
-                    loc,
-                ));
-            }
-            &TypeInfo::Ref(id) => return self.reconstruct(id),
-            &TypeInfo::Integer { signed, width } => TypeKind::Integer { signed, width },
-            TypeInfo::Bool => TypeKind::Bool,
-            TypeInfo::Unit => TypeKind::Unit,
-            TypeInfo::String => TypeKind::String,
-            TypeInfo::Absurd => TypeKind::Absurd,
-            &TypeInfo::Pointer { pointee, mutable } => TypeKind::Pointer {
-                pointee: Ref::new(self.reconstruct(pointee)?),
-                mutable,
-            },
-            &TypeInfo::Array { element, length } => TypeKind::Array {
-                element: Ref::new(self.reconstruct(element)?),
-                length,
-            },
-            &TypeInfo::Slice { element } => TypeKind::Slice {
-                element: Ref::new(self.reconstruct(element)?),
-            },
-            &TypeInfo::Reference { referee, mutable } => TypeKind::Reference {
-                referee: Ref::new(self.reconstruct(referee)?),
-                mutable,
-            },
-        };
-
-        Ok(Type { kind, loc })
-    }
-
     #[instrument(name = "type checking")]
     #[allow(irrefutable_let_patterns)]
-    pub fn walk(&mut self, items: &mut [Item]) -> Result<ErrorHandler, ErrorHandler> {
+    pub fn walk(&mut self, items: &[&'ctx Item<'ctx>]) -> Result<ErrorHandler, ErrorHandler> {
         for item in items.iter() {
-            if let Item::Function(Function {
-                name,
-                args,
+            if let &&Item::Function(Function {
+                ref name,
+                ref args,
                 ret,
                 sig,
                 ..
             })
-            | Item::ExternFunc(ExternFunc {
-                name,
-                args,
+            | &&Item::ExternFunc(ExternFunc {
+                ref name,
+                ref args,
                 ret,
                 loc: sig,
                 ..
             }) = item
             {
-                // TODO: Use error types here
-                for arg in args.iter().filter(|a| a.kind.is_unknown()) {
-                    self.errors.push_err(Locatable::new(
-                        TypeError::MissingType("Types for function arguments".to_owned()).into(),
-                        arg.location(),
-                    ));
+                // TODO: Use error types as fillers here if they're unknown
+                for arg in args.iter() {
+                    let is_unknown = self.context.get_hir_type(arg.kind).unwrap().is_unknown();
+
+                    if is_unknown {
+                        self.errors.push_err(Locatable::new(
+                            TypeError::MissingType("Types for function arguments".to_owned())
+                                .into(),
+                            arg.location(),
+                        ));
+                    }
                 }
 
-                // TODO: Use error types here
-                if ret.kind.is_unknown() {
+                // TODO: Use error types as fillers here if they're unknown
+                let ret_ty = self.context.get_hir_type(ret).unwrap();
+                if ret_ty.kind.is_unknown() {
                     self.errors.push_err(Locatable::new(
                         TypeError::MissingType("Return types for functions".to_owned()).into(),
-                        ret.location(),
+                        ret_ty.location(),
                     ));
                 }
 
-                // TODO: Use error types here
-                let ret_type = match self.intern_type(&ret) {
-                    Ok(ty) => ty,
-                    Err(err) => {
-                        self.errors.push_err(err);
-                        todo!()
-                    }
-                };
-
-                // TODO: Use error types here
-                let func_args = args
+                // TODO: Use error types as fillers here if they're unknown
+                let arg_span = args.location();
+                let args: Vec<TypeId> = args
                     .iter()
-                    .map(|FuncArg { name, kind, .. }| self.insert(*name, kind))
-                    .collect::<TypeResult<Vec<_>>>()?;
+                    .map(|&FuncArg { name, kind, .. }| {
+                        self.insert(name, kind);
+                        kind
+                    })
+                    .collect();
 
                 let func = Func {
-                    ret: Locatable::new(self.insert_bare(ret_type, ret.location()), ret.location()),
-                    args: Locatable::new(func_args, args.location()),
-                    sig: *sig,
+                    ret,
+                    args,
+                    arg_span,
+                    sig,
                 };
 
                 self.functions.insert(name.clone(), func);
@@ -331,90 +280,22 @@ impl Engine {
         }
     }
 
-    pub fn type_of(&self, var: &Var) -> Option<Type> {
-        self.ids.get(var).and_then(|id| self.reconstruct(*id).ok())
-    }
-
-    fn intern_type(&mut self, ty: &Type) -> TypeResult<TypeInfo> {
-        let ty = match &ty.kind {
-            TypeKind::Unknown => TypeInfo::Unknown,
-            &TypeKind::Integer { signed, width } => TypeInfo::Integer { signed, width },
-            TypeKind::String => TypeInfo::String,
-            TypeKind::Bool => TypeInfo::Bool,
-            TypeKind::Unit => TypeInfo::Unit,
-            TypeKind::Absurd => TypeInfo::Absurd,
-
-            &TypeKind::Pointer {
-                ref pointee,
-                mutable,
-            } => {
-                if pointee.is_unknown() {
-                    return Err(Locatable::new(
-                        TypeError::MissingType("pointer types".to_owned()).into(),
-                        ty.location(),
-                    ));
-                } else {
-                    let pointee = self.intern_type(pointee.as_ref())?;
-
-                    TypeInfo::Pointer {
-                        pointee: self.insert_bare(pointee, ty.location()),
-                        mutable,
-                    }
-                }
-            }
-
-            &TypeKind::Array {
-                ref element,
-                length,
-            } => {
-                let elem = self.intern_type(element.as_ref())?;
-
-                TypeInfo::Array {
-                    element: self.insert_bare(elem, ty.location()),
-                    length,
-                }
-            }
-
-            TypeKind::Slice { element } => {
-                let element = self.intern_type(element.as_ref())?;
-
-                TypeInfo::Slice {
-                    element: self.insert_bare(element, ty.location()),
-                }
-            }
-
-            TypeKind::Reference { referee, mutable } => {
-                let referee = self.intern_type(referee.as_ref())?;
-
-                TypeInfo::Reference {
-                    referee: self.insert_bare(referee, ty.location()),
-                    mutable: *mutable,
-                }
-            }
-        };
-
-        Ok(ty)
-    }
-
     fn intern_literal(
         &mut self,
-        Literal { val, ty, loc }: &mut Literal,
+        &Literal { ref val, ty, loc }: &Literal,
         _loc: Location,
     ) -> TypeResult<TypeId> {
-        let info = self.intern_type(ty)?;
-        let info = self.insert_bare(info, *loc);
-
         match val {
             LiteralVal::Array { elements } => {
-                let element = self.insert_bare(TypeInfo::Unknown, *loc);
+                let element = self.context.hir_type(Type::new(TypeKind::Unknown, loc));
 
-                self.insert_bare(
-                    TypeInfo::Array {
+                self.context.hir_type(Type::new(
+                    TypeKind::Array {
                         element,
                         length: elements.len() as u64,
                     },
-                    *loc,
-                );
+                    loc,
+                ));
 
                 for elem in elements {
                     let elem = self.intern_literal(elem, elem.location())?;
@@ -426,15 +307,14 @@ impl Engine {
         }
 
         if let Some(check) = self.check {
-            self.unify(info, check)?;
-            *ty = self.reconstruct(info)?;
+            self.unify(ty, check)?;
         }
 
         // TODO: Check inner types of stuff
-        Ok(info)
+        Ok(ty)
     }
 
-    fn display_type(&self, ty: &TypeInfo) -> String {
+    fn display_type(&self, ty: &TypeKind) -> String {
         let mut string = String::new();
         self.display_type_inner(ty, &mut string)
             .expect("Failed to format type");
@@ -442,96 +322,63 @@ impl Engine {
         string
     }
 
-    fn display_type_inner<W: Write>(&self, ty: &TypeInfo, f: &mut W) -> FmtResult {
+    fn display_type_inner<W: Write>(&self, ty: &TypeKind, f: &mut W) -> FmtResult {
         match ty {
-            TypeInfo::Ref(inner) => self.display_type_inner(
-                &self
-                    .types
-                    .get(inner)
-                    .expect("Tried to display type that doesn't exist")
-                    .0,
-                f,
-            ),
-            TypeInfo::Unknown => f.write_str("infer"),
-            &TypeInfo::Integer { signed, width } => match (signed, width) {
+            &TypeKind::Variable(inner) => {
+                self.display_type_inner(&self.context.get_hir_type(inner).unwrap().kind, f)
+            }
+            TypeKind::Unknown => f.write_str("infer"),
+            &TypeKind::Integer { signed, width } => match (signed, width) {
                 (Some(signed), Some(width)) => {
                     write!(f, "{}{}", if signed { "i" } else { "u" }, width)
                 }
                 (_, _) => f.write_str("{{integer}}"),
             },
-            TypeInfo::String => f.write_str("str"),
-            TypeInfo::Bool => f.write_str("bool"),
-            TypeInfo::Unit => f.write_str("unit"),
-            TypeInfo::Absurd => f.write_str("absurd"),
+            TypeKind::String => f.write_str("str"),
+            TypeKind::Bool => f.write_str("bool"),
+            TypeKind::Unit => f.write_str("unit"),
+            TypeKind::Absurd => f.write_str("absurd"),
 
-            TypeInfo::Array { element, length } => {
+            &TypeKind::Array { element, length } => {
                 f.write_str("arr[")?;
-                self.display_type_inner(
-                    &self
-                        .types
-                        .get(element)
-                        .expect("Tried to display type that doesn't exist")
-                        .0,
-                    f,
-                )?;
+                self.display_type_inner(&self.context.get_hir_type(element).unwrap().kind, f)?;
                 f.write_str("; ")?;
                 write!(f, "{}", length)?;
                 f.write_char(']')
             }
 
-            TypeInfo::Slice { element } => {
+            &TypeKind::Slice { element } => {
                 f.write_str("arr[")?;
-                self.display_type_inner(
-                    &self
-                        .types
-                        .get(element)
-                        .expect("Tried to display type that doesn't exist")
-                        .0,
-                    f,
-                )?;
+                self.display_type_inner(&self.context.get_hir_type(element).unwrap().kind, f)?;
                 f.write_char(']')
             }
 
-            &TypeInfo::Reference { mutable, referee } => {
+            &TypeKind::Reference { mutable, referee } => {
                 f.write_char('&')?;
                 if mutable {
                     f.write_str("mut ")?;
                 }
 
-                self.display_type_inner(
-                    &self
-                        .types
-                        .get(&referee)
-                        .expect("Tried to display type that doesn't exist")
-                        .0,
-                    f,
-                )
+                self.display_type_inner(&self.context.get_hir_type(referee).unwrap().kind, f)
             }
 
-            &TypeInfo::Pointer { mutable, pointee } => {
+            &TypeKind::Pointer { mutable, pointee } => {
                 if mutable {
                     f.write_str("*const ")?;
                 } else {
                     f.write_str("*mut ")?;
                 }
 
-                self.display_type_inner(
-                    &self
-                        .types
-                        .get(&pointee)
-                        .expect("Tried to display type that doesn't exist")
-                        .0,
-                    f,
-                )
+                self.display_type_inner(&self.context.get_hir_type(pointee).unwrap().kind, f)
             }
         }
     }
 }
 
-impl MutItemVisitor for Engine {
+impl<'ctx> ItemVisitor<'ctx> for Engine<'ctx> {
     type Output = TypeResult<()>;
 
-    fn visit_item(&mut self, item: &mut Item) -> Self::Output {
+    fn visit_item(&mut self, item: &Item<'ctx>) -> Self::Output {
         match item {
             Item::Function(func) => self.visit_func(func),
             Item::ExternFunc(func) => self.visit_extern_func(func),
@@ -542,16 +389,16 @@ impl MutItemVisitor for Engine {
         &mut self,
         Function {
             name, body, args, ..
-        }: &mut Function,
+        }: &Function<'ctx>,
     ) -> Self::Output {
-        self.ids.clear();
+        self.variables.clear();
         self.current_func = Some(self.functions.get(name).unwrap().clone());
 
-        for arg in args.iter_mut() {
-            self.insert(arg.name, &arg.kind)?;
+        for arg in args.iter() {
+            self.insert(arg.name, arg.kind);
         }
 
-        for stmt in body.iter_mut() {
+        for stmt in body.iter() {
             self.visit_stmt(stmt)?;
         }
 
@@ -560,27 +407,37 @@ impl MutItemVisitor for Engine {
         Ok(())
     }
 
-    fn visit_extern_func(&mut self, ExternFunc { args, ret, .. }: &mut ExternFunc) -> Self::Output {
+    fn visit_extern_func(
+        &mut self,
+        &ExternFunc { ref args, ret, .. }: &ExternFunc,
+    ) -> Self::Output {
         let mut missing_arg_ty = None;
-        for arg in args.iter().filter(|a| a.kind.is_unknown()) {
-            if let Some(err) = missing_arg_ty.take() {
-                self.errors.push_err(err);
-            }
 
-            missing_arg_ty = Some(Locatable::new(
-                TypeError::MissingType("Types for external function arguments".to_owned()).into(),
-                arg.loc,
-            ));
+        for arg in args.iter() {
+            let is_unknown = self.context.get_hir_type(arg.kind).unwrap().is_unknown();
+
+            if is_unknown {
+                if let Some(err) = missing_arg_ty.take() {
+                    self.errors.push_err(err);
+                }
+
+                missing_arg_ty = Some(Locatable::new(
+                    TypeError::MissingType("Types for external function arguments".to_owned())
+                        .into(),
+                    arg.loc,
+                ));
+            }
         }
 
-        if ret.kind.is_unknown() {
+        let ret = self.context.get_hir_type(ret).unwrap();
+        if ret.is_unknown() {
             if let Some(err) = missing_arg_ty {
                 self.errors.push_err(err);
             }
 
             return Err(Locatable::new(
                 TypeError::MissingType("Return types for external functions".to_owned()).into(),
-                ret.loc,
+                ret.location(),
             ));
         } else if let Some(err) = missing_arg_ty {
             return Err(err);
@@ -590,11 +447,11 @@ impl MutItemVisitor for Engine {
     }
 }
 
-impl MutStmtVisitor for Engine {
-    type Output = TypeResult<TypeId>;
+impl<'ctx> StmtVisitor<'ctx> for Engine<'ctx> {
+    type Output = TypeResult<Option<TypeId>>;
 
     #[inline]
-    fn visit_stmt(&mut self, stmt: &mut Stmt) -> <Self as MutStmtVisitor>::Output {
+    fn visit_stmt(&mut self, stmt: &'ctx Stmt<'ctx>) -> <Self as StmtVisitor<'ctx>>::Output {
         match stmt {
             Stmt::VarDecl(decl) => self.visit_var_decl(decl),
 
@@ -602,51 +459,51 @@ impl MutStmtVisitor for Engine {
                 self.visit_item(item)?;
 
                 // FIXME: This is bad, very bad
-                Ok(0)
+                Ok(None)
             }
 
-            Stmt::Expr(expr) => self.visit_expr(expr),
+            Stmt::Expr(expr) => self.visit_expr(expr).map(Some),
         }
     }
 
     fn visit_var_decl(
         &mut self,
-        VarDecl {
+        &VarDecl {
             name,
             value,
             ty,
             loc,
             ..
-        }: &mut VarDecl,
-    ) -> <Self as MutStmtVisitor>::Output {
-        let var = self.insert(*name, ty)?;
+        }: &VarDecl<'ctx>,
+    ) -> <Self as StmtVisitor<'ctx>>::Output {
+        self.insert(name, ty);
         let expr = self.visit_expr(value)?;
-        self.unify(expr, var)?;
+        self.unify(expr, ty)?;
 
-        Ok(self.insert_bare(TypeInfo::Unit, *loc))
+        Ok(Some(self.create_type(Type::new(TypeKind::Unit, loc))))
     }
 }
 
-impl MutExprVisitor for Engine {
+impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
     type Output = TypeResult<TypeId>;
 
-    fn visit_return(&mut self, loc: Location, ret: &mut Return) -> Self::Output {
-        let func_ret = *self.current_func.as_ref().unwrap().ret;
+    fn visit_return(&mut self, loc: Location, ret: &Return<'ctx>) -> Self::Output {
+        let func_ret = self.current_func.as_ref().unwrap().ret;
         self.check = Some(func_ret);
 
-        if let Some(ref mut ret) = ret.val {
+        if let Some(ret) = ret.val {
             let ret = self.visit_expr(ret)?;
             self.unify(ret, func_ret)?;
         } else {
-            let unit = self.insert_bare(TypeInfo::Unit, loc);
+            let unit = self.create_type(Type::new(TypeKind::Unit, loc));
             self.unify(unit, func_ret)?;
         }
         self.check.take();
 
-        Ok(self.insert_bare(TypeInfo::Absurd, loc))
+        Ok(self.create_type(Type::new(TypeKind::Absurd, loc)))
     }
 
-    fn visit_break(&mut self, _loc: Location, _value: &mut Break) -> Self::Output {
+    fn visit_break(&mut self, _loc: Location, _value: &Break<'ctx>) -> Self::Output {
         todo!()
     }
 
@@ -654,16 +511,21 @@ impl MutExprVisitor for Engine {
         todo!()
     }
 
-    fn visit_loop(&mut self, _loc: Location, _body: &mut Block<Stmt>) -> Self::Output {
+    fn visit_loop(&mut self, _loc: Location, _body: &Block<&'ctx Stmt<'ctx>>) -> Self::Output {
         todo!()
     }
 
-    fn visit_match(&mut self, loc: Location, Match { cond, arms, ty }: &mut Match) -> Self::Output {
+    fn visit_match(
+        &mut self,
+        loc: Location,
+        &Match { cond, ref arms, ty }: &Match<'ctx>,
+    ) -> Self::Output {
+        // TODO: May be able to unify on the spot instead of making a vec
         let mut arm_types = Vec::with_capacity(arms.len());
         let condition_type = self.visit_expr(cond)?;
 
-        for arm in arms.iter_mut() {
-            match &mut arm.bind.pattern {
+        for arm in arms.iter() {
+            match &arm.bind.pattern {
                 Pattern::Literal(literal) => {
                     self.check = Some(condition_type);
                     let literal_type = self.visit_literal(loc, literal)?;
@@ -671,10 +533,11 @@ impl MutExprVisitor for Engine {
                     self.check.take();
                 }
 
-                &mut Pattern::Ident(variable) => {
+                &Pattern::Ident(variable) => {
                     self.check = Some(condition_type);
-                    let variable_type = self.insert_bare(TypeInfo::Ref(condition_type), loc);
-                    self.ids.insert(Var::User(variable), variable_type);
+                    let variable_type =
+                        self.create_type(Type::new(TypeKind::Variable(condition_type), loc));
+                    self.variables.insert(Var::User(variable), variable_type);
                     self.check.take();
                 }
 
@@ -685,53 +548,51 @@ impl MutExprVisitor for Engine {
                 Pattern::ItemPath(..) => todo!(),
             }
 
-            if let Some(guard) = &mut arm.guard {
+            if let Some(guard) = arm.guard {
                 let guard_ty = self.visit_expr(guard)?;
-                let boolean = self.insert_bare(TypeInfo::Bool, guard.location());
+                let boolean = self.create_type(Type::new(TypeKind::Bool, guard.location()));
 
                 self.unify(guard_ty, boolean)?;
             }
 
             let arm_type = arm
                 .body
-                .iter_mut()
-                .map(|s| self.visit_stmt(s))
-                .collect::<TypeResult<Vec<TypeId>>>()?
+                .iter()
+                .filter_map(|s| self.visit_stmt(s).transpose())
                 .last()
-                .copied()
-                .unwrap_or_else(|| self.insert_bare(TypeInfo::Unit, arm.body.location()));
+                .unwrap_or_else(|| {
+                    Ok(self.create_type(Type::new(TypeKind::Unit, arm.body.location())))
+                })?;
 
             arm_types.push(arm_type);
         }
 
-        let match_ty = self.intern_type(ty)?;
-        let match_ty = self.insert_bare(match_ty, loc);
-        for arm in arm_types {
-            self.unify(match_ty, arm)?;
+        for arm_ty in arm_types {
+            self.unify(ty, arm_ty)?;
         }
 
-        Ok(match_ty)
+        Ok(ty)
     }
 
-    fn visit_variable(&mut self, loc: Location, var: Var, _ty: &mut Type) -> Self::Output {
-        self.get(&var, loc)
+    fn visit_variable(&mut self, loc: Location, var: Var, _ty: TypeId) -> Self::Output {
+        self.var_type(&var, loc)
     }
 
-    fn visit_literal(&mut self, loc: Location, literal: &mut Literal) -> Self::Output {
-        self.intern_literal(&mut *literal, loc)
+    fn visit_literal(&mut self, loc: Location, literal: &Literal) -> Self::Output {
+        self.intern_literal(literal, loc)
     }
 
-    fn visit_scope(&mut self, _loc: Location, _body: &mut Block<Stmt>) -> Self::Output {
+    fn visit_scope(&mut self, _loc: Location, _body: &Block<&'ctx Stmt<'ctx>>) -> Self::Output {
         todo!()
     }
 
-    fn visit_func_call(&mut self, loc: Location, call: &mut FuncCall) -> Self::Output {
+    fn visit_func_call(&mut self, loc: Location, call: &FuncCall<'ctx>) -> Self::Output {
         let func = self
             .functions
             .get(&call.func)
             .ok_or_else(|| {
                 Locatable::new(
-                    TypeError::FuncNotInScope(call.func.to_string(&self.interner)).into(),
+                    TypeError::FuncNotInScope(call.func.to_string(&self.context.strings)).into(),
                     loc,
                 )
             })?
@@ -739,11 +600,10 @@ impl MutExprVisitor for Engine {
 
         if func.args.len() != call.args.len() {
             let def_site = if func.args.is_empty() {
-                func.args.location()
+                func.arg_span
             } else {
                 // If there's 1 or more args trim off the parentheses
-                func.args
-                    .location()
+                func.arg_span
                     .map_span(|span| Span::new(span.start() + 1, span.end() - 1))
             };
 
@@ -758,7 +618,7 @@ impl MutExprVisitor for Engine {
             ));
         }
 
-        for (expr, check) in call.args.iter_mut().zip(func.args.iter().cloned()) {
+        for (expr, check) in call.args.iter().zip(func.args.iter().cloned()) {
             self.check = Some(check);
             let expr = self.visit_expr(expr)?;
             self.check.take();
@@ -766,33 +626,47 @@ impl MutExprVisitor for Engine {
             self.unify(expr, check)?;
         }
 
-        Ok(*func.ret)
+        Ok(func.ret)
     }
 
     fn visit_comparison(
         &mut self,
         loc: Location,
-        lhs: &mut Expr,
+        lhs: &'ctx Expr<'ctx>,
         _op: CompOp,
-        rhs: &mut Expr,
+        rhs: &'ctx Expr<'ctx>,
     ) -> Self::Output {
+        // FIXME: Make sure the types are comparable
+        crunch_shared::warn!("Comparisons are not checked to be comparable");
+        // FIXME: The type of comparison is ignored, could be important
+        crunch_shared::warn!("Comparison operands are ignored");
+
         let (left, right) = (self.visit_expr(lhs)?, self.visit_expr(rhs)?);
         self.unify(left, right)?;
 
-        Ok(self.insert_bare(TypeInfo::Bool, loc))
+        Ok(self.create_type(Type::new(TypeKind::Bool, loc)))
     }
 
-    fn visit_assign(&mut self, _loc: Location, _var: Var, _value: &mut Expr) -> Self::Output {
-        todo!()
+    fn visit_assign(&mut self, loc: Location, var: Var, value: &'ctx Expr<'ctx>) -> Self::Output {
+        self.check.take();
+        let expected = self.var_type(&var, loc)?;
+
+        self.check = Some(expected);
+        let value = self.visit_expr(value)?;
+
+        self.check.take();
+        self.unify(expected, value)?;
+
+        Ok(self.create_type(Type::new(TypeKind::Unit, loc)))
     }
 
     // TODO: This is sketchy and doesn't check if they're bin-op-able
     fn visit_binop(
         &mut self,
         _loc: Location,
-        lhs: &mut Expr,
+        lhs: &'ctx Expr<'ctx>,
         _op: BinaryOp,
-        rhs: &mut Expr,
+        rhs: &'ctx Expr<'ctx>,
     ) -> Self::Output {
         let check = self.check;
 
@@ -802,57 +676,27 @@ impl MutExprVisitor for Engine {
 
         if let Some(check) = check {
             self.unify(lhs, check)?;
+            self.unify(rhs, check)?;
         }
 
         Ok(lhs)
     }
 
-    fn visit_cast(&mut self, loc: Location, Cast { casted, ty }: &mut Cast) -> Self::Output {
+    fn visit_cast(&mut self, _loc: Location, &Cast { casted, ty }: &Cast<'ctx>) -> Self::Output {
+        crunch_shared::warn!("Type casts are not verified in any way");
+        // FIXME: Verify that the types are castable
         let _casted = self.visit_expr(casted)?;
-        let ty = self.intern_type(ty)?;
 
-        Ok(self.insert_bare(ty, loc))
+        Ok(ty)
     }
 
     fn visit_reference(
         &mut self,
         loc: Location,
-        &mut Reference {
-            mutable,
-            ref mut reference,
-        }: &mut Reference,
+        &Reference { mutable, reference }: &Reference<'ctx>,
     ) -> Self::Output {
         let referee = self.visit_expr(reference)?;
 
-        Ok(self.insert_bare(TypeInfo::Reference { referee, mutable }, loc))
+        Ok(self.create_type(Type::new(TypeKind::Reference { referee, mutable }, loc)))
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-enum TypeInfo {
-    Ref(TypeId),
-    Unknown,
-    Integer {
-        signed: Option<bool>,
-        width: Option<u16>,
-    },
-    String,
-    Bool,
-    Unit,
-    Absurd,
-    Pointer {
-        pointee: TypeId,
-        mutable: bool,
-    },
-    Array {
-        element: TypeId,
-        length: u64,
-    },
-    Slice {
-        element: TypeId,
-    },
-    Reference {
-        referee: TypeId,
-        mutable: bool,
-    },
 }

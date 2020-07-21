@@ -36,6 +36,7 @@ impl Item {
     }
 }
 
+// #[nanopass(file = "src/passes/ast.toml")]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub enum ItemKind {
     Func {
@@ -68,27 +69,35 @@ pub enum ItemKind {
         exposes: Exposure,
     },
 
-    ExtendBlock {
-        target: Ref<Locatable<Type>>,
-        extender: Option<Ref<Locatable<Type>>>,
-        items: Vec<Item>,
-    },
+    ExtendBlock(ExtendBlock),
 
     Alias {
         alias: Ref<Locatable<Type>>,
         actual: Ref<Locatable<Type>>,
     },
 
-    ExternBlock {
-        items: Vec<Item>,
-    },
+    ExternBlock(ExternBlock),
+    ExternFunc(ExternFunc),
+}
 
-    ExternFunc {
-        generics: Option<Locatable<Vec<Locatable<Type>>>>,
-        args: Locatable<Vec<FuncArg>>,
-        ret: Ref<Locatable<Type>>,
-        callconv: CallConv,
-    },
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub struct ExtendBlock {
+    pub target: Ref<Locatable<Type>>,
+    pub extender: Option<Ref<Locatable<Type>>>,
+    pub items: Vec<Item>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub struct ExternBlock {
+    pub items: Vec<Item>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub struct ExternFunc {
+    pub generics: Option<Locatable<Vec<Locatable<Type>>>>,
+    pub args: Locatable<Vec<FuncArg>>,
+    pub ret: Ref<Locatable<Type>>,
+    pub callconv: CallConv,
 }
 
 impl ItemKind {

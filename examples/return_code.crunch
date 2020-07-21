@@ -6,12 +6,12 @@ fn main() -> i64
     greeting *= 10
 
     if false
-        let test := 10
+        let test: i64 := 10
 
         return greeting / test
     else
-        let test := 10
-        let test := test * 2
+        let test: i64 := 10
+        let test: i64 := test * 2
 
         return greeting / test
     end

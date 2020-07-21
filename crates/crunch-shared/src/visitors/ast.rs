@@ -3,9 +3,9 @@ use crate::{
     strings::StrT,
     trees::{
         ast::{
-            AssignKind, BinaryOp, Binding, Block, CompOp, Dest, Exposure, Expr, For, FuncArg, If,
-            Item, ItemKind, Literal, LiteralVal, Loop, Match, Pattern, Stmt, Type, TypeMember,
-            UnaryOp, VarDecl, Variant, While,
+            AssignKind, BinaryOp, Binding, Block, CompOp, Dest, Exposure, Expr, ExtendBlock,
+            ExternBlock, ExternFunc, For, FuncArg, If, Item, ItemKind, Literal, LiteralVal, Loop,
+            Match, Pattern, Stmt, Type, TypeMember, UnaryOp, VarDecl, Variant, While,
         },
         CallConv, ItemPath,
     },
@@ -46,11 +46,11 @@ pub trait ItemVisitor {
                 dest,
                 exposes,
             } => self.visit_import(item, file, dest, exposes),
-            ItemKind::ExtendBlock {
+            ItemKind::ExtendBlock(ExtendBlock {
                 target,
                 extender,
                 items,
-            } => self.visit_extend_block(
+            }) => self.visit_extend_block(
                 item,
                 (**target).as_ref(),
                 extender.as_ref().map(|t| (**t).as_ref()),
@@ -59,13 +59,13 @@ pub trait ItemVisitor {
             ItemKind::Alias { alias, actual } => {
                 self.visit_alias(item, (**alias).as_ref(), (**actual).as_ref())
             }
-            ItemKind::ExternBlock { items } => self.visit_extern_block(item, items),
-            ItemKind::ExternFunc {
+            ItemKind::ExternBlock(ExternBlock { items }) => self.visit_extern_block(item, items),
+            ItemKind::ExternFunc(ExternFunc {
                 generics,
                 args,
                 ret,
                 callconv,
-            } => self.visit_extern_func(
+            }) => self.visit_extern_func(
                 item,
                 generics.as_ref().map(|g| g.as_deref()),
                 args.as_deref(),

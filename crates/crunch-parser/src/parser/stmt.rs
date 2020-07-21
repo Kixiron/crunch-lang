@@ -16,7 +16,7 @@ use crunch_shared::{
 // TODO: Type ascription
 
 /// Statement parsing
-impl<'src> Parser<'src> {
+impl<'src, 'ctx> Parser<'src, 'ctx> {
     #[recursion_guard]
     pub fn stmt(&mut self) -> ParseResult<Option<Stmt>> {
         match self.peek()?.ty() {

@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use crunch_shared::{
     crunch_proc::instrument,
-    trees::ast::{Item, ItemKind},
+    trees::ast::{ExternBlock, Item, ItemKind},
     visitors::ast::ItemVisitorMut,
 };
 
@@ -34,7 +34,7 @@ impl ItemVisitorMut for ExternUnnester {
     type Output = bool;
 
     fn visit_extern_block(&mut self, items: &mut Vec<Item>, item: &mut Item) -> Self::Output {
-        if let ItemKind::ExternBlock { items: block_items } = &mut item.kind {
+        if let ItemKind::ExternBlock(ExternBlock { items: block_items }) = &mut item.kind {
             items.extend(block_items.drain(..));
             false
         } else {

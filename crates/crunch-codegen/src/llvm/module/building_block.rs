@@ -2,7 +2,7 @@ use crate::llvm::{
     // instructions::instruction::{Add, IntValue, Mul, SDiv, Sub, UDiv, Valued},
     module::Builder,
     types::{IntType, Type, TypeKind},
-    utils::EMPTY_CSTR,
+    utils::{IntOperand, EMPTY_CSTR},
     values::{
         AnyValue, ArrayValue, BasicBlock, CallSiteValue, FunctionOrPointer, FunctionValue, Global,
         InstructionValue, PointerValue, SealedAnyValue, Value,
@@ -14,11 +14,10 @@ use crate::llvm::{
 use llvm_sys::{
     core::{
         LLVMAddCase, LLVMBuildAdd, LLVMBuildBitCast, LLVMBuildBr, LLVMBuildCall2, LLVMBuildFDiv,
-        LLVMBuildGlobalString, LLVMBuildGlobalStringPtr, LLVMBuildMul, LLVMBuildPointerCast,
-        LLVMBuildRet, LLVMBuildRetVoid, LLVMBuildSDiv, LLVMBuildSub, LLVMBuildSwitch,
-        LLVMBuildUDiv,
-        LLVMBuildUnreachable,
-        /* LLVMConstAdd, LLVMConstMul, LLVMConstSDiv, LLVMConstSub, LLVMConstUDiv, */
+        LLVMBuildGlobalString, LLVMBuildGlobalStringPtr,
+        LLVMBuildICmp, /* LLVMConstAdd, LLVMConstMul, LLVMConstSDiv, LLVMConstSub, LLVMConstUDiv, */
+        LLVMBuildMul, LLVMBuildPointerCast, LLVMBuildRet, LLVMBuildRetVoid, LLVMBuildSDiv,
+        LLVMBuildSub, LLVMBuildSwitch, LLVMBuildUDiv, LLVMBuildUnreachable,
     },
     LLVMValue,
 };
@@ -461,20 +460,32 @@ impl<'ctx> BuildingBlock<'ctx> {
     }
 
     #[inline]
-    pub fn ptr_cast(
-        &self,
-        value: Value<'ctx>,
-        cast_ty: Type<'ctx>,
-        name: &str,
-    ) -> Result<Value<'ctx>> {
-        let name = CString::new(name)?;
-
+    pub fn ptr_cast(&self, value: Value<'ctx>, cast_ty: Type<'ctx>) -> Result<Value<'ctx>> {
         unsafe {
             let value = LLVMBuildPointerCast(
                 self.builder.as_mut_ptr(),
                 value.as_mut_ptr(),
                 cast_ty.as_mut_ptr(),
-                name.as_ptr(),
+                EMPTY_CSTR,
+            );
+
+            Value::from_raw(value)
+        }
+    }
+
+    pub fn integer_cmp(
+        &self,
+        lhs: Value<'ctx>,
+        operand: IntOperand,
+        rhs: Value<'ctx>,
+    ) -> Result<Value<'ctx>> {
+        unsafe {
+            let value = LLVMBuildICmp(
+                self.builder.as_mut_ptr(),
+                operand.into(),
+                lhs.as_mut_ptr(),
+                rhs.as_mut_ptr(),
+                EMPTY_CSTR,
             );
 
             Value::from_raw(value)

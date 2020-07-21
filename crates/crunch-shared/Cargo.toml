@@ -10,7 +10,6 @@ build = "build.rs"
 default = []
 concurrent = ["lasso/multi-threaded"]
 no-std = ["hashbrown", "lasso/no-std"]
-logging = ["log"]
 
 [dependencies.hashbrown]
 version = "0.8.1"
@@ -19,7 +18,6 @@ default-features = false
 
 [dependencies.log]
 version = "0.4.11"
-optional = true
 default-features = false
 
 [dependencies.serde]
@@ -52,6 +50,9 @@ default-features = false
 [dependencies.cfg-if]
 version = "0.1.10"
 default-features = false
+
+[dependencies.typed-arena]
+version = "2.0.1"
 
 [dependencies.crunch-proc]
 path = "../crunch-proc"

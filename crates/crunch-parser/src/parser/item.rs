@@ -9,8 +9,8 @@ use crunch_shared::{
     error::{Error, Locatable, Location, ParseResult, Span, SyntaxError},
     trees::{
         ast::{
-            Attribute, Decorator, Dest, Exposure, FuncArg, Item, ItemKind, Type, TypeMember,
-            Variant, Vis,
+            Attribute, Decorator, Dest, Exposure, ExtendBlock, ExternBlock, ExternFunc, FuncArg,
+            Item, ItemKind, Type, TypeMember, Variant, Vis,
         },
         CallConv, Ref,
     },
@@ -18,7 +18,7 @@ use crunch_shared::{
 
 // TODO: Const blocks
 
-impl<'src> Parser<'src> {
+impl<'src, 'ctx> Parser<'src, 'ctx> {
     #[recursion_guard]
     pub(super) fn item(&mut self) -> ParseResult<Option<Item>> {
         let (mut decorators, mut attributes, mut vis) =
@@ -633,11 +633,11 @@ impl<'src> Parser<'src> {
 
         let end = self.eat(TokenType::End, [])?.span();
 
-        let kind = ItemKind::ExtendBlock {
+        let kind = ItemKind::ExtendBlock(ExtendBlock {
             target,
             extender,
             items,
-        };
+        });
 
         Ok(Item {
             kind,
@@ -854,7 +854,7 @@ impl<'src> Parser<'src> {
             vis: None,
             attrs,
             decorators,
-            kind: ItemKind::ExternBlock { items },
+            kind: ItemKind::ExternBlock(ExternBlock { items }),
             loc: Location::new(Span::merge(start, end), self.current_file),
         })
     }
@@ -899,12 +899,12 @@ impl<'src> Parser<'src> {
             vis: Some(vis),
             attrs,
             decorators,
-            kind: ItemKind::ExternFunc {
+            kind: ItemKind::ExternFunc(ExternFunc {
                 args,
                 generics,
                 ret,
                 callconv,
-            },
+            }),
             loc: Location::new(Span::merge(start, end), self.current_file),
         })
     }

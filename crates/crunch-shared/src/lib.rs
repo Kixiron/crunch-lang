@@ -11,7 +11,6 @@
 extern crate alloc;
 pub extern crate crunch_proc;
 
-#[cfg(feature = "logging")]
 pub use log::{debug, error, info, trace, warn};
 
 pub mod context;
@@ -19,6 +18,7 @@ pub mod error;
 pub mod file_hash;
 pub mod files;
 pub mod meta;
+// mod passes;
 pub mod strings;
 pub mod symbol_table;
 pub mod trees;

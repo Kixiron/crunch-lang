@@ -13,12 +13,14 @@ use crunch_shared::{
     },
 };
 
-type PrefixParselet<'src> = fn(&mut Parser<'src>, Token<'src>) -> ParseResult<Expr>;
-type PostfixParselet<'src> = fn(&mut Parser<'src>, Token<'src>, Expr) -> ParseResult<Expr>;
-type InfixParselet<'src> = fn(&mut Parser<'src>, Token<'src>, Expr) -> ParseResult<Expr>;
+type PrefixParselet<'src, 'ctx> = fn(&mut Parser<'src, 'ctx>, Token<'src>) -> ParseResult<Expr>;
+type PostfixParselet<'src, 'ctx> =
+    fn(&mut Parser<'src, 'ctx>, Token<'src>, Expr) -> ParseResult<Expr>;
+type InfixParselet<'src, 'ctx> =
+    fn(&mut Parser<'src, 'ctx>, Token<'src>, Expr) -> ParseResult<Expr>;
 
 /// Expr Parsing
-impl<'src> Parser<'src> {
+impl<'src, 'ctx> Parser<'src, 'ctx> {
     #[recursion_guard]
     pub fn expr(&mut self) -> ParseResult<Expr> {
         self.parse_expr(0)
@@ -75,7 +77,7 @@ impl<'src> Parser<'src> {
         }
     }
 
-    fn expr_prefix(token: Token) -> Option<PrefixParselet<'src>> {
+    fn expr_prefix(token: Token) -> Option<PrefixParselet<'src, 'ctx>> {
         #[rustfmt::skip]
         let prefix: PrefixParselet = match token.ty() {
             TokenType::Ident if token.source() == "arr" => Self::array_or_tuple,
@@ -105,7 +107,7 @@ impl<'src> Parser<'src> {
         Some(prefix)
     }
 
-    fn expr_postfix(token: Token) -> Option<PostfixParselet<'src>> {
+    fn expr_postfix(token: Token) -> Option<PostfixParselet<'src, 'ctx>> {
         #[rustfmt::skip]
         let postfix: PostfixParselet = match token.ty() {
             TokenType::LeftParen   => Self::function_call,
@@ -131,7 +133,7 @@ impl<'src> Parser<'src> {
         Some(postfix)
     }
 
-    fn expr_infix(token: Token) -> Option<InfixParselet<'src>> {
+    fn expr_infix(token: Token) -> Option<InfixParselet<'src, 'ctx>> {
         #[rustfmt::skip]
         let infix: InfixParselet = match token.ty() {
             TokenType::LeftBrace    => Self::index_array,

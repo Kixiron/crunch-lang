@@ -7,7 +7,6 @@ edition = "2018"
 
 [dependencies.crunch-shared]
 path = "../crunch-shared"
-features = ["logging"]
 
 [dev-dependencies.crunch-parser]
 path = "../crunch-parser"
