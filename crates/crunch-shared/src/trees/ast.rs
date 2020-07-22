@@ -1,7 +1,7 @@
 use crate::{
     error::{Locatable, Location, Span},
     strings::{StrInterner, StrT},
-    trees::{CallConv, ItemPath, Ref, Sided, Sign},
+    trees::{CallConv, ItemPath, Sided, Sign},
 };
 #[cfg(feature = "no-std")]
 use alloc::{
@@ -12,19 +12,18 @@ use alloc::{
     vec::Vec,
 };
 use core::fmt::{Debug, Display, Formatter, Result, Write};
-use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct Item {
-    pub decorators: Vec<Decorator>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Item<'ctx> {
+    pub decorators: Vec<Decorator<'ctx>>,
     pub attrs: Vec<Attribute>,
-    pub kind: ItemKind,
+    pub kind: ItemKind<'ctx>,
     pub loc: Location,
     pub name: Option<StrT>,
     pub vis: Option<Vis>,
 }
 
-impl Item {
+impl<'ctx> Item<'ctx> {
     #[inline]
     pub const fn location(&self) -> Location {
         self.loc
@@ -37,29 +36,29 @@ impl Item {
 }
 
 // #[nanopass(file = "src/passes/ast.toml")]
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub enum ItemKind {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ItemKind<'ctx> {
     Func {
-        generics: Option<Locatable<Vec<Locatable<Type>>>>,
-        args: Locatable<Vec<FuncArg>>,
-        body: Block,
-        ret: Ref<Locatable<Type>>,
+        generics: Option<Locatable<Vec<Locatable<&'ctx Type<'ctx>>>>>,
+        args: Locatable<Vec<FuncArg<'ctx>>>,
+        body: Block<'ctx>,
+        ret: Locatable<&'ctx Type<'ctx>>,
         sig: Location,
     },
 
     Type {
-        generics: Option<Locatable<Vec<Locatable<Type>>>>,
-        members: Vec<TypeMember>,
+        generics: Option<Locatable<Vec<Locatable<&'ctx Type<'ctx>>>>>,
+        members: Vec<TypeMember<'ctx>>,
     },
 
     Enum {
-        generics: Option<Locatable<Vec<Locatable<Type>>>>,
-        variants: Vec<Variant>,
+        generics: Option<Locatable<Vec<Locatable<&'ctx Type<'ctx>>>>>,
+        variants: Vec<Variant<'ctx>>,
     },
 
     Trait {
-        generics: Option<Locatable<Vec<Locatable<Type>>>>,
-        methods: Vec<Item>,
+        generics: Option<Locatable<Vec<Locatable<&'ctx Type<'ctx>>>>>,
+        methods: Vec<&'ctx Item<'ctx>>,
     },
 
     // TODO: Should imports have visibility for exporting or should that be a separate node?
@@ -69,38 +68,18 @@ pub enum ItemKind {
         exposes: Exposure,
     },
 
-    ExtendBlock(ExtendBlock),
+    ExtendBlock(ExtendBlock<'ctx>),
 
     Alias {
-        alias: Ref<Locatable<Type>>,
-        actual: Ref<Locatable<Type>>,
+        alias: Locatable<&'ctx Type<'ctx>>,
+        actual: Locatable<&'ctx Type<'ctx>>,
     },
 
-    ExternBlock(ExternBlock),
-    ExternFunc(ExternFunc),
+    ExternBlock(ExternBlock<'ctx>),
+    ExternFunc(ExternFunc<'ctx>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct ExtendBlock {
-    pub target: Ref<Locatable<Type>>,
-    pub extender: Option<Ref<Locatable<Type>>>,
-    pub items: Vec<Item>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct ExternBlock {
-    pub items: Vec<Item>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct ExternFunc {
-    pub generics: Option<Locatable<Vec<Locatable<Type>>>>,
-    pub args: Locatable<Vec<FuncArg>>,
-    pub ret: Ref<Locatable<Type>>,
-    pub callconv: CallConv,
-}
-
-impl ItemKind {
+impl<'ctx> ItemKind<'ctx> {
     #[inline]
     pub fn is_func(&self) -> bool {
         matches!(self, Self::Func { .. })
@@ -137,57 +116,77 @@ impl ItemKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ExtendBlock<'ctx> {
+    pub target: Locatable<&'ctx Type<'ctx>>,
+    pub extender: Option<Locatable<&'ctx Type<'ctx>>>,
+    pub items: Vec<&'ctx Item<'ctx>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ExternBlock<'ctx> {
+    pub items: Vec<&'ctx Item<'ctx>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ExternFunc<'ctx> {
+    pub generics: Option<Locatable<Vec<Locatable<&'ctx Type<'ctx>>>>>,
+    pub args: Locatable<Vec<FuncArg<'ctx>>>,
+    pub ret: Locatable<&'ctx Type<'ctx>>,
+    pub callconv: CallConv,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Exposure {
     None(StrT),
     All,
     Items(Vec<(ItemPath, StrT)>),
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Dest {
     NativeLib,
     Package,
     Relative,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct TypeMember {
-    pub decorators: Vec<Decorator>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TypeMember<'ctx> {
+    pub decorators: Vec<Decorator<'ctx>>,
     pub attrs: Vec<Attribute>,
     pub name: StrT,
-    pub ty: Ref<Locatable<Type>>,
+    pub ty: Locatable<&'ctx Type<'ctx>>,
     // pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub enum Variant {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Variant<'ctx> {
     Unit {
         name: StrT,
-        decorators: Vec<Decorator>,
+        decorators: Vec<Decorator<'ctx>>,
     },
 
     Tuple {
         name: StrT,
-        elms: Vec<Locatable<Type>>,
-        decorators: Vec<Decorator>,
+        elms: Vec<Locatable<&'ctx Type<'ctx>>>,
+        decorators: Vec<Decorator<'ctx>>,
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct Decorator {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Decorator<'ctx> {
     pub name: Locatable<StrT>,
-    pub args: Vec<Expr>,
+    pub args: Vec<&'ctx Expr<'ctx>>,
     pub loc: Location,
 }
 
-impl Decorator {
+impl<'ctx> Decorator<'ctx> {
     pub const fn location(&self) -> Location {
         self.loc
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Attribute {
     Const,
     Async,
@@ -207,7 +206,7 @@ impl Display for Attribute {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Vis {
     FileLocal,
     Package,
@@ -221,14 +220,14 @@ impl Default for Vis {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct FuncArg {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FuncArg<'ctx> {
     pub name: StrT,
-    pub ty: Ref<Locatable<Type>>,
+    pub ty: Locatable<&'ctx Type<'ctx>>,
     pub loc: Location,
 }
 
-impl FuncArg {
+impl<'ctx> FuncArg<'ctx> {
     #[inline]
     pub const fn location(&self) -> Location {
         self.loc
@@ -240,13 +239,13 @@ impl FuncArg {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct Stmt {
-    pub kind: StmtKind,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Stmt<'ctx> {
+    pub kind: StmtKind<'ctx>,
     pub loc: Location,
 }
 
-impl Stmt {
+impl<'ctx> Stmt<'ctx> {
     #[inline]
     pub const fn location(&self) -> Location {
         self.loc
@@ -258,31 +257,31 @@ impl Stmt {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub enum StmtKind {
-    VarDecl(Ref<VarDecl>),
-    Item(Ref<Item>),
-    Expr(Ref<Expr>),
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum StmtKind<'ctx> {
+    VarDecl(VarDecl<'ctx>),
+    Item(&'ctx Item<'ctx>),
+    Expr(&'ctx Expr<'ctx>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct VarDecl {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct VarDecl<'ctx> {
     pub name: StrT,
-    pub ty: Ref<Locatable<Type>>,
-    pub val: Ref<Expr>,
+    pub ty: Locatable<&'ctx Type<'ctx>>,
+    pub val: &'ctx Expr<'ctx>,
     pub constant: bool,
     pub mutable: bool,
     // pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct Expr {
-    pub kind: ExprKind,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Expr<'ctx> {
+    pub kind: ExprKind<'ctx>,
     pub loc: Location,
     // TODO: Type of expression
 }
 
-impl Expr {
+impl<'ctx> Expr<'ctx> {
     #[inline]
     pub fn location(&self) -> Location {
         self.loc
@@ -293,7 +292,7 @@ impl Expr {
         self.loc.span()
     }
 
-    pub fn as_literal(&self) -> Option<&Locatable<Literal>> {
+    pub fn as_literal(&self) -> Option<&Locatable<Literal<'ctx>>> {
         if let ExprKind::Literal(ref literal) = self.kind {
             Some(literal)
         } else {
@@ -302,122 +301,122 @@ impl Expr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub enum ExprKind {
-    If(If),
-    Return(Option<Ref<Expr>>),
-    Break(Option<Ref<Expr>>),
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ExprKind<'ctx> {
+    If(If<'ctx>),
+    Return(Option<&'ctx Expr<'ctx>>),
+    Break(Option<&'ctx Expr<'ctx>>),
     Continue,
-    While(While),
-    Loop(Loop),
-    For(For),
-    Match(Match),
+    While(While<'ctx>),
+    Loop(Loop<'ctx>),
+    For(For<'ctx>),
+    Match(Match<'ctx>),
     Variable(Locatable<StrT>),
-    Literal(Locatable<Literal>),
-    UnaryOp(UnaryOp, Ref<Expr>),
-    BinaryOp(Sided<BinaryOp, Ref<Expr>>),
-    Comparison(Sided<CompOp, Ref<Expr>>),
-    Assign(Sided<AssignKind, Ref<Expr>>),
-    Paren(Ref<Expr>),
-    Array(Vec<Expr>),
-    Tuple(Vec<Expr>),
+    Literal(Locatable<Literal<'ctx>>),
+    UnaryOp(UnaryOp, &'ctx Expr<'ctx>),
+    BinaryOp(Sided<BinaryOp, &'ctx Expr<'ctx>>),
+    Comparison(Sided<CompOp, &'ctx Expr<'ctx>>),
+    Assign(Sided<AssignKind, &'ctx Expr<'ctx>>),
+    Paren(&'ctx Expr<'ctx>),
+    Array(Vec<&'ctx Expr<'ctx>>),
+    Tuple(Vec<&'ctx Expr<'ctx>>),
     // TODO: Add range kind (inclusive, exclusive, etc.)
-    Range(Ref<Expr>, Ref<Expr>),
+    Range(&'ctx Expr<'ctx>, &'ctx Expr<'ctx>),
     Index {
-        var: Ref<Expr>,
-        index: Ref<Expr>,
+        var: &'ctx Expr<'ctx>,
+        index: &'ctx Expr<'ctx>,
     },
     FuncCall {
-        caller: Ref<Expr>,
-        args: Vec<Expr>,
+        caller: &'ctx Expr<'ctx>,
+        args: Vec<&'ctx Expr<'ctx>>,
     },
     MemberFuncCall {
-        member: Ref<Expr>,
-        func: Ref<Expr>,
+        member: &'ctx Expr<'ctx>,
+        func: &'ctx Expr<'ctx>,
     },
     Reference {
         mutable: bool,
-        expr: Ref<Expr>,
+        expr: &'ctx Expr<'ctx>,
     },
     Cast {
-        expr: Ref<Expr>,
-        ty: Ref<Locatable<Type>>,
+        expr: &'ctx Expr<'ctx>,
+        ty: Locatable<&'ctx Type<'ctx>>,
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct If {
-    pub clauses: Vec<IfCond>,
-    pub else_: Option<Block>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct If<'ctx> {
+    pub clauses: Vec<IfCond<'ctx>>,
+    pub else_: Option<Block<'ctx>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct IfCond {
-    pub cond: Ref<Expr>,
-    pub body: Block,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct IfCond<'ctx> {
+    pub cond: &'ctx Expr<'ctx>,
+    pub body: Block<'ctx>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct While {
-    pub cond: Ref<Expr>,
-    pub body: Block,
-    pub then: Option<Block>,
-    pub else_: Option<Block>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct While<'ctx> {
+    pub cond: &'ctx Expr<'ctx>,
+    pub body: Block<'ctx>,
+    pub then: Option<Block<'ctx>>,
+    pub else_: Option<Block<'ctx>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct Loop {
-    pub body: Block,
-    pub else_: Option<Block>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Loop<'ctx> {
+    pub body: Block<'ctx>,
+    pub else_: Option<Block<'ctx>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct For {
-    pub var: Ref<Expr>,
-    pub cond: Ref<Expr>,
-    pub body: Block,
-    pub then: Option<Block>,
-    pub else_: Option<Block>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct For<'ctx> {
+    pub var: &'ctx Expr<'ctx>,
+    pub cond: &'ctx Expr<'ctx>,
+    pub body: Block<'ctx>,
+    pub then: Option<Block<'ctx>>,
+    pub else_: Option<Block<'ctx>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct Match {
-    pub var: Ref<Expr>,
-    pub arms: Vec<Arm>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Match<'ctx> {
+    pub var: &'ctx Expr<'ctx>,
+    pub arms: Vec<Arm<'ctx>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct Arm {
-    pub bind: Binding,
-    pub guard: Option<Ref<Expr>>,
-    pub body: Block,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Arm<'ctx> {
+    pub bind: Binding<'ctx>,
+    pub guard: Option<&'ctx Expr<'ctx>>,
+    pub body: Block<'ctx>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct Literal {
-    pub val: LiteralVal,
-    pub ty: Type,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Literal<'ctx> {
+    pub val: LiteralVal<'ctx>,
+    pub ty: &'ctx Type<'ctx>,
     pub loc: Location,
 }
 
-impl Literal {
+impl<'ctx> Literal<'ctx> {
     pub fn location(&self) -> Location {
         self.loc
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub enum LiteralVal {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum LiteralVal<'ctx> {
     Integer(Integer),
     Bool(bool),
     String(Text),
     Rune(Rune),
     Float(Float),
-    Array(Vec<Literal>),
+    Array(Vec<Literal<'ctx>>),
     // TODO: Tuples, slices, others?
 }
 
-impl LiteralVal {
+impl<'ctx> LiteralVal<'ctx> {
     #[inline]
     pub fn into_integer(self) -> Option<Integer> {
         if let Self::Integer(int) = self {
@@ -437,7 +436,7 @@ impl LiteralVal {
     }
 }
 
-impl Display for LiteralVal {
+impl Display for LiteralVal<'_> {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
@@ -458,7 +457,7 @@ impl Display for LiteralVal {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct Text(String);
 
@@ -495,7 +494,7 @@ impl From<&str> for Text {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct Rune(u32);
 
@@ -555,7 +554,7 @@ impl Display for Rune {
         write!(f, "{}", &self.as_char())
     }
 }
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Integer {
     pub sign: Sign,
     pub bits: u128,
@@ -568,7 +567,7 @@ impl Display for Integer {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct Float(pub u64);
 
@@ -579,20 +578,20 @@ impl Display for Float {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub enum Type {
-    Operand(Sided<TypeOp, Ref<Locatable<Type>>>),
-    Const(StrT, Ref<Locatable<Type>>),
-    Not(Ref<Locatable<Type>>),
-    Paren(Ref<Locatable<Type>>),
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Type<'ctx> {
+    Operand(Sided<TypeOp, Locatable<&'ctx Type<'ctx>>>),
+    Const(StrT, Locatable<&'ctx Type<'ctx>>),
+    Not(Locatable<&'ctx Type<'ctx>>),
+    Paren(Locatable<&'ctx Type<'ctx>>),
     Func {
-        params: Vec<Locatable<Type>>,
-        ret: Ref<Locatable<Type>>,
+        params: Vec<Locatable<&'ctx Type<'ctx>>>,
+        ret: Locatable<&'ctx Type<'ctx>>,
     },
-    Trait(Vec<Locatable<Type>>),
+    Trait(Vec<Locatable<&'ctx Type<'ctx>>>),
     Bounded {
         path: ItemPath,
-        bounds: Vec<Locatable<Type>>,
+        bounds: Vec<Locatable<&'ctx Type<'ctx>>>,
     },
     ItemPath(ItemPath),
     Unknown,
@@ -615,24 +614,24 @@ pub enum Type {
     Absurd,
     Unit,
     Array {
-        element: Ref<Locatable<Type>>,
+        element: Locatable<&'ctx Type<'ctx>>,
         length: u64,
     },
     Slice {
-        element: Ref<Locatable<Type>>,
+        element: Locatable<&'ctx Type<'ctx>>,
     },
-    Tuple(Vec<Locatable<Type>>),
+    Tuple(Vec<Locatable<&'ctx Type<'ctx>>>),
     Pointer {
-        pointee: Ref<Locatable<Type>>,
+        pointee: Locatable<&'ctx Type<'ctx>>,
         mutable: bool,
     },
     Reference {
-        referee: Ref<Locatable<Type>>,
+        referee: Locatable<&'ctx Type<'ctx>>,
         mutable: bool,
     },
 }
 
-impl Type {
+impl<'ctx> Type<'ctx> {
     #[inline]
     pub fn internal_types(&self) -> Vec<ItemPath> {
         let mut buf = Vec::with_capacity(1);
@@ -752,14 +751,14 @@ impl Type {
     }
 }
 
-impl Default for Type {
+impl<'ctx> Default for Type<'ctx> {
     #[inline]
     fn default() -> Self {
         Self::Unit
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum TypeOp {
     And,
     Or,
@@ -777,30 +776,30 @@ impl Display for TypeOp {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct Binding {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Binding<'ctx> {
     // TODO: Enum for mutability/referential status?
     pub reference: bool,
     pub mutable: bool,
-    pub pattern: Pattern,
-    pub ty: Option<Ref<Locatable<Type>>>,
+    pub pattern: Pattern<'ctx>,
+    pub ty: Option<Locatable<&'ctx Type<'ctx>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub enum Pattern {
-    Literal(Literal),
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Pattern<'ctx> {
+    Literal(Literal<'ctx>),
     Ident(StrT),
     ItemPath(ItemPath),
     Wildcard,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct Block {
-    pub stmts: Vec<Stmt>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Block<'ctx> {
+    pub stmts: Vec<&'ctx Stmt<'ctx>>,
     pub loc: Location,
 }
 
-impl Block {
+impl<'ctx> Block<'ctx> {
     #[inline]
     pub const fn location(&self) -> Location {
         self.loc
@@ -822,17 +821,12 @@ impl Block {
     }
 
     #[inline]
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a Stmt> + 'a {
-        self.stmts.iter()
-    }
-
-    #[inline]
-    pub fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut Stmt> + 'a {
-        self.stmts.iter_mut()
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'ctx Stmt<'ctx>> + 'a {
+        self.stmts.iter().copied()
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CompOp {
     Equal,
     NotEqual,
@@ -858,7 +852,7 @@ impl Display for CompOp {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum AssignKind {
     Normal,
     BinaryOp(BinaryOp),
@@ -874,7 +868,7 @@ impl Display for AssignKind {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum BinaryOp {
     Mult,
     Div,
@@ -910,7 +904,7 @@ impl Display for BinaryOp {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum UnaryOp {
     Positive,
     Negative,

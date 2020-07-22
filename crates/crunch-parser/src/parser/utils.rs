@@ -10,7 +10,7 @@ use crunch_shared::{
     strings::StrT,
     trees::{
         ast::{AssignKind, BinaryOp, CompOp, Float, Integer, Literal, LiteralVal, Type, UnaryOp},
-        ItemPath, Ref, Sign,
+        ItemPath, Sign,
     },
 };
 
@@ -58,7 +58,11 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     }
 
     #[recursion_guard]
-    pub(crate) fn literal(&mut self, token: &Token<'_>, file: CurrentFile) -> ParseResult<Literal> {
+    pub(crate) fn literal(
+        &mut self,
+        token: &Token<'_>,
+        file: CurrentFile,
+    ) -> ParseResult<Literal<'ctx>> {
         let mut source: &str = &token.source();
         // TODO: Const this
         let format = lexical_core::NumberFormat::ignore(b'_').unwrap();
@@ -68,13 +72,13 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                 if token.source() == "inf" {
                     return Ok(Literal {
                         val: LiteralVal::Float(Float(f64::to_bits(core::f64::INFINITY))),
-                        ty: Type::String,
+                        ty: self.context.ast_type(Type::String),
                         loc: Location::new(token.span(), self.current_file),
                     });
                 } else if token.source() == "NaN" {
                     return Ok(Literal {
                         val: LiteralVal::Float(Float(f64::to_bits(core::f64::NAN))),
-                        ty: Type::String,
+                        ty: self.context.ast_type(Type::String),
                         loc: Location::new(token.span(), self.current_file),
                     });
                 }
@@ -125,7 +129,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
                 Ok(Literal {
                     val: LiteralVal::Float(Float(f64::to_bits(float))),
-                    ty: Type::String,
+                    ty: self.context.ast_type(Type::String),
                     loc: Location::new(token.span(), self.current_file),
                 })
             }
@@ -161,13 +165,13 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                             sign: Sign::Positive,
                             bits: rune.as_u32() as u128,
                         }),
-                        ty: Type::String,
+                        ty: self.context.ast_type(Type::String),
                         loc: Location::new(token.span(), self.current_file),
                     })
                 } else {
                     Ok(Literal {
                         val: LiteralVal::Rune(rune),
-                        ty: Type::String,
+                        ty: self.context.ast_type(Type::String),
                         loc: Location::new(token.span(), self.current_file),
                     })
                 }
@@ -204,15 +208,15 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                 let loc = Location::new(token.span(), self.current_file);
                 if byte_str {
                     let string = string.to_bytes();
-                    let you_eight = Type::Integer {
+                    let you_eight = self.context.ast_type(Type::Integer {
                         signed: Some(false),
                         width: Some(8),
-                    };
+                    });
 
-                    let ty = Type::Array {
-                        element: Ref::new(Locatable::new(you_eight.clone(), loc)),
+                    let ty = self.context.ast_type(Type::Array {
+                        element: Locatable::new(you_eight, loc),
                         length: string.len() as u64,
-                    };
+                    });
                     let val = LiteralVal::Array(
                         string
                             .into_iter()
@@ -221,7 +225,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                                     sign: Sign::Positive,
                                     bits: b as u128,
                                 }),
-                                ty: you_eight.clone(),
+                                ty: you_eight,
                                 loc,
                             })
                             .collect(),
@@ -231,7 +235,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                 } else {
                     Ok(Literal {
                         val: LiteralVal::String(string),
-                        ty: Type::String,
+                        ty: self.context.ast_type(Type::String),
                         loc,
                     })
                 }
@@ -289,10 +293,10 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
                 Ok(Literal {
                     val: LiteralVal::Integer(Integer { sign, bits: int }),
-                    ty: Type::Integer {
+                    ty: self.context.ast_type(Type::Integer {
                         signed: None,
                         width: None,
-                    },
+                    }),
                     loc: Location::new(token.span(), self.current_file),
                 })
             }
@@ -304,7 +308,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                         Location::new(token, file),
                     )
                 })?),
-                ty: Type::Bool,
+                ty: self.context.ast_type(Type::Bool),
                 loc: Location::new(token.span(), self.current_file),
             }),
 

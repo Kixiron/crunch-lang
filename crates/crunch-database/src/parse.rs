@@ -1,6 +1,6 @@
 use crate::{ContextDatabase, SourceDatabase};
 use alloc::sync::Arc;
-use crunch_parser::{ExternUnnester, ParseConfig, Parser as ParserBackend, ParserReturn};
+use crunch_parser::{FlattenExternals, ParseConfig, Parser as ParserBackend, ParserReturn};
 use crunch_shared::{
     error::ErrorHandler,
     files::{CurrentFile, FileId},
@@ -10,11 +10,15 @@ use salsa::Database;
 #[salsa::query_group(ParseDatabaseStorage)]
 pub trait ParseDatabase: Database + SourceDatabase + ContextDatabase {
     /// Parses a single source file, returning the result
-    fn parse(&self, file: FileId) -> Result<Arc<ParserReturn>, Arc<ErrorHandler>>;
+    // FIXME: Real lifetime when salsa allows
+    fn parse(&self, file: FileId) -> Result<Arc<ParserReturn<'static>>, Arc<ErrorHandler>>;
 }
 
 #[inline]
-fn parse(db: &dyn ParseDatabase, file: FileId) -> Result<Arc<ParserReturn>, Arc<ErrorHandler>> {
+fn parse(
+    db: &dyn ParseDatabase,
+    file: FileId,
+) -> Result<Arc<ParserReturn<'static>>, Arc<ErrorHandler>> {
     let current_file = CurrentFile::new(file, db.source_length(file));
     let source = db.source_text(file);
 
@@ -27,7 +31,7 @@ fn parse(db: &dyn ParseDatabase, file: FileId) -> Result<Arc<ParserReturn>, Arc<
             |err| Err(Arc::new(err)),
             |(ast, warnings)| {
                 // TODO: Better scheme for ast preprocessing passes
-                let ast = ExternUnnester::new().unnest(ast);
+                let ast = FlattenExternals::new().flatten(ast);
 
                 Ok(Arc::new((ast, warnings)))
             },

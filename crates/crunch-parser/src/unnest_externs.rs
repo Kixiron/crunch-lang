@@ -6,16 +6,16 @@ use crunch_shared::{
 
 #[derive(Debug, Clone)]
 #[allow(missing_copy_implementations)]
-pub struct ExternUnnester {
+pub struct FlattenExternals {
     __private: (),
 }
 
-impl ExternUnnester {
+impl FlattenExternals {
     pub const fn new() -> Self {
         Self { __private: () }
     }
 
-    pub fn unnest(mut self, mut items: Vec<Item>) -> Vec<Item> {
+    pub fn flatten<'ctx>(mut self, mut items: Vec<&'ctx Item<'ctx>>) -> Vec<&'ctx Item<'ctx>> {
         let mut out_items = Vec::with_capacity(items.len());
         while !items.is_empty() {
             let mut item = items.remove(0);
@@ -28,40 +28,83 @@ impl ExternUnnester {
     }
 }
 
-impl ItemVisitorMut for ExternUnnester {
+impl<'ctx> ItemVisitorMut<'ctx> for FlattenExternals {
     type Output = bool;
 
-    fn visit_extern_block(&mut self, items: &mut Vec<Item>, item: &mut Item) -> Self::Output {
-        if let ItemKind::ExternBlock(ExternBlock { items: block_items }) = &mut item.kind {
-            items.extend(block_items.drain(..));
+    fn visit_extern_block(
+        &mut self,
+        items: &mut Vec<&'ctx Item<'ctx>>,
+        item: &'ctx Item<'ctx>,
+    ) -> Self::Output {
+        if let ItemKind::ExternBlock(ExternBlock { items: block_items }) = &item.kind {
+            items.extend(block_items.iter().cloned());
             false
         } else {
             unreachable!()
         }
     }
 
-    fn visit_func(&mut self, _items: &mut Vec<Item>, _item: &mut Item) -> Self::Output {
+    fn visit_func(
+        &mut self,
+        _items: &mut Vec<&'ctx Item<'ctx>>,
+        _item: &'ctx Item<'ctx>,
+    ) -> Self::Output {
         true
     }
-    fn visit_type(&mut self, _items: &mut Vec<Item>, _item: &mut Item) -> Self::Output {
+
+    fn visit_type(
+        &mut self,
+        _items: &mut Vec<&'ctx Item<'ctx>>,
+        _item: &'ctx Item<'ctx>,
+    ) -> Self::Output {
         true
     }
-    fn visit_enum(&mut self, _items: &mut Vec<Item>, _item: &mut Item) -> Self::Output {
+
+    fn visit_enum(
+        &mut self,
+        _items: &mut Vec<&'ctx Item<'ctx>>,
+        _item: &'ctx Item<'ctx>,
+    ) -> Self::Output {
         true
     }
-    fn visit_trait(&mut self, _items: &mut Vec<Item>, _item: &mut Item) -> Self::Output {
+
+    fn visit_trait(
+        &mut self,
+        _items: &mut Vec<&'ctx Item<'ctx>>,
+        _item: &'ctx Item<'ctx>,
+    ) -> Self::Output {
         true
     }
-    fn visit_import(&mut self, _items: &mut Vec<Item>, _item: &mut Item) -> Self::Output {
+
+    fn visit_import(
+        &mut self,
+        _items: &mut Vec<&'ctx Item<'ctx>>,
+        _item: &'ctx Item<'ctx>,
+    ) -> Self::Output {
         true
     }
-    fn visit_extend_block(&mut self, _items: &mut Vec<Item>, _item: &mut Item) -> Self::Output {
+
+    fn visit_extend_block(
+        &mut self,
+        _items: &mut Vec<&'ctx Item<'ctx>>,
+        _item: &'ctx Item<'ctx>,
+    ) -> Self::Output {
         true
     }
-    fn visit_alias(&mut self, _items: &mut Vec<Item>, _item: &mut Item) -> Self::Output {
+
+    fn visit_alias(
+        &mut self,
+        _items: &mut Vec<&'ctx Item<'ctx>>,
+        _item: &'ctx Item<'ctx>,
+    ) -> Self::Output {
         true
     }
-    fn visit_extern_func(&mut self, _items: &mut Vec<Item>, _item: &mut Item) -> Self::Output {
+
+    fn visit_extern_func(
+        &mut self,
+        _items: &mut Vec<&'ctx Item<'ctx>>,
+        _item: &'ctx Item<'ctx>,
+    ) -> Self::Output {
         true
     }
 }

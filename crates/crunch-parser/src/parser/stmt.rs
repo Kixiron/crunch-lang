@@ -7,10 +7,7 @@ use alloc::vec::Vec;
 use crunch_shared::{
     crunch_proc::recursion_guard,
     error::{Error, Locatable, Location, ParseResult, SemanticError, Span},
-    trees::{
-        ast::{Block, Stmt, StmtKind, Type, VarDecl},
-        Ref,
-    },
+    trees::ast::{Block, Stmt, StmtKind, Type, VarDecl},
 };
 
 // TODO: Type ascription
@@ -18,7 +15,7 @@ use crunch_shared::{
 /// Statement parsing
 impl<'src, 'ctx> Parser<'src, 'ctx> {
     #[recursion_guard]
-    pub fn stmt(&mut self) -> ParseResult<Option<Stmt>> {
+    pub fn stmt(&mut self) -> ParseResult<Option<&'ctx Stmt<'ctx>>> {
         match self.peek()?.ty() {
             TokenType::Newline => {
                 self.eat(TokenType::Newline, [])?;
@@ -47,7 +44,10 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
                 let ty = if self.peek()?.ty() == TokenType::Equal {
                     self.eat(TokenType::Equal, [])?;
-                    Locatable::new(Type::Unknown, Location::new(span, self.current_file))
+                    Locatable::new(
+                        self.context.ast_type(Type::Unknown),
+                        Location::new(span, self.current_file),
+                    )
                 } else {
                     let ty = self.ascribed_type()?;
                     self.eat(TokenType::Colon, [TokenType::Newline])?;
@@ -56,7 +56,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                     ty
                 };
 
-                let val = Ref::new(self.expr()?);
+                let val = self.expr()?;
                 self.eat(TokenType::Newline, [])?;
 
                 if constant && mutable {
@@ -73,15 +73,15 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                     Span::merge(start_token.span(), val.span()),
                     self.current_file,
                 );
-                let kind = StmtKind::VarDecl(Ref::new(VarDecl {
+                let kind = StmtKind::VarDecl(VarDecl {
                     name,
-                    ty: Ref::new(ty),
+                    ty,
                     val,
                     constant,
                     mutable,
-                }));
+                });
 
-                Ok(Some(Stmt { kind, loc }))
+                Ok(Some(self.context.ast_stmt(Stmt { kind, loc })))
             }
 
             // Items
@@ -94,29 +94,33 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             | TokenType::Trait
             | TokenType::Import
             | TokenType::Alias => {
-                let item = Ref::new(self.item()?.expect("An item should have been parsed"));
+                let item = self.item()?.expect("An item should have been parsed");
 
                 let loc = item.location();
                 let kind = StmtKind::Item(item);
 
-                Ok(Some(Stmt { kind, loc }))
+                Ok(Some(self.context.ast_stmt(Stmt { kind, loc })))
             }
 
             // Expressions
             _ => {
-                let expr = Ref::new(self.expr()?);
+                let expr = self.expr()?;
                 let end = self.eat(TokenType::Newline, [])?.span();
 
                 let loc = Location::new(Span::merge(expr.span(), end), self.current_file);
                 let kind = StmtKind::Expr(expr);
 
-                Ok(Some(Stmt { kind, loc }))
+                Ok(Some(self.context.ast_stmt(Stmt { kind, loc })))
             }
         }
     }
 
     #[recursion_guard]
-    pub(super) fn block(&mut self, breaks: &[TokenType], capacity: usize) -> ParseResult<Block> {
+    pub(super) fn block(
+        &mut self,
+        breaks: &[TokenType],
+        capacity: usize,
+    ) -> ParseResult<Block<'ctx>> {
         Ok(self.block_returning(breaks, capacity)?.0)
     }
 
@@ -124,7 +128,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         &mut self,
         breaks: &[TokenType],
         capacity: usize,
-    ) -> ParseResult<(Block, Token<'src>)> {
+    ) -> ParseResult<(Block<'ctx>, Token<'src>)> {
         let start = self.peek()?.span();
 
         let mut stmts = Vec::with_capacity(capacity);

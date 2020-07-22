@@ -18,7 +18,7 @@ mod utils;
 
 use utils::StackGuard;
 
-pub type ParserReturn = (Vec<Item>, ErrorHandler);
+pub type ParserReturn<'ctx> = (Vec<&'ctx Item<'ctx>>, ErrorHandler);
 
 // TODO: Make the parser a little more lax, it's kinda strict about whitespace
 
@@ -92,7 +92,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         }
     }
 
-    pub fn parse(mut self) -> Result<ParserReturn, ErrorHandler> {
+    pub fn parse(mut self) -> Result<ParserReturn<'ctx>, ErrorHandler> {
         let (mut items, mut errors) = (Vec::with_capacity(20), 0);
 
         while self.peek().is_ok() {

@@ -141,7 +141,7 @@ fn run(
     })?;
 
     // Create the parsing context
-    let context = ParseContext::default();
+    let mut context = ParseContext::default();
 
     let mut database = CrunchDatabase::default();
     database.set_context(context.clone());
@@ -198,8 +198,7 @@ fn run(
     });
 
     // Lower the ast to hir
-    let hir =
-        GLOBAL_ALLOCATOR.record_region("hir lowering", || Ladder::new(context.clone()).lower(&ast));
+    let hir = GLOBAL_ALLOCATOR.record_region("hir lowering", || Ladder::new(&context).lower(&ast));
     if options.emit.contains(&EmissionKind::Hir) {
         let path = out_file.with_extension("hir");
 
@@ -211,6 +210,8 @@ fn run(
             ))
         })?;
     }
+
+    unsafe { context.clear_ast() };
 
     if options.print.contains(&EmissionKind::Hir) {
         println!("{:#?}", &hir);
@@ -233,6 +234,10 @@ fn run(
             .lower(&hir)
             .unwrap()
     });
+
+    unsafe {
+        context.clear_hir();
+    }
 
     if options.emit.contains(&EmissionKind::Mir) {
         let path = out_file.with_extension("mir");

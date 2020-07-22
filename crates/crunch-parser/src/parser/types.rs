@@ -9,16 +9,22 @@ use crunch_shared::{
     error::{Error, Locatable, Location, ParseResult, Span, SyntaxError},
     trees::{
         ast::{Integer, Type, TypeOp},
-        Ref, Sided,
+        Sided,
     },
 };
 
 type PrefixParselet<'src, 'ctx> =
-    fn(&mut Parser<'src, 'ctx>, Token<'src>) -> ParseResult<Locatable<Type>>;
-type PostfixParselet<'src, 'ctx> =
-    fn(&mut Parser<'src, 'ctx>, Token<'src>, Locatable<Type>) -> ParseResult<Locatable<Type>>;
-type InfixParselet<'src, 'ctx> =
-    fn(&mut Parser<'src, 'ctx>, Token<'src>, Locatable<Type>) -> ParseResult<Locatable<Type>>;
+    fn(&mut Parser<'src, 'ctx>, Token<'src>) -> ParseResult<Locatable<&'ctx Type<'ctx>>>;
+type PostfixParselet<'src, 'ctx> = fn(
+    &mut Parser<'src, 'ctx>,
+    Token<'src>,
+    Locatable<&'ctx Type<'ctx>>,
+) -> ParseResult<Locatable<&'ctx Type<'ctx>>>;
+type InfixParselet<'src, 'ctx> = fn(
+    &mut Parser<'src, 'ctx>,
+    Token<'src>,
+    Locatable<&'ctx Type<'ctx>>,
+) -> ParseResult<Locatable<&'ctx Type<'ctx>>>;
 
 // REFACTOR: Split all this into separate functions and share code across them
 impl<'src, 'ctx> Parser<'src, 'ctx> {
@@ -44,7 +50,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     // TODO: Decide about `Self` and `self`
     // TODO: Add `'&' 'mut'? Type` and `'ref'? 'mut'? Type`
     #[recursion_guard]
-    pub(super) fn ascribed_type(&mut self) -> ParseResult<Locatable<Type>> {
+    pub(super) fn ascribed_type(&mut self) -> ParseResult<Locatable<&'ctx Type<'ctx>>> {
         self.ascribed_type_internal(0)
     }
 
@@ -60,7 +66,10 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     }
 
     #[recursion_guard]
-    fn ascribed_type_internal(&mut self, precedence: usize) -> ParseResult<Locatable<Type>> {
+    fn ascribed_type_internal(
+        &mut self,
+        precedence: usize,
+    ) -> ParseResult<Locatable<&'ctx Type<'ctx>>> {
         let mut token = self.next()?;
 
         let prefix = Self::type_prefix(token.ty());
@@ -128,7 +137,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                     "arr" => {
                         parser.eat(TokenType::LeftBrace, [TokenType::Newline])?;
 
-                        let element = Ref::new(parser.ascribed_type()?);
+                        let element = parser.ascribed_type()?;
                         parser.eat(TokenType::Semicolon, [TokenType::Newline])?;
 
                         let int = parser.eat(TokenType::Int, [TokenType::Newline])?;
@@ -164,7 +173,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
                     "slice" => {
                         parser.eat(TokenType::LeftBrace, [TokenType::Newline])?;
-                        let element = Ref::new(parser.ascribed_type()?);
+                        let element = parser.ascribed_type()?;
                         let end = parser
                             .eat(TokenType::RightBrace, [TokenType::Newline])?
                             .span();
@@ -302,7 +311,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                 };
 
                 Ok(Locatable::new(
-                    ty,
+                    parser.context.ast_type(ty),
                     Location::new(
                         Span::merge(token.span(), end.unwrap_or(token.span())),
                         parser.current_file,
@@ -313,22 +322,22 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             // Negation
             TokenType::Bang => |parser, bang| {
                 let _frame = parser.add_stack_frame()?;
-                let ty = Ref::new(parser.ascribed_type()?);
+                let ty = parser.ascribed_type()?;
                 let loc = Location::new(Span::merge(bang.span(), ty.span()), parser.current_file);
 
-                Ok(Locatable::new(Type::Not(ty), loc))
+                Ok(Locatable::new(parser.context.ast_type(Type::Not(ty)), loc))
             },
 
             // Grouping via parentheses
             TokenType::LeftParen => |parser, paren| {
                 let _frame = parser.add_stack_frame()?;
-                let ty = Ref::new(parser.ascribed_type()?);
+                let ty = parser.ascribed_type()?;
                 let end = parser
                     .eat(TokenType::RightParen, [TokenType::Newline])?
                     .span();
 
                 Ok(Locatable::new(
-                    Type::Paren(ty),
+                    parser.context.ast_type(Type::Paren(ty)),
                     Location::new(Span::merge(paren.span(), end), parser.current_file),
                 ))
             },
@@ -355,16 +364,13 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                     parser.ascribed_type()?
                 } else {
                     Locatable::new(
-                        Type::Unit,
+                        parser.context.ast_type(Type::Unit),
                         Location::new(Span::merge(func.span(), end), parser.current_file),
                     )
                 };
 
                 let loc = Location::new(Span::merge(func.span(), ret.span()), parser.current_file);
-                let ty = Type::Func {
-                    params,
-                    ret: Ref::new(ret),
-                };
+                let ty = parser.context.ast_type(Type::Func { params, ret });
 
                 Ok(Locatable::new(ty, loc))
             },
@@ -395,7 +401,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                 let end = parser.eat(TokenType::RightBrace, [])?.span();
 
                 Ok(Locatable::new(
-                    Type::Trait(types),
+                    parser.context.ast_type(Type::Trait(types)),
                     Location::new(Span::merge(ty.span(), end), parser.current_file),
                 ))
             },
@@ -411,7 +417,10 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                 let ty = parser.ascribed_type()?;
                 let loc = Location::new(Span::merge(cons.span(), ty.span()), parser.current_file);
 
-                Ok(Locatable::new(Type::Const(ident, Ref::new(ty)), loc))
+                Ok(Locatable::new(
+                    parser.context.ast_type(Type::Const(ident, ty)),
+                    loc,
+                ))
             },
 
             // References
@@ -423,13 +432,18 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                 } else {
                     false
                 };
-                let referee = Ref::new(parser.ascribed_type()?);
+                let referee = parser.ascribed_type()?;
                 let loc = Location::new(
                     Span::merge(star.span(), referee.span()),
                     parser.current_file,
                 );
 
-                Ok(Locatable::new(Type::Reference { referee, mutable }, loc))
+                Ok(Locatable::new(
+                    parser
+                        .context
+                        .ast_type(Type::Reference { referee, mutable }),
+                    loc,
+                ))
             },
 
             // Raw pointers
@@ -438,13 +452,16 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
                 let mutable =
                     parser.eat_of([TokenType::Const, TokenType::Mut], [])?.ty() == TokenType::Mut;
-                let pointee = Ref::new(parser.ascribed_type()?);
+                let pointee = parser.ascribed_type()?;
                 let loc = Location::new(
                     Span::merge(star.span(), pointee.span()),
                     parser.current_file,
                 );
 
-                Ok(Locatable::new(Type::Pointer { pointee, mutable }, loc))
+                Ok(Locatable::new(
+                    parser.context.ast_type(Type::Pointer { pointee, mutable }),
+                    loc,
+                ))
             },
 
             _ => return None,
@@ -459,19 +476,19 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
     fn type_infix(ty: TokenType) -> Option<InfixParselet<'src, 'ctx>> {
         let infix: InfixParselet = match ty {
-            TokenType::Ampersand | TokenType::Pipe => |parser, operand, left| {
+            TokenType::Ampersand | TokenType::Pipe => |parser, operand, lhs| {
                 let _frame = parser.add_stack_frame()?;
 
-                let rhs = Ref::new(parser.ascribed_type()?);
+                let rhs = parser.ascribed_type()?;
 
-                let loc = Location::new(Span::merge(left.span(), rhs.span()), parser.current_file);
+                let loc = Location::new(Span::merge(lhs.span(), rhs.span()), parser.current_file);
                 let ty = Type::Operand(Sided {
-                    lhs: Ref::new(left),
+                    lhs,
                     op: parser.type_op(&operand, parser.current_file)?,
                     rhs,
                 });
 
-                Ok(Locatable::new(ty, loc))
+                Ok(Locatable::new(parser.context.ast_type(ty), loc))
             },
 
             // TokenType::If => |parser, _if, true_arm| {

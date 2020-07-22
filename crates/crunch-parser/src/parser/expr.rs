@@ -9,20 +9,21 @@ use crunch_shared::{
     error::{Error, Locatable, Location, ParseResult, Span, SyntaxError},
     trees::{
         ast::{Arm, Block, Expr, ExprKind, For, If, IfCond, Loop, Match, While},
-        Ref, Sided,
+        Sided,
     },
 };
 
-type PrefixParselet<'src, 'ctx> = fn(&mut Parser<'src, 'ctx>, Token<'src>) -> ParseResult<Expr>;
+type PrefixParselet<'src, 'ctx> =
+    fn(&mut Parser<'src, 'ctx>, Token<'src>) -> ParseResult<&'ctx Expr<'ctx>>;
 type PostfixParselet<'src, 'ctx> =
-    fn(&mut Parser<'src, 'ctx>, Token<'src>, Expr) -> ParseResult<Expr>;
+    fn(&mut Parser<'src, 'ctx>, Token<'src>, &'ctx Expr<'ctx>) -> ParseResult<&'ctx Expr<'ctx>>;
 type InfixParselet<'src, 'ctx> =
-    fn(&mut Parser<'src, 'ctx>, Token<'src>, Expr) -> ParseResult<Expr>;
+    fn(&mut Parser<'src, 'ctx>, Token<'src>, &'ctx Expr<'ctx>) -> ParseResult<&'ctx Expr<'ctx>>;
 
 /// Expr Parsing
 impl<'src, 'ctx> Parser<'src, 'ctx> {
     #[recursion_guard]
-    pub fn expr(&mut self) -> ParseResult<Expr> {
+    pub fn expr(&mut self) -> ParseResult<&'ctx Expr<'ctx>> {
         self.parse_expr(0)
     }
 
@@ -38,7 +39,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     }
 
     #[recursion_guard]
-    fn parse_expr(&mut self, precedence: usize) -> ParseResult<Expr> {
+    fn parse_expr(&mut self, precedence: usize) -> ParseResult<&'ctx Expr<'ctx>> {
         let mut token = self.next()?;
 
         let prefix = Self::expr_prefix(token);
@@ -162,89 +163,114 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     }
 
     #[recursion_guard]
-    fn comparison(&mut self, comparison: Token<'src>, left: Expr) -> ParseResult<Expr> {
-        let rhs = Ref::new(self.expr()?);
+    fn comparison(
+        &mut self,
+        comparison: Token<'src>,
+        lhs: &'ctx Expr<'ctx>,
+    ) -> ParseResult<&'ctx Expr<'ctx>> {
+        let rhs = self.expr()?;
 
-        let loc = Location::new(Span::merge(left.span(), rhs.span()), self.current_file);
+        let loc = Location::new(Span::merge(lhs.span(), rhs.span()), self.current_file);
         let kind = ExprKind::Comparison(Sided {
-            lhs: Ref::new(left),
+            lhs,
             op: self.comp_op(&comparison, self.current_file)?,
             rhs,
         });
 
-        Ok(Expr { kind, loc })
+        Ok(self.context.ast_expr(Expr { kind, loc }))
     }
 
     #[recursion_guard]
-    fn binary_operation(&mut self, operand: Token<'src>, left: Expr) -> ParseResult<Expr> {
-        let rhs = Ref::new(self.expr()?);
+    fn binary_operation(
+        &mut self,
+        operand: Token<'src>,
+        lhs: &'ctx Expr<'ctx>,
+    ) -> ParseResult<&'ctx Expr<'ctx>> {
+        let rhs = self.expr()?;
 
-        let loc = Location::new(Span::merge(left.span(), rhs.span()), self.current_file);
+        let loc = Location::new(Span::merge(lhs.span(), rhs.span()), self.current_file);
         let kind = ExprKind::BinaryOp(Sided {
-            lhs: Ref::new(left),
+            lhs,
             op: self.bin_op(&operand, self.current_file)?,
             rhs,
         });
 
-        Ok(Expr { kind, loc })
+        Ok(self.context.ast_expr(Expr { kind, loc }))
     }
 
     #[recursion_guard]
-    fn assignment(&mut self, _colon: Token<'src>, lhs: Expr) -> ParseResult<Expr> {
+    fn assignment(
+        &mut self,
+        _colon: Token<'src>,
+        lhs: &'ctx Expr<'ctx>,
+    ) -> ParseResult<&'ctx Expr<'ctx>> {
         let equal = self.eat(TokenType::Equal, [TokenType::Newline])?;
         let assign = self.assign_kind(&equal, self.current_file)?;
-        let rhs = Ref::new(self.expr()?);
+        let rhs = self.expr()?;
 
         let loc = Location::new(Span::merge(lhs.span(), rhs.span()), self.current_file);
         let kind = ExprKind::Assign(Sided {
-            lhs: Ref::new(lhs),
+            lhs,
             op: assign,
             rhs,
         });
 
-        Ok(Expr { kind, loc })
+        Ok(self.context.ast_expr(Expr { kind, loc }))
     }
 
     #[recursion_guard]
-    fn exotic_assignment(&mut self, assign: Token<'src>, lhs: Expr) -> ParseResult<Expr> {
+    fn exotic_assignment(
+        &mut self,
+        assign: Token<'src>,
+        lhs: &'ctx Expr<'ctx>,
+    ) -> ParseResult<&'ctx Expr<'ctx>> {
         let assign = self.assign_kind(&assign, self.current_file)?;
-        let rhs = Ref::new(self.expr()?);
+        let rhs = self.expr()?;
 
         let loc = Location::new(Span::merge(lhs.span(), rhs.span()), self.current_file);
         let kind = ExprKind::Assign(Sided {
-            lhs: Ref::new(lhs),
+            lhs,
             op: assign,
             rhs,
         });
 
-        Ok(Expr { kind, loc })
+        Ok(self.context.ast_expr(Expr { kind, loc }))
     }
 
     #[recursion_guard]
-    fn ranges(&mut self, _double_dot: Token<'src>, start: Expr) -> ParseResult<Expr> {
-        let end = Ref::new(self.expr()?);
+    fn ranges(
+        &mut self,
+        _double_dot: Token<'src>,
+        start: &'ctx Expr<'ctx>,
+    ) -> ParseResult<&'ctx Expr<'ctx>> {
+        let end = self.expr()?;
 
         let loc = Location::new(Span::merge(start.span(), end.span()), self.current_file);
-        let kind = ExprKind::Range(Ref::new(start), end);
+        let kind = ExprKind::Range(start, end);
 
-        Ok(Expr { kind, loc })
+        Ok(self.context.ast_expr(Expr { kind, loc }))
     }
 
     #[recursion_guard]
-    fn dotted_call(&mut self, _dot: Token<'src>, member: Expr) -> ParseResult<Expr> {
-        let func = Ref::new(self.expr()?);
+    fn dotted_call(
+        &mut self,
+        _dot: Token<'src>,
+        member: &'ctx Expr<'ctx>,
+    ) -> ParseResult<&'ctx Expr<'ctx>> {
+        let func = self.expr()?;
 
         let loc = Location::new(Span::merge(member.span(), func.span()), self.current_file);
-        let kind = ExprKind::MemberFuncCall {
-            member: Ref::new(member),
-            func,
-        };
+        let kind = ExprKind::MemberFuncCall { member, func };
 
-        Ok(Expr { kind, loc })
+        Ok(self.context.ast_expr(Expr { kind, loc }))
     }
 
     #[recursion_guard]
-    fn function_call(&mut self, _left_paren: Token<'src>, caller: Expr) -> ParseResult<Expr> {
+    fn function_call(
+        &mut self,
+        _left_paren: Token<'src>,
+        caller: &'ctx Expr<'ctx>,
+    ) -> ParseResult<&'ctx Expr<'ctx>> {
         let mut args = Vec::with_capacity(5);
         while self.peek()?.ty() == TokenType::Newline {
             self.eat(TokenType::Newline, [])?;
@@ -270,34 +296,31 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             .span();
 
         let loc = Location::new(Span::merge(caller.span(), end), self.current_file);
-        let kind = ExprKind::FuncCall {
-            caller: Ref::new(caller),
-            args,
-        };
+        let kind = ExprKind::FuncCall { caller, args };
 
-        Ok(Expr { kind, loc })
+        Ok(self.context.ast_expr(Expr { kind, loc }))
     }
 
     #[recursion_guard]
-    fn reference(&mut self, amp: Token<'src>) -> ParseResult<Expr> {
+    fn reference(&mut self, amp: Token<'src>) -> ParseResult<&'ctx Expr<'ctx>> {
         let mutable = if self.peek()?.ty() == TokenType::Mut {
             self.eat(TokenType::Mut, [])?;
             true
         } else {
             false
         };
-        let expr = Ref::new(self.expr()?);
+        let expr = self.expr()?;
         let loc = Location::new(Span::merge(amp.span(), expr.span()), self.current_file);
 
-        Ok(Expr {
+        Ok(self.context.ast_expr(Expr {
             kind: ExprKind::Reference { mutable, expr },
             loc,
-        })
+        }))
     }
 
     #[recursion_guard]
-    fn paren_expr(&mut self, paren: Token<'src>) -> ParseResult<Expr> {
-        let expr = Ref::new(self.expr()?);
+    fn paren_expr(&mut self, paren: Token<'src>) -> ParseResult<&'ctx Expr<'ctx>> {
+        let expr = self.expr()?;
         let end = self
             .eat(TokenType::RightParen, [TokenType::Newline])?
             .span();
@@ -305,33 +328,33 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         let loc = Location::new(Span::merge(paren.span(), end), self.current_file);
         let kind = ExprKind::Paren(expr);
 
-        Ok(Expr { kind, loc })
+        Ok(self.context.ast_expr(Expr { kind, loc }))
     }
 
     #[recursion_guard]
-    fn postfix_expr(&mut self, token: Token<'src>) -> ParseResult<Expr> {
-        let operand = Ref::new(self.expr()?);
+    fn postfix_expr(&mut self, token: Token<'src>) -> ParseResult<&'ctx Expr<'ctx>> {
+        let operand = self.expr()?;
         let loc = Location::new(Span::merge(token.span(), operand.span()), self.current_file);
         let kind = ExprKind::UnaryOp(self.unary_op(&token, self.current_file)?, operand);
 
-        Ok(Expr { kind, loc })
+        Ok(self.context.ast_expr(Expr { kind, loc }))
     }
 
     #[recursion_guard]
-    fn literal_expr(&mut self, lit: Token<'src>) -> ParseResult<Expr> {
+    fn literal_expr(&mut self, lit: Token<'src>) -> ParseResult<&'ctx Expr<'ctx>> {
         let literal = ExprKind::Literal(Locatable::new(
             self.literal(&lit, self.current_file)?,
             Location::new(lit.span(), self.current_file),
         ));
 
-        Ok(Expr {
+        Ok(self.context.ast_expr(Expr {
             kind: literal,
             loc: Location::new(lit.span(), self.current_file),
-        })
+        }))
     }
 
     #[recursion_guard]
-    fn variable(&mut self, ident_tok: Token<'src>) -> ParseResult<Expr> {
+    fn variable(&mut self, ident_tok: Token<'src>) -> ParseResult<&'ctx Expr<'ctx>> {
         use alloc::borrow::Cow;
         use unicode_normalization::{IsNormalized, UnicodeNormalization};
 
@@ -346,64 +369,64 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             Location::new(ident_tok.span(), self.current_file),
         );
 
-        Ok(Expr {
+        Ok(self.context.ast_expr(Expr {
             kind: ExprKind::Variable(ident),
             loc: Location::new(ident_tok.span(), self.current_file),
-        })
+        }))
     }
 
     #[recursion_guard]
-    fn continue_expr(&mut self, token: Token<'src>) -> ParseResult<Expr> {
+    fn continue_expr(&mut self, token: Token<'src>) -> ParseResult<&'ctx Expr<'ctx>> {
         self.eat(TokenType::Newline, [])?;
 
-        let stmt = Expr {
+        let expr = Expr {
             kind: ExprKind::Continue,
             loc: Location::new(token.span(), self.current_file),
         };
 
-        Ok(stmt)
+        Ok(self.context.ast_expr(expr))
     }
 
     #[recursion_guard]
-    fn break_expr(&mut self, token: Token<'src>) -> ParseResult<Expr> {
+    fn break_expr(&mut self, token: Token<'src>) -> ParseResult<&'ctx Expr<'ctx>> {
         if self.peek()?.ty() == TokenType::Newline {
             let end = self.eat(TokenType::Newline, [])?.span();
 
-            Ok(Expr {
+            Ok(self.context.ast_expr(Expr {
                 kind: ExprKind::Break(None),
                 loc: Location::new(Span::merge(token.span(), end), self.current_file),
-            })
+            }))
         } else {
-            let expr = Ref::new(self.expr()?);
+            let expr = self.expr()?;
             let loc = Location::new(Span::merge(token.span(), expr.span()), self.current_file);
 
-            Ok(Expr {
+            Ok(self.context.ast_expr(Expr {
                 kind: ExprKind::Break(Some(expr)),
                 loc,
-            })
+            }))
         }
     }
 
     #[recursion_guard]
-    fn return_expr(&mut self, token: Token<'src>) -> ParseResult<Expr> {
+    fn return_expr(&mut self, token: Token<'src>) -> ParseResult<&'ctx Expr<'ctx>> {
         if self.peek()?.ty() == TokenType::Newline {
-            Ok(Expr {
+            Ok(self.context.ast_expr(Expr {
                 kind: ExprKind::Return(None),
                 loc: Location::new(token.span(), self.current_file),
-            })
+            }))
         } else {
-            let expr = Ref::new(self.expr()?);
+            let expr = self.expr()?;
             let loc = Location::new(Span::merge(token.span(), expr.span()), self.current_file);
 
-            Ok(Expr {
+            Ok(self.context.ast_expr(Expr {
                 kind: ExprKind::Return(Some(expr)),
                 loc,
-            })
+            }))
         }
     }
 
     #[recursion_guard]
-    fn array_or_tuple(&mut self, token: Token<'src>) -> ParseResult<Expr> {
+    fn array_or_tuple(&mut self, token: Token<'src>) -> ParseResult<&'ctx Expr<'ctx>> {
         self.eat(TokenType::LeftBrace, [TokenType::Newline])?;
 
         let mut elements = Vec::with_capacity(5);
@@ -428,27 +451,32 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             ExprKind::Tuple(elements)
         };
 
-        Ok(Expr {
+        Ok(self.context.ast_expr(Expr {
             kind,
             loc: Location::new(Span::merge(token.span(), end), self.current_file),
-        })
+        }))
     }
 
     #[recursion_guard]
-    fn as_cast(&mut self, _as: Token<'src>, casted: Expr) -> ParseResult<Expr> {
-        let ty = Ref::new(self.ascribed_type()?);
+    fn as_cast(
+        &mut self,
+        _as: Token<'src>,
+        casted: &'ctx Expr<'ctx>,
+    ) -> ParseResult<&'ctx Expr<'ctx>> {
+        let ty = self.ascribed_type()?;
 
         let loc = Location::new(Span::merge(casted.span(), ty.span()), self.current_file);
-        let kind = ExprKind::Cast {
-            expr: Ref::new(casted),
-            ty,
-        };
+        let kind = ExprKind::Cast { expr: casted, ty };
 
-        Ok(Expr { kind, loc })
+        Ok(self.context.ast_expr(Expr { kind, loc }))
     }
 
     #[recursion_guard]
-    fn index_array(&mut self, _left_bracket: Token<'src>, var: Expr) -> ParseResult<Expr> {
+    fn index_array(
+        &mut self,
+        _left_bracket: Token<'src>,
+        var: &'ctx Expr<'ctx>,
+    ) -> ParseResult<&'ctx Expr<'ctx>> {
         let index = self.expr()?;
         let end = self
             .eat(TokenType::RightBrace, [TokenType::Newline])?
@@ -456,19 +484,16 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
         let loc = Location::new(Span::merge(index.span(), end), self.current_file);
         let expr = Expr {
-            kind: ExprKind::Index {
-                var: Ref::new(var),
-                index: Ref::new(index),
-            },
+            kind: ExprKind::Index { var, index },
             loc,
         };
 
-        Ok(expr)
+        Ok(self.context.ast_expr(expr))
     }
 
     #[recursion_guard]
-    fn if_expr(&mut self, _token: Token<'src>) -> ParseResult<Expr> {
-        let cond = Ref::new(self.expr()?);
+    fn if_expr(&mut self, _token: Token<'src>) -> ParseResult<&'ctx Expr<'ctx>> {
+        let cond = self.expr()?;
         self.eat(TokenType::Newline, [])?;
 
         let (body, mut delimiter) = self.block_returning(&[TokenType::End, TokenType::Else], 10)?;
@@ -480,7 +505,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             match delimiter.ty() {
                 TokenType::Else if self.peek()?.ty() == TokenType::If => {
                     self.eat(TokenType::If, [])?;
-                    let cond = Ref::new(self.expr()?);
+                    let cond = self.expr()?;
                     self.eat(TokenType::Newline, [])?;
 
                     let (body, delim) =
@@ -512,12 +537,12 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         clauses.push(IfCond { cond, body });
         let kind = ExprKind::If(If { clauses, else_ });
 
-        Ok(Expr { kind, loc })
+        Ok(self.context.ast_expr(Expr { kind, loc }))
     }
 
     #[recursion_guard]
-    fn match_expr(&mut self, _token: Token<'src>) -> ParseResult<Expr> {
-        let var = Ref::new(self.expr()?);
+    fn match_expr(&mut self, _token: Token<'src>) -> ParseResult<&'ctx Expr<'ctx>> {
+        let var = self.expr()?;
         self.eat(TokenType::Newline, [])?;
 
         let mut arms = Vec::with_capacity(3);
@@ -531,7 +556,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
             let guard = if self.peek()?.ty() == TokenType::Where {
                 self.eat(TokenType::Where, [TokenType::Newline])?;
-                let expr = Ref::new(self.expr()?);
+                let expr = self.expr()?;
 
                 Some(expr)
             } else {
@@ -551,12 +576,12 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             loc,
         };
 
-        Ok(expr)
+        Ok(self.context.ast_expr(expr))
     }
 
     #[recursion_guard]
-    fn while_expr(&mut self, _token: Token<'src>) -> ParseResult<Expr> {
-        let cond = Ref::new(self.expr()?);
+    fn while_expr(&mut self, _token: Token<'src>) -> ParseResult<&'ctx Expr<'ctx>> {
+        let cond = self.expr()?;
         self.eat(TokenType::Newline, [])?;
 
         let body = self.block(&[TokenType::End, TokenType::Then], 10)?;
@@ -583,11 +608,11 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             loc,
         };
 
-        Ok(expr)
+        Ok(self.context.ast_expr(expr))
     }
 
     #[recursion_guard]
-    fn loop_expr(&mut self, _token: Token<'src>) -> ParseResult<Expr> {
+    fn loop_expr(&mut self, _token: Token<'src>) -> ParseResult<&'ctx Expr<'ctx>> {
         let start = self.eat(TokenType::Newline, [])?.span();
 
         let body = self.block(&[TokenType::End, TokenType::Then], 10)?;
@@ -603,14 +628,14 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             loc: Location::new(Span::merge(start, end), self.current_file),
         };
 
-        Ok(expr)
+        Ok(self.context.ast_expr(expr))
     }
 
     #[recursion_guard]
-    fn for_expr(&mut self, _token: Token<'src>) -> ParseResult<Expr> {
-        let var = Ref::new(self.expr()?);
+    fn for_expr(&mut self, _token: Token<'src>) -> ParseResult<&'ctx Expr<'ctx>> {
+        let var = self.expr()?;
         self.eat(TokenType::In, [TokenType::Newline])?;
-        let cond = Ref::new(self.expr()?);
+        let cond = self.expr()?;
         self.eat(TokenType::Newline, [])?;
 
         let body = self.block(&[TokenType::End, TokenType::Then], 10)?;
@@ -638,11 +663,11 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             loc,
         };
 
-        Ok(expr)
+        Ok(self.context.ast_expr(expr))
     }
 
     #[recursion_guard]
-    fn then_block(&mut self) -> ParseResult<Option<Block>> {
+    fn then_block(&mut self) -> ParseResult<Option<Block<'ctx>>> {
         if self.peek()?.ty() == TokenType::Then {
             let then = self.block(&[TokenType::End, TokenType::Else], 3)?;
 
@@ -653,7 +678,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     }
 
     #[recursion_guard]
-    fn else_block(&mut self) -> ParseResult<Option<Block>> {
+    fn else_block(&mut self) -> ParseResult<Option<Block<'ctx>>> {
         if self.peek()?.ty() == TokenType::Else {
             let else_clause = self.block(&[TokenType::End], 3)?;
 

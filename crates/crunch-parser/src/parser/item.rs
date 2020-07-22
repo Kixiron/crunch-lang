@@ -12,7 +12,7 @@ use crunch_shared::{
             Attribute, Decorator, Dest, Exposure, ExtendBlock, ExternBlock, ExternFunc, FuncArg,
             Item, ItemKind, Type, TypeMember, Variant, Vis,
         },
-        CallConv, Ref,
+        CallConv,
     },
 };
 
@@ -20,7 +20,7 @@ use crunch_shared::{
 
 impl<'src, 'ctx> Parser<'src, 'ctx> {
     #[recursion_guard]
-    pub(super) fn item(&mut self) -> ParseResult<Option<Item>> {
+    pub(super) fn item(&mut self) -> ParseResult<Option<&'ctx Item<'ctx>>> {
         let (mut decorators, mut attributes, mut vis) =
             (Vec::with_capacity(5), Vec::with_capacity(5), None);
 
@@ -37,10 +37,10 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     #[recursion_guard]
     fn item_impl(
         &mut self,
-        decorators: &mut Vec<Decorator>,
+        decorators: &mut Vec<Decorator<'ctx>>,
         attributes: &mut Vec<Attribute>,
         vis: &mut Option<Vis>,
-    ) -> ParseResult<Option<Item>> {
+    ) -> ParseResult<Option<&'ctx Item<'ctx>>> {
         let peek = self.peek()?;
 
         match peek.ty() {
@@ -164,7 +164,11 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     }
 
     #[recursion_guard]
-    fn import(&mut self, decorators: Vec<Decorator>, vis: Vis) -> ParseResult<Item> {
+    fn import(
+        &mut self,
+        decorators: Vec<Decorator<'ctx>>,
+        vis: Vis,
+    ) -> ParseResult<&'ctx Item<'ctx>> {
         let start_span = self.eat(TokenType::Import, [TokenType::Newline])?.span();
 
         let file = self.eat(TokenType::Ident, [TokenType::Newline])?.source();
@@ -244,7 +248,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
         // Import statements cannot have decorators, so throw an error if there are any
         if decorators.is_empty() {
-            Ok(Item {
+            Ok(self.context.ast_item(Item {
                 decorators,
                 attrs: Vec::new(),
                 kind: ItemKind::Import {
@@ -255,7 +259,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                 name: None,
                 loc: Location::new(Span::merge(start_span, end_span), self.current_file),
                 vis: Some(vis),
-            })
+            }))
         } else {
             let first = decorators
                 .iter()
@@ -284,10 +288,10 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     #[recursion_guard]
     fn trait_decl(
         &mut self,
-        decorators: Vec<Decorator>,
+        decorators: Vec<Decorator<'ctx>>,
         attrs: Vec<Attribute>,
         vis: Vis,
-    ) -> ParseResult<Item> {
+    ) -> ParseResult<&'ctx Item<'ctx>> {
         let start_span = self.eat(TokenType::Trait, [TokenType::Newline])?.span();
         let name = {
             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
@@ -336,23 +340,23 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
         let kind = ItemKind::Trait { generics, methods };
 
-        Ok(Item {
+        Ok(self.context.ast_item(Item {
             kind,
             decorators,
             attrs,
             name: Some(name),
             loc: Location::new(Span::merge(start_span, end_span), self.current_file),
             vis: Some(vis),
-        })
+        }))
     }
 
     #[recursion_guard]
     fn enum_decl(
         &mut self,
-        decorators: Vec<Decorator>,
+        decorators: Vec<Decorator<'ctx>>,
         attrs: Vec<Attribute>,
         vis: Vis,
-    ) -> ParseResult<Item> {
+    ) -> ParseResult<&'ctx Item<'ctx>> {
         let start_span = self.eat(TokenType::Enum, [TokenType::Newline])?.span();
         let name = {
             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
@@ -429,18 +433,18 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
         let kind = ItemKind::Enum { generics, variants };
 
-        Ok(Item {
+        Ok(self.context.ast_item(Item {
             kind,
             decorators,
             attrs,
             name: Some(name),
             loc: Location::new(Span::merge(start_span, end_span), self.current_file),
             vis: Some(vis),
-        })
+        }))
     }
 
     #[recursion_guard]
-    fn decorator(&mut self, decorators: &mut Vec<Decorator>) -> ParseResult<()> {
+    fn decorator(&mut self, decorators: &mut Vec<Decorator<'ctx>>) -> ParseResult<()> {
         let start = self.eat(TokenType::AtSign, [TokenType::Newline])?.span();
         let (name, name_span) = {
             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
@@ -501,10 +505,10 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     #[recursion_guard]
     fn type_decl(
         &mut self,
-        decorators: Vec<Decorator>,
+        decorators: Vec<Decorator<'ctx>>,
         attrs: Vec<Attribute>,
         vis: Vis,
-    ) -> ParseResult<Item> {
+    ) -> ParseResult<&'ctx Item<'ctx>> {
         let start_span = self.eat(TokenType::Type, [TokenType::Newline])?.span();
         let name = {
             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
@@ -543,14 +547,17 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                         self.eat(TokenType::Colon, [TokenType::Newline])?;
                         self.ascribed_type()?
                     } else {
-                        Locatable::new(Type::default(), Location::new(name_span, self.current_file))
+                        Locatable::new(
+                            self.context.ast_type(Type::default()),
+                            Location::new(name_span, self.current_file),
+                        )
                     };
 
                     let member = TypeMember {
                         decorators: mem::take(&mut member_decorators),
                         attrs: mem::take(&mut member_attrs),
                         name,
-                        ty: Ref::new(ty),
+                        ty,
                     };
                     let _end_span = self.eat(TokenType::Comma, [])?.span();
 
@@ -580,14 +587,14 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
         let kind = ItemKind::Type { generics, members };
 
-        Ok(Item {
+        Ok(self.context.ast_item(Item {
             kind,
             decorators,
             attrs,
             name: Some(name),
             loc: Location::new(Span::merge(start_span, end_span), self.current_file),
             vis: Some(vis),
-        })
+        }))
     }
 
     /// ```ebnf
@@ -599,15 +606,15 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     #[recursion_guard]
     fn extend_block(
         &mut self,
-        _decorators: Vec<Decorator>,
+        _decorators: Vec<Decorator<'ctx>>,
         mut _attrs: Vec<Attribute>,
-    ) -> ParseResult<Item> {
+    ) -> ParseResult<&'ctx Item<'ctx>> {
         let start = self.eat(TokenType::Extend, [TokenType::Newline])?.span();
-        let target = Ref::new(self.ascribed_type()?);
+        let target = self.ascribed_type()?;
 
         let extender = if self.peek()?.ty() == TokenType::With {
             self.eat(TokenType::With, [TokenType::Newline])?;
-            Some(Ref::new(self.ascribed_type()?))
+            Some(self.ascribed_type()?)
         } else {
             None
         };
@@ -639,14 +646,14 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             items,
         });
 
-        Ok(Item {
+        Ok(self.context.ast_item(Item {
             kind,
             attrs,
             decorators,
             name: None,
             loc: Location::new(Span::merge(start, end), self.current_file),
             vis: None,
-        })
+        }))
     }
 
     /// ```ebnf
@@ -655,27 +662,27 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     #[recursion_guard]
     fn alias(
         &mut self,
-        decorators: Vec<Decorator>,
+        decorators: Vec<Decorator<'ctx>>,
         attrs: Vec<Attribute>,
         vis: Vis,
-    ) -> ParseResult<Item> {
+    ) -> ParseResult<&'ctx Item<'ctx>> {
         let start = self.eat(TokenType::Alias, [TokenType::Newline])?.span();
-        let alias = Ref::new(self.ascribed_type()?);
+        let alias = self.ascribed_type()?;
         self.eat(TokenType::Equal, [TokenType::Newline])?;
 
-        let actual = Ref::new(self.ascribed_type()?);
+        let actual = self.ascribed_type()?;
         let end = self.eat(TokenType::Newline, [])?.span();
 
         let kind = ItemKind::Alias { alias, actual };
 
-        Ok(Item {
+        Ok(self.context.ast_item(Item {
             kind,
             attrs,
             decorators,
             name: None,
             loc: Location::new(Span::merge(start, end), self.current_file),
             vis: Some(vis),
-        })
+        }))
     }
 
     /// ```ebnf
@@ -687,10 +694,10 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     #[recursion_guard]
     fn function(
         &mut self,
-        decorators: Vec<Decorator>,
+        decorators: Vec<Decorator<'ctx>>,
         attrs: Vec<Attribute>,
         vis: Vis,
-    ) -> ParseResult<Item> {
+    ) -> ParseResult<&'ctx Item<'ctx>> {
         let start_span = self.eat(TokenType::Function, [TokenType::Newline])?.span();
         let name = {
             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
@@ -715,12 +722,12 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             ret_span.unwrap_or_else(|| args.location().span()),
         );
 
-        let ret = Ref::new(returns.unwrap_or_else(|| {
+        let ret = returns.unwrap_or_else(|| {
             Locatable::new(
-                Type::default(),
+                self.context.ast_type(Type::default()),
                 Location::new(ret_span.unwrap_or(sig_span), self.current_file),
             )
-        }));
+        });
 
         while self.peek()?.ty() == TokenType::Newline {
             self.eat(TokenType::Newline, [])?;
@@ -738,14 +745,14 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             sig,
         };
 
-        Ok(Item {
+        Ok(self.context.ast_item(Item {
             kind,
             decorators,
             attrs,
             name: Some(name),
             loc: Location::new(Span::merge(start_span, end_span), self.current_file),
             vis: Some(vis),
-        })
+        }))
     }
 
     /// ```ebnf
@@ -754,7 +761,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// Argument ::= Ident ':' Type
     /// ```
     #[recursion_guard]
-    fn function_args(&mut self) -> ParseResult<Locatable<Vec<FuncArg>>> {
+    fn function_args(&mut self) -> ParseResult<Locatable<Vec<FuncArg<'ctx>>>> {
         let start = self.eat(TokenType::LeftParen, [TokenType::Newline])?.span();
 
         let mut args = Vec::with_capacity(7);
@@ -775,7 +782,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                 };
 
             self.eat(TokenType::Colon, [TokenType::Newline])?;
-            let ty = Ref::new(self.ascribed_type()?);
+            let ty = self.ascribed_type()?;
 
             // FIXME: Type span
             let loc = Location::new(name_span, self.current_file);
@@ -808,9 +815,9 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     #[recursion_guard]
     fn extern_block(
         &mut self,
-        decorators: Vec<Decorator>,
+        decorators: Vec<Decorator<'ctx>>,
         attrs: Vec<Attribute>,
-    ) -> ParseResult<Item> {
+    ) -> ParseResult<&'ctx Item<'ctx>> {
         let start = self.eat(TokenType::Extern, [TokenType::Newline])?.span();
         let mut items = Vec::with_capacity(5);
 
@@ -849,14 +856,14 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         }
         let end = self.eat(TokenType::End, [TokenType::Newline])?.span();
 
-        Ok(Item {
+        Ok(self.context.ast_item(Item {
             name: None,
             vis: None,
             attrs,
             decorators,
             kind: ItemKind::ExternBlock(ExternBlock { items }),
             loc: Location::new(Span::merge(start, end), self.current_file),
-        })
+        }))
     }
 
     /// ```ebnf
@@ -866,10 +873,10 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     #[recursion_guard]
     fn extern_func(
         &mut self,
-        mut decorators: Vec<Decorator>,
+        mut decorators: Vec<Decorator<'ctx>>,
         attrs: Vec<Attribute>,
         vis: Vis,
-    ) -> ParseResult<Item> {
+    ) -> ParseResult<&'ctx Item<'ctx>> {
         let start = self.eat(TokenType::Function, [TokenType::Newline])?.span();
         let name = {
             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
@@ -886,15 +893,15 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         };
         let end = self.eat(TokenType::Semicolon, [])?.span();
 
-        let ret = Ref::new(returns.unwrap_or_else(|| {
+        let ret = returns.unwrap_or_else(|| {
             Locatable::new(
-                Type::default(),
+                self.context.ast_type(Type::default()),
                 Location::new(Span::merge(start, end), self.current_file),
             )
-        }));
+        });
         let callconv = self.callconv(false, &mut decorators)?;
 
-        Ok(Item {
+        Ok(self.context.ast_item(Item {
             name: Some(name),
             vis: Some(vis),
             attrs,
@@ -906,13 +913,13 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                 callconv,
             }),
             loc: Location::new(Span::merge(start, end), self.current_file),
-        })
+        }))
     }
 
     fn callconv(
         &mut self,
         optional: bool,
-        decorators: &mut Vec<Decorator>,
+        decorators: &mut Vec<Decorator<'ctx>>,
     ) -> ParseResult<CallConv> {
         let callconv = self.context.strings.intern("callconv");
 
@@ -954,7 +961,9 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// GenericArgs ::= Type | Type ',' GenericArgs
     /// ```
     #[recursion_guard]
-    pub(super) fn generics(&mut self) -> ParseResult<Option<Locatable<Vec<Locatable<Type>>>>> {
+    pub(super) fn generics(
+        &mut self,
+    ) -> ParseResult<Option<Locatable<Vec<Locatable<&'ctx Type<'ctx>>>>>> {
         let peek = if let Ok(peek) = self.peek() {
             peek
         } else {

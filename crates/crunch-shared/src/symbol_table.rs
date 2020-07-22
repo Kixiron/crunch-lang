@@ -99,7 +99,7 @@ impl Resolver {
         id
     }
 
-    pub fn ty(&mut self, ty: &AstType) -> Either<TypeId, (StrT, ModuleId)> {
+    pub fn ty<'ctx>(&mut self, ty: &'ctx AstType<'ctx>) -> Either<TypeId, (StrT, ModuleId)> {
         match ty {
             AstType::Bool => Either::Left(0),
             AstType::String => Either::Left(1),
@@ -156,21 +156,21 @@ impl Module {
     }
 }
 
-impl ItemVisitor for Resolver {
+impl<'ctx> ItemVisitor<'ctx> for Resolver {
     type Output = ();
 
     fn visit_func(
         &mut self,
-        item: &Item,
-        _generics: Option<Locatable<&[Locatable<AstType>]>>,
-        func_args: Locatable<&[FuncArg]>,
-        _body: &Block,
-        ret: Locatable<&AstType>,
+        item: &'ctx Item<'ctx>,
+        _generics: Option<Locatable<&[Locatable<&'ctx AstType<'ctx>>]>>,
+        func_args: Locatable<&[FuncArg<'ctx>]>,
+        _body: &Block<'ctx>,
+        ret: Locatable<&'ctx AstType<'ctx>>,
         _loc: Location,
     ) -> Self::Output {
         let mut args = HashMap::with_capacity(func_args.len());
         for FuncArg { name, ty, .. } in *func_args {
-            args.insert(*name, self.ty(ty.as_ref()));
+            args.insert(*name, self.ty(ty));
         }
 
         let func = Function {
@@ -186,9 +186,9 @@ impl ItemVisitor for Resolver {
 
     fn visit_type_decl(
         &mut self,
-        item: &Item,
-        _generics: Option<Locatable<&[Locatable<AstType>]>>,
-        ty_members: &[TypeMember],
+        item: &'ctx Item<'ctx>,
+        _generics: Option<Locatable<&[Locatable<&'ctx AstType<'ctx>>]>>,
+        ty_members: &[TypeMember<'ctx>],
     ) -> Self::Output {
         let mut members = HashMap::with_capacity(ty_members.len());
         for TypeMember { name, ty, .. } in ty_members {
@@ -208,25 +208,25 @@ impl ItemVisitor for Resolver {
 
     fn visit_enum(
         &mut self,
-        _item: &Item,
-        _generics: Option<Locatable<&[Locatable<AstType>]>>,
-        _variants: &[Variant],
+        _item: &'ctx Item<'ctx>,
+        _generics: Option<Locatable<&[Locatable<&'ctx AstType<'ctx>>]>>,
+        _variants: &[Variant<'ctx>],
     ) -> Self::Output {
         todo!()
     }
 
     fn visit_trait(
         &mut self,
-        _item: &Item,
-        _generics: Option<Locatable<&[Locatable<AstType>]>>,
-        _methods: &[Item],
+        _item: &'ctx Item<'ctx>,
+        _generics: Option<Locatable<&[Locatable<&'ctx AstType<'ctx>>]>>,
+        _methods: &[&'ctx Item<'ctx>],
     ) -> Self::Output {
         todo!()
     }
 
     fn visit_import(
         &mut self,
-        _item: &Item,
+        _item: &'ctx Item<'ctx>,
         _file: &ItemPath,
         _dest: &Dest,
         _exposes: &Exposure,
@@ -236,24 +236,28 @@ impl ItemVisitor for Resolver {
 
     fn visit_extend_block(
         &mut self,
-        _item: &Item,
-        _target: Locatable<&AstType>,
-        _extender: Option<Locatable<&AstType>>,
-        _items: &[Item],
+        _item: &'ctx Item<'ctx>,
+        _target: Locatable<&'ctx AstType<'ctx>>,
+        _extender: Option<Locatable<&'ctx AstType<'ctx>>>,
+        _items: &[&'ctx Item<'ctx>],
     ) -> Self::Output {
         todo!()
     }
 
     fn visit_alias(
         &mut self,
-        _item: &Item,
-        _alias: Locatable<&AstType>,
-        _actual: Locatable<&AstType>,
+        _item: &'ctx Item<'ctx>,
+        _alias: Locatable<&'ctx AstType<'ctx>>,
+        _actual: Locatable<&'ctx AstType<'ctx>>,
     ) -> Self::Output {
         todo!()
     }
 
-    fn visit_extern_block(&mut self, _item: &Item, items: &[Item]) -> Self::Output {
+    fn visit_extern_block(
+        &mut self,
+        _item: &'ctx Item<'ctx>,
+        items: &[&'ctx Item<'ctx>],
+    ) -> Self::Output {
         for item in items {
             self.visit_item(item);
         }
@@ -261,15 +265,15 @@ impl ItemVisitor for Resolver {
 
     fn visit_extern_func(
         &mut self,
-        item: &Item,
-        _generics: Option<Locatable<&[Locatable<AstType>]>>,
-        func_args: Locatable<&[FuncArg]>,
-        ret: Locatable<&AstType>,
+        item: &'ctx Item<'ctx>,
+        _generics: Option<Locatable<&[Locatable<&'ctx AstType<'ctx>>]>>,
+        func_args: Locatable<&[FuncArg<'ctx>]>,
+        ret: Locatable<&'ctx AstType<'ctx>>,
         _callconv: CallConv,
     ) -> Self::Output {
         let mut args = HashMap::with_capacity(func_args.len());
         for FuncArg { name, ty, .. } in *func_args {
-            args.insert(*name, self.ty(ty.as_ref()));
+            args.insert(*name, self.ty(ty));
         }
 
         let func = Function {

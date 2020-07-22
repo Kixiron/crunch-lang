@@ -17,4 +17,4 @@ mod token;
 mod unnest_externs;
 
 pub use parser::{ParseConfig, Parser, ParserReturn};
-pub use unnest_externs::ExternUnnester;
+pub use unnest_externs::FlattenExternals;
