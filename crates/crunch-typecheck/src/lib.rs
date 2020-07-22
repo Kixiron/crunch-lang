@@ -12,7 +12,6 @@ mod bidirectional;
 use core::fmt::{Result as FmtResult, Write};
 use crunch_shared::{
     context::Context,
-    crunch_proc::instrument,
     error::{ErrorHandler, Locatable, Location, Span, TypeError, TypeResult},
     trees::{
         hir::{
@@ -205,65 +204,64 @@ impl<'ctx> Engine<'ctx> {
         }
     }
 
-    #[instrument(name = "type checking")]
-    #[allow(irrefutable_let_patterns)]
     pub fn walk(&mut self, items: &[&'ctx Item<'ctx>]) -> Result<ErrorHandler, ErrorHandler> {
         for item in items.iter() {
-            if let &&Item::Function(Function {
-                ref name,
-                ref args,
-                ret,
-                sig,
-                ..
-            })
-            | &&Item::ExternFunc(ExternFunc {
-                ref name,
-                ref args,
-                ret,
-                loc: sig,
-                ..
-            }) = item
-            {
-                // TODO: Use error types as fillers here if they're unknown
-                for arg in args.iter() {
-                    let is_unknown = self.context.get_hir_type(arg.kind).unwrap().is_unknown();
+            match item {
+                &&Item::Function(Function {
+                    ref name,
+                    ref args,
+                    ret,
+                    sig,
+                    ..
+                })
+                | &&Item::ExternFunc(ExternFunc {
+                    ref name,
+                    ref args,
+                    ret,
+                    loc: sig,
+                    ..
+                }) => {
+                    // TODO: Use error types as fillers here if they're unknown
+                    for arg in args.iter() {
+                        let is_unknown = self.context.get_hir_type(arg.kind).unwrap().is_unknown();
 
-                    if is_unknown {
+                        if is_unknown {
+                            self.errors.push_err(Locatable::new(
+                                TypeError::MissingType("Types for function arguments".to_owned())
+                                    .into(),
+                                arg.location(),
+                            ));
+                        }
+                    }
+
+                    // TODO: Use error types as fillers here if they're unknown
+                    let ret_ty = self.context.get_hir_type(ret).unwrap();
+                    if ret_ty.kind.is_unknown() {
                         self.errors.push_err(Locatable::new(
-                            TypeError::MissingType("Types for function arguments".to_owned())
-                                .into(),
-                            arg.location(),
+                            TypeError::MissingType("Return types for functions".to_owned()).into(),
+                            ret_ty.location(),
                         ));
                     }
+
+                    // TODO: Use error types as fillers here if they're unknown
+                    let arg_span = args.location();
+                    let args: Vec<TypeId> = args
+                        .iter()
+                        .map(|&FuncArg { name, kind, .. }| {
+                            self.insert(name, kind);
+                            kind
+                        })
+                        .collect();
+
+                    let func = Func {
+                        ret,
+                        args,
+                        arg_span,
+                        sig,
+                    };
+
+                    self.functions.insert(name.clone(), func);
                 }
-
-                // TODO: Use error types as fillers here if they're unknown
-                let ret_ty = self.context.get_hir_type(ret).unwrap();
-                if ret_ty.kind.is_unknown() {
-                    self.errors.push_err(Locatable::new(
-                        TypeError::MissingType("Return types for functions".to_owned()).into(),
-                        ret_ty.location(),
-                    ));
-                }
-
-                // TODO: Use error types as fillers here if they're unknown
-                let arg_span = args.location();
-                let args: Vec<TypeId> = args
-                    .iter()
-                    .map(|&FuncArg { name, kind, .. }| {
-                        self.insert(name, kind);
-                        kind
-                    })
-                    .collect();
-
-                let func = Func {
-                    ret,
-                    args,
-                    arg_span,
-                    sig,
-                };
-
-                self.functions.insert(name.clone(), func);
             }
         }
 

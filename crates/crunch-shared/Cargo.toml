@@ -54,6 +54,9 @@ default-features = false
 [dependencies.typed-arena]
 version = "2.0.1"
 
+[dependencies.stats_alloc]
+version = "0.1.8"
+
 [dependencies.crunch-proc]
 path = "../crunch-proc"
 

@@ -3,7 +3,6 @@ use alloc::{format, vec::Vec};
 use core::mem;
 use crunch_shared::{
     context::Context,
-    crunch_proc::instrument,
     error::{Error, ErrorHandler, Locatable, Location, ParseResult, SyntaxError},
     files::CurrentFile,
     trees::ast::Item,
@@ -93,7 +92,6 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         }
     }
 
-    #[instrument(name = "parsing")]
     pub fn parse(mut self) -> Result<ParserReturn, ErrorHandler> {
         let (mut items, mut errors) = (Vec::with_capacity(20), 0);
 

@@ -1,4 +1,3 @@
-use crate as crunch_shared;
 use crate::{
     error::{Locatable, Location},
     strings::StrT,
@@ -10,7 +9,6 @@ use crate::{
     visitors::ast::ItemVisitor,
 };
 use alloc::{vec, vec::Vec};
-use crunch_proc::instrument;
 
 type ModuleId = usize;
 type TypeId = usize;
@@ -46,7 +44,6 @@ impl Resolver {
     }
 
     // FIXME: This is just bad
-    #[instrument(name = "symbol table finalization")]
     pub fn finalize(&mut self) {
         // FIXME: This just won't work
         let hacky = self.clone(); // Your mother can't be borrowed immutably because she's already borrowed mutably

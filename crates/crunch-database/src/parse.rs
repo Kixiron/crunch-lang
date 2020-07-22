@@ -20,13 +20,16 @@ fn parse(db: &dyn ParseDatabase, file: FileId) -> Result<Arc<ParserReturn>, Arc<
 
     // TODO: ParseConfig from options or query
     let parser = ParserBackend::new(&source, ParseConfig::default(), current_file, db.context());
-    parser
-        .parse()
-        .map(|(ast, warnings)| {
-            // TODO: Better scheme for ast preprocessing passes
-            let ast = ExternUnnester::new().unnest(ast);
 
-            Arc::new((ast, warnings))
-        })
-        .map_err(Arc::new)
+    crunch_shared::allocator::CRUNCHC_ALLOCATOR
+        .record_region("parsing", || parser.parse())
+        .map_or_else(
+            |err| Err(Arc::new(err)),
+            |(ast, warnings)| {
+                // TODO: Better scheme for ast preprocessing passes
+                let ast = ExternUnnester::new().unnest(ast);
+
+                Ok(Arc::new((ast, warnings)))
+            },
+        )
 }

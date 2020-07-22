@@ -6,7 +6,6 @@ use alloc::vec::Vec;
 use core::iter::FromIterator;
 use crunch_shared::{
     context::Context,
-    crunch_proc::instrument,
     error::{Location, MirResult},
     trees::{
         ast::Integer,
@@ -65,7 +64,6 @@ impl<'ctx> MirBuilder<'ctx> {
         }
     }
 
-    #[instrument(name = "lowering to mir")]
     pub fn lower(mut self, items: &[&'ctx Item<'ctx>]) -> MirResult<Mir> {
         self.function_names = HashMap::from_iter(items.iter().filter_map(|item| match item {
             &&Item::Function(HirFunction { ref name, ret, .. })

@@ -1,6 +1,5 @@
 use alloc::vec::Vec;
 use crunch_shared::{
-    crunch_proc::instrument,
     trees::ast::{ExternBlock, Item, ItemKind},
     visitors::ast::ItemVisitorMut,
 };
@@ -12,11 +11,10 @@ pub struct ExternUnnester {
 }
 
 impl ExternUnnester {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self { __private: () }
     }
 
-    #[instrument(name = "extern block unnesting")]
     pub fn unnest(mut self, mut items: Vec<Item>) -> Vec<Item> {
         let mut out_items = Vec::with_capacity(items.len());
         while !items.is_empty() {

@@ -19,6 +19,7 @@ pub mod file_hash;
 pub mod files;
 pub mod meta;
 // mod passes;
+pub mod allocator;
 pub mod strings;
 pub mod symbol_table;
 pub mod trees;

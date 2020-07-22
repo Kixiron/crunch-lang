@@ -1,7 +1,6 @@
 pub mod llvm;
 
 use crunch_shared::{
-    crunch_proc::instrument,
     strings::StrInterner,
     trees::{
         mir::{
@@ -53,7 +52,6 @@ impl<'ctx> CodeGenerator<'ctx> {
         }
     }
 
-    #[instrument(name = "codegen")]
     pub fn generate(mut self, mir: Mir) -> Result<()> {
         for function in mir.functions() {
             let args: Vec<LLVMType<'ctx>> = function

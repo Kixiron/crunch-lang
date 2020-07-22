@@ -1,6 +1,5 @@
 use crunch_shared::{
     context::Context,
-    crunch_proc::instrument,
     error::{Locatable, Location},
     strings::StrT,
     trees::{
@@ -28,11 +27,11 @@ pub struct Ladder<'ctx> {
 }
 
 impl<'ctx> Ladder<'ctx> {
-    pub fn new(context: Context<'ctx>) -> Self {
+    pub const fn new(context: Context<'ctx>) -> Self {
         Self { context }
     }
 
-    #[instrument(name = "hir lowering")]
+    #[inline]
     pub fn lower(&mut self, items: &[AstItem]) -> Vec<&'ctx Item<'ctx>> {
         items
             .iter()

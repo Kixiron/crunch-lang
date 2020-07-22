@@ -8,6 +8,7 @@ use crunch_codegen::{
 use crunch_database::{ContextDatabase, CrunchDatabase, ParseDatabase, SourceDatabase};
 use crunch_mir::MirBuilder;
 use crunch_shared::{
+    allocator::{CrunchcAllocator, CRUNCHC_ALLOCATOR},
     context::Context as ParseContext,
     files::{FileId, Files},
     symbol_table::Resolver,
@@ -25,13 +26,16 @@ use std::{
 };
 use structopt::StructOpt;
 
+#[global_allocator]
+static GLOBAL_ALLOCATOR: CrunchcAllocator = CRUNCHC_ALLOCATOR;
+
 fn main() {
     let code = {
         let args = CrunchcOpts::from_args();
         let options = args.build_options();
         let mut stderr = Stderr::new(&options);
 
-        match run(&mut stderr, args, options) {
+        match GLOBAL_ALLOCATOR.record_region("driver", || run(&mut stderr, args, options)) {
             Ok(ExitStatus { message, exit_code }) => {
                 if let Some(message) = message {
                     stderr.write(|| format!("{}\n", message));
@@ -181,7 +185,7 @@ fn run(
     };
 
     // Resolve all names in the ast
-    let _resolver = {
+    let _resolver = GLOBAL_ALLOCATOR.record_region("symbol table building", || {
         use crunch_shared::trees::ItemPath;
 
         let mut resolver = Resolver::new(ItemPath::new(context.strings().intern(&source_file)));
@@ -191,10 +195,11 @@ fn run(
         resolver.finalize();
 
         resolver
-    };
+    });
 
     // Lower the ast to hir
-    let mut hir = Ladder::new(context.clone()).lower(&ast);
+    let hir =
+        GLOBAL_ALLOCATOR.record_region("hir lowering", || Ladder::new(context.clone()).lower(&ast));
     if options.emit.contains(&EmissionKind::Hir) {
         let path = out_file.with_extension("hir");
 
@@ -213,7 +218,7 @@ fn run(
 
     // Check types and update the hir with concrete types
     let mut engine = Engine::new(context.clone());
-    match engine.walk(&mut hir) {
+    match GLOBAL_ALLOCATOR.record_region("type checking", || engine.walk(&hir)) {
         Ok(mut warnings) => warnings.emit(&files),
         Err(mut errors) => {
             errors.emit(&files);
@@ -223,9 +228,12 @@ fn run(
     }
 
     // Lower hir to mir
-    let mir = MirBuilder::new(context.clone(), engine)
-        .lower(&hir)
-        .unwrap();
+    let mir = GLOBAL_ALLOCATOR.record_region("mir lowering", || {
+        MirBuilder::new(context.clone(), engine)
+            .lower(&hir)
+            .unwrap()
+    });
+
     if options.emit.contains(&EmissionKind::Mir) {
         let path = out_file.with_extension("mir");
 
@@ -254,16 +262,20 @@ fn run(
         .map_err(|err| ExitStatus::message(format!("error creating LLVM module: {:?}", err)))?;
 
     // Generate LLVM ir
-    CodeGenerator::new(&module, &context.strings)
-        .generate(mir)
-        .map_err(|err| {
-            ExitStatus::message(format!("encountered an error during codegen: {:?}", err))
-        })?;
+    GLOBAL_ALLOCATOR.record_region("code generation", || {
+        CodeGenerator::new(&module, &context.strings)
+            .generate(mir)
+            .map_err(|err| {
+                ExitStatus::message(format!("encountered an error during codegen: {:?}", err))
+            })
+    })?;
 
     // Verify the generated module
-    module
-        .verify()
-        .map_err(|err| ExitStatus::message(format!("generated invalid LLVM module: {:?}", err)))?;
+    GLOBAL_ALLOCATOR.record_region("module verification", || {
+        module
+            .verify()
+            .map_err(|err| ExitStatus::message(format!("generated invalid LLVM module: {:?}", err)))
+    })?;
 
     if options.emit.contains(&EmissionKind::LlvmIr) {
         let path = out_file.with_extension("ll");
@@ -320,15 +332,17 @@ fn run(
 
     // Emit to an object file so we can link it
     let object_file = out_file.with_extension("o");
-    target_machine
-        .emit_to_file(&module, &object_file, CodegenFileKind::Object)
-        .map_err(|err| {
-            ExitStatus::message(format!(
-                "encountered an error while emitting object file to '{}': {:?}",
-                object_file.display(),
-                err
-            ))
-        })?;
+    GLOBAL_ALLOCATOR.record_region("write object file", || {
+        target_machine
+            .emit_to_file(&module, &object_file, CodegenFileKind::Object)
+            .map_err(|err| {
+                ExitStatus::message(format!(
+                    "encountered an error while emitting object file to '{}': {:?}",
+                    object_file.display(),
+                    err
+                ))
+            })
+    })?;
 
     if options.emit.contains(&EmissionKind::Object) {
         // TODO: Print object file to stdout?
@@ -364,16 +378,17 @@ fn run(
     };
 
     // TODO: Use `cc` to get the relevant linkers
-    std::process::Command::new("clang")
-        .arg(&object_file)
-        .arg("-o")
-        .arg(&exe_path)
-        .spawn()
-        .and_then(|mut linker| linker.wait())
-        .map_err(|err| ExitStatus::message(format!("failed to link: {:?}", err)))?;
+    GLOBAL_ALLOCATOR.record_region("linking", || {
+        std::process::Command::new("clang")
+            .arg(&object_file)
+            .arg("-o")
+            .arg(&exe_path)
+            .spawn()
+            .and_then(|mut linker| linker.wait())
+            .map_err(|err| ExitStatus::message(format!("failed to link: {:?}", err)))
+    })?;
 
     let build_time = start_time.elapsed();
-
     stderr.write(|| {
         format!(
             "Finished building in {:.2} seconds\n",
