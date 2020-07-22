@@ -21,7 +21,7 @@ use crunch_shared::{
         },
         ItemPath,
     },
-    utils::HashMap,
+    utils::{HashMap, Hasher},
     visitors::hir::{ExprVisitor, ItemVisitor, StmtVisitor},
 };
 
@@ -48,8 +48,8 @@ impl<'ctx> Engine<'ctx> {
         Self {
             errors: ErrorHandler::default(),
             current_func: None,
-            functions: HashMap::new(),
-            variables: HashMap::new(),
+            functions: HashMap::with_hasher(Hasher::default()),
+            variables: HashMap::with_hasher(Hasher::default()),
             check: None,
             context,
         }

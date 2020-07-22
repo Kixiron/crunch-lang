@@ -22,7 +22,7 @@ use crunch_shared::{
         },
         ItemPath, Ref,
     },
-    utils::HashMap,
+    utils::{HashMap, Hasher},
     visitors::hir::{ExprVisitor, ItemVisitor, StmtVisitor, TypeVisitor},
 };
 use crunch_typecheck::Engine;
@@ -54,10 +54,10 @@ impl<'ctx> MirBuilder<'ctx> {
             external_functions: Vec::new(),
             blocks: Vec::new(),
             current_block: BlockId::new(0),
-            function_names: HashMap::new(),
+            function_names: HashMap::with_hasher(Hasher::default()),
             current_function: FuncId::new(0),
             func_counter: FuncId::new(0),
-            variables: HashMap::new(),
+            variables: HashMap::with_hasher(Hasher::default()),
             var_counter: VarId::new(0),
             type_engine,
             context,

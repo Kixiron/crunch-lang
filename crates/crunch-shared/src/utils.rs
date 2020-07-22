@@ -1,10 +1,18 @@
 use alloc::borrow::Cow;
+use fxhash::FxBuildHasher;
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "no-std")]
-pub use hashbrown::{HashMap, HashSet};
-#[cfg(not(feature = "no-std"))]
-pub use std::collections::{HashMap, HashSet};
+cfg_if::cfg_if! {
+    if #[cfg(feature = "no-std")] {
+        pub type HashMap<K, V> = hashbrown::HashMap<K, V, FxBuildHasher>;
+        pub type HashSet<K> = hashbrown::HashSet<K, FxBuildHasher>;
+    } else {
+        pub type HashMap<K, V> = std::collections::HashMap<K, V, FxBuildHasher>;
+        pub type HashSet<K> = std::collections::HashSet<K, FxBuildHasher>;
+    }
+}
+
+pub type Hasher = FxBuildHasher;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
 pub enum Either<L, R> {
@@ -194,47 +202,47 @@ pub struct Timer {
 impl Timer {
     #[allow(unused_variables)]
     pub fn start(name: impl Into<Cow<'static, str>>) -> Self {
-        #[cfg(not(feature = "no-std"))]
-        {
-            let name = name.into();
-            crate::info!("Started {}", name);
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "no-std")] {
+                Self { }
+            } else {
+                let name = name.into();
+                crate::info!("Started {}", name);
 
-            return Self {
-                name,
-                start: std::time::Instant::now(),
-                finished: false,
-            };
+                Self {
+                    name,
+                    start: std::time::Instant::now(),
+                    finished: false,
+                }
+            }
         }
-
-        #[cfg(feature = "no-std")]
-        return Self {};
     }
 
-    #[allow(unused_mut)]
     pub fn end(mut self) {
-        #[cfg(not(feature = "no-std"))]
         self.end_inner();
     }
 
-    #[cfg(not(feature = "no-std"))]
     fn end_inner(&mut self) {
-        if !self.finished {
-            let elapsed = self.start.elapsed();
+        cfg_if::cfg_if! {
+            if #[cfg(not(feature = "no-std"))] {
+                if !self.finished {
+                    let elapsed = self.start.elapsed();
 
-            crate::info!(
-                "Finished {} in {}sec, {}ms and {}μs",
-                self.name,
-                elapsed.as_secs(),
-                elapsed.subsec_micros() / 1000,
-                elapsed.subsec_micros() % 1000,
-            );
+                    crate::info!(
+                        "Finished {} in {}sec, {}ms and {}μs",
+                        self.name,
+                        elapsed.as_secs(),
+                        elapsed.subsec_micros() / 1000,
+                        elapsed.subsec_micros() % 1000,
+                    );
 
-            self.finished = true;
+                    self.finished = true;
+                }
+            }
         }
     }
 }
 
-#[cfg(not(feature = "no-std"))]
 impl Drop for Timer {
     fn drop(&mut self) {
         self.end_inner();

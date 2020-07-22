@@ -46,7 +46,7 @@ pub struct Parser<'src, 'ctx> {
     error_handler: ErrorHandler,
     stack_frames: StackGuard,
     current_file: CurrentFile,
-    context: Context<'ctx>,
+    context: &'ctx Context<'ctx>,
     config: ParseConfig,
 }
 
@@ -57,7 +57,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         source: &'src str,
         config: ParseConfig,
         current_file: CurrentFile,
-        context: Context<'ctx>,
+        context: &'ctx Context<'ctx>,
     ) -> Self {
         let (token_stream, next, peek) = Self::lex(source);
 
@@ -78,7 +78,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         next: Option<Token<'src>>,
         peek: Option<Token<'src>>,
         current_file: CurrentFile,
-        context: Context<'ctx>,
+        context: &'ctx Context<'ctx>,
     ) -> Self {
         Self {
             token_stream,

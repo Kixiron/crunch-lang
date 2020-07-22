@@ -1,7 +1,7 @@
 use crunch_codegen::{
     llvm::{
         target_machine::{CodegenFileKind, Target, TargetConf, TargetMachine},
-        Context,
+        Context as LLVMContext,
     },
     CodeGenerator,
 };
@@ -9,7 +9,7 @@ use crunch_database::{ContextDatabase, CrunchDatabase, ParseDatabase, SourceData
 use crunch_mir::MirBuilder;
 use crunch_shared::{
     allocator::{CrunchcAllocator, CRUNCHC_ALLOCATOR},
-    context::Context as ParseContext,
+    context::{Arenas, Context, OwnedArenas},
     files::{FileId, Files},
     symbol_table::Resolver,
     visitors::ast::ItemVisitor,
@@ -35,23 +35,47 @@ fn main() {
         let options = args.build_options();
         let mut stderr = Stderr::new(&options);
 
-        match GLOBAL_ALLOCATOR.record_region("driver", || run(&mut stderr, args, options)) {
-            Ok(ExitStatus { message, exit_code }) => {
-                if let Some(message) = message {
-                    stderr.write(|| format!("{}\n", message));
-                }
+        // Users can't enable both the verbose and quiet flags
+        if options.is_verbose() && options.quiet {
+            todo!("error here")
 
-                exit_code.unwrap_or(0)
-            }
+        // If verbose is enabled, enable logging
+        // TODO: Switch to env_logger to allow the user to better configure logging
+        //       via environmental variables
+        // TODO: Make different levels of verbosity actually do something
+        } else if options.is_verbose() {
+            use simplelog::{ConfigBuilder, LevelFilter, TermLogger, TerminalMode};
 
-            Err(ExitStatus { message, exit_code }) => {
-                if let Some(message) = message {
-                    stderr.write(|| format!("crunchc failed to compile: {}\n", message));
-                }
+            let log_level = LevelFilter::Trace;
+            let config = ConfigBuilder::new().add_filter_ignore_str("salsa").build();
+            let terminal_mode = TerminalMode::Stderr;
 
-                exit_code.unwrap_or(101)
-            }
+            TermLogger::init(log_level, config, terminal_mode).ok();
         }
+
+        GLOBAL_ALLOCATOR.record_region("driver", || {
+            let owned_arenas = OwnedArenas::default();
+            let arenas = Arenas::from(&owned_arenas);
+            let context = Context::new(arenas);
+
+            match run(&mut stderr, args, options, &context) {
+                Ok(ExitStatus { message, exit_code }) => {
+                    if let Some(message) = message {
+                        stderr.write(|| format!("{}\n", message));
+                    }
+
+                    exit_code.unwrap_or(0)
+                }
+
+                Err(ExitStatus { message, exit_code }) => {
+                    if let Some(message) = message {
+                        stderr.write(|| format!("crunchc failed to compile: {}\n", message));
+                    }
+
+                    exit_code.unwrap_or(101)
+                }
+            }
+        })
     };
 
     // exit immediately terminates the program, so make sure everything is cleaned
@@ -59,32 +83,13 @@ fn main() {
     std::process::exit(code);
 }
 
-fn run(
+fn run<'ctx>(
     stderr: &mut Stderr,
     args: CrunchcOpts,
     options: BuildOptions,
+    context: &'ctx Context<'ctx>,
 ) -> Result<ExitStatus, ExitStatus> {
     let start_time = Instant::now();
-
-    // Users can't enable both the verbose and quiet flags
-    if options.is_verbose() && options.quiet {
-        return Err(ExitStatus::message(
-            "The `--verbose` and `--quiet` options are exclusive",
-        ));
-
-    // If verbose is enabled, enable logging
-    // TODO: Switch to env_logger to allow the user to better configure logging
-    //       via environmental variables
-    // TODO: Make different levels of verbosity actually do something
-    } else if options.is_verbose() {
-        use simplelog::{ConfigBuilder, LevelFilter, TermLogger, TerminalMode};
-
-        let log_level = LevelFilter::Trace;
-        let config = ConfigBuilder::new().add_filter_ignore_str("salsa").build();
-        let terminal_mode = TerminalMode::Stderr;
-
-        TermLogger::init(log_level, config, terminal_mode).ok();
-    }
 
     // Get the source file's name without an extension
     let source_file = options
@@ -140,11 +145,11 @@ fn run(
         ))
     })?;
 
-    // Create the parsing context
-    let mut context = ParseContext::default();
-
     let mut database = CrunchDatabase::default();
-    database.set_context(context.clone());
+    // Nothing in this function should ever escape it, right?
+    database.set_context(unsafe {
+        std::mem::transmute::<&'ctx Context<'ctx>, &'static Context<'static>>(&context)
+    });
     database.set_source_text(FileId::new(0), std::sync::Arc::new(source.clone()));
     database.set_file_name(FileId::new(0), source_file.clone().to_string());
 
@@ -211,8 +216,6 @@ fn run(
         })?;
     }
 
-    unsafe { context.clear_ast() };
-
     if options.print.contains(&EmissionKind::Hir) {
         println!("{:#?}", &hir);
     }
@@ -235,10 +238,6 @@ fn run(
             .unwrap()
     });
 
-    unsafe {
-        context.clear_hir();
-    }
-
     if options.emit.contains(&EmissionKind::Mir) {
         let path = out_file.with_extension("mir");
 
@@ -256,7 +255,7 @@ fn run(
     }
 
     // Create LLVM context
-    let llvm_context = Context::new().map_err(|err| {
+    let llvm_context = LLVMContext::new().map_err(|err| {
         ExitStatus::message(format!(
             "Failed to create LLVM context for codegen: {:?}",
             err

@@ -23,7 +23,7 @@ fn parse(
     let source = db.source_text(file);
 
     // TODO: ParseConfig from options or query
-    let parser = ParserBackend::new(&source, ParseConfig::default(), current_file, db.context());
+    let parser = ParserBackend::new(&source, ParseConfig::default(), current_file, &db.context());
 
     crunch_shared::allocator::CRUNCHC_ALLOCATOR
         .record_region("parsing", || parser.parse())

@@ -4,5 +4,5 @@ use crunch_shared::context::Context;
 pub trait ContextDatabase: salsa::Database {
     // FIXME: Salsa won't allow bounded lifetimes, so we have to do this shit
     #[salsa::input]
-    fn context(&self) -> Context<'static>;
+    fn context(&self) -> &'static Context<'static>;
 }

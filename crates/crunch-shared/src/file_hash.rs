@@ -1,3 +1,4 @@
+use fxhash::FxBuildHasher;
 use std::{
     fs::{File, Metadata},
     hash::{BuildHasher, BuildHasherDefault, Hash, Hasher},
@@ -6,13 +7,10 @@ use std::{
     time::SystemTime,
 };
 
-/// The seed that will initialize the hasher used for hashing file metadata
-const HASHER_SEED: u64 = 0xF00DBEEF;
-
 /// Hashes file metadata
 #[derive(Debug)]
 pub struct FileHasher {
-    hasher: BuildHasherDefault<FnvHasher>,
+    hasher: FxBuildHasher,
 }
 
 impl FileHasher {
@@ -107,29 +105,6 @@ impl Hash for OsFileMeta {
                 meta.mtime().hash(state);
             }
         }
-    }
-}
-
-/// A wrapper around fnv so that we can use our own init seed for the hasher
-#[repr(transparent)]
-struct FnvHasher(fnv::FnvHasher);
-
-impl Hasher for FnvHasher {
-    #[inline]
-    fn finish(&self) -> u64 {
-        self.0.finish()
-    }
-
-    #[inline]
-    fn write(&mut self, bytes: &[u8]) {
-        self.0.write(bytes)
-    }
-}
-
-impl Default for FnvHasher {
-    #[inline]
-    fn default() -> Self {
-        Self(fnv::FnvHasher::with_key(HASHER_SEED))
     }
 }
 

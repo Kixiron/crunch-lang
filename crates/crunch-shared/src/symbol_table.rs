@@ -5,7 +5,7 @@ use crate::{
         ast::{Block, Dest, Exposure, FuncArg, Item, Type as AstType, TypeMember, Variant},
         CallConv, ItemPath,
     },
-    utils::HashMap,
+    utils::{HashMap, Hasher},
     visitors::ast::ItemVisitor,
 };
 use alloc::{vec, vec::Vec};
@@ -168,7 +168,7 @@ impl<'ctx> ItemVisitor<'ctx> for Resolver {
         ret: Locatable<&'ctx AstType<'ctx>>,
         _loc: Location,
     ) -> Self::Output {
-        let mut args = HashMap::with_capacity(func_args.len());
+        let mut args = HashMap::with_capacity_and_hasher(func_args.len(), Hasher::default());
         for FuncArg { name, ty, .. } in *func_args {
             args.insert(*name, self.ty(ty));
         }
@@ -190,7 +190,7 @@ impl<'ctx> ItemVisitor<'ctx> for Resolver {
         _generics: Option<Locatable<&[Locatable<&'ctx AstType<'ctx>>]>>,
         ty_members: &[TypeMember<'ctx>],
     ) -> Self::Output {
-        let mut members = HashMap::with_capacity(ty_members.len());
+        let mut members = HashMap::with_capacity_and_hasher(ty_members.len(), Hasher::default());
         for TypeMember { name, ty, .. } in ty_members {
             members.insert(*name, self.ty(&**ty));
         }
@@ -198,7 +198,7 @@ impl<'ctx> ItemVisitor<'ctx> for Resolver {
         let ty = Type::Custom {
             name: item.name.unwrap(),
             members,
-            methods: HashMap::new(),
+            methods: HashMap::with_hasher(Hasher::default()),
             parent: self.current_module,
         };
 
@@ -271,7 +271,7 @@ impl<'ctx> ItemVisitor<'ctx> for Resolver {
         ret: Locatable<&'ctx AstType<'ctx>>,
         _callconv: CallConv,
     ) -> Self::Output {
-        let mut args = HashMap::with_capacity(func_args.len());
+        let mut args = HashMap::with_capacity_and_hasher(func_args.len(), Hasher::default());
         for FuncArg { name, ty, .. } in *func_args {
             args.insert(*name, self.ty(ty));
         }

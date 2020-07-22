@@ -9,7 +9,7 @@ use crunch_shared::{
         },
         CallConv,
     },
-    utils::{Either, HashMap},
+    utils::{Either, HashMap, Hasher},
     visitors::mir::MirVisitor,
 };
 use llvm::{
@@ -43,9 +43,9 @@ impl<'ctx> CodeGenerator<'ctx> {
         Self {
             module,
             ctx: module.context(),
-            values: HashMap::new(),
-            blocks: HashMap::new(),
-            functions: HashMap::new(),
+            values: HashMap::with_hasher(Hasher::default()),
+            blocks: HashMap::with_hasher(Hasher::default()),
+            functions: HashMap::with_hasher(Hasher::default()),
             function_builder: None,
             block_builder: None,
             interner,
