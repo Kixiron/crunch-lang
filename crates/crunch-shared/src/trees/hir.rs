@@ -203,7 +203,12 @@ pub struct Block<T> {
 
 impl<T> Block<T> {
     #[inline]
-    pub fn new(loc: Location) -> Self {
+    pub fn new(block: Vec<T>, loc: Location) -> Self {
+        Self { block, loc }
+    }
+
+    #[inline]
+    pub fn empty(loc: Location) -> Self {
         Self {
             block: Vec::new(),
             loc,
@@ -311,6 +316,12 @@ impl Type {
         self.loc
     }
 
+    /// Returns `true` if the type is `Unit`
+    #[inline]
+    pub fn is_unit(&self) -> bool {
+        self.kind.is_unit()
+    }
+
     /// Returns `true` if the type is `Unknown`
     #[inline]
     pub fn is_unknown(&self) -> bool {
@@ -369,6 +380,12 @@ pub enum TypeKind {
 }
 
 impl TypeKind {
+    /// Returns `true` if the type is `Unit`
+    #[inline]
+    pub fn is_unit(&self) -> bool {
+        matches!(self, Self::Unit)
+    }
+
     /// Returns `true` if the type is `Unknown`
     #[inline]
     pub fn is_unknown(&self) -> bool {

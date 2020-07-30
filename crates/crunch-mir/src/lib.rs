@@ -1,8 +1,8 @@
-#![no_std]
+//#![no_std]
 
 extern crate alloc;
 
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 use core::iter::FromIterator;
 use crunch_shared::{
     context::Context,
@@ -28,18 +28,23 @@ use crunch_shared::{
 use crunch_typecheck::Engine;
 
 #[derive(Debug)]
+struct BlockState {
+    blocks: Vec<BasicBlock>,
+    current_block: BlockId,
+}
+
+#[derive(Debug)]
 pub struct MirBuilder<'ctx> {
     functions: Vec<Function>,
     external_functions: Vec<ExternFunc>,
     // TODO: Custom enum to represent the block superposition
-    blocks: Vec<BasicBlock>,
+    blocks: Vec<BlockState>,
     current_block: BlockId,
     // TODO: Custom struct w/ function arg & ret types
     function_names: HashMap<ItemPath, (FuncId, Type)>,
     current_function: FuncId,
     func_counter: FuncId,
-    // TODO: Reinserting variables will shadow previous ones, but is that a bad thing?
-    variables: HashMap<Var, Variable>,
+    variables: Vec<HashMap<Var, Variable>>,
     var_counter: VarId,
     type_engine: Engine<'ctx>,
     context: Context<'ctx>,
@@ -57,7 +62,7 @@ impl<'ctx> MirBuilder<'ctx> {
             function_names: HashMap::with_hasher(Hasher::default()),
             current_function: FuncId::new(0),
             func_counter: FuncId::new(0),
-            variables: HashMap::with_hasher(Hasher::default()),
+            variables: Vec::new(),
             var_counter: VarId::new(0),
             type_engine,
             context,
@@ -65,16 +70,22 @@ impl<'ctx> MirBuilder<'ctx> {
     }
 
     pub fn lower(mut self, items: &[&'ctx Item<'ctx>]) -> MirResult<Mir> {
-        self.function_names = HashMap::from_iter(items.iter().filter_map(|item| match item {
-            &&Item::Function(HirFunction { ref name, ret, .. })
-            | &&Item::ExternFunc(HirExternFunc { ref name, ret, .. }) => {
-                Some((name.clone(), (self.next_func_id(), self.visit_type(ret))))
-            }
-        }));
+        self.with_scope(|builder| {
+            builder.function_names =
+                HashMap::from_iter(items.iter().filter_map(|item| match item {
+                    &&Item::Function(HirFunction { ref name, ret, .. })
+                    | &&Item::ExternFunc(HirExternFunc { ref name, ret, .. }) => Some((
+                        name.clone(),
+                        (builder.next_func_id(), builder.visit_type(ret)),
+                    )),
+                }));
 
-        for item in items {
-            self.visit_item(item)?;
-        }
+            for item in items {
+                builder.visit_item(item)?;
+            }
+
+            Ok(())
+        })?;
 
         Ok(Mir::new(self.functions, self.external_functions))
     }
@@ -96,17 +107,25 @@ impl<'ctx> MirBuilder<'ctx> {
     fn next_block(&mut self) -> BlockId {
         let id = BlockId(self.blocks.len() as u64);
 
-        self.blocks.push(BasicBlock::new(id, None));
+        self.blocks
+            .last_mut()
+            .unwrap()
+            .blocks
+            .push(BasicBlock::new(id, None));
         self.current_block = id;
 
         id
     }
 
-    fn insert_variable(&mut self, var: Var, ty: Type) -> VarId {
+    fn create_variable(&mut self, var: Var, ty: Type) -> VarId {
         let id = self.next_var();
-        self.variables.insert(var, Variable { id, ty });
+        self.insert_variable(var, Variable { id, ty });
 
         id
+    }
+
+    fn insert_variable(&mut self, name: Var, var: Variable) {
+        self.variables.last_mut().unwrap().insert(name, var);
     }
 
     fn get_function_id(&self, name: &ItemPath) -> FuncId {
@@ -131,7 +150,7 @@ impl<'ctx> MirBuilder<'ctx> {
             };
 
             let ty = val.ty.clone();
-            let id = self.insert_variable(var, ty.clone());
+            let id = self.create_variable(var, ty.clone());
 
             self.current_block_mut()
                 .push(Instruction::Assign(Assign { var: id, val, ty }));
@@ -142,35 +161,95 @@ impl<'ctx> MirBuilder<'ctx> {
 
     fn move_to_block(&mut self, block_id: BlockId) {
         assert!(
-            self.blocks.iter().any(|block| block.id == block_id),
-            "Attempted to move to a nonexistent block"
+            self.blocks
+                .last()
+                .unwrap()
+                .blocks
+                .iter()
+                .any(|block| block.id == block_id),
+            "Attempted to move to a nonexistent block",
         );
 
         self.current_block = block_id;
     }
 
     fn current_block_mut(&mut self) -> &mut BasicBlock {
-        &mut self.blocks[self.current_block.0 as usize]
+        &mut self.blocks.last_mut().unwrap().blocks[self.current_block.0 as usize]
     }
 
     fn verify_current_block(&mut self) -> MirResult<()> {
-        self.blocks[self.current_block.0 as usize].verify()
+        self.blocks.last_mut().unwrap().blocks[self.current_block.0 as usize].verify()
+    }
+
+    fn get_block_mut(&mut self, block: BlockId) -> Option<&mut BasicBlock> {
+        self.blocks
+            .last_mut()
+            .unwrap()
+            .blocks
+            .get_mut(block.0 as usize)
     }
 
     fn get_variable(&self, var: Var) -> Option<&Variable> {
-        self.variables.get(&var.into())
+        self.variables.iter().rev().find_map(|vars| vars.get(&var))
     }
 
     fn make_block(&mut self, current_block: BlockId, arm: &MatchArm<'ctx>) -> MirResult<BlockId> {
         let block = self.next_block();
 
         self.move_to_block(block);
-        for stmt in arm.body.iter() {
-            self.visit_stmt(stmt)?;
-        }
+        self.with_scope(|builder| {
+            for stmt in arm.body.iter() {
+                builder.visit_stmt(stmt)?;
+            }
+
+            Ok(())
+        })?;
 
         self.move_to_block(current_block);
         Ok(block)
+    }
+
+    fn push_scope(&mut self) {
+        self.variables.push(HashMap::with_hasher(Hasher::default()));
+    }
+
+    fn pop_scope(&mut self) {
+        self.variables.pop().unwrap();
+    }
+
+    fn with_scope<F, T>(&mut self, func: F) -> T
+    where
+        F: FnOnce(&mut Self) -> T,
+    {
+        self.push_scope();
+        let result = func(self);
+        self.pop_scope();
+
+        result
+    }
+
+    fn push_all_blocks(&mut self) {
+        self.blocks.push(BlockState {
+            blocks: vec![BasicBlock::new(BlockId::new(0), None)],
+            current_block: BlockId::new(0),
+        });
+        self.current_block = BlockId::new(0);
+    }
+
+    fn pop_all_blocks(&mut self) -> Vec<BasicBlock> {
+        self.blocks.pop().unwrap().blocks
+    }
+
+    fn with_blocks<F, B, T, L>(&mut self, func: F, blocks: B) -> L
+    where
+        F: FnOnce(&mut Self) -> T,
+        B: FnOnce(&mut Self, Vec<BasicBlock>, T) -> L,
+    {
+        self.push_all_blocks();
+        let result = func(self);
+        let popped = self.pop_all_blocks();
+
+        blocks(self, popped, result)
     }
 }
 
@@ -178,45 +257,52 @@ impl<'ctx> ItemVisitor<'ctx> for MirBuilder<'ctx> {
     type Output = MirResult<()>;
 
     fn visit_func(&mut self, func: &HirFunction<'ctx>) -> Self::Output {
-        self.blocks.clear();
-        self.blocks.push(BasicBlock::new(BlockId::new(0), None));
-        self.current_block = BlockId::new(0);
+        self.with_blocks(
+            |builder| {
+                builder.with_scope(|builder| {
+                    let id = builder.get_function_id(&func.name);
 
-        let id = self.get_function_id(&func.name);
+                    let mut args = Vec::with_capacity(func.args.len());
+                    for &FuncArg { name, kind, .. } in func.args.iter() {
+                        let ty = builder.visit_type(kind);
+                        let id = builder.create_variable(name.into(), ty.clone());
 
-        let mut args = Vec::with_capacity(func.args.len());
-        for &FuncArg { name, kind, .. } in func.args.iter() {
-            let ty = self.visit_type(kind);
-            let id = self.insert_variable(name.into(), ty.clone());
+                        args.push(Variable { id, ty });
+                    }
 
-            args.push(Variable { id, ty });
-        }
+                    for stmt in func.body.iter() {
+                        builder.visit_stmt(stmt)?;
+                    }
 
-        for stmt in func.body.iter() {
-            self.visit_stmt(stmt)?;
-        }
+                    Ok((id, func.name.clone(), args, builder.visit_type(func.ret)))
+                })
+            },
+            |builder, blocks, res| {
+                let (id, name, args, ret) = res?;
 
-        // FIXME: Use a better system of a "current block" that's an `Option<BlockId>` with operations
-        //        automatically creating a new one if needed and not relying on one to already exist.
-        //        This'd guarantee that only used blocks are ever created instead of speculatively creating
-        //        blocks for future use
-        let blocks = self
-            .blocks
-            .drain(..)
-            .filter(|block| !block.is_empty())
-            .collect();
+                // FIXME: Use a better system of a "current block" that's an `Option<BlockId>` with operations
+                //        automatically creating a new one if needed and not relying on one to already exist.
+                //        This would guarantee that only used blocks are ever created instead of speculatively
+                //        creating blocks for future use
+                // FIXME: https://github.com/rust-lang/rust/issues/43244
+                let blocks = blocks
+                    .into_iter()
+                    .filter(|block| !block.is_empty())
+                    .collect();
 
-        let func = Function {
-            id,
-            name: func.name.clone(),
-            args,
-            ret: self.visit_type(func.ret),
-            blocks,
-        };
-        self.functions.push(func);
+                let func = Function {
+                    id,
+                    name,
+                    args,
+                    ret,
+                    blocks,
+                };
+                builder.functions.push(func);
 
-        // TODO: Return the function's id
-        Ok(())
+                // TODO: Return the function's id?
+                Ok(())
+            },
+        )
     }
 
     fn visit_extern_func(&mut self, func: &HirExternFunc) -> Self::Output {
@@ -225,7 +311,7 @@ impl<'ctx> ItemVisitor<'ctx> for MirBuilder<'ctx> {
         let mut args = Vec::with_capacity(func.args.len());
         for &FuncArg { name, kind, .. } in func.args.iter() {
             let ty = self.visit_type(kind);
-            let id = self.insert_variable(name.into(), ty.clone());
+            let id = self.create_variable(name.into(), ty.clone());
 
             args.push(Variable { id, ty });
         }
@@ -245,20 +331,17 @@ impl<'ctx> ItemVisitor<'ctx> for MirBuilder<'ctx> {
 }
 
 impl<'ctx> StmtVisitor<'ctx> for MirBuilder<'ctx> {
-    type Output = MirResult<()>;
+    type Output = MirResult<Option<Rval>>;
 
     fn visit_stmt(&mut self, stmt: &'ctx Stmt<'ctx>) -> <Self as StmtVisitor<'ctx>>::Output {
         match stmt {
-            Stmt::Item(item) => self.visit_item(item)?,
-            Stmt::Expr(expr) => {
-                if let Some(val) = self.visit_expr(expr)? {
-                    self.make_assignment(None, val);
-                }
+            Stmt::Item(item) => {
+                self.visit_item(item)?;
+                Ok(None)
             }
-            Stmt::VarDecl(var) => self.visit_var_decl(var)?,
+            Stmt::Expr(expr) => self.visit_expr(expr),
+            Stmt::VarDecl(var) => self.visit_var_decl(var),
         }
-
-        Ok(())
     }
 
     fn visit_var_decl(&mut self, var: &VarDecl<'ctx>) -> <Self as StmtVisitor<'ctx>>::Output {
@@ -267,7 +350,7 @@ impl<'ctx> StmtVisitor<'ctx> for MirBuilder<'ctx> {
             .expect("Assigned nothing to a variable");
         self.make_assignment(Some(var.name.into()), val);
 
-        Ok(())
+        Ok(None)
     }
 }
 
@@ -315,31 +398,49 @@ impl<'ctx> ExprVisitor<'ctx> for MirBuilder<'ctx> {
     fn visit_match(
         &mut self,
         loc: Location,
-        Match { cond, arms, .. }: &Match<'ctx>,
+        &Match {
+            cond, ref arms, ty, ..
+        }: &Match<'ctx>,
     ) -> Self::Output {
         let current_block = self.current_block;
+        let end_block = self.next_block();
+
+        let return_var = {
+            let return_type = self.visit_type(ty);
+
+            if return_type.is_unit() {
+                None
+            } else {
+                let id = self.next_var();
+                let block = self.get_block_mut(end_block).unwrap();
+                block.push_argument(
+                    Variable::new(id, return_type.clone()),
+                    Vec::with_capacity(arms.len()),
+                );
+
+                Some(Rval::new(Value::Variable(id), return_type))
+            }
+        };
+
+        self.move_to_block(current_block);
 
         let (condition, condition_type) = {
             let cond = self
                 .visit_expr(cond)?
                 .expect("Received nothing where a value was expected");
             let cond_ty = cond.ty.clone();
-            let cond = self.make_assignment(None, cond);
+            let mut cond = self.make_assignment(None, cond);
 
-            let true_ = self.make_assignment(
-                None,
-                Rval {
-                    val: Value::Const(Constant::Bool(true)),
-                    ty: Type::Bool,
-                },
-            );
-            let cond = self.make_assignment(
-                None,
-                Rval {
-                    val: Value::Eq(cond, true_),
-                    ty: Type::Bool,
-                },
-            );
+            if cond_ty.is_bool() && arms.len() == 2 {
+                let true_ = self.make_assignment(
+                    None,
+                    Rval::new(Value::Const(Constant::Bool(true)), Type::Bool),
+                );
+                let normalized_cond =
+                    self.make_assignment(None, Rval::new(Value::Eq(cond, true_), Type::Bool));
+
+                cond = normalized_cond;
+            }
 
             (cond, cond_ty)
         };
@@ -410,8 +511,21 @@ impl<'ctx> ExprVisitor<'ctx> for MirBuilder<'ctx> {
                 }
 
                 self.move_to_block(case_block);
-                for stmt in body.iter() {
-                    self.visit_stmt(stmt)?;
+                let passed_val = self.with_scope(|builder| {
+                    body.iter()
+                        .map(|stmt| builder.visit_stmt(stmt).transpose())
+                        .last()
+                        .flatten()
+                        .transpose()
+                })?;
+
+                if return_var.is_some() {
+                    let passed_val = passed_val.expect("Expected to pass a value to a child block");
+                    let passed_val = self.make_assignment(None, passed_val);
+
+                    self.get_block_mut(case_block)
+                        .unwrap()
+                        .set_terminator(Terminator::Jump(end_block, vec![passed_val]))
                 }
             }
 
@@ -424,14 +538,14 @@ impl<'ctx> ExprVisitor<'ctx> for MirBuilder<'ctx> {
         }
 
         self.verify_current_block()?;
-        // TODO: Joining blocks just doesn't happen here
-        self.next_block();
+        self.move_to_block(end_block);
 
         // TODO: Maybe return unit?
-        Ok(None)
+        Ok(return_var)
     }
 
     fn visit_variable(&mut self, _loc: Location, var: HirVar, _ty: TypeId) -> Self::Output {
+        dbg!(var);
         let &Variable {
             id: val,
             ty: ref var_ty,
@@ -494,8 +608,13 @@ impl<'ctx> ExprVisitor<'ctx> for MirBuilder<'ctx> {
         }
     }
 
-    fn visit_scope(&mut self, _loc: Location, _body: &HirBlock<&'ctx Stmt<'ctx>>) -> Self::Output {
-        todo!()
+    fn visit_scope(&mut self, _loc: Location, body: &HirBlock<&'ctx Stmt<'ctx>>) -> Self::Output {
+        self.with_scope(|builder| {
+            body.iter()
+                .filter_map(|s| builder.visit_stmt(s).transpose())
+                .last()
+                .transpose()
+        })
     }
 
     fn visit_func_call(&mut self, _loc: Location, call: &FuncCall<'ctx>) -> Self::Output {
@@ -549,7 +668,7 @@ impl<'ctx> ExprVisitor<'ctx> for MirBuilder<'ctx> {
 
         let ty = rval.ty.clone();
         let id = self.make_assignment(None, rval);
-        self.variables.insert(var.into(), Variable { id, ty });
+        self.insert_variable(var.into(), Variable { id, ty });
 
         // TODO: Return unit?
         Ok(None)

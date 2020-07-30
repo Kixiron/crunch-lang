@@ -1,8 +1,8 @@
 use crate::llvm::{
-    // instructions::instruction::{Add, IntValue, Mul, SDiv, Sub, UDiv, Valued},
+    // instructions::instruction::{Add, ICmp, IntValue, Mul, Ret, SDiv, Sub, UDiv, Value, Valued},
     module::Builder,
     types::{IntType, Type, TypeKind},
-    utils::{IntOperand, EMPTY_CSTR},
+    utils::{IntOperand, Wrapping, EMPTY_CSTR},
     values::{
         AnyValue, ArrayValue, BasicBlock, CallSiteValue, FunctionOrPointer, FunctionValue, Global,
         InstructionValue, PointerValue, SealedAnyValue, Value,
@@ -11,24 +11,28 @@ use crate::llvm::{
     ErrorKind,
     Result,
 };
-use llvm_sys::{
-    core::{
-        LLVMAddCase, LLVMBuildAdd, LLVMBuildBitCast, LLVMBuildBr, LLVMBuildCall2, LLVMBuildFDiv,
-        LLVMBuildGlobalString, LLVMBuildGlobalStringPtr,
-        LLVMBuildICmp, /* LLVMConstAdd, LLVMConstMul, LLVMConstSDiv, LLVMConstSub, LLVMConstUDiv, */
-        LLVMBuildMul, LLVMBuildPointerCast, LLVMBuildRet, LLVMBuildRetVoid, LLVMBuildSDiv,
-        LLVMBuildSub, LLVMBuildSwitch, LLVMBuildUDiv, LLVMBuildUnreachable,
-    },
-    LLVMValue,
-};
-use std::{
+use core::{
     cmp::Ordering,
-    ffi::CString,
     fmt::{Debug, Formatter, Result as FmtResult},
     hash::{Hash, Hasher},
     iter::ExactSizeIterator,
     ops::Deref,
 };
+use llvm_sys::{
+    core::{
+        LLVMAddCase, LLVMBuildAdd, LLVMBuildBitCast, LLVMBuildBr, LLVMBuildCall2,
+        LLVMBuildExactSDiv, LLVMBuildExactUDiv, LLVMBuildFDiv, LLVMBuildGlobalString,
+        LLVMBuildGlobalStringPtr, LLVMBuildICmp, LLVMBuildMul, LLVMBuildNSWAdd, LLVMBuildNSWMul,
+        LLVMBuildNSWSub, LLVMBuildNUWAdd, LLVMBuildNUWMul, LLVMBuildNUWSub, LLVMBuildPointerCast,
+        LLVMBuildRet, LLVMBuildRetVoid, LLVMBuildSDiv, LLVMBuildSub, LLVMBuildSwitch,
+        LLVMBuildUDiv, LLVMBuildUnreachable, LLVMConstAdd, LLVMConstExactSDiv, LLVMConstExactUDiv,
+        LLVMConstICmp, LLVMConstMul, LLVMConstNSWAdd, LLVMConstNSWMul, LLVMConstNSWSub,
+        LLVMConstNUWAdd, LLVMConstNUWMul, LLVMConstNUWSub, LLVMConstSDiv, LLVMConstSub,
+        LLVMConstUDiv,
+    },
+    LLVMValue,
+};
+use std::ffi::CString;
 
 pub struct BuildingBlock<'ctx> {
     block: BasicBlock<'ctx>,
@@ -42,219 +46,323 @@ impl<'ctx> BuildingBlock<'ctx> {
         self.block
     }
 
-    // TODO: Take in addable values
-    #[inline]
-    pub fn add(
-        &self,
-        lhs: impl Into<Value<'ctx>>,
-        rhs: impl Into<Value<'ctx>>,
-    ) -> Result<Value<'ctx>> {
-        let add = unsafe {
-            Value::from_raw(LLVMBuildAdd(
-                self.builder.as_mut_ptr(),
-                lhs.into().as_mut_ptr(),
-                rhs.into().as_mut_ptr(),
-                EMPTY_CSTR,
-            ))?
-        };
-
-        Ok(add)
-    }
-
-    // TODO: Take in subtractable values
-    #[inline]
-    pub fn sub(
-        &self,
-        lhs: impl Into<Value<'ctx>>,
-        rhs: impl Into<Value<'ctx>>,
-    ) -> Result<Value<'ctx>> {
-        let sub = unsafe {
-            Value::from_raw(LLVMBuildSub(
-                self.builder.as_mut_ptr(),
-                lhs.into().as_mut_ptr(),
-                rhs.into().as_mut_ptr(),
-                EMPTY_CSTR,
-            ))?
-        };
-
-        Ok(sub)
-    }
-
-    #[inline]
-    pub fn mul(
-        &self,
-        lhs: impl Into<Value<'ctx>>,
-        rhs: impl Into<Value<'ctx>>,
-    ) -> Result<Value<'ctx>> {
-        let mult = unsafe {
-            Value::from_raw(LLVMBuildMul(
-                self.builder.as_mut_ptr(),
-                lhs.into().as_mut_ptr(),
-                rhs.into().as_mut_ptr(),
-                EMPTY_CSTR,
-            ))?
-        };
-
-        Ok(mult)
-    }
-
-    #[inline]
-    pub fn signed_div(
-        &self,
-        lhs: impl Into<Value<'ctx>>,
-        rhs: impl Into<Value<'ctx>>,
-    ) -> Result<Value<'ctx>> {
-        let mult = unsafe {
-            Value::from_raw(LLVMBuildSDiv(
-                self.builder.as_mut_ptr(),
-                lhs.into().as_mut_ptr(),
-                rhs.into().as_mut_ptr(),
-                EMPTY_CSTR,
-            ))?
-        };
-
-        Ok(mult)
-    }
-
-    #[inline]
-    pub fn unsigned_div(
-        &self,
-        lhs: impl Into<Value<'ctx>>,
-        rhs: impl Into<Value<'ctx>>,
-    ) -> Result<Value<'ctx>> {
-        let mult = unsafe {
-            Value::from_raw(LLVMBuildUDiv(
-                self.builder.as_mut_ptr(),
-                lhs.into().as_mut_ptr(),
-                rhs.into().as_mut_ptr(),
-                EMPTY_CSTR,
-            ))?
-        };
-
-        Ok(mult)
-    }
-
-    /*
-    #[inline]
-    pub fn add<T, L, R>(&self, lhs: L, rhs: R) -> Result<Add<'ctx, T>>
+    /// Add two integers together, returning the result
+    ///
+    /// Note: If both provided arguments are constants, then the `*ConstAdd` functions will be used
+    ///
+    /// [Docs](https://llvm.org/docs/LangRef.html#add-instruction)
+    pub fn add<Left, Right>(&self, lhs: Left, rhs: Right) -> Result<Value<'ctx>>
     where
-        L: Into<IntValue<'ctx, T>>,
-        R: Into<IntValue<'ctx, T>>,
+        Left: Into<Value<'ctx>>,
+        Right: Into<Value<'ctx>>,
+    {
+        self.add_flagged(lhs, rhs, Wrapping::None)
+    }
+
+    /// Add two integers together using [flags], returning the result
+    ///
+    /// Note: If both provided arguments are constants, then the `*ConstAdd` functions will be used
+    ///
+    /// [Docs](https://llvm.org/docs/LangRef.html#add-instruction)
+    ///
+    /// [flags]: https://llvm.org/docs/LangRef.html#id86
+    // FIXME: https://github.com/paholg/typenum/issues/154
+    pub fn add_flagged<Left, Right>(
+        &self,
+        lhs: Left,
+        rhs: Right,
+        flags: Wrapping,
+    ) -> Result<Value<'ctx>>
+    where
+        Left: Into<Value<'ctx>>,
+        Right: Into<Value<'ctx>>,
     {
         let (lhs, rhs) = (lhs.into(), rhs.into());
+        let is_const = lhs.is_const() && rhs.is_const();
 
-        let add = unsafe {
-            Add::from_raw(if lhs.is_const() && rhs.is_const() {
-                LLVMConstAdd(lhs.llvm_ptr().as_ptr(), rhs.llvm_ptr().as_ptr())
-            } else {
-                LLVMBuildAdd(
-                    self.builder.as_mut_ptr(),
-                    lhs.llvm_ptr().as_ptr(),
-                    rhs.llvm_ptr().as_ptr(),
-                    EMPTY_CSTR,
-                )
-            })?
-        };
+        unsafe {
+            let (lhs, rhs) = (lhs.as_mut_ptr(), rhs.as_mut_ptr());
+            let builder = self.builder.as_mut_ptr();
 
-        Ok(add)
+            let add = match flags {
+                Wrapping::NoSignedWrap => {
+                    if is_const {
+                        LLVMConstNSWAdd(lhs, rhs)
+                    } else {
+                        LLVMBuildNSWAdd(builder, lhs, rhs, EMPTY_CSTR)
+                    }
+                }
+
+                Wrapping::NoUnsignedWrap => {
+                    if is_const {
+                        LLVMConstNUWAdd(lhs, rhs)
+                    } else {
+                        LLVMBuildNUWAdd(builder, lhs, rhs, EMPTY_CSTR)
+                    }
+                }
+
+                Wrapping::None => {
+                    if is_const {
+                        LLVMConstAdd(lhs, rhs)
+                    } else {
+                        LLVMBuildAdd(builder, lhs, rhs, EMPTY_CSTR)
+                    }
+                }
+            };
+
+            Value::from_raw(add)
+        }
     }
 
-    #[inline]
-    pub fn sub<T, L, R>(&self, lhs: L, rhs: R) -> Result<Sub<'ctx, T>>
+    /// Subtract two integers, returning the result
+    ///
+    /// Note: If both provided arguments are constants, then the `*ConstSub` functions will be used
+    ///
+    /// [Docs](https://llvm.org/docs/LangRef.html#sub-instruction)
+    // FIXME: https://github.com/paholg/typenum/issues/154
+    pub fn sub<Left, Right>(&self, lhs: Left, rhs: Right) -> Result<Value<'ctx>>
     where
-        L: Into<IntValue<'ctx, T>>,
-        R: Into<IntValue<'ctx, T>>,
+        Left: Into<Value<'ctx>>,
+        Right: Into<Value<'ctx>>,
+    {
+        self.sub_flagged(lhs, rhs, Wrapping::None)
+    }
+
+    /// Subtract two integers using [flags], returning the result
+    ///
+    /// Note: If both provided arguments are constants, then the `*ConstSub` functions will be used
+    ///
+    /// [Docs](https://llvm.org/docs/LangRef.html#sub-instruction)
+    ///
+    /// [flags]: https://llvm.org/docs/LangRef.html#id86
+    // FIXME: https://github.com/paholg/typenum/issues/154
+    pub fn sub_flagged<Left, Right>(
+        &self,
+        lhs: Left,
+        rhs: Right,
+        flags: Wrapping,
+    ) -> Result<Value<'ctx>>
+    where
+        Left: Into<Value<'ctx>>,
+        Right: Into<Value<'ctx>>,
     {
         let (lhs, rhs) = (lhs.into(), rhs.into());
+        let is_const = lhs.is_const() && rhs.is_const();
 
-        let sub = unsafe {
-            Sub::from_raw(if lhs.is_const() && rhs.is_const() {
-                LLVMConstSub(lhs.llvm_ptr().as_ptr(), rhs.llvm_ptr().as_ptr())
-            } else {
-                LLVMBuildSub(
-                    self.builder.as_mut_ptr(),
-                    lhs.llvm_ptr().as_ptr(),
-                    rhs.llvm_ptr().as_ptr(),
-                    EMPTY_CSTR,
-                )
-            })?
-        };
+        unsafe {
+            let (lhs, rhs) = (lhs.as_mut_ptr(), rhs.as_mut_ptr());
+            let builder = self.builder.as_mut_ptr();
 
-        Ok(sub)
+            let sub = match flags {
+                Wrapping::NoSignedWrap => {
+                    if is_const {
+                        LLVMConstNSWSub(lhs, rhs)
+                    } else {
+                        LLVMBuildNSWSub(builder, lhs, rhs, EMPTY_CSTR)
+                    }
+                }
+
+                Wrapping::NoUnsignedWrap => {
+                    if is_const {
+                        LLVMConstNUWSub(lhs, rhs)
+                    } else {
+                        LLVMBuildNUWSub(builder, lhs, rhs, EMPTY_CSTR)
+                    }
+                }
+
+                Wrapping::None => {
+                    if is_const {
+                        LLVMConstSub(lhs, rhs)
+                    } else {
+                        LLVMBuildSub(builder, lhs, rhs, EMPTY_CSTR)
+                    }
+                }
+            };
+
+            Value::from_raw(sub)
+        }
     }
 
-    #[inline]
-    pub fn mul<T, L, R>(&self, lhs: L, rhs: R) -> Result<Mul<'ctx, T>>
+    /// Multiply two integers, returning the result
+    ///
+    /// Note: If both provided arguments are constants, then the `*ConstMul` functions will be used
+    ///
+    /// [Docs](https://llvm.org/docs/LangRef.html#mul-instruction)
+    // FIXME: https://github.com/paholg/typenum/issues/154
+    pub fn mul<Left, Right>(&self, lhs: Left, rhs: Right) -> Result<Value<'ctx>>
     where
-        L: Into<IntValue<'ctx, T>>,
-        R: Into<IntValue<'ctx, T>>,
+        Left: Into<Value<'ctx>>,
+        Right: Into<Value<'ctx>>,
+    {
+        self.mul_flagged(lhs, rhs, Wrapping::None)
+    }
+
+    /// Multiply two integers using [flags], returning the result
+    ///
+    /// Note: If both provided arguments are constants, then the `*ConstMul` functions will be used
+    ///
+    /// [Docs](https://llvm.org/docs/LangRef.html#mul-instruction)
+    ///
+    /// [flags]: https://llvm.org/docs/LangRef.html#id86
+    // FIXME: https://github.com/paholg/typenum/issues/154
+    pub fn mul_flagged<Left, Right>(
+        &self,
+        lhs: Left,
+        rhs: Right,
+        flags: Wrapping,
+    ) -> Result<Value<'ctx>>
+    where
+        Left: Into<Value<'ctx>>,
+        Right: Into<Value<'ctx>>,
     {
         let (lhs, rhs) = (lhs.into(), rhs.into());
+        let is_const = lhs.is_const() && rhs.is_const();
 
-        let mul = unsafe {
-            Mul::from_raw(if lhs.is_const() && rhs.is_const() {
-                LLVMConstMul(lhs.llvm_ptr().as_ptr(), rhs.llvm_ptr().as_ptr())
-            } else {
-                LLVMBuildMul(
-                    self.builder.as_mut_ptr(),
-                    lhs.llvm_ptr().as_ptr(),
-                    rhs.llvm_ptr().as_ptr(),
-                    EMPTY_CSTR,
-                )
-            })?
-        };
+        unsafe {
+            let (lhs, rhs) = (lhs.as_mut_ptr(), rhs.as_mut_ptr());
+            let builder = self.builder.as_mut_ptr();
 
-        Ok(mul)
+            let mul = match flags {
+                Wrapping::NoSignedWrap => {
+                    if is_const {
+                        LLVMConstNSWMul(lhs, rhs)
+                    } else {
+                        LLVMBuildNSWMul(builder, lhs, rhs, EMPTY_CSTR)
+                    }
+                }
+
+                Wrapping::NoUnsignedWrap => {
+                    if is_const {
+                        LLVMConstNUWMul(lhs, rhs)
+                    } else {
+                        LLVMBuildNUWMul(builder, lhs, rhs, EMPTY_CSTR)
+                    }
+                }
+
+                Wrapping::None => {
+                    if is_const {
+                        LLVMConstMul(lhs, rhs)
+                    } else {
+                        LLVMBuildMul(builder, lhs, rhs, EMPTY_CSTR)
+                    }
+                }
+            };
+
+            Value::from_raw(mul)
+        }
     }
 
-    #[inline]
-    pub fn sdiv<T, L, R>(&self, lhs: L, rhs: R) -> Result<SDiv<'ctx, T>>
+    /// Divide two unsigned integers, returning the result
+    ///
+    /// Note: If both provided arguments are constants, then the `*ConstUDiv` function will be used
+    ///
+    /// [Docs](https://llvm.org/docs/LangRef.html#udiv-instruction)
+    // FIXME: https://github.com/paholg/typenum/issues/154
+    pub fn udiv<Left, Right>(&self, lhs: Left, rhs: Right) -> Result<Value<'ctx>>
     where
-        L: Into<IntValue<'ctx, T>>,
-        R: Into<IntValue<'ctx, T>>,
+        Left: Into<Value<'ctx>>,
+        Right: Into<Value<'ctx>>,
     {
         let (lhs, rhs) = (lhs.into(), rhs.into());
+        let is_const = lhs.is_const() && rhs.is_const();
 
-        let div = unsafe {
-            SDiv::from_raw(if lhs.is_const() && rhs.is_const() {
-                LLVMConstSDiv(lhs.llvm_ptr().as_ptr(), rhs.llvm_ptr().as_ptr())
+        unsafe {
+            let (lhs, rhs) = (lhs.as_mut_ptr(), rhs.as_mut_ptr());
+            let builder = self.builder.as_mut_ptr();
+
+            let udiv = if is_const {
+                LLVMConstUDiv(lhs, rhs)
             } else {
-                LLVMBuildSDiv(
-                    self.builder.as_mut_ptr(),
-                    lhs.llvm_ptr().as_ptr(),
-                    rhs.llvm_ptr().as_ptr(),
-                    EMPTY_CSTR,
-                )
-            })?
-        };
+                LLVMBuildUDiv(builder, lhs, rhs, EMPTY_CSTR)
+            };
 
-        Ok(div)
+            Value::from_raw(udiv)
+        }
     }
 
-    #[inline]
-    pub fn udiv<T, L, R>(&self, lhs: L, rhs: R) -> Result<UDiv<'ctx, T>>
+    /// Divide two unsigned integers with the `exact` flag, returning the result
+    ///
+    /// Note: If both provided arguments are constants, then the `*ConstUDiv` function will be used
+    ///
+    /// [Docs](https://llvm.org/docs/LangRef.html#udiv-instruction)
+    // FIXME: https://github.com/paholg/typenum/issues/154
+    pub fn udiv_exact<Left, Right>(&self, lhs: Left, rhs: Right) -> Result<Value<'ctx>>
     where
-        L: Into<IntValue<'ctx, T>>,
-        R: Into<IntValue<'ctx, T>>,
+        Left: Into<Value<'ctx>>,
+        Right: Into<Value<'ctx>>,
     {
         let (lhs, rhs) = (lhs.into(), rhs.into());
+        let is_const = lhs.is_const() && rhs.is_const();
 
-        let div = unsafe {
-            UDiv::from_raw(if lhs.is_const() && rhs.is_const() {
-                LLVMConstUDiv(lhs.llvm_ptr().as_ptr(), rhs.llvm_ptr().as_ptr())
+        unsafe {
+            let (lhs, rhs) = (lhs.as_mut_ptr(), rhs.as_mut_ptr());
+            let builder = self.builder.as_mut_ptr();
+
+            let udiv = if is_const {
+                LLVMConstExactUDiv(lhs, rhs)
             } else {
-                LLVMBuildUDiv(
-                    self.builder.as_mut_ptr(),
-                    lhs.llvm_ptr().as_ptr(),
-                    rhs.llvm_ptr().as_ptr(),
-                    EMPTY_CSTR,
-                )
-            })?
-        };
+                LLVMBuildExactUDiv(builder, lhs, rhs, EMPTY_CSTR)
+            };
 
-        Ok(div)
+            Value::from_raw(udiv)
+        }
     }
-    */
+
+    /// Divide two signed integers, returning the result
+    ///
+    /// Note: If both provided arguments are constants, then the `ConstSDiv` function will be used
+    ///
+    /// [Docs](https://llvm.org/docs/LangRef.html#udiv-instruction)
+    // FIXME: https://github.com/paholg/typenum/issues/154
+    pub fn sdiv<Left, Right>(&self, lhs: Left, rhs: Right) -> Result<Value<'ctx>>
+    where
+        Left: Into<Value<'ctx>>,
+        Right: Into<Value<'ctx>>,
+    {
+        let (lhs, rhs) = (lhs.into(), rhs.into());
+        let is_const = lhs.is_const() && rhs.is_const();
+
+        unsafe {
+            let (lhs, rhs) = (lhs.as_mut_ptr(), rhs.as_mut_ptr());
+            let builder = self.builder.as_mut_ptr();
+
+            let udiv = if is_const {
+                LLVMConstSDiv(lhs, rhs)
+            } else {
+                LLVMBuildSDiv(builder, lhs, rhs, EMPTY_CSTR)
+            };
+
+            Value::from_raw(udiv)
+        }
+    }
+
+    /// Divide two signed integers with the `exact` flag, returning the result
+    ///
+    /// Note: If both provided arguments are constants, then the `ConstSDivExact` function will be used
+    ///
+    /// [Docs](https://llvm.org/docs/LangRef.html#sdiv-instruction)
+    // FIXME: https://github.com/paholg/typenum/issues/154
+    pub fn sdiv_exact<Left, Right>(&self, lhs: Left, rhs: Right) -> Result<Value<'ctx>>
+    where
+        Left: Into<Value<'ctx>>,
+        Right: Into<Value<'ctx>>,
+    {
+        let (lhs, rhs) = (lhs.into(), rhs.into());
+        let is_const = lhs.is_const() && rhs.is_const();
+
+        unsafe {
+            let (lhs, rhs) = (lhs.as_mut_ptr(), rhs.as_mut_ptr());
+            let builder = self.builder.as_mut_ptr();
+
+            let udiv = if is_const {
+                LLVMConstExactSDiv(lhs, rhs)
+            } else {
+                LLVMBuildExactSDiv(builder, lhs, rhs, EMPTY_CSTR)
+            };
+
+            Value::from_raw(udiv)
+        }
+    }
 
     #[inline]
     pub fn float_div(
@@ -274,11 +382,16 @@ impl<'ctx> BuildingBlock<'ctx> {
         Ok(mult)
     }
 
+    /// Return a value from the current function
+    ///
+    /// If a value is provided, that will be returned. If the value is `None`,
+    /// then `ret void` will be inserted.
+    ///
+    /// [Docs](https://llvm.org/docs/LangRef.html#ret-instruction)
     // TODO: Take in a returnable value
+    // TODO: Verify return type is correct for the current function
     #[inline]
     pub fn ret(&self, value: Option<Value<'ctx>>) -> Result<InstructionValue<'ctx>> {
-        // TODO: Verify return type is correct
-
         let ret = unsafe {
             let ret = if let Some(value) = value {
                 LLVMBuildRet(self.builder.as_mut_ptr(), value.as_mut_ptr())
@@ -288,8 +401,6 @@ impl<'ctx> BuildingBlock<'ctx> {
 
             InstructionValue::from_raw(ret)?
         };
-
-        debug_assert!(ret.is_return());
 
         Ok(ret)
     }
@@ -473,22 +584,30 @@ impl<'ctx> BuildingBlock<'ctx> {
         }
     }
 
-    pub fn integer_cmp(
+    pub fn icmp<Left, Right>(
         &self,
-        lhs: Value<'ctx>,
+        lhs: Left,
         operand: IntOperand,
-        rhs: Value<'ctx>,
-    ) -> Result<Value<'ctx>> {
-        unsafe {
-            let value = LLVMBuildICmp(
-                self.builder.as_mut_ptr(),
-                operand.into(),
-                lhs.as_mut_ptr(),
-                rhs.as_mut_ptr(),
-                EMPTY_CSTR,
-            );
+        rhs: Right,
+    ) -> Result<Value<'ctx>>
+    where
+        Left: Into<Value<'ctx>>,
+        Right: Into<Value<'ctx>>,
+    {
+        let (lhs, rhs) = (lhs.into(), rhs.into());
+        let is_const = lhs.is_const() && rhs.is_const();
 
-            Value::from_raw(value)
+        unsafe {
+            let (lhs, rhs) = (lhs.as_mut_ptr(), rhs.as_mut_ptr());
+            let builder = self.builder.as_mut_ptr();
+
+            let icmp = if is_const {
+                LLVMConstICmp(operand.into(), lhs, rhs)
+            } else {
+                LLVMBuildICmp(builder, operand.into(), lhs, rhs, EMPTY_CSTR)
+            };
+
+            Value::from_raw(icmp)
         }
     }
 }

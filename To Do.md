@@ -156,8 +156,14 @@
   - https://www.unisonweb.org/docs/language-reference
   - https://github.com/pandaman64/effective-rust
   - https://github.com/effect-handlers/effects-rosetta-stone
-  - [ ] Static dispatch of effects with defunctionalization
+  - [ ] Static dispatch of effects with defunctionalization/CPS
 - [ ] Opt-in UB
 - [ ] More instrumenting
 - [ ] Module-level parallelism
 - [ ] Ability to test compile errors
+
+## Refinement types
+
+- [ ] Integrate with contracts so that a refined type that meets contracts elides runtime contract checking
+    - Allows predictable check elision
+- [ ] Optimize out overflow checks on operations if it's impossible for something to overflow

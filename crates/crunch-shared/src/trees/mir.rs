@@ -144,6 +144,10 @@ pub struct Variable {
 }
 
 impl Variable {
+    pub const fn new(id: VarId, ty: Type) -> Self {
+        Self { id, ty }
+    }
+
     pub fn to_doc<'a, D>(
         &self,
         alloc: &'a D,
@@ -228,7 +232,7 @@ pub struct BasicBlock {
     /// The name of the current block, if there is one
     pub name: Option<StrT>,
     /// The arguments passed to the current block when called
-    pub args: Vec<Variable>,
+    pub args: Vec<(Variable, Vec<BlockId>)>,
     /// The body of the block
     pub instructions: Vec<Instruction>,
     /// The block's terminator
@@ -265,8 +269,9 @@ impl BasicBlock {
         self.instructions.push(inst);
     }
 
-    pub fn push_argument(&mut self, arg: Variable) {
-        self.args.push(arg);
+    pub fn push_argument(&mut self, arg: Variable, successors: Vec<BlockId>) {
+        // TODO: Make sure the successors aren't duplicated
+        self.args.push((arg, successors));
     }
 
     /// Sets the block's terminator
@@ -295,8 +300,12 @@ impl BasicBlock {
         }
 
         // Make sure no block args are duplicated
-        for arg in args.iter() {
-            let count = args.iter().filter(|a| a.id == arg.id).count();
+        for (arg, block) in args.iter() {
+            let count = args
+                .iter()
+                .filter(|(a, b)| a.id == arg.id || b == block)
+                .count();
+
             if count > 1 {
                 // TODO: Resolve the block's name for the error
                 return Err(MirError::DuplicatedBBArg(id.0, arg.id.0));
@@ -338,7 +347,9 @@ impl BasicBlock {
                 alloc.text(" << ").append(
                     alloc
                         .intersperse(
-                            self.args.iter().map(|a| a.to_doc(alloc, mir, interner)),
+                            self.args
+                                .iter()
+                                .map(|(a, _)| a.to_doc(alloc, mir, interner)),
                             alloc.text(",").append(alloc.space()),
                         )
                         .group(),
@@ -376,7 +387,7 @@ pub enum Terminator {
     /// A return instruction, `None` for a unit return and `Some` for returning a value
     Return(Option<VarId>),
     /// An unconditional jump to the given block
-    Jump(BlockId),
+    Jump(BlockId, Vec<VarId>),
     /// A conditional branch
     Branch {
         /// The condition being branched on, should be a boolean
@@ -422,10 +433,22 @@ impl Terminator {
                     })
             }
 
-            Self::Jump(block) => alloc
+            Self::Jump(block, args) => alloc
                 .text("jump")
                 .append(alloc.space())
-                .append(block.to_doc(alloc, interner)),
+                .append(block.to_doc(alloc, interner))
+                .append(if args.is_empty() {
+                    alloc.nil()
+                } else {
+                    alloc
+                        .space()
+                        .append(alloc.text("<<"))
+                        .append(alloc.space())
+                        .append(alloc.intersperse(
+                            args.iter().map(|a| a.to_doc(alloc, interner)),
+                            alloc.text(",").append(alloc.space()),
+                        ))
+                }),
 
             Self::Branch {
                 condition,
@@ -703,6 +726,10 @@ pub struct Rval {
 }
 
 impl Rval {
+    pub const fn new(val: Value, ty: Type) -> Self {
+        Self { val, ty }
+    }
+
     /// Returns `true` if the current value is a float
     // TODO: Change this when there's floats
     pub fn is_float(&self) -> bool {
@@ -1000,6 +1027,7 @@ impl Type {
         is_u64    => Self::U64,
         is_i64    => Self::I64,
         is_bool   => Self::Bool,
+        is_unit   => Self::Unit,
         is_array  => Self::Array { .. },
         is_string => Self::String,
     }

@@ -7,6 +7,7 @@ mod address_space;
 mod calling_convention;
 mod dll_storage_class;
 mod int_operand;
+mod integer_opts;
 mod llvm_string;
 mod memory_buffer;
 mod thread_local_mode;
@@ -15,6 +16,7 @@ pub use address_space::AddressSpace;
 pub use calling_convention::CallingConvention;
 pub use dll_storage_class::DLLStorageClass;
 pub use int_operand::IntOperand;
+pub use integer_opts::{DivideKind, Wrapping};
 pub use llvm_string::LLVMString;
 pub use memory_buffer::MemoryBuffer;
 pub(crate) use sealed::Sealed;
@@ -22,9 +24,8 @@ pub use thread_local_mode::ThreadLocalMode;
 
 /// Empty string, to be used where LLVM expects an instruction name, indicating
 /// that the instruction is to be left unnamed (i.e. numbered, in textual IR).
-// TODO: Use CStr once it's const-stable
-pub(crate) const EMPTY_STR: &[u8] = b"\0";
-pub(crate) const EMPTY_CSTR: *const i8 = EMPTY_STR.as_ptr() as *const i8;
+// TODO: Use CStr::from_bytes_with_nul_unchecked once it's const-stable
+pub(crate) const EMPTY_CSTR: *const i8 = b"\0".as_ptr() as *const i8;
 
 mod sealed {
     pub trait Sealed {}

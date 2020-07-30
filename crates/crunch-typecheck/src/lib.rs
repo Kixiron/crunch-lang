@@ -518,8 +518,7 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
         loc: Location,
         &Match { cond, ref arms, ty }: &Match<'ctx>,
     ) -> Self::Output {
-        // TODO: May be able to unify on the spot instead of making a vec
-        let mut arm_types = Vec::with_capacity(arms.len());
+        let check = self.check;
         let condition_type = self.visit_expr(cond)?;
 
         for arm in arms.iter() {
@@ -528,6 +527,7 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
                     self.check = Some(condition_type);
                     let literal_type = self.visit_literal(loc, literal)?;
                     self.unify(condition_type, literal_type)?;
+
                     self.check.take();
                 }
 
@@ -535,7 +535,10 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
                     self.check = Some(condition_type);
                     let variable_type =
                         self.create_type(Type::new(TypeKind::Variable(condition_type), loc));
+
                     self.variables.insert(Var::User(variable), variable_type);
+                    self.unify(condition_type, variable_type)?;
+
                     self.check.take();
                 }
 
@@ -553,6 +556,7 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
                 self.unify(guard_ty, boolean)?;
             }
 
+            self.check = Some(ty);
             let arm_type = arm
                 .body
                 .iter()
@@ -562,11 +566,12 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
                     Ok(self.create_type(Type::new(TypeKind::Unit, arm.body.location())))
                 })?;
 
-            arm_types.push(arm_type);
+            self.unify(ty, arm_type)?;
+            self.check.take();
         }
 
-        for arm_ty in arm_types {
-            self.unify(ty, arm_ty)?;
+        if let Some(check) = check {
+            self.unify(ty, check)?;
         }
 
         Ok(ty)
@@ -580,8 +585,11 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
         self.intern_literal(literal, loc)
     }
 
-    fn visit_scope(&mut self, _loc: Location, _body: &Block<&'ctx Stmt<'ctx>>) -> Self::Output {
-        todo!()
+    fn visit_scope(&mut self, loc: Location, body: &Block<&'ctx Stmt<'ctx>>) -> Self::Output {
+        body.iter()
+            .filter_map(|s| self.visit_stmt(s).transpose())
+            .last()
+            .unwrap_or_else(|| Ok(self.create_type(Type::new(TypeKind::Unit, loc))))
     }
 
     fn visit_func_call(&mut self, loc: Location, call: &FuncCall<'ctx>) -> Self::Output {

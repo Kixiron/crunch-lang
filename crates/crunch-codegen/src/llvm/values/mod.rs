@@ -19,7 +19,7 @@ pub use value_kind::ValueKind;
 
 use crate::llvm::{types::Type, utils::Sealed, Context, Error, ErrorKind, Result};
 use llvm_sys::{
-    core::{LLVMConstArray, LLVMConstStringInContext},
+    core::{LLVMConstArray, LLVMConstStringInContext, LLVMIsConstant},
     LLVMValue,
 };
 use std::{
@@ -97,6 +97,10 @@ impl<'ctx> Value<'ctx> {
             Self::CallSite(call) => call.as_val(),
             Self::GlobalVariable(val) | Self::ConstExpr(val) | Self::ConstDataArray(val) => val,
         }
+    }
+
+    pub fn is_const(self) -> bool {
+        unsafe { LLVMIsConstant(self.as_mut_ptr()) == 0 }
     }
 }
 

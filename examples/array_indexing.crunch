@@ -1,0 +1,19 @@
+:: args: run --quiet
+:: expected exit status: 0
+:: expected stdout: hello!
+
+extern
+    @callconv("C")
+    fn puts(string: *const i8) -> i32;
+end
+
+fn main()
+    let hello := "hello!"
+
+    puts(&hello[0] as *const i8)
+    puts(&hello[1] as *const i8)
+    puts(&hello[2] as *const i8)
+    puts(&hello[3] as *const i8)
+    puts(&hello[4] as *const i8)
+    puts(&hello[5] as *const i8)
+end

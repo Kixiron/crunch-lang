@@ -18,11 +18,71 @@ use llvm::{
     utils::{AddressSpace, CallingConvention, IntOperand, EMPTY_CSTR},
     values::{
         AnyValue, ArrayValue, BasicBlock as LLVMBasicBlock, CallSiteValue, FunctionValue,
-        InstructionValue, SealedAnyValue, Value as LLVMValue,
+        InstructionValue, SealedAnyValue, Value as RawLLVMValue,
     },
     Context, Result,
 };
 use std::convert::TryInto;
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum LLVMValue<'ctx> {
+    U8(RawLLVMValue<'ctx>),
+    I8(RawLLVMValue<'ctx>),
+    U16(RawLLVMValue<'ctx>),
+    I16(RawLLVMValue<'ctx>),
+    U32(RawLLVMValue<'ctx>),
+    I32(RawLLVMValue<'ctx>),
+    U64(RawLLVMValue<'ctx>),
+    I64(RawLLVMValue<'ctx>),
+    Bool(RawLLVMValue<'ctx>),
+    Raw(RawLLVMValue<'ctx>),
+}
+
+impl<'ctx> LLVMValue<'ctx> {
+    pub fn new(val: RawLLVMValue<'ctx>, ty: &Type) -> Self {
+        match ty {
+            Type::U8 => Self::U8(val),
+            Type::I8 => Self::I8(val),
+            Type::U16 => Self::U16(val),
+            Type::I16 => Self::I16(val),
+            Type::U32 => Self::U32(val),
+            Type::I32 => Self::I32(val),
+            Type::U64 => Self::U64(val),
+            Type::I64 => Self::I64(val),
+            Type::Bool => Self::Bool(val),
+
+            ty => {
+                crunch_shared::warn!("Unhandled LLVM type: {:?}", ty);
+                Self::Raw(val)
+            }
+        }
+    }
+
+    pub fn as_value(&self) -> RawLLVMValue<'ctx> {
+        unsafe { RawLLVMValue::from_raw(self.as_ptr()).unwrap() }
+    }
+
+    pub fn as_ptr(&self) -> *mut llvm_sys::LLVMValue {
+        match self {
+            Self::U8(int) => int.as_mut_ptr(),
+            Self::I8(int) => int.as_mut_ptr(),
+            Self::U16(int) => int.as_mut_ptr(),
+            Self::I16(int) => int.as_mut_ptr(),
+            Self::U32(int) => int.as_mut_ptr(),
+            Self::I32(int) => int.as_mut_ptr(),
+            Self::U64(int) => int.as_mut_ptr(),
+            Self::I64(int) => int.as_mut_ptr(),
+            Self::Bool(b) => b.as_mut_ptr(),
+            Self::Raw(raw) => raw.as_mut_ptr(),
+        }
+    }
+}
+
+impl<'ctx> Into<RawLLVMValue<'ctx>> for LLVMValue<'ctx> {
+    fn into(self) -> RawLLVMValue<'ctx> {
+        self.as_value()
+    }
+}
 
 pub struct CodeGenerator<'ctx> {
     module: &'ctx Module<'ctx>,
@@ -148,6 +208,171 @@ impl<'ctx> CodeGenerator<'ctx> {
     fn get_var_value(&self, id: VarId) -> LLVMValue<'ctx> {
         self.get_var(id).0
     }
+
+    // TODO: Query this shit
+    // TODO: Macro this shit
+
+    fn add(&self, lhs: LLVMValue<'ctx>, rhs: LLVMValue<'ctx>) -> Result<LLVMValue<'ctx>> {
+        let block_builder = self.get_block_builder();
+
+        Ok(match (lhs, rhs) {
+            (LLVMValue::U8(lhs), LLVMValue::U8(rhs)) => {
+                LLVMValue::U8(block_builder.add(lhs, rhs)?.into())
+            }
+            (LLVMValue::I8(lhs), LLVMValue::I8(rhs)) => {
+                LLVMValue::I8(block_builder.add(lhs, rhs)?.into())
+            }
+
+            (LLVMValue::U16(lhs), LLVMValue::U16(rhs)) => {
+                LLVMValue::U16(block_builder.add(lhs, rhs)?.into())
+            }
+            (LLVMValue::I16(lhs), LLVMValue::I16(rhs)) => {
+                LLVMValue::I16(block_builder.add(lhs, rhs)?.into())
+            }
+
+            (LLVMValue::U32(lhs), LLVMValue::U32(rhs)) => {
+                LLVMValue::U32(block_builder.add(lhs, rhs)?.into())
+            }
+            (LLVMValue::I32(lhs), LLVMValue::I32(rhs)) => {
+                LLVMValue::I32(block_builder.add(lhs, rhs)?.into())
+            }
+
+            (LLVMValue::U64(lhs), LLVMValue::U64(rhs)) => {
+                LLVMValue::U64(block_builder.add(lhs, rhs)?.into())
+            }
+            (LLVMValue::I64(lhs), LLVMValue::I64(rhs)) => {
+                LLVMValue::I64(block_builder.add(lhs, rhs)?.into())
+            }
+
+            (lhs, rhs) => panic!("Illegal instruction: Add {:?} by {:?}", lhs, rhs),
+        })
+    }
+
+    fn sub(&self, lhs: LLVMValue<'ctx>, rhs: LLVMValue<'ctx>) -> Result<LLVMValue<'ctx>> {
+        let block_builder = self.get_block_builder();
+
+        Ok(match (lhs, rhs) {
+            (LLVMValue::U8(lhs), LLVMValue::U8(rhs)) => {
+                LLVMValue::U8(block_builder.sub(lhs, rhs)?.into())
+            }
+            (LLVMValue::I8(lhs), LLVMValue::I8(rhs)) => {
+                LLVMValue::I8(block_builder.sub(lhs, rhs)?.into())
+            }
+
+            (LLVMValue::U16(lhs), LLVMValue::U16(rhs)) => {
+                LLVMValue::U16(block_builder.sub(lhs, rhs)?.into())
+            }
+            (LLVMValue::I16(lhs), LLVMValue::I16(rhs)) => {
+                LLVMValue::I16(block_builder.sub(lhs, rhs)?.into())
+            }
+
+            (LLVMValue::U32(lhs), LLVMValue::U32(rhs)) => {
+                LLVMValue::U32(block_builder.sub(lhs, rhs)?.into())
+            }
+            (LLVMValue::I32(lhs), LLVMValue::I32(rhs)) => {
+                LLVMValue::I32(block_builder.sub(lhs, rhs)?.into())
+            }
+
+            (LLVMValue::U64(lhs), LLVMValue::U64(rhs)) => {
+                LLVMValue::U64(block_builder.sub(lhs, rhs)?.into())
+            }
+            (LLVMValue::I64(lhs), LLVMValue::I64(rhs)) => {
+                LLVMValue::I64(block_builder.sub(lhs, rhs)?.into())
+            }
+
+            (lhs, rhs) => panic!("Illegal instruction: Subtract {:?} by {:?}", lhs, rhs),
+        })
+    }
+
+    fn mul(&self, lhs: LLVMValue<'ctx>, rhs: LLVMValue<'ctx>) -> Result<LLVMValue<'ctx>> {
+        let block_builder = self.get_block_builder();
+
+        Ok(match (lhs, rhs) {
+            (LLVMValue::U8(lhs), LLVMValue::U8(rhs)) => {
+                LLVMValue::U8(block_builder.mul(lhs, rhs)?.into())
+            }
+            (LLVMValue::I8(lhs), LLVMValue::I8(rhs)) => {
+                LLVMValue::I8(block_builder.mul(lhs, rhs)?.into())
+            }
+
+            (LLVMValue::U16(lhs), LLVMValue::U16(rhs)) => {
+                LLVMValue::U16(block_builder.mul(lhs, rhs)?.into())
+            }
+            (LLVMValue::I16(lhs), LLVMValue::I16(rhs)) => {
+                LLVMValue::I16(block_builder.mul(lhs, rhs)?.into())
+            }
+
+            (LLVMValue::U32(lhs), LLVMValue::U32(rhs)) => {
+                LLVMValue::U32(block_builder.mul(lhs, rhs)?.into())
+            }
+            (LLVMValue::I32(lhs), LLVMValue::I32(rhs)) => {
+                LLVMValue::I32(block_builder.mul(lhs, rhs)?.into())
+            }
+
+            (LLVMValue::U64(lhs), LLVMValue::U64(rhs)) => {
+                LLVMValue::U64(block_builder.mul(lhs, rhs)?.into())
+            }
+            (LLVMValue::I64(lhs), LLVMValue::I64(rhs)) => {
+                LLVMValue::I64(block_builder.mul(lhs, rhs)?.into())
+            }
+
+            (lhs, rhs) => panic!("Illegal instruction: Multiply {:?} by {:?}", lhs, rhs),
+        })
+    }
+
+    fn div(&self, lhs: LLVMValue<'ctx>, rhs: LLVMValue<'ctx>) -> Result<LLVMValue<'ctx>> {
+        let block_builder = self.get_block_builder();
+
+        Ok(match (lhs, rhs) {
+            (LLVMValue::U8(lhs), LLVMValue::U8(rhs)) => {
+                LLVMValue::U8(block_builder.udiv(lhs, rhs)?.into())
+            }
+
+            (LLVMValue::I8(lhs), LLVMValue::I8(rhs)) => {
+                LLVMValue::I8(block_builder.sdiv(lhs, rhs)?.into())
+            }
+
+            (LLVMValue::U16(lhs), LLVMValue::U16(rhs)) => {
+                LLVMValue::U16(block_builder.udiv(lhs, rhs)?.into())
+            }
+            (LLVMValue::I16(lhs), LLVMValue::I16(rhs)) => {
+                LLVMValue::I16(block_builder.sdiv(lhs, rhs)?.into())
+            }
+
+            (LLVMValue::U32(lhs), LLVMValue::U32(rhs)) => {
+                LLVMValue::U32(block_builder.udiv(lhs, rhs)?.into())
+            }
+            (LLVMValue::I32(lhs), LLVMValue::I32(rhs)) => {
+                LLVMValue::I32(block_builder.sdiv(lhs, rhs)?.into())
+            }
+
+            (LLVMValue::U64(lhs), LLVMValue::U64(rhs)) => {
+                LLVMValue::U64(block_builder.udiv(lhs, rhs)?.into())
+            }
+            (LLVMValue::I64(lhs), LLVMValue::I64(rhs)) => {
+                LLVMValue::I64(block_builder.sdiv(lhs, rhs)?.into())
+            }
+
+            (lhs, rhs) => panic!("Illegal instruction: Divide {:?} by {:?}", lhs, rhs),
+        })
+    }
+
+    fn ret(&self, val: Option<LLVMValue<'ctx>>) -> Result<InstructionValue<'ctx>> {
+        crunch_shared::warn!("Check that returned values match their function signature");
+
+        // TODO: Verify return type against current function's return type
+        self.get_block_builder().ret(val.map(|v| v.as_value()))
+    }
+
+    fn eq(&self, lhs: LLVMValue<'ctx>, rhs: LLVMValue<'ctx>) -> Result<LLVMValue<'ctx>> {
+        crunch_shared::warn!("Check that lhs and rhs have the same types in Eq");
+
+        Ok(LLVMValue::Bool(self.get_block_builder().icmp(
+            lhs,
+            IntOperand::Equal,
+            rhs,
+        )?))
+    }
 }
 
 impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
@@ -169,7 +394,8 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
 
         for (Variable { id, ty }, val) in function.args.iter().zip(self.current_function().args()?)
         {
-            self.values.insert(*id, (val, ty.clone()));
+            self.values
+                .insert(*id, (LLVMValue::new(val, &ty), ty.clone()));
         }
 
         for block in function.blocks.iter() {
@@ -188,11 +414,20 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
         let building_block = self.get_function_builder().move_to_end(basic_block)?;
         self.block_builder = Some(building_block);
 
+        for (_arg, _successors) in block.args.iter() {
+            // https://docs.rs/llvm-sys/100.1.0/llvm_sys/core/fn.LLVMAddIncoming.html
+        }
+
         for instruction in block.iter() {
             self.visit_instruction(instruction)?;
         }
 
-        self.visit_terminator(block.terminator.as_ref().unwrap())?;
+        self.visit_terminator(
+            block
+                .terminator
+                .as_ref()
+                .expect("BasicBlock was missing terminator"),
+        )?;
 
         Ok(basic_block)
     }
@@ -208,7 +443,7 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
             }
 
             Instruction::Call(FnCall { function, args }) => {
-                let args = args.iter().map(|arg| self.get_var_value(*arg));
+                let args = args.iter().map(|arg| self.get_var_value(*arg).as_value());
                 let call = self
                     .get_block_builder()
                     .call(self.get_function(*function), args)?;
@@ -222,21 +457,22 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
     // FIXME: Figure out BB arg -> Phi node mapping
     fn visit_terminator(&mut self, terminator: &Terminator) -> Self::TerminatorOutput {
         match terminator {
-            Terminator::Return(ret) => {
-                // If the return value is `None` then it's assumed to return void
-                self.get_block_builder()
-                    .ret(ret.map(|ret| self.get_var_value(ret)))
+            &Terminator::Return(ret) => self.ret(ret.map(|ret| self.get_var_value(ret))),
+
+            Terminator::Jump(block, _args) => {
+                self.get_block_builder().branch(self.get_block(*block))
             }
-            Terminator::Jump(block) => self.get_block_builder().branch(self.get_block(*block)),
+
             Terminator::Branch {
                 condition,
                 truthy,
                 falsy,
             } => self.get_block_builder().conditional_branch(
-                self.get_var_value(*condition),
+                self.get_var_value(*condition).as_value(),
                 self.get_block(*truthy),
                 self.get_block(*falsy),
             ),
+
             Terminator::Switch {
                 condition,
                 cases,
@@ -246,16 +482,20 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
                     |SwitchCase {
                          condition, block, ..
                      }| {
-                        (self.get_var_value(*condition), self.get_block(*block))
+                        (
+                            self.get_var_value(*condition).as_value(),
+                            self.get_block(*block),
+                        )
                     },
                 );
 
                 self.get_block_builder().switch(
-                    self.get_var_value(*condition),
+                    self.get_var_value(*condition).as_value(),
                     self.get_block(default.block),
                     jumps,
                 )
             }
+
             Terminator::Unreachable => self.get_block_builder().unreachable(),
         }
     }
@@ -265,53 +505,19 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
         match val {
             &Value::Variable(id) => Ok(self.get_var_value(id)),
             Value::Const(constant) => self.visit_constant(constant, ty),
-
-            &Value::Add(lhs, rhs) => self
-                .get_block_builder()
-                .add(self.get_var_value(lhs), self.get_var_value(rhs)),
-
-            &Value::Sub(lhs, rhs) => self
-                .get_block_builder()
-                .sub(self.get_var_value(lhs), self.get_var_value(rhs)),
-
-            &Value::Mul(lhs, rhs) => self
-                .get_block_builder()
-                .mul(self.get_var_value(lhs), self.get_var_value(rhs)),
-
-            &Value::Div(lhs, rhs) => {
-                let ((lhs, lhs_type), (rhs, rhs_type)) = (self.get_var(lhs), self.get_var(rhs));
-                assert_eq!(lhs_type, rhs_type);
-                assert!(lhs_type.is_integer());
-
-                let div = if lhs_type.is_unsigned() {
-                    BuildingBlock::unsigned_div
-                } else if lhs_type.is_signed() {
-                    BuildingBlock::signed_div
-                } else {
-                    todo!("{:?}", lhs)
-                };
-
-                div(self.get_block_builder(), lhs, rhs)
-            }
-
-            &Value::Eq(lhs, rhs) => {
-                let ((lhs, lhs_type), (rhs, rhs_type)) = (self.get_var(lhs), self.get_var(rhs));
-                assert_eq!(lhs_type, rhs_type);
-                // Booleans are i1s to LLVM, so it counts as an integer here
-                assert!(lhs_type.is_integer() || lhs_type.is_bool());
-
-                self.get_block_builder()
-                    .integer_cmp(lhs, IntOperand::Equal, rhs)
-            }
+            &Value::Add(lhs, rhs) => self.add(self.get_var_value(lhs), self.get_var_value(rhs)),
+            &Value::Sub(lhs, rhs) => self.sub(self.get_var_value(lhs), self.get_var_value(rhs)),
+            &Value::Mul(lhs, rhs) => self.mul(self.get_var_value(lhs), self.get_var_value(rhs)),
+            &Value::Div(lhs, rhs) => self.div(self.get_var_value(lhs), self.get_var_value(rhs)),
+            &Value::Eq(lhs, rhs) => self.eq(self.get_var_value(lhs), self.get_var_value(rhs)),
 
             Value::Call(FnCall { function, args }) => {
-                let args = args.iter().map(|arg| self.get_var_value(*arg));
+                let args = args.iter().map(|arg| self.get_var_value(*arg).as_value());
                 let call = self
                     .get_block_builder()
-                    .call(self.get_function(*function), args)?
-                    .into();
+                    .call(self.get_function(*function), args)?;
 
-                Ok(call)
+                Ok(LLVMValue::Raw(call.as_value()))
             }
 
             // FIXME: This is so incredibly not good
@@ -323,12 +529,14 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
             }
 
             Value::Cast(casted, ty) => unsafe {
-                LLVMValue::from_raw(llvm_sys::core::LLVMBuildIntCast(
-                    self.get_block_builder().builder().as_mut_ptr(),
-                    self.get_var_value(*casted).as_mut_ptr(),
-                    self.visit_type(ty)?.as_mut_ptr(),
-                    EMPTY_CSTR,
-                ))
+                Ok(LLVMValue::Raw(RawLLVMValue::from_raw(
+                    llvm_sys::core::LLVMBuildIntCast(
+                        self.get_block_builder().builder().as_mut_ptr(),
+                        self.get_var_value(*casted).as_ptr(),
+                        self.visit_type(ty)?.as_mut_ptr(),
+                        EMPTY_CSTR,
+                    ),
+                )?))
             },
         }
     }
@@ -391,7 +599,10 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
                 // TODO: Assert all elements have the same type
                 let elements = array
                     .iter()
-                    .map(|c| self.visit_constant(c, ty.array_elements().unwrap()))
+                    .map(|c| {
+                        self.visit_constant(c, ty.array_elements().unwrap())
+                            .map(|c| c.as_value())
+                    })
                     .collect::<Result<Vec<_>>>()?;
 
                 let array = ArrayValue::const_array(llvm_type.into(), elements.as_slice())?;
@@ -405,7 +616,7 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
             }
         };
 
-        Ok(constant)
+        Ok(LLVMValue::new(constant, ty))
     }
 
     type TypeOutput = Result<LLVMType<'ctx>>;

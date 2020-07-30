@@ -24,11 +24,15 @@ use crunch_shared::{
 
 pub struct Ladder<'ctx> {
     context: &'ctx Context<'ctx>,
+    variable_counter: usize,
 }
 
 impl<'ctx> Ladder<'ctx> {
     pub const fn new(context: &'ctx Context<'ctx>) -> Self {
-        Self { context }
+        Self {
+            context,
+            variable_counter: 0,
+        }
     }
 
     #[inline]
@@ -37,6 +41,13 @@ impl<'ctx> Ladder<'ctx> {
             .iter()
             .filter_map(|item| self.visit_item(item))
             .collect()
+    }
+
+    fn next_var(&mut self) -> Var {
+        let var = Var::Auto(self.variable_counter);
+        self.variable_counter += 1;
+
+        var
     }
 
     fn block_statement(
@@ -177,7 +188,7 @@ impl<'ctx> Ladder<'ctx> {
                     then.location(),
                     loop_broken,
                     then_block,
-                    Block::new(then.location()),
+                    Block::empty(then.location()),
                 ));
             }
 
@@ -191,7 +202,7 @@ impl<'ctx> Ladder<'ctx> {
                     else_.location(),
                     else_.location(),
                     loop_broken,
-                    Block::new(else_.location()),
+                    Block::empty(else_.location()),
                     else_block,
                 ));
             }
@@ -489,7 +500,7 @@ impl<'ctx> ExprVisitor<'ctx> for Ladder<'ctx> {
                             else_.iter().filter_map(|s| self.visit_stmt(s)),
                         )
                     } else {
-                        Block::new(cond.location())
+                        Block::empty(cond.location())
                     },
                     ty: self.context.hir_type(Type {
                         kind: TypeKind::Unknown,
@@ -580,14 +591,46 @@ impl<'ctx> ExprVisitor<'ctx> for Ladder<'ctx> {
         expr: &'ctx AstExpr<'ctx>,
         value: Option<&'ctx AstExpr<'ctx>>,
     ) -> Self::Output {
-        let kind = ExprKind::Return(Return {
-            val: value.map(|expr| self.visit_expr(expr)),
-        });
+        if let Some(value) = value {
+            let value = self.visit_expr(value);
+            let name = self.next_var();
+            let ty = self
+                .context
+                .hir_type(Type::new(TypeKind::Unknown, expr.location()));
 
-        self.context.hir_expr(Expr {
-            kind,
-            loc: expr.location(),
-        })
+            let assign = self.context.hir_stmt(Stmt::VarDecl(VarDecl {
+                name,
+                value,
+                mutable: false,
+                ty,
+                loc: expr.location(),
+            }));
+
+            let val = Some(self.context.hir_expr(Expr {
+                kind: ExprKind::Variable(name, ty),
+                loc: expr.location(),
+            }));
+
+            let ret = {
+                let ret = self.context.hir_expr(Expr {
+                    kind: ExprKind::Return(Return { val }),
+                    loc: expr.location(),
+                });
+
+                self.context.hir_stmt(Stmt::Expr(ret))
+            };
+
+            self.context.hir_expr(Expr {
+                kind: ExprKind::Scope(Block::new(vec![assign, ret], expr.location())),
+                loc: expr.location(),
+            })
+        } else {
+            let kind = ExprKind::Return(Return { val: None });
+            self.context.hir_expr(Expr {
+                kind,
+                loc: expr.location(),
+            })
+        }
     }
 
     fn visit_break(
@@ -627,7 +670,7 @@ impl<'ctx> ExprVisitor<'ctx> for Ladder<'ctx> {
             2 + (then.is_some() as usize * 2) + (else_.is_some() as usize * 2),
         );
 
-        let loop_broken = Var::Auto(0);
+        let loop_broken = self.next_var();
         scope.push(self.context.hir_stmt(Stmt::VarDecl(VarDecl {
             name: loop_broken,
             value: self.context.hir_expr(Expr {
@@ -677,7 +720,7 @@ impl<'ctx> ExprVisitor<'ctx> for Ladder<'ctx> {
                                     ty: None,
                                 },
                                 guard: None,
-                                body: Block::new(cond.location()),
+                                body: Block::empty(cond.location()),
                                 ty: self.context.hir_type(Type {
                                     kind: TypeKind::Unknown,
                                     loc: cond.location(),

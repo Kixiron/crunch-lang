@@ -156,6 +156,18 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             | TokenType::Caret
             | TokenType::Shl
             | TokenType::Shr        => Self::binary_operation,
+            TokenType::Colon        => Self::assignment,
+            TokenType::AddAssign
+            | TokenType::SubAssign
+            | TokenType::MultAssign
+            | TokenType::DivAssign
+            | TokenType::ModAssign
+            | TokenType::PowAssign
+            | TokenType::ShlAssign
+            | TokenType::ShrAssign
+            | TokenType::OrAssign
+            | TokenType::AndAssign
+            | TokenType::XorAssign  => Self::exotic_assignment,
             _                       => return None,
         };
 
@@ -390,11 +402,9 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     #[recursion_guard]
     fn break_expr(&mut self, token: Token<'src>) -> ParseResult<&'ctx Expr<'ctx>> {
         if self.peek()?.ty() == TokenType::Newline {
-            let end = self.eat(TokenType::Newline, [])?.span();
-
             Ok(self.context.ast_expr(Expr {
                 kind: ExprKind::Break(None),
-                loc: Location::new(Span::merge(token.span(), end), self.current_file),
+                loc: Location::new(token.span(), self.current_file),
             }))
         } else {
             let expr = self.expr()?;
@@ -711,25 +721,25 @@ impl ExprPrecedence {
     #[rustfmt::skip]
     pub fn precedence(self) -> usize {
         match self {
-            Self::As              => 12,
+            Self::As              => 13,
             Self::Mul
             | Self::Div
             | Self::Mod
-            | Self::Pow           => 11,
-            Self::Add | Self::Sub => 10,
-            Self::Shl | Self::Shr => 9,
+            | Self::Pow           => 12,
+            Self::Add | Self::Sub => 11,
+            Self::Shl | Self::Shr => 10,
             Self::Less
             | Self::Greater
             | Self::LessEq
-            | Self::GreaterEq     => 8,
-            Self::Eq | Self::Ne   => 7,
-            Self::BitAnd          => 6,
-            Self::BitXor          => 5,
-            Self::BitOr           => 4,
-            Self::LogAnd          => 3,
-            Self::LogOr           => 2,
-            Self::Ternary         => 1,
-            Self::Assignment      => 0,
+            | Self::GreaterEq     => 9,
+            Self::Eq | Self::Ne   => 8,
+            Self::BitAnd          => 7,
+            Self::BitXor          => 6,
+            Self::BitOr           => 5,
+            Self::LogAnd          => 4,
+            Self::LogOr           => 3,
+            Self::Ternary         => 2,
+            Self::Assignment      => 1,
         }
     }
 }
