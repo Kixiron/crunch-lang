@@ -545,7 +545,6 @@ impl<'ctx> ExprVisitor<'ctx> for MirBuilder<'ctx> {
     }
 
     fn visit_variable(&mut self, _loc: Location, var: HirVar, _ty: TypeId) -> Self::Output {
-        dbg!(var);
         let &Variable {
             id: val,
             ty: ref var_ty,

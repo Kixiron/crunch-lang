@@ -38,7 +38,7 @@ pub struct Engine<'ctx> {
     errors: ErrorHandler,
     current_func: Option<Func>,
     functions: HashMap<ItemPath, Func>,
-    variables: HashMap<Var, TypeId>,
+    variables: Vec<HashMap<Var, TypeId>>,
     check: Option<TypeId>,
     context: Context<'ctx>,
 }
@@ -49,7 +49,7 @@ impl<'ctx> Engine<'ctx> {
             errors: ErrorHandler::default(),
             current_func: None,
             functions: HashMap::with_hasher(Hasher::default()),
-            variables: HashMap::with_hasher(Hasher::default()),
+            variables: Vec::new(),
             check: None,
             context,
         }
@@ -57,7 +57,7 @@ impl<'ctx> Engine<'ctx> {
 
     /// Create a new type term with whatever we have about its type
     fn insert(&mut self, var: Var, type_id: TypeId) {
-        if let Some(old_type) = self.variables.insert(var, type_id) {
+        if let Some(old_type) = self.variables.last_mut().unwrap().insert(var, type_id) {
             crunch_shared::warn!(
                 "The variable {:?} previously had the type {:?} but it was overwritten with {:?}",
                 var,
@@ -68,16 +68,44 @@ impl<'ctx> Engine<'ctx> {
     }
 
     fn var_type(&self, var: &Var, loc: Location) -> TypeResult<TypeId> {
-        self.variables.get(var).copied().ok_or_else(|| {
-            Locatable::new(
-                TypeError::VarNotInScope(var.to_string(&self.context.strings)).into(),
-                loc,
-            )
-        })
+        self.variables
+            .iter()
+            .rev()
+            .find_map(|vars| vars.get(var))
+            .copied()
+            .ok_or_else(|| {
+                Locatable::new(
+                    TypeError::VarNotInScope(var.to_string(&self.context.strings)).into(),
+                    loc,
+                )
+            })
     }
 
     fn create_type(&mut self, ty: Type) -> TypeId {
         self.context.hir_type(ty)
+    }
+
+    fn insert_variable(&mut self, var: Var, ty: TypeId) {
+        self.variables.last_mut().unwrap().insert(var, ty);
+    }
+
+    fn push_scope(&mut self) {
+        self.variables.push(HashMap::with_hasher(Hasher::default()));
+    }
+
+    fn pop_scope(&mut self) {
+        self.variables.pop().unwrap();
+    }
+
+    fn with_scope<F, T>(&mut self, func: F) -> T
+    where
+        F: FnOnce(&mut Self) -> T,
+    {
+        self.push_scope();
+        let result = func(self);
+        self.pop_scope();
+
+        result
     }
 
     /// Make the types of two type terms equivalent (or produce an error if
@@ -205,77 +233,83 @@ impl<'ctx> Engine<'ctx> {
     }
 
     pub fn walk(&mut self, items: &[&'ctx Item<'ctx>]) -> Result<ErrorHandler, ErrorHandler> {
-        for item in items.iter() {
-            match item {
-                &&Item::Function(Function {
-                    ref name,
-                    ref args,
-                    ret,
-                    sig,
-                    ..
-                })
-                | &&Item::ExternFunc(ExternFunc {
-                    ref name,
-                    ref args,
-                    ret,
-                    loc: sig,
-                    ..
-                }) => {
-                    // TODO: Use error types as fillers here if they're unknown
-                    for arg in args.iter() {
-                        let is_unknown = self.context.get_hir_type(arg.kind).unwrap().is_unknown();
+        self.with_scope(|builder| {
+            for item in items.iter() {
+                match item {
+                    &&Item::Function(Function {
+                        ref name,
+                        ref args,
+                        ret,
+                        sig,
+                        ..
+                    })
+                    | &&Item::ExternFunc(ExternFunc {
+                        ref name,
+                        ref args,
+                        ret,
+                        loc: sig,
+                        ..
+                    }) => {
+                        // TODO: Use error types as fillers here if they're unknown
+                        for arg in args.iter() {
+                            let is_unknown =
+                                builder.context.get_hir_type(arg.kind).unwrap().is_unknown();
 
-                        if is_unknown {
-                            self.errors.push_err(Locatable::new(
-                                TypeError::MissingType("Types for function arguments".to_owned())
+                            if is_unknown {
+                                builder.errors.push_err(Locatable::new(
+                                    TypeError::MissingType(
+                                        "Types for function arguments".to_owned(),
+                                    )
                                     .into(),
-                                arg.location(),
+                                    arg.location(),
+                                ));
+                            }
+                        }
+
+                        // TODO: Use error types as fillers here if they're unknown
+                        let ret_ty = builder.context.get_hir_type(ret).unwrap();
+                        if ret_ty.kind.is_unknown() {
+                            builder.errors.push_err(Locatable::new(
+                                TypeError::MissingType("Return types for functions".to_owned())
+                                    .into(),
+                                ret_ty.location(),
                             ));
                         }
+
+                        // TODO: Use error types as fillers here if they're unknown
+                        let arg_span = args.location();
+                        let args: Vec<TypeId> = args
+                            .iter()
+                            .map(|&FuncArg { name, kind, .. }| {
+                                builder.insert(name, kind);
+                                kind
+                            })
+                            .collect();
+
+                        let func = Func {
+                            ret,
+                            args,
+                            arg_span,
+                            sig,
+                        };
+
+                        builder.functions.insert(name.clone(), func);
                     }
-
-                    // TODO: Use error types as fillers here if they're unknown
-                    let ret_ty = self.context.get_hir_type(ret).unwrap();
-                    if ret_ty.kind.is_unknown() {
-                        self.errors.push_err(Locatable::new(
-                            TypeError::MissingType("Return types for functions".to_owned()).into(),
-                            ret_ty.location(),
-                        ));
-                    }
-
-                    // TODO: Use error types as fillers here if they're unknown
-                    let arg_span = args.location();
-                    let args: Vec<TypeId> = args
-                        .iter()
-                        .map(|&FuncArg { name, kind, .. }| {
-                            self.insert(name, kind);
-                            kind
-                        })
-                        .collect();
-
-                    let func = Func {
-                        ret,
-                        args,
-                        arg_span,
-                        sig,
-                    };
-
-                    self.functions.insert(name.clone(), func);
                 }
             }
-        }
 
-        for item in items {
-            if let Err(err) = self.visit_item(item) {
-                self.errors.push_err(err);
+            for item in items {
+                if let Err(err) = builder.visit_item(item) {
+                    builder.errors.push_err(err);
+                }
             }
-        }
 
-        if self.errors.is_fatal() {
-            Err(self.errors.take())
-        } else {
-            Ok(self.errors.take())
-        }
+            if builder.errors.is_fatal() {
+                Err(builder.errors.take())
+            } else {
+                Ok(builder.errors.take())
+            }
+        })
     }
 
     fn intern_literal(
@@ -389,20 +423,21 @@ impl<'ctx> ItemVisitor<'ctx> for Engine<'ctx> {
             name, body, args, ..
         }: &Function<'ctx>,
     ) -> Self::Output {
-        self.variables.clear();
-        self.current_func = Some(self.functions.get(name).unwrap().clone());
+        self.with_scope(|builder| {
+            builder.current_func = Some(builder.functions.get(name).unwrap().clone());
 
-        for arg in args.iter() {
-            self.insert(arg.name, arg.kind);
-        }
+            for arg in args.iter() {
+                builder.insert(arg.name, arg.kind);
+            }
 
-        for stmt in body.iter() {
-            self.visit_stmt(stmt)?;
-        }
+            for stmt in body.iter() {
+                builder.visit_stmt(stmt)?;
+            }
 
-        self.current_func = None;
+            builder.current_func = None;
 
-        Ok(())
+            Ok(())
+        })
     }
 
     fn visit_extern_func(
@@ -474,8 +509,8 @@ impl<'ctx> StmtVisitor<'ctx> for Engine<'ctx> {
             ..
         }: &VarDecl<'ctx>,
     ) -> <Self as StmtVisitor<'ctx>>::Output {
-        self.insert(name, ty);
         let expr = self.visit_expr(value)?;
+        self.insert(name, ty);
         self.unify(expr, ty)?;
 
         Ok(Some(self.create_type(Type::new(TypeKind::Unit, loc))))
@@ -536,7 +571,7 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
                     let variable_type =
                         self.create_type(Type::new(TypeKind::Variable(condition_type), loc));
 
-                    self.variables.insert(Var::User(variable), variable_type);
+                    self.insert_variable(Var::User(variable), variable_type);
                     self.unify(condition_type, variable_type)?;
 
                     self.check.take();
@@ -557,14 +592,15 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
             }
 
             self.check = Some(ty);
-            let arm_type = arm
-                .body
-                .iter()
-                .filter_map(|s| self.visit_stmt(s).transpose())
-                .last()
-                .unwrap_or_else(|| {
-                    Ok(self.create_type(Type::new(TypeKind::Unit, arm.body.location())))
-                })?;
+            let arm_type = self.with_scope(|builder| {
+                arm.body
+                    .iter()
+                    .filter_map(|s| builder.visit_stmt(s).transpose())
+                    .last()
+                    .unwrap_or_else(|| {
+                        Ok(builder.create_type(Type::new(TypeKind::Unit, arm.body.location())))
+                    })
+            })?;
 
             self.unify(ty, arm_type)?;
             self.check.take();
@@ -586,10 +622,12 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
     }
 
     fn visit_scope(&mut self, loc: Location, body: &Block<&'ctx Stmt<'ctx>>) -> Self::Output {
-        body.iter()
-            .filter_map(|s| self.visit_stmt(s).transpose())
-            .last()
-            .unwrap_or_else(|| Ok(self.create_type(Type::new(TypeKind::Unit, loc))))
+        self.with_scope(|builder| {
+            body.iter()
+                .filter_map(|s| builder.visit_stmt(s).transpose())
+                .last()
+                .unwrap_or_else(|| Ok(builder.create_type(Type::new(TypeKind::Unit, loc))))
+        })
     }
 
     fn visit_func_call(&mut self, loc: Location, call: &FuncCall<'ctx>) -> Self::Output {

@@ -1,4 +1,4 @@
-:: args: run --quiet
+:: args: run --quiet --color=none
 :: expected exit status: 5
 
 fn main() -> i64

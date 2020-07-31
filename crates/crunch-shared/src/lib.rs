@@ -9,6 +9,7 @@
 )]
 
 extern crate alloc;
+pub extern crate codespan_reporting;
 pub extern crate crunch_proc;
 
 pub use log::{debug, error, info, trace, warn};

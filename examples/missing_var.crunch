@@ -1,0 +1,13 @@
+:: args: run --quiet --color=none
+:: expected exit status: 101
+:: expected stderr:
+:: error: The variable 'y' was not found in this scope
+::    ┌─ missing_var:12:18
+::    │
+:: 12 │     let y := x + y
+::    │                  ^
+
+fn main()
+    let x := 10
+    let y := x + y
+end

@@ -9,11 +9,7 @@ use alloc::{
 use codespan_reporting::{
     diagnostic::{Diagnostic, Label},
     files::Files as CodeFiles,
-    term::{
-        self,
-        termcolor::{ColorChoice, StandardStream},
-        Config,
-    },
+    term::{self, termcolor::StandardStream, Config},
 };
 use core::{
     fmt,
@@ -343,12 +339,10 @@ impl ErrorHandler {
 
     /// Drain all errors and warnings from the current handler, emitting them
     #[inline]
-    pub fn emit<'a, F>(&mut self, files: &'a F)
+    pub fn emit<'a, F>(&mut self, files: &'a F, writer: &StandardStream, config: &Config)
     where
         F: CodeFiles<'a, FileId = FileId>,
     {
-        let writer = StandardStream::stderr(ColorChoice::Auto);
-        let config = Config::default();
         let mut diag = Vec::with_capacity(5);
 
         while let Some(err) = self.warnings.pop_front() {

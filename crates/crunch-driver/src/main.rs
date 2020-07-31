@@ -9,6 +9,10 @@ use crunch_database::{ContextDatabase, CrunchDatabase, ParseDatabase, SourceData
 use crunch_mir::MirBuilder;
 use crunch_shared::{
     allocator::{CrunchcAllocator, CRUNCHC_ALLOCATOR},
+    codespan_reporting::term::{
+        termcolor::{ColorChoice, StandardStream},
+        Config,
+    },
     context::{Arenas, Context, OwnedArenas},
     files::{FileId, Files},
     symbol_table::Resolver,
@@ -91,6 +95,9 @@ fn run<'ctx>(
 ) -> Result<ExitStatus, ExitStatus> {
     let start_time = Instant::now();
 
+    let writer = StandardStream::stderr(options.color.into());
+    let stdout_conf = Config::default();
+
     // Get the source file's name without an extension
     let source_file = options
         .target_file
@@ -162,7 +169,7 @@ fn run<'ctx>(
         Ok(ok) => {
             // TODO: Stop cloning things
             let (ast, mut warnings) = ok.as_ref().clone();
-            warnings.emit(&files);
+            warnings.emit(&files, &writer, &stdout_conf);
 
             if options.emit.contains(&EmissionKind::Ast) {
                 let path = out_file.with_extension("ast");
@@ -184,7 +191,7 @@ fn run<'ctx>(
         }
 
         Err(errors) => {
-            errors.as_ref().clone().emit(&files);
+            errors.as_ref().clone().emit(&files, &writer, &stdout_conf);
             return Err(ExitStatus::default());
         }
     };
@@ -223,9 +230,9 @@ fn run<'ctx>(
     // Check types and update the hir with concrete types
     let mut engine = Engine::new(context.clone());
     match GLOBAL_ALLOCATOR.record_region("type checking", || engine.walk(&hir)) {
-        Ok(mut warnings) => warnings.emit(&files),
+        Ok(mut warnings) => warnings.emit(&files, &writer, &stdout_conf),
         Err(mut errors) => {
-            errors.emit(&files);
+            errors.emit(&files, &writer, &stdout_conf);
 
             return Err(ExitStatus::default());
         }
@@ -476,11 +483,52 @@ struct BuildOptions {
     /// Silence all compiler output
     #[structopt(short = "q", long = "quiet")]
     pub quiet: bool,
+
+    /// Set the colors of terminal output
+    #[structopt(long = "color", default_value = "auto", possible_values = &TermColor::VALUES)]
+    pub color: TermColor,
 }
 
 impl BuildOptions {
     pub fn is_verbose(&self) -> bool {
         self.verbose != 0
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum TermColor {
+    Always,
+    Auto,
+    None,
+}
+
+impl TermColor {
+    pub const VALUES: [&'static str; 4] = ["always", "auto", "never", "none"];
+}
+
+impl Into<ColorChoice> for TermColor {
+    fn into(self) -> ColorChoice {
+        match self {
+            Self::Always => ColorChoice::Always,
+            Self::Auto => ColorChoice::Auto,
+            Self::None => ColorChoice::Never,
+        }
+    }
+}
+
+impl FromStr for TermColor {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let emit = match s.to_lowercase().as_ref() {
+            "always" => Self::Always,
+            "auto" => Self::Auto,
+            "none" | "never" => Self::None,
+
+            _ => return Err("Unrecognized terminal color"),
+        };
+
+        Ok(emit)
     }
 }
 

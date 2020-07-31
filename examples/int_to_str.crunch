@@ -1,4 +1,4 @@
-:: args: run --quiet
+:: args: run --quiet --color=none
 :: expected exit status: 0
 :: expected stdout: 10
 
