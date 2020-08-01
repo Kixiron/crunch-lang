@@ -73,7 +73,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             | TokenType::Rune => Pattern::Literal(self.literal(&token, self.current_file)?),
 
             TokenType::Ident => {
-                let ident = self.context.strings.intern(token.source);
+                let ident = self.intern_ident(token);
 
                 if self.peek().map(|t| t.ty()) == Ok(TokenType::Dot) {
                     Pattern::ItemPath(self.item_path(ident)?)

@@ -169,7 +169,7 @@ impl<'ar> From<&'ar OwnedArenas<'ar>> for Arenas<'ar> {
 pub struct Context<'ctx> {
     arenas: Arenas<'ctx>,
     // TODO: Pull strings out of refcells
-    pub strings: StrInterner,
+    strings: StrInterner,
     file_id: Arc<AtomicU32>,
 }
 
@@ -178,9 +178,27 @@ impl<'ctx> Context<'ctx> {
     pub fn new(arenas: Arenas<'ctx>) -> Self {
         Self {
             arenas,
-            strings: StrInterner::new(),
+            strings: Self::construct_string_interner(),
             file_id: Arc::new(AtomicU32::new(0)),
         }
+    }
+
+    /// Preloads the interner with frequently used static strings
+    fn construct_string_interner() -> StrInterner {
+        macro_rules! intern_static {
+            (($strings:ident) => { $($string:literal),* $(,)? }) => {
+                $(
+                    $strings.intern_static($string);
+                )*
+            };
+        }
+
+        let strings = StrInterner::new();
+        intern_static!((strings) => {
+            "callconv",
+        });
+
+        strings
     }
 
     #[inline]

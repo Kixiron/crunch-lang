@@ -31,6 +31,11 @@ mod interner {
         pub fn intern(&self, string: impl AsRef<str>) -> StrT {
             StrT::from(self.0.get_or_intern(string.as_ref()))
         }
+
+        #[inline]
+        pub fn intern_static(&self, string: &'static str) -> StrT {
+            StrT::from(self.0.get_or_intern_static(string))
+        }
     }
 
     impl Default for StrInterner {
@@ -80,6 +85,11 @@ mod interner {
         #[inline]
         pub fn intern(&self, string: impl AsRef<str>) -> StrT {
             StrT::from(self.0.borrow_mut().get_or_intern(string.as_ref()))
+        }
+
+        #[inline]
+        pub fn intern_static(&self, string: &'static str) -> StrT {
+            StrT::from(self.0.borrow_mut().get_or_intern_static(string))
         }
     }
 

@@ -28,6 +28,21 @@ impl StackGuard {
 }
 
 impl<'src, 'ctx> Parser<'src, 'ctx> {
+    pub(crate) fn intern_ident(&self, ident: Token) -> StrT {
+        use alloc::borrow::Cow;
+        use unicode_normalization::{IsNormalized, UnicodeNormalization};
+
+        debug_assert_eq!(ident.ty(), TokenType::Ident);
+
+        // Performs zero temp allocations if it's already NFKC-normalised.
+        let normalized = match unicode_normalization::is_nfkc_quick(ident.source().chars()) {
+            IsNormalized::Yes => Cow::Borrowed(ident.source()),
+            _ => Cow::Owned(ident.source().nfkc().collect()),
+        };
+
+        self.context.strings().intern(normalized)
+    }
+
     /// ```ebnf
     /// ItemPath ::= Ident | Ident '.' Path
     /// ```
@@ -43,8 +58,8 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
         if let Ok(peek) = self.peek() {
             while peek.ty() == TokenType::Ident {
-                let segment = self.eat(TokenType::Ident, [TokenType::Newline])?.source();
-                path.push(self.context.strings.intern(segment));
+                let segment = self.eat(TokenType::Ident, [TokenType::Newline])?;
+                path.push(self.intern_ident(segment));
 
                 if matches!(self.peek().map(|t| t.ty()), Ok(TokenType::Dot)) {
                     self.eat(TokenType::Dot, [TokenType::Newline])?;

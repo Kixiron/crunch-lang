@@ -171,8 +171,8 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     ) -> ParseResult<&'ctx Item<'ctx>> {
         let start_span = self.eat(TokenType::Import, [TokenType::Newline])?.span();
 
-        let file = self.eat(TokenType::Ident, [TokenType::Newline])?.source();
-        let file = self.context.strings.intern(file);
+        let file = self.eat(TokenType::Ident, [TokenType::Newline])?;
+        let file = self.intern_ident(file);
         let file = self.item_path(file)?;
 
         let dest = if self.peek()?.ty() == TokenType::Library {
@@ -199,7 +199,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                 while self.peek()?.ty() != TokenType::Newline {
                     let (_span, member) = {
                         let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
-                        (ident.span(), self.context.strings.intern(ident.source()))
+                        (ident.span(), self.intern_ident(ident))
                     };
                     let member = self.item_path(member)?;
 
@@ -207,7 +207,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                         self.eat(TokenType::As, [TokenType::Newline])?;
                         let alias = {
                             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
-                            self.context.strings.intern(ident.source())
+                            self.intern_ident(ident)
                         };
 
                         alias
@@ -232,7 +232,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                 self.eat(TokenType::As, [TokenType::Newline])?;
                 let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
 
-                self.context.strings.intern(ident.source())
+                self.intern_ident(ident)
             } else {
                 // Get the last segment of the path as the alias if none is supplied
                 file.iter().last().copied().ok_or(Locatable::new(
@@ -295,7 +295,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         let start_span = self.eat(TokenType::Trait, [TokenType::Newline])?.span();
         let name = {
             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
-            self.context.strings.intern(ident.source())
+            self.intern_ident(ident)
         };
         let generics = self.generics()?;
         let sig_span_end = self.eat(TokenType::Newline, [])?.span();
@@ -360,7 +360,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         let start_span = self.eat(TokenType::Enum, [TokenType::Newline])?.span();
         let name = {
             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
-            self.context.strings.intern(ident.source())
+            self.intern_ident(ident)
         };
         let generics = self.generics()?;
         let sig_span_end = self.eat(TokenType::Newline, [])?.span();
@@ -377,7 +377,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                 TokenType::Ident => {
                     let (name, _start_span) = {
                         let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
-                        (self.context.strings.intern(ident.source()), ident.span())
+                        (self.intern_ident(ident), ident.span())
                     };
 
                     let variant = if self.peek()?.ty() == TokenType::LeftParen {
@@ -451,7 +451,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
             (
                 Locatable::new(
-                    self.context.strings.intern(ident.source()),
+                    self.intern_ident(ident),
                     Location::new(ident.span(), self.current_file),
                 ),
                 ident.span(),
@@ -512,7 +512,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         let start_span = self.eat(TokenType::Type, [TokenType::Newline])?.span();
         let name = {
             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
-            self.context.strings.intern(ident.source())
+            self.intern_ident(ident)
         };
         let generics = self.generics()?;
         let sig_span_end = self.eat(TokenType::Newline, [])?.span();
@@ -540,7 +540,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                 TokenType::Ident => {
                     let (name, name_span) = {
                         let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
-                        (self.context.strings.intern(ident.source()), ident.span())
+                        (self.intern_ident(ident), ident.span())
                     };
 
                     let ty = if self.peek()?.ty() == TokenType::Colon {
@@ -701,7 +701,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         let start_span = self.eat(TokenType::Function, [TokenType::Newline])?.span();
         let name = {
             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
-            self.context.strings.intern(ident.source())
+            self.intern_ident(ident)
         };
         let generics = self.generics()?;
         let args = self.function_args()?;
@@ -766,20 +766,19 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
         let mut args = Vec::with_capacity(7);
         while self.peek()?.ty() != TokenType::RightParen {
-            let (name, name_span) =
-                match self.eat_of([TokenType::Ident, TokenType::Const], [TokenType::Newline])? {
-                    ident if ident.ty() == TokenType::Ident => {
-                        (self.context.strings.intern(ident.source()), ident.span())
-                    }
+            let (name, name_span) = match self
+                .eat_of([TokenType::Ident, TokenType::Const], [TokenType::Newline])?
+            {
+                ident if ident.ty() == TokenType::Ident => (self.intern_ident(ident), ident.span()),
 
-                    token if token.ty() == TokenType::Const => {
-                        let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
+                token if token.ty() == TokenType::Const => {
+                    let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
 
-                        (self.context.strings.intern(ident.source()), token.span())
-                    }
+                    (self.intern_ident(ident), token.span())
+                }
 
-                    _ => unreachable!(),
-                };
+                _ => unreachable!(),
+            };
 
             self.eat(TokenType::Colon, [TokenType::Newline])?;
             let ty = self.ascribed_type()?;
@@ -880,7 +879,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         let start = self.eat(TokenType::Function, [TokenType::Newline])?.span();
         let name = {
             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
-            self.context.strings.intern(ident.source())
+            self.intern_ident(ident)
         };
         let generics = self.generics()?;
         let args = self.function_args()?;
@@ -921,7 +920,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         optional: bool,
         decorators: &mut Vec<Decorator<'ctx>>,
     ) -> ParseResult<CallConv> {
-        let callconv = self.context.strings.intern("callconv");
+        let callconv = self.context.strings().intern_static("callconv");
 
         if let Some(idx) = decorators.iter().position(|dec| *dec.name == callconv) {
             let decorator = decorators.remove(idx);

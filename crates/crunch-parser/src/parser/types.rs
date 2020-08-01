@@ -277,8 +277,8 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                         (Type::Float { width }, None)
                     }
 
-                    custom => {
-                        let custom = parser.context.strings.intern(custom);
+                    _ => {
+                        let custom = parser.intern_ident(token);
                         let path = parser.item_path(custom)?;
 
                         if parser.peek().map(|t| t.ty()) == Ok(TokenType::LeftBrace) {
@@ -411,7 +411,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                 let _frame = parser.add_stack_frame()?;
 
                 let ident = parser.eat(TokenType::Ident, [TokenType::Newline])?;
-                let ident = parser.context.strings.intern(ident.source());
+                let ident = parser.intern_ident(ident);
 
                 parser.eat(TokenType::Colon, [])?;
                 let ty = parser.ascribed_type()?;

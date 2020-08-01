@@ -367,17 +367,8 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
     #[recursion_guard]
     fn variable(&mut self, ident_tok: Token<'src>) -> ParseResult<&'ctx Expr<'ctx>> {
-        use alloc::borrow::Cow;
-        use unicode_normalization::{IsNormalized, UnicodeNormalization};
-
-        // Performs zero temp allocations if it's already NFKC-normalised.
-        let normalized = match unicode_normalization::is_nfkc_quick(ident_tok.source().chars()) {
-            IsNormalized::Yes => Cow::Borrowed(ident_tok.source()),
-            _ => Cow::Owned(ident_tok.source().nfkc().collect()),
-        };
-
         let ident = Locatable::new(
-            self.context.strings.intern(&normalized),
+            self.intern_ident(ident_tok),
             Location::new(ident_tok.span(), self.current_file),
         );
 

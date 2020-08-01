@@ -34,7 +34,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
                 let (name, span) = {
                     let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
-                    (self.context.strings.intern(ident.source()), ident.span())
+                    (self.intern_ident(ident), ident.span())
                 };
 
                 self.eat(TokenType::Colon, [TokenType::Newline])?;

@@ -99,7 +99,7 @@ impl<'ctx> Engine<'ctx> {
             .copied()
             .ok_or_else(|| {
                 Locatable::new(
-                    TypeError::VarNotInScope(var.to_string(&self.db.context().strings)).into(),
+                    TypeError::VarNotInScope(var.to_string(&self.db.context().strings())).into(),
                     loc,
                 )
             })
@@ -676,7 +676,7 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
             .get(&call.func)
             .ok_or_else(|| {
                 Locatable::new(
-                    TypeError::FuncNotInScope(call.func.to_string(&self.db.context().strings))
+                    TypeError::FuncNotInScope(call.func.to_string(&self.db.context().strings()))
                         .into(),
                     loc,
                 )
