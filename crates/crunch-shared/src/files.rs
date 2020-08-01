@@ -1,17 +1,28 @@
-use crate::error::{Location, Span};
-use alloc::{string::String, vec::Vec};
+use crate::{
+    error::{Location, Span},
+    utils::{HashMap, Hasher},
+};
+use alloc::{string::String, sync::Arc, vec::Vec};
 use codespan_reporting::files;
 use core::ops::Range;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct File {
-    name: String,
-    source: String,
-    line_starts: Vec<usize>,
+    name: Arc<String>,
+    source: Arc<String>,
+    line_starts: Arc<Vec<usize>>,
 }
 
 impl File {
+    pub fn new(name: Arc<String>, source: Arc<String>, line_starts: Arc<Vec<usize>>) -> Self {
+        Self {
+            name,
+            source,
+            line_starts,
+        }
+    }
+
     #[inline]
     fn line_start(&self, line_index: usize) -> Option<usize> {
         use core::cmp::Ordering;
@@ -21,6 +32,38 @@ impl File {
             Ordering::Equal => Some(self.source.len()),
             Ordering::Greater => None,
         }
+    }
+}
+
+impl<'files> files::Files<'files> for File {
+    type FileId = FileId;
+    type Name = &'files str;
+    type Source = &'files str;
+
+    #[inline]
+    fn name(&self, _: FileId) -> Option<&str> {
+        Some(self.name.as_str())
+    }
+
+    #[inline]
+    fn source(&self, _: FileId) -> Option<&str> {
+        Some(self.source.as_str())
+    }
+
+    #[inline]
+    fn line_index(&self, _: FileId, byte_index: usize) -> Option<usize> {
+        match self.line_starts.binary_search(&byte_index) {
+            Ok(line) => Some(line),
+            Err(next_line) => Some(next_line - 1),
+        }
+    }
+
+    #[inline]
+    fn line_range(&self, _: FileId, line_index: usize) -> Option<Range<usize>> {
+        let line_start = self.line_start(line_index)?;
+        let next_line_start = self.line_start(line_index + 1)?;
+
+        Some(line_start..next_line_start)
     }
 }
 
@@ -35,39 +78,41 @@ impl FileId {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Files {
-    files: Vec<File>,
+    files: HashMap<FileId, File>,
 }
 
 impl Files {
-    #[inline]
     pub fn new() -> Files {
-        Files { files: Vec::new() }
+        Files {
+            files: HashMap::with_hasher(Hasher::default()),
+        }
     }
 
-    #[inline]
     pub fn add(&mut self, name: impl Into<String>, source: impl Into<String>) -> Option<FileId> {
         use core::convert::TryFrom;
 
         let file_id = FileId(u32::try_from(self.files.len()).ok()?);
-        let name = name.into();
-        let source = source.into();
-        let line_starts = files::line_starts(&source).collect();
+        let name = Arc::new(name.into());
+        let source = Arc::new(source.into());
+        let line_starts = Arc::new(files::line_starts(&source).collect());
 
-        self.files.push(File {
-            name,
-            line_starts,
-            source,
-        });
+        self.files
+            .insert(file_id, File::new(name, source, line_starts));
 
         Some(file_id)
     }
 
-    #[inline]
     fn get(&self, file_id: FileId) -> Option<&File> {
-        self.files.get(file_id.0 as usize)
+        self.files.get(&file_id)
+    }
+}
+
+impl From<HashMap<FileId, File>> for Files {
+    fn from(files: HashMap<FileId, File>) -> Self {
+        Self { files }
     }
 }
 
@@ -76,17 +121,14 @@ impl<'files> files::Files<'files> for Files {
     type Name = &'files str;
     type Source = &'files str;
 
-    #[inline]
     fn name(&self, file_id: FileId) -> Option<&str> {
-        Some(self.get(file_id)?.name.as_ref())
+        Some(self.get(file_id)?.name.as_str())
     }
 
-    #[inline]
     fn source(&self, file_id: FileId) -> Option<&str> {
         Some(&self.get(file_id)?.source)
     }
 
-    #[inline]
     fn line_index(&self, file_id: FileId, byte_index: usize) -> Option<usize> {
         match self.get(file_id)?.line_starts.binary_search(&byte_index) {
             Ok(line) => Some(line),
@@ -94,7 +136,6 @@ impl<'files> files::Files<'files> for Files {
         }
     }
 
-    #[inline]
     fn line_range(&self, file_id: FileId, line_index: usize) -> Option<Range<usize>> {
         let file = self.get(file_id)?;
         let line_start = file.line_start(line_index)?;

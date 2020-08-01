@@ -10,11 +10,12 @@
 
 extern crate alloc;
 
+pub mod database;
 pub mod parser;
 #[cfg(test)]
 mod tests;
 mod token;
 mod unnest_externs;
 
-pub use parser::{ParseConfig, Parser, ParserReturn};
+pub use parser::{Parser, ParserReturn};
 pub use unnest_externs::FlattenExternals;

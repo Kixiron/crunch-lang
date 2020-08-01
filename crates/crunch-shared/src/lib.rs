@@ -9,8 +9,10 @@
 )]
 
 extern crate alloc;
+// TODO: Better abstraction for this
 pub extern crate codespan_reporting;
 pub extern crate crunch_proc;
+pub extern crate salsa;
 
 pub use log::{debug, error, info, trace, warn};
 
@@ -21,8 +23,8 @@ pub mod files;
 pub mod meta;
 // mod passes;
 pub mod allocator;
+pub mod config;
 pub mod strings;
-pub mod symbol_table;
 pub mod trees;
 pub mod utils;
 pub mod visitors;

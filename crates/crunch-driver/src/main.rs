@@ -5,30 +5,24 @@ use crunch_codegen::{
     },
     CodeGenerator,
 };
-use crunch_database::{ContextDatabase, CrunchDatabase, ParseDatabase, SourceDatabase};
+use crunch_database::{
+    ConfigDatabase, CrunchDatabase, HirDatabase, SourceDatabase, TypecheckDatabase,
+};
 use crunch_mir::MirBuilder;
 use crunch_shared::{
     allocator::{CrunchcAllocator, CRUNCHC_ALLOCATOR},
-    codespan_reporting::term::{
-        termcolor::{ColorChoice, StandardStream},
-        Config,
-    },
-    context::{Arenas, Context, OwnedArenas},
-    files::{FileId, Files},
-    symbol_table::Resolver,
-    visitors::ast::ItemVisitor,
+    codespan_reporting::term::{termcolor::StandardStream, Config as TermConfig},
+    config::{BuildOptions, CrunchcOpts, EmissionKind},
+    context::{Arenas, Context, ContextDatabase, OwnedArenas},
+    utils::DbgWrap,
 };
-use crunch_typecheck::Engine;
-use ladder::Ladder;
 use std::{
     borrow::Cow,
     fmt, fs,
     io::{self, Write},
-    path::PathBuf,
-    str::FromStr,
+    sync::Arc,
     time::Instant,
 };
-use structopt::StructOpt;
 
 #[global_allocator]
 static GLOBAL_ALLOCATOR: CrunchcAllocator = CRUNCHC_ALLOCATOR;
@@ -96,7 +90,7 @@ fn run<'ctx>(
     let start_time = Instant::now();
 
     let writer = StandardStream::stderr(options.color.into());
-    let stdout_conf = Config::default();
+    let stdout_conf = TermConfig::default();
 
     // Get the source file's name without an extension
     let source_file = options
@@ -143,106 +137,35 @@ fn run<'ctx>(
         ))
     })?;
 
-    // Read the source of the given file into a string
-    let source = fs::read_to_string(&options.target_file).map_err(|err| {
-        ExitStatus::message(format!(
-            "failed to read the source file '{}': {:?}",
-            options.target_file.display(),
-            err,
-        ))
-    })?;
-
+    let file_id = context.next_file_id();
     let mut database = CrunchDatabase::default();
     // Nothing in this function should ever escape it, right?
+    // Also, I fucking hate this
+    database.set_config(Arc::new(options.clone()));
+    database.set_writer(Arc::new(DbgWrap::new(StandardStream::stderr(
+        database.config().color.into(),
+    ))));
+    database.set_stdout_config(Arc::new(DbgWrap::new(TermConfig::default())));
     database.set_context(unsafe {
         std::mem::transmute::<&'ctx Context<'ctx>, &'static Context<'static>>(&context)
     });
-    database.set_source_text(FileId::new(0), std::sync::Arc::new(source.clone()));
-    database.set_file_name(FileId::new(0), source_file.clone().to_string());
-
-    // Create the files for error reporting
-    let mut files = Files::new();
-    files.add(source_file.clone(), source.clone());
-
-    // Parse the source file into an ast
-    let ast = match database.parse(FileId::new(0)) {
-        Ok(ok) => {
-            // TODO: Stop cloning things
-            let (ast, mut warnings) = ok.as_ref().clone();
-            warnings.emit(&files, &writer, &stdout_conf);
-
-            if options.emit.contains(&EmissionKind::Ast) {
-                let path = out_file.with_extension("ast");
-
-                fs::write(&path, format!("{:#?}", &ast)).map_err(|err| {
-                    ExitStatus::message(format!(
-                        "failed to write ast to '{}': {:?}",
-                        path.display(),
-                        err,
-                    ))
-                })?;
-            }
-
-            if options.print.contains(&EmissionKind::Ast) {
-                println!("{:#?}", &ast);
-            }
-
-            ast
-        }
-
-        Err(errors) => {
-            errors.as_ref().clone().emit(&files, &writer, &stdout_conf);
-            return Err(ExitStatus::default());
-        }
-    };
-
-    // Resolve all names in the ast
-    let _resolver = GLOBAL_ALLOCATOR.record_region("symbol table building", || {
-        use crunch_shared::trees::ItemPath;
-
-        let mut resolver = Resolver::new(ItemPath::new(context.strings().intern(&source_file)));
-        for node in ast.iter() {
-            resolver.visit_item(node);
-        }
-        resolver.finalize();
-
-        resolver
-    });
+    database.set_file_path(file_id, Arc::new(options.target_file.clone()));
 
     // Lower the ast to hir
-    let hir = GLOBAL_ALLOCATOR.record_region("hir lowering", || Ladder::new(&context).lower(&ast));
-    if options.emit.contains(&EmissionKind::Hir) {
-        let path = out_file.with_extension("hir");
-
-        fs::write(&path, format!("{:#?}", &hir)).map_err(|err| {
-            ExitStatus::message(format!(
-                "failed to write hir to '{}': {:?}",
-                path.display(),
-                err
-            ))
-        })?;
-    }
-
-    if options.print.contains(&EmissionKind::Hir) {
-        println!("{:#?}", &hir);
-    }
+    let hir = database.lower_hir(file_id).unwrap();
 
     // Check types and update the hir with concrete types
-    let mut engine = Engine::new(context.clone());
-    match GLOBAL_ALLOCATOR.record_region("type checking", || engine.walk(&hir)) {
-        Ok(mut warnings) => warnings.emit(&files, &writer, &stdout_conf),
-        Err(mut errors) => {
-            errors.emit(&files, &writer, &stdout_conf);
+    if let Err(errors) = database.typecheck(file_id) {
+        (&*errors)
+            .clone()
+            .emit(&*database.codespan_files(), &writer, &stdout_conf);
 
-            return Err(ExitStatus::default());
-        }
+        return Err(ExitStatus::default());
     }
 
     // Lower hir to mir
     let mir = GLOBAL_ALLOCATOR.record_region("mir lowering", || {
-        MirBuilder::new(context.clone(), engine)
-            .lower(&hir)
-            .unwrap()
+        MirBuilder::new(context.clone()).lower(&hir).unwrap()
     });
 
     if options.emit.contains(&EmissionKind::Mir) {
@@ -427,144 +350,6 @@ fn run<'ctx>(
     }
 
     Ok(ExitStatus::default())
-}
-
-#[derive(Debug, Clone, StructOpt)]
-#[structopt(about = "The Crunch compiler", rename_all = "kebab-case")]
-enum CrunchcOpts {
-    /// Builds a source file, producing an executable
-    Build {
-        #[structopt(flatten)]
-        options: BuildOptions,
-    },
-
-    /// Builds a source file, producing an executable and running it
-    Run {
-        #[structopt(flatten)]
-        options: BuildOptions,
-    },
-}
-
-impl CrunchcOpts {
-    pub fn build_options(&self) -> BuildOptions {
-        match self {
-            Self::Build { options, .. } | Self::Run { options, .. } => options.clone(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, StructOpt)]
-#[structopt(rename_all = "kebab-case")]
-struct BuildOptions {
-    /// The file to be compiled
-    #[structopt(name = "FILE")]
-    pub target_file: PathBuf,
-
-    /// The output file's name
-    #[structopt(short = "o", long = "output")]
-    pub out_file: Option<PathBuf>,
-
-    /// Enable verbose output
-    #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
-    pub verbose: u8,
-
-    /// A list of types for the compiler to emit
-    #[structopt(long = "emit", possible_values = &EmissionKind::VALUES)]
-    pub emit: Vec<EmissionKind>,
-
-    /// A list of types for the compiler to print
-    #[structopt(long = "print", possible_values = &EmissionKind::VALUES)]
-    pub print: Vec<EmissionKind>,
-
-    /// The output directory
-    #[structopt(default_value = "build")]
-    pub out_dir: PathBuf,
-
-    /// Silence all compiler output
-    #[structopt(short = "q", long = "quiet")]
-    pub quiet: bool,
-
-    /// Set the colors of terminal output
-    #[structopt(long = "color", default_value = "auto", possible_values = &TermColor::VALUES)]
-    pub color: TermColor,
-}
-
-impl BuildOptions {
-    pub fn is_verbose(&self) -> bool {
-        self.verbose != 0
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-enum TermColor {
-    Always,
-    Auto,
-    None,
-}
-
-impl TermColor {
-    pub const VALUES: [&'static str; 4] = ["always", "auto", "never", "none"];
-}
-
-impl Into<ColorChoice> for TermColor {
-    fn into(self) -> ColorChoice {
-        match self {
-            Self::Always => ColorChoice::Always,
-            Self::Auto => ColorChoice::Auto,
-            Self::None => ColorChoice::Never,
-        }
-    }
-}
-
-impl FromStr for TermColor {
-    type Err = &'static str;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let emit = match s.to_lowercase().as_ref() {
-            "always" => Self::Always,
-            "auto" => Self::Auto,
-            "none" | "never" => Self::None,
-
-            _ => return Err("Unrecognized terminal color"),
-        };
-
-        Ok(emit)
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-enum EmissionKind {
-    Ast,
-    Hir,
-    Mir,
-    LlvmIr,
-    LlvmBc,
-    Object,
-    Assembly,
-}
-
-impl EmissionKind {
-    pub const VALUES: [&'static str; 7] = ["ast", "hir", "mir", "llvm-ir", "llvm-bc", "obj", "asm"];
-}
-
-impl FromStr for EmissionKind {
-    type Err = &'static str;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let emit = match s.to_lowercase().as_ref() {
-            "ast" => Self::Ast,
-            "hir" => Self::Hir,
-            "mir" => Self::Mir,
-            "llvm-ir" => Self::LlvmIr,
-            "llvm-bc" => Self::LlvmBc,
-            "obj" => Self::Object,
-            "asm" => Self::Assembly,
-
-            _ => return Err("Unrecognized emission kind"),
-        };
-
-        Ok(emit)
-    }
 }
 
 struct Stderr {

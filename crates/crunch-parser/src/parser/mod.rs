@@ -1,7 +1,8 @@
 use crate::token::{Token, TokenStream, TokenType};
-use alloc::{format, vec::Vec};
+use alloc::{format, sync::Arc, vec::Vec};
 use core::mem;
 use crunch_shared::{
+    config::BuildOptions,
     context::Context,
     error::{Error, ErrorHandler, Locatable, Location, ParseResult, SyntaxError},
     files::CurrentFile,
@@ -22,22 +23,6 @@ pub type ParserReturn<'ctx> = (Vec<&'ctx Item<'ctx>>, ErrorHandler);
 
 // TODO: Make the parser a little more lax, it's kinda strict about whitespace
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct ParseConfig {
-    pub max_errors: usize,
-    #[doc(hidden)]
-    pub __private: (),
-}
-
-impl Default for ParseConfig {
-    fn default() -> Self {
-        Self {
-            max_errors: 200,
-            __private: (),
-        }
-    }
-}
-
 #[derive(Debug)]
 pub struct Parser<'src, 'ctx> {
     token_stream: TokenStream<'src>,
@@ -47,7 +32,7 @@ pub struct Parser<'src, 'ctx> {
     stack_frames: StackGuard,
     current_file: CurrentFile,
     context: &'ctx Context<'ctx>,
-    config: ParseConfig,
+    config: Arc<BuildOptions>,
 }
 
 /// Initialization and high-level usage
@@ -55,7 +40,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     // TODO: Take in a `ParseConfig`
     pub fn new(
         source: &'src str,
-        config: ParseConfig,
+        config: Arc<BuildOptions>,
         current_file: CurrentFile,
         context: &'ctx Context<'ctx>,
     ) -> Self {
@@ -70,25 +55,6 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             current_file,
             context,
             config,
-        }
-    }
-
-    pub fn from_tokens(
-        token_stream: TokenStream<'src>,
-        next: Option<Token<'src>>,
-        peek: Option<Token<'src>>,
-        current_file: CurrentFile,
-        context: &'ctx Context<'ctx>,
-    ) -> Self {
-        Self {
-            token_stream,
-            next,
-            peek,
-            error_handler: ErrorHandler::new(),
-            stack_frames: StackGuard::new(),
-            current_file,
-            context,
-            config: ParseConfig::default(),
         }
     }
 
@@ -138,11 +104,6 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         let peek = token_stream.next();
 
         (token_stream, next, peek)
-    }
-
-    pub fn with_config(mut self, config: ParseConfig) -> Self {
-        self.config = config;
-        self
     }
 
     #[inline(always)]

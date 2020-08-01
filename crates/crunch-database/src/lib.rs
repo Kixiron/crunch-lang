@@ -1,26 +1,26 @@
 extern crate alloc;
 
-mod config;
-mod context;
-mod parse;
-mod source;
+pub use crunch_parser::database::{ParseDatabase, SourceDatabase};
+pub use crunch_shared::{config::ConfigDatabase, context::ContextDatabase};
+pub use crunch_typecheck::TypecheckDatabase;
+pub use ladder::HirDatabase;
 
-pub use config::ConfigDatabase;
-pub use context::ContextDatabase;
-pub use parse::ParseDatabase;
-pub use source::SourceDatabase;
-
-use config::ConfigDatabaseStorage;
-use context::ContextDatabaseStorage;
-use parse::ParseDatabaseStorage;
-use salsa::{Database, Storage};
-use source::SourceDatabaseStorage;
+use crunch_parser::database::{ParseDatabaseStorage, SourceDatabaseStorage};
+use crunch_shared::{
+    config::ConfigDatabaseStorage,
+    context::ContextDatabaseStorage,
+    salsa::{self, Database, Storage},
+};
+use crunch_typecheck::TypecheckDatabaseStorage;
+use ladder::HirDatabaseStorage;
 
 #[salsa::database(
     ConfigDatabaseStorage,
-    SourceDatabaseStorage,
     ContextDatabaseStorage,
-    ParseDatabaseStorage
+    SourceDatabaseStorage,
+    ParseDatabaseStorage,
+    TypecheckDatabaseStorage,
+    HirDatabaseStorage
 )]
 #[derive(Default)]
 pub struct CrunchDatabase {

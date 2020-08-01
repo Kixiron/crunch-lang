@@ -1,7 +1,9 @@
 //! Regression tests for found crashes
 
-use crate::parser::{ParseConfig, Parser};
+use crate::parser::Parser;
+use alloc::sync::Arc;
 use crunch_shared::{
+    config::BuildOptions,
     context::{Arenas, Context, OwnedArenas},
     error::ErrorHandler,
     files::{CurrentFile, FileId},
@@ -14,7 +16,7 @@ fn run<'ctx>(
 ) -> Result<(Vec<&'ctx Item<'ctx>>, ErrorHandler), ErrorHandler> {
     Parser::new(
         src,
-        ParseConfig::default(),
+        Arc::new(BuildOptions::new("fuzz_tests.crunch")),
         CurrentFile::new(FileId::new(0), 0),
         ctx,
     )

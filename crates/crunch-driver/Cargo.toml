@@ -10,10 +10,6 @@ default-run = "crunchc"
 name = "crunchc"
 path = "src/main.rs"
 
-[dependencies.structopt]
-version = "0.3.15"
-default-features = false
-
 [dependencies.simplelog]
 version = "0.8.0"
 
@@ -25,15 +21,6 @@ path = "../crunch-shared"
 
 [dependencies.crunch-database]
 path = "../crunch-database"
-
-[dependencies.crunch-parser]
-path = "../crunch-parser"
-
-[dependencies.ladder]
-path = "../ladder"
-
-[dependencies.crunch-typecheck]
-path = "../crunch-typecheck"
 
 [dependencies.crunch-mir]
 path = "../crunch-mir"

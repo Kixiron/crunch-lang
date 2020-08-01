@@ -29,14 +29,15 @@ impl TypeId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Item<'ctx> {
     Function(Function<'ctx>),
     ExternFunc(ExternFunc),
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Function<'ctx> {
+    // TODO: Make this one single StrT
     pub name: ItemPath,
     pub vis: Vis,
     pub args: Locatable<Vec<FuncArg>>,
@@ -46,7 +47,7 @@ pub struct Function<'ctx> {
     pub sig: Location,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct FuncArg {
     pub name: Var,
     pub kind: TypeId,
@@ -60,8 +61,9 @@ impl FuncArg {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ExternFunc {
+    // TODO: Make this one single StrT
     pub name: ItemPath,
     pub vis: Vis,
     pub args: Locatable<Vec<FuncArg>>,
@@ -70,10 +72,11 @@ pub struct ExternFunc {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Stmt<'ctx> {
     Item(&'ctx Item<'ctx>),
     Expr(&'ctx Expr<'ctx>),
+    // TODO: Maybe arena these
     VarDecl(VarDecl<'ctx>),
 }
 
@@ -91,7 +94,7 @@ impl<'ctx> From<&'ctx Expr<'ctx>> for Stmt<'ctx> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Expr<'ctx> {
     pub kind: ExprKind<'ctx>,
     pub loc: Location,
@@ -104,7 +107,7 @@ impl<'ctx> Expr<'ctx> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ExprKind<'ctx> {
     Match(Match<'ctx>),
     Scope(Block<&'ctx Stmt<'ctx>>),
@@ -122,9 +125,10 @@ pub enum ExprKind<'ctx> {
     Reference(Reference<'ctx>),
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Hash, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Var {
     User(StrT),
+    // TODO: Make this a u32 so they're the same size
     Auto(usize),
 }
 
@@ -138,7 +142,7 @@ impl Var {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct VarDecl<'ctx> {
     pub name: Var,
     pub value: &'ctx Expr<'ctx>,
@@ -147,28 +151,30 @@ pub struct VarDecl<'ctx> {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FuncCall<'ctx> {
     pub func: ItemPath,
     pub args: Vec<&'ctx Expr<'ctx>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Match<'ctx> {
     pub cond: &'ctx Expr<'ctx>,
+    // TODO: Arena match arms
     pub arms: Vec<MatchArm<'ctx>>,
     pub ty: TypeId,
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MatchArm<'ctx> {
+    // TODO: Arena & dedup bindings
     pub bind: Binding,
     pub guard: Option<&'ctx Expr<'ctx>>,
     pub body: Block<&'ctx Stmt<'ctx>>,
     pub ty: TypeId,
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Binding {
     // TODO: Enum for mutability/referential status?
     pub reference: bool,
@@ -177,7 +183,8 @@ pub struct Binding {
     pub ty: Option<TypeId>,
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, Eq)]
+// TODO: Arena & dedup patterns
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Pattern {
     Literal(Literal),
     Ident(StrT),
@@ -185,17 +192,17 @@ pub enum Pattern {
     Wildcard,
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Return<'ctx> {
     pub val: Option<&'ctx Expr<'ctx>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Break<'ctx> {
     pub val: Option<&'ctx Expr<'ctx>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Block<T> {
     pub block: Vec<T>,
     pub loc: Location,
@@ -295,7 +302,7 @@ impl<T> Extend<T> for Block<T> {
 }
 
 /// A type
-#[derive(Debug, Copy, Clone, PartialEq, Hash, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Type {
     /// The kind of type this type is
     pub kind: TypeKind,
@@ -330,7 +337,7 @@ impl Type {
 }
 
 /// The type that a type actually is
-#[derive(Debug, Copy, Clone, PartialEq, Hash, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum TypeKind {
     /// An unknown type
     Unknown,
@@ -393,19 +400,19 @@ impl TypeKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Cast<'ctx> {
     pub casted: &'ctx Expr<'ctx>,
     pub ty: TypeId,
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Reference<'ctx> {
     pub mutable: bool,
     pub reference: &'ctx Expr<'ctx>,
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Literal {
     pub val: LiteralVal,
     pub ty: TypeId,
@@ -419,7 +426,8 @@ impl Literal {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, Eq)]
+// TODO: Arena & dedup literals
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LiteralVal {
     Integer(Integer),
     Bool(bool),
@@ -427,5 +435,5 @@ pub enum LiteralVal {
     Rune(Rune),
     Float(Float),
     Array { elements: Vec<Literal> },
-    // TODO: Tuples, slices, others?
+    // TODO: Tuples, slices, records, others?
 }

@@ -1,4 +1,8 @@
 use alloc::borrow::Cow;
+use core::{
+    fmt,
+    ops::{Deref, DerefMut},
+};
 use fxhash::FxBuildHasher;
 use serde::{Deserialize, Serialize};
 
@@ -246,5 +250,50 @@ impl Timer {
 impl Drop for Timer {
     fn drop(&mut self) {
         self.end_inner();
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DbgWrap<T>(pub T);
+
+impl<T> DbgWrap<T> {
+    pub fn new(inner: T) -> Self {
+        Self(inner)
+    }
+
+    pub fn into_inner(self) -> T {
+        self.0
+    }
+}
+
+impl<T> Deref for DbgWrap<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> DerefMut for DbgWrap<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<T> AsRef<T> for DbgWrap<T> {
+    fn as_ref(&self) -> &T {
+        &self.0
+    }
+}
+
+impl<T> AsMut<T> for DbgWrap<T> {
+    fn as_mut(&mut self) -> &mut T {
+        &mut self.0
+    }
+}
+
+impl<T> fmt::Debug for DbgWrap<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct(core::any::type_name::<T>()).finish()
     }
 }

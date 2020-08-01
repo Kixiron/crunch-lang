@@ -25,7 +25,6 @@ use crunch_shared::{
     utils::{HashMap, Hasher},
     visitors::hir::{ExprVisitor, ItemVisitor, StmtVisitor, TypeVisitor},
 };
-use crunch_typecheck::Engine;
 
 #[derive(Debug)]
 struct BlockState {
@@ -46,14 +45,13 @@ pub struct MirBuilder<'ctx> {
     func_counter: FuncId,
     variables: Vec<HashMap<Var, Variable>>,
     var_counter: VarId,
-    type_engine: Engine<'ctx>,
     context: Context<'ctx>,
     // TODO: Give MirBuilder access to the type engine for type resolution or make a final pass in the engine to resolve types
     // TODO: Salsa for types?
 }
 
 impl<'ctx> MirBuilder<'ctx> {
-    pub fn new(context: Context<'ctx>, type_engine: Engine<'ctx>) -> Self {
+    pub fn new(context: Context<'ctx>) -> Self {
         Self {
             functions: Vec::new(),
             external_functions: Vec::new(),
@@ -64,7 +62,6 @@ impl<'ctx> MirBuilder<'ctx> {
             func_counter: FuncId::new(0),
             variables: Vec::new(),
             var_counter: VarId::new(0),
-            type_engine,
             context,
         }
     }

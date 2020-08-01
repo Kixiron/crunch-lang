@@ -8,11 +8,5 @@ edition = "2018"
 [dependencies.crunch-shared]
 path = "../crunch-shared"
 
-[dev-dependencies.crunch-parser]
-path = "../crunch-parser"
-
-[dev-dependencies.ladder]
+[dependencies.ladder]
 path = "../ladder"
-
-[dev-dependencies.simple_logger]
-version = "1.6.0"

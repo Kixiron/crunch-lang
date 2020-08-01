@@ -7,12 +7,17 @@
     clippy::shadow_unrelated
 )]
 
+extern crate alloc;
+
 mod bidirectional;
 
-use core::fmt::{Result as FmtResult, Write};
+use alloc::sync::Arc;
+use core::fmt::{self, Result as FmtResult, Write};
 use crunch_shared::{
-    context::Context,
+    context::ContextDatabase,
     error::{ErrorHandler, Locatable, Location, Span, TypeError, TypeResult},
+    files::FileId,
+    salsa,
     trees::{
         hir::{
             BinaryOp, Block, Break, Cast, CompOp, Expr, ExternFunc, FuncArg, FuncCall, Function,
@@ -24,6 +29,23 @@ use crunch_shared::{
     utils::{HashMap, Hasher},
     visitors::hir::{ExprVisitor, ItemVisitor, StmtVisitor},
 };
+use ladder::HirDatabase;
+
+type ArcError = Arc<ErrorHandler>;
+
+#[salsa::query_group(TypecheckDatabaseStorage)]
+pub trait TypecheckDatabase: salsa::Database + ContextDatabase + HirDatabase {
+    fn typecheck(&self, file: FileId) -> Result<(), ArcError>;
+}
+
+fn typecheck(db: &dyn TypecheckDatabase, file: FileId) -> Result<(), ArcError> {
+    let hir = db.lower_hir(file)?;
+
+    crunch_shared::allocator::CRUNCHC_ALLOCATOR
+        .record_region("typechecking", || Engine::new(db).walk(&*hir))
+        .map(|mut ok| ok.emit(&*db.codespan_files(), &**db.writer(), &**db.stdout_config()))
+        .map_err(Arc::new)
+}
 
 #[derive(Debug, Clone)]
 struct Func {
@@ -33,25 +55,26 @@ struct Func {
     sig: Location,
 }
 
-#[derive(Debug, Clone)]
+// TODO: Find a better arch than this
+#[derive(Clone)]
 pub struct Engine<'ctx> {
     errors: ErrorHandler,
     current_func: Option<Func>,
     functions: HashMap<ItemPath, Func>,
     variables: Vec<HashMap<Var, TypeId>>,
     check: Option<TypeId>,
-    context: Context<'ctx>,
+    db: &'ctx dyn TypecheckDatabase,
 }
 
 impl<'ctx> Engine<'ctx> {
-    pub fn new(context: Context<'ctx>) -> Self {
+    pub fn new(db: &'ctx dyn TypecheckDatabase) -> Self {
         Self {
             errors: ErrorHandler::default(),
             current_func: None,
             functions: HashMap::with_hasher(Hasher::default()),
             variables: Vec::new(),
             check: None,
-            context,
+            db,
         }
     }
 
@@ -67,6 +90,7 @@ impl<'ctx> Engine<'ctx> {
         }
     }
 
+    // TODO: Caching
     fn var_type(&self, var: &Var, loc: Location) -> TypeResult<TypeId> {
         self.variables
             .iter()
@@ -75,14 +99,10 @@ impl<'ctx> Engine<'ctx> {
             .copied()
             .ok_or_else(|| {
                 Locatable::new(
-                    TypeError::VarNotInScope(var.to_string(&self.context.strings)).into(),
+                    TypeError::VarNotInScope(var.to_string(&self.db.context().strings)).into(),
                     loc,
                 )
             })
-    }
-
-    fn create_type(&mut self, ty: Type) -> TypeId {
-        self.context.hir_type(ty)
     }
 
     fn insert_variable(&mut self, var: Var, ty: TypeId) {
@@ -110,6 +130,7 @@ impl<'ctx> Engine<'ctx> {
 
     /// Make the types of two type terms equivalent (or produce an error if
     /// there is a conflict between them)
+    // TODO: Caching
     fn unify(&mut self, left: TypeId, right: TypeId) -> TypeResult<()> {
         if left == right {
             return Ok(());
@@ -117,8 +138,8 @@ impl<'ctx> Engine<'ctx> {
 
         const EXPECT_MSG: &str = "Attempted to get a type that does not exist";
         let (left_ty, right_ty) = (
-            self.context.get_hir_type(left).expect(EXPECT_MSG),
-            self.context.get_hir_type(right).expect(EXPECT_MSG),
+            self.db.context().get_hir_type(left).expect(EXPECT_MSG),
+            self.db.context().get_hir_type(right).expect(EXPECT_MSG),
         );
 
         // TODO: Cycle detection
@@ -128,17 +149,19 @@ impl<'ctx> Engine<'ctx> {
 
             (TypeKind::Unknown, _) => {
                 let ty = self
-                    .context
+                    .db
+                    .context()
                     .hir_type(Type::new(TypeKind::Variable(right), left_ty.location()));
-                self.context.overwrite_hir_type(left, ty);
+                self.db.context().overwrite_hir_type(left, ty);
 
                 Ok(())
             }
             (_, TypeKind::Unknown) => {
                 let ty = self
-                    .context
+                    .db
+                    .context()
                     .hir_type(Type::new(TypeKind::Variable(left), right_ty.location()));
-                self.context.overwrite_hir_type(right, ty);
+                self.db.context().overwrite_hir_type(right, ty);
 
                 Ok(())
             }
@@ -172,9 +195,10 @@ impl<'ctx> Engine<'ctx> {
                 }
 
                 let ty = self
-                    .context
+                    .db
+                    .context()
                     .hir_type(Type::new(TypeKind::Variable(right), right_ty.location()));
-                self.context.overwrite_hir_type(left, ty);
+                self.db.context().overwrite_hir_type(left, ty);
 
                 Ok(())
             }
@@ -252,8 +276,12 @@ impl<'ctx> Engine<'ctx> {
                     }) => {
                         // TODO: Use error types as fillers here if they're unknown
                         for arg in args.iter() {
-                            let is_unknown =
-                                builder.context.get_hir_type(arg.kind).unwrap().is_unknown();
+                            let is_unknown = builder
+                                .db
+                                .context()
+                                .get_hir_type(arg.kind)
+                                .unwrap()
+                                .is_unknown();
 
                             if is_unknown {
                                 builder.errors.push_err(Locatable::new(
@@ -267,7 +295,7 @@ impl<'ctx> Engine<'ctx> {
                         }
 
                         // TODO: Use error types as fillers here if they're unknown
-                        let ret_ty = builder.context.get_hir_type(ret).unwrap();
+                        let ret_ty = builder.db.context().get_hir_type(ret).unwrap();
                         if ret_ty.kind.is_unknown() {
                             builder.errors.push_err(Locatable::new(
                                 TypeError::MissingType("Return types for functions".to_owned())
@@ -312,6 +340,7 @@ impl<'ctx> Engine<'ctx> {
         })
     }
 
+    // TODO: Caching
     fn intern_literal(
         &mut self,
         &Literal { ref val, ty, loc }: &Literal,
@@ -319,9 +348,9 @@ impl<'ctx> Engine<'ctx> {
     ) -> TypeResult<TypeId> {
         match val {
             LiteralVal::Array { elements } => {
-                let element = self.context.hir_type(Type::new(TypeKind::Unknown, loc));
+                let element = self.db.hir_type(Type::new(TypeKind::Unknown, loc));
 
-                self.context.hir_type(Type::new(
+                self.db.hir_type(Type::new(
                     TypeKind::Array {
                         element,
                         length: elements.len() as u64,
@@ -346,6 +375,7 @@ impl<'ctx> Engine<'ctx> {
         Ok(ty)
     }
 
+    // TODO: Caching
     fn display_type(&self, ty: &TypeKind) -> String {
         let mut string = String::new();
         self.display_type_inner(ty, &mut string)
@@ -357,7 +387,7 @@ impl<'ctx> Engine<'ctx> {
     fn display_type_inner<W: Write>(&self, ty: &TypeKind, f: &mut W) -> FmtResult {
         match ty {
             &TypeKind::Variable(inner) => {
-                self.display_type_inner(&self.context.get_hir_type(inner).unwrap().kind, f)
+                self.display_type_inner(&self.db.context().get_hir_type(inner).unwrap().kind, f)
             }
             TypeKind::Unknown => f.write_str("infer"),
             &TypeKind::Integer { signed, width } => match (signed, width) {
@@ -373,7 +403,7 @@ impl<'ctx> Engine<'ctx> {
 
             &TypeKind::Array { element, length } => {
                 f.write_str("arr[")?;
-                self.display_type_inner(&self.context.get_hir_type(element).unwrap().kind, f)?;
+                self.display_type_inner(&self.db.context().get_hir_type(element).unwrap().kind, f)?;
                 f.write_str("; ")?;
                 write!(f, "{}", length)?;
                 f.write_char(']')
@@ -381,7 +411,7 @@ impl<'ctx> Engine<'ctx> {
 
             &TypeKind::Slice { element } => {
                 f.write_str("arr[")?;
-                self.display_type_inner(&self.context.get_hir_type(element).unwrap().kind, f)?;
+                self.display_type_inner(&self.db.context().get_hir_type(element).unwrap().kind, f)?;
                 f.write_char(']')
             }
 
@@ -391,7 +421,7 @@ impl<'ctx> Engine<'ctx> {
                     f.write_str("mut ")?;
                 }
 
-                self.display_type_inner(&self.context.get_hir_type(referee).unwrap().kind, f)
+                self.display_type_inner(&self.db.context().get_hir_type(referee).unwrap().kind, f)
             }
 
             &TypeKind::Pointer { mutable, pointee } => {
@@ -401,7 +431,7 @@ impl<'ctx> Engine<'ctx> {
                     f.write_str("*mut ")?;
                 }
 
-                self.display_type_inner(&self.context.get_hir_type(pointee).unwrap().kind, f)
+                self.display_type_inner(&self.db.context().get_hir_type(pointee).unwrap().kind, f)
             }
         }
     }
@@ -447,7 +477,12 @@ impl<'ctx> ItemVisitor<'ctx> for Engine<'ctx> {
         let mut missing_arg_ty = None;
 
         for arg in args.iter() {
-            let is_unknown = self.context.get_hir_type(arg.kind).unwrap().is_unknown();
+            let is_unknown = self
+                .db
+                .context()
+                .get_hir_type(arg.kind)
+                .unwrap()
+                .is_unknown();
 
             if is_unknown {
                 if let Some(err) = missing_arg_ty.take() {
@@ -462,7 +497,7 @@ impl<'ctx> ItemVisitor<'ctx> for Engine<'ctx> {
             }
         }
 
-        let ret = self.context.get_hir_type(ret).unwrap();
+        let ret = self.db.context().get_hir_type(ret).unwrap();
         if ret.is_unknown() {
             if let Some(err) = missing_arg_ty {
                 self.errors.push_err(err);
@@ -513,7 +548,7 @@ impl<'ctx> StmtVisitor<'ctx> for Engine<'ctx> {
         self.insert(name, ty);
         self.unify(expr, ty)?;
 
-        Ok(Some(self.create_type(Type::new(TypeKind::Unit, loc))))
+        Ok(Some(self.db.hir_type(Type::new(TypeKind::Unit, loc))))
     }
 }
 
@@ -528,12 +563,12 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
             let ret = self.visit_expr(ret)?;
             self.unify(ret, func_ret)?;
         } else {
-            let unit = self.create_type(Type::new(TypeKind::Unit, loc));
+            let unit = self.db.hir_type(Type::new(TypeKind::Unit, loc));
             self.unify(unit, func_ret)?;
         }
         self.check.take();
 
-        Ok(self.create_type(Type::new(TypeKind::Absurd, loc)))
+        Ok(self.db.hir_type(Type::new(TypeKind::Absurd, loc)))
     }
 
     fn visit_break(&mut self, _loc: Location, _value: &Break<'ctx>) -> Self::Output {
@@ -568,8 +603,9 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
 
                 &Pattern::Ident(variable) => {
                     self.check = Some(condition_type);
-                    let variable_type =
-                        self.create_type(Type::new(TypeKind::Variable(condition_type), loc));
+                    let variable_type = self
+                        .db
+                        .hir_type(Type::new(TypeKind::Variable(condition_type), loc));
 
                     self.insert_variable(Var::User(variable), variable_type);
                     self.unify(condition_type, variable_type)?;
@@ -586,7 +622,9 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
 
             if let Some(guard) = arm.guard {
                 let guard_ty = self.visit_expr(guard)?;
-                let boolean = self.create_type(Type::new(TypeKind::Bool, guard.location()));
+                let boolean = self
+                    .db
+                    .hir_type(Type::new(TypeKind::Bool, guard.location()));
 
                 self.unify(guard_ty, boolean)?;
             }
@@ -598,7 +636,9 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
                     .filter_map(|s| builder.visit_stmt(s).transpose())
                     .last()
                     .unwrap_or_else(|| {
-                        Ok(builder.create_type(Type::new(TypeKind::Unit, arm.body.location())))
+                        Ok(builder
+                            .db
+                            .hir_type(Type::new(TypeKind::Unit, arm.body.location())))
                     })
             })?;
 
@@ -626,7 +666,7 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
             body.iter()
                 .filter_map(|s| builder.visit_stmt(s).transpose())
                 .last()
-                .unwrap_or_else(|| Ok(builder.create_type(Type::new(TypeKind::Unit, loc))))
+                .unwrap_or_else(|| Ok(builder.db.hir_type(Type::new(TypeKind::Unit, loc))))
         })
     }
 
@@ -636,7 +676,8 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
             .get(&call.func)
             .ok_or_else(|| {
                 Locatable::new(
-                    TypeError::FuncNotInScope(call.func.to_string(&self.context.strings)).into(),
+                    TypeError::FuncNotInScope(call.func.to_string(&self.db.context().strings))
+                        .into(),
                     loc,
                 )
             })?
@@ -688,7 +729,7 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
         let (left, right) = (self.visit_expr(lhs)?, self.visit_expr(rhs)?);
         self.unify(left, right)?;
 
-        Ok(self.create_type(Type::new(TypeKind::Bool, loc)))
+        Ok(self.db.hir_type(Type::new(TypeKind::Bool, loc)))
     }
 
     fn visit_assign(&mut self, loc: Location, var: Var, value: &'ctx Expr<'ctx>) -> Self::Output {
@@ -701,7 +742,7 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
         self.check.take();
         self.unify(expected, value)?;
 
-        Ok(self.create_type(Type::new(TypeKind::Unit, loc)))
+        Ok(self.db.hir_type(Type::new(TypeKind::Unit, loc)))
     }
 
     // TODO: This is sketchy and doesn't check if they're bin-op-able
@@ -741,6 +782,20 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
     ) -> Self::Output {
         let referee = self.visit_expr(reference)?;
 
-        Ok(self.create_type(Type::new(TypeKind::Reference { referee, mutable }, loc)))
+        Ok(self
+            .db
+            .hir_type(Type::new(TypeKind::Reference { referee, mutable }, loc)))
+    }
+}
+
+impl fmt::Debug for Engine<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Engine")
+            .field("errors", &self.errors)
+            .field("current_func", &self.current_func)
+            .field("functions", &self.functions)
+            .field("variables", &self.variables)
+            .field("check", &self.check)
+            .finish()
     }
 }

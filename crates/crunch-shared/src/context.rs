@@ -1,5 +1,7 @@
 use crate::{
     allocator::CRUNCHC_ALLOCATOR,
+    files::FileId,
+    salsa,
     strings::StrInterner,
     trees::{
         ast::{Expr as AstExpr, Item as AstItem, Stmt as AstStmt, Type as AstType},
@@ -7,11 +9,27 @@ use crate::{
     },
     utils::{HashMap, Hasher},
 };
+use alloc::sync::Arc;
 use core::{
     cell::{Cell, RefCell},
     fmt::{Debug, Formatter, Result as FmtResult},
 };
+use std::sync::atomic::{AtomicU32, Ordering};
 use typed_arena::Arena;
+
+#[salsa::query_group(ContextDatabaseStorage)]
+pub trait ContextDatabase: salsa::Database {
+    // FIXME: Salsa won't allow bounded lifetimes, so we have to do this shit
+    #[salsa::input]
+    fn context(&self) -> &'static Context<'static>;
+
+    // TODO: Add more arena queries once salsa allows lifetimes on dbs
+    fn hir_type(&self, ty: HirType) -> TypeId;
+}
+
+fn hir_type(db: &dyn ContextDatabase, ty: HirType) -> TypeId {
+    db.context().hir_type(ty)
+}
 
 // TODO: Node interning
 // TODO: Arenas struct with `.with_arenas(|arenas| { .. })` method that keeps lifetimes sequestered and
@@ -152,6 +170,7 @@ pub struct Context<'ctx> {
     arenas: Arenas<'ctx>,
     // TODO: Pull strings out of refcells
     pub strings: StrInterner,
+    file_id: Arc<AtomicU32>,
 }
 
 impl<'ctx> Context<'ctx> {
@@ -160,12 +179,17 @@ impl<'ctx> Context<'ctx> {
         Self {
             arenas,
             strings: StrInterner::new(),
+            file_id: Arc::new(AtomicU32::new(0)),
         }
     }
 
     #[inline]
     pub const fn strings(&self) -> &StrInterner {
         &self.strings
+    }
+
+    pub fn next_file_id(&self) -> FileId {
+        FileId::new(self.file_id.fetch_add(1, Ordering::Relaxed))
     }
 
     // In regards to the following: Fuck you, you deal with this bullshit
