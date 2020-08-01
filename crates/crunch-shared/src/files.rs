@@ -35,38 +35,6 @@ impl File {
     }
 }
 
-impl<'files> files::Files<'files> for File {
-    type FileId = FileId;
-    type Name = &'files str;
-    type Source = &'files str;
-
-    #[inline]
-    fn name(&self, _: FileId) -> Option<&str> {
-        Some(self.name.as_str())
-    }
-
-    #[inline]
-    fn source(&self, _: FileId) -> Option<&str> {
-        Some(self.source.as_str())
-    }
-
-    #[inline]
-    fn line_index(&self, _: FileId, byte_index: usize) -> Option<usize> {
-        match self.line_starts.binary_search(&byte_index) {
-            Ok(line) => Some(line),
-            Err(next_line) => Some(next_line - 1),
-        }
-    }
-
-    #[inline]
-    fn line_range(&self, _: FileId, line_index: usize) -> Option<Range<usize>> {
-        let line_start = self.line_start(line_index)?;
-        let next_line_start = self.line_start(line_index + 1)?;
-
-        Some(line_start..next_line_start)
-    }
-}
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
 #[repr(transparent)]
 pub struct FileId(pub u32);
