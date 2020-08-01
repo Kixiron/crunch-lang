@@ -14,6 +14,7 @@ use crunch_shared::{
     codespan_reporting::term::{termcolor::StandardStream, Config as TermConfig},
     config::{BuildOptions, CrunchcOpts, EmissionKind},
     context::{Arenas, Context, ContextDatabase, OwnedArenas},
+    files::FileCache,
     utils::DbgWrap,
 };
 use std::{
@@ -158,7 +159,7 @@ fn run<'ctx>(
     if let Err(errors) = database.typecheck(file_id) {
         (&*errors)
             .clone()
-            .emit(&*database.codespan_files(), &writer, &stdout_conf);
+            .emit(&FileCache::upcast(&database), &writer, &stdout_conf);
 
         return Err(ExitStatus::default());
     }
@@ -171,7 +172,7 @@ fn run<'ctx>(
     if options.emit.contains(&EmissionKind::Mir) {
         let path = out_file.with_extension("mir");
 
-        fs::write(&path, format!("{}", mir.write_pretty(&context.strings))).map_err(|err| {
+        fs::write(&path, format!("{}", mir.write_pretty(context.strings()))).map_err(|err| {
             ExitStatus::message(format!(
                 "failed to write mir to '{}': {:?}",
                 path.display(),
@@ -181,7 +182,7 @@ fn run<'ctx>(
     }
 
     if options.print.contains(&EmissionKind::Mir) {
-        println!("{}", mir.write_pretty(&context.strings));
+        println!("{}", mir.write_pretty(context.strings()));
     }
 
     // Create LLVM context
@@ -197,7 +198,7 @@ fn run<'ctx>(
 
     // Generate LLVM ir
     GLOBAL_ALLOCATOR.record_region("code generation", || {
-        CodeGenerator::new(&module, &context.strings)
+        CodeGenerator::new(&module, context.strings())
             .generate(mir)
             .map_err(|err| {
                 ExitStatus::message(format!("encountered an error during codegen: {:?}", err))

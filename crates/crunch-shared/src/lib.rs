@@ -24,6 +24,7 @@ pub mod meta;
 // mod passes;
 pub mod allocator;
 pub mod config;
+pub mod databases;
 pub mod strings;
 pub mod trees;
 pub mod utils;

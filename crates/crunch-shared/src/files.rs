@@ -1,39 +1,12 @@
 use crate::{
+    databases::SourceDatabase,
     error::{Location, Span},
-    utils::{HashMap, Hasher},
+    utils::Upcast,
 };
-use alloc::{string::String, sync::Arc, vec::Vec};
+use alloc::string::String;
 use codespan_reporting::files;
-use core::ops::Range;
+use core::{fmt, ops::Range};
 use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct File {
-    name: Arc<String>,
-    source: Arc<String>,
-    line_starts: Arc<Vec<usize>>,
-}
-
-impl File {
-    pub fn new(name: Arc<String>, source: Arc<String>, line_starts: Arc<Vec<usize>>) -> Self {
-        Self {
-            name,
-            source,
-            line_starts,
-        }
-    }
-
-    #[inline]
-    fn line_start(&self, line_index: usize) -> Option<usize> {
-        use core::cmp::Ordering;
-
-        match line_index.cmp(&self.line_starts.len()) {
-            Ordering::Less => self.line_starts.get(line_index).cloned(),
-            Ordering::Equal => Some(self.source.len()),
-            Ordering::Greater => None,
-        }
-    }
-}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
 #[repr(transparent)]
@@ -46,70 +19,49 @@ impl FileId {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct Files {
-    files: HashMap<FileId, File>,
+#[derive(Copy, Clone)]
+pub struct FileCache<'a> {
+    source: &'a dyn SourceDatabase,
 }
 
-impl Files {
-    pub fn new() -> Files {
-        Files {
-            files: HashMap::with_hasher(Hasher::default()),
-        }
+impl<'a> FileCache<'a> {
+    pub fn new(source: &'a dyn SourceDatabase) -> Self {
+        Self { source }
     }
 
-    pub fn add(&mut self, name: impl Into<String>, source: impl Into<String>) -> Option<FileId> {
-        use core::convert::TryFrom;
-
-        let file_id = FileId(u32::try_from(self.files.len()).ok()?);
-        let name = Arc::new(name.into());
-        let source = Arc::new(source.into());
-        let line_starts = Arc::new(files::line_starts(&source).collect());
-
-        self.files
-            .insert(file_id, File::new(name, source, line_starts));
-
-        Some(file_id)
-    }
-
-    fn get(&self, file_id: FileId) -> Option<&File> {
-        self.files.get(&file_id)
+    pub fn upcast<T>(source: &'a T) -> Self
+    where
+        T: Upcast<dyn SourceDatabase> + ?Sized,
+    {
+        Self::new(source.upcast())
     }
 }
 
-impl From<HashMap<FileId, File>> for Files {
-    fn from(files: HashMap<FileId, File>) -> Self {
-        Self { files }
-    }
-}
-
-impl<'files> files::Files<'files> for Files {
+impl<'a> files::Files<'a> for FileCache<'a> {
     type FileId = FileId;
-    type Name = &'files str;
-    type Source = &'files str;
+    type Name = String;
+    type Source = String;
 
-    fn name(&self, file_id: FileId) -> Option<&str> {
-        Some(self.get(file_id)?.name.as_str())
+    fn name(&self, file: FileId) -> Option<String> {
+        Some(self.source.file_name(file).as_ref().clone())
     }
 
-    fn source(&self, file_id: FileId) -> Option<&str> {
-        Some(&self.get(file_id)?.source)
+    fn source(&self, file: FileId) -> Option<String> {
+        Some(self.source.source_text(file).as_ref().clone())
     }
 
-    fn line_index(&self, file_id: FileId, byte_index: usize) -> Option<usize> {
-        match self.get(file_id)?.line_starts.binary_search(&byte_index) {
-            Ok(line) => Some(line),
-            Err(next_line) => Some(next_line - 1),
-        }
+    fn line_index(&self, file: FileId, byte_index: usize) -> Option<usize> {
+        self.source.line_index(file, byte_index)
     }
 
-    fn line_range(&self, file_id: FileId, line_index: usize) -> Option<Range<usize>> {
-        let file = self.get(file_id)?;
-        let line_start = file.line_start(line_index)?;
-        let next_line_start = file.line_start(line_index + 1)?;
+    fn line_range(&self, file: FileId, line_index: usize) -> Option<Range<usize>> {
+        self.source.line_range(file, line_index)
+    }
+}
 
-        Some(line_start..next_line_start)
+impl fmt::Debug for FileCache<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FileCache").finish()
     }
 }
 

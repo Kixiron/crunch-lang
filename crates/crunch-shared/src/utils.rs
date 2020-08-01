@@ -297,3 +297,7 @@ impl<T> fmt::Debug for DbgWrap<T> {
         f.debug_struct(core::any::type_name::<T>()).finish()
     }
 }
+
+pub trait Upcast<T: ?Sized> {
+    fn upcast(&self) -> &T;
+}

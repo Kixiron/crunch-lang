@@ -1,15 +1,19 @@
 extern crate alloc;
 
-pub use crunch_parser::database::{ParseDatabase, SourceDatabase};
-pub use crunch_shared::{config::ConfigDatabase, context::ContextDatabase};
+pub use crunch_parser::database::ParseDatabase;
+pub use crunch_shared::{
+    config::ConfigDatabase, context::ContextDatabase, databases::SourceDatabase,
+};
 pub use crunch_typecheck::TypecheckDatabase;
 pub use ladder::HirDatabase;
 
-use crunch_parser::database::{ParseDatabaseStorage, SourceDatabaseStorage};
+use crunch_parser::database::ParseDatabaseStorage;
 use crunch_shared::{
     config::ConfigDatabaseStorage,
     context::ContextDatabaseStorage,
+    databases::SourceDatabaseStorage,
     salsa::{self, Database, Storage},
+    utils::Upcast,
 };
 use crunch_typecheck::TypecheckDatabaseStorage;
 use ladder::HirDatabaseStorage;
@@ -25,6 +29,42 @@ use ladder::HirDatabaseStorage;
 #[derive(Default)]
 pub struct CrunchDatabase {
     storage: Storage<Self>,
+}
+
+impl Upcast<dyn ConfigDatabase> for CrunchDatabase {
+    fn upcast(&self) -> &dyn ConfigDatabase {
+        &*self
+    }
+}
+
+impl Upcast<dyn ContextDatabase> for CrunchDatabase {
+    fn upcast(&self) -> &dyn ContextDatabase {
+        &*self
+    }
+}
+
+impl Upcast<dyn SourceDatabase> for CrunchDatabase {
+    fn upcast(&self) -> &dyn SourceDatabase {
+        &*self
+    }
+}
+
+impl Upcast<dyn ParseDatabase> for CrunchDatabase {
+    fn upcast(&self) -> &dyn ParseDatabase {
+        &*self
+    }
+}
+
+impl Upcast<dyn TypecheckDatabase> for CrunchDatabase {
+    fn upcast(&self) -> &dyn TypecheckDatabase {
+        &*self
+    }
+}
+
+impl Upcast<dyn HirDatabase> for CrunchDatabase {
+    fn upcast(&self) -> &dyn HirDatabase {
+        &*self
+    }
 }
 
 // TODO: Parallel queries

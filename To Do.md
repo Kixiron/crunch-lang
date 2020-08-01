@@ -133,6 +133,8 @@
 ### Optimizations
 
 - [ ] Unused field removal on an instance basis
+- [ ] Dedup and overlap all static strings into one large static string
+    - Create lib for this, `lasso` can also make use of it
 
 ## Architecture
 

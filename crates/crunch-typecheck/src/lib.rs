@@ -16,7 +16,7 @@ use core::fmt::{self, Result as FmtResult, Write};
 use crunch_shared::{
     context::ContextDatabase,
     error::{ErrorHandler, Locatable, Location, Span, TypeError, TypeResult},
-    files::FileId,
+    files::{FileCache, FileId},
     salsa,
     trees::{
         hir::{
@@ -43,7 +43,13 @@ fn typecheck(db: &dyn TypecheckDatabase, file: FileId) -> Result<(), ArcError> {
 
     crunch_shared::allocator::CRUNCHC_ALLOCATOR
         .record_region("typechecking", || Engine::new(db).walk(&*hir))
-        .map(|mut ok| ok.emit(&*db.codespan_files(), &**db.writer(), &**db.stdout_config()))
+        .map(|mut ok| {
+            ok.emit(
+                &FileCache::upcast(db),
+                &**db.writer(),
+                &**db.stdout_config(),
+            )
+        })
         .map_err(Arc::new)
 }
 

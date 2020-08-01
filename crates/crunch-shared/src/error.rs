@@ -346,7 +346,7 @@ impl ErrorHandler {
         let mut diag = Vec::with_capacity(5);
 
         while let Some(err) = self.warnings.pop_front() {
-            err.emit(files, err.file(), err.span(), &mut diag);
+            err.emit(err.file(), err.span(), &mut diag);
 
             for diag in diag.drain(..) {
                 term::emit(&mut writer.lock(), &config, files, &diag).unwrap();
@@ -422,8 +422,8 @@ impl Error {
         match self {
             Self::Syntax(err) => err.emit(files, file, span, diag),
             Self::Semantic(err) => err.emit(files, file, span, diag),
-            Self::Type(err) => err.emit(files, file, span, diag),
-            Self::Mir(err) => err.emit(files, file, span, diag),
+            Self::Type(err) => err.emit(file, span, diag),
+            Self::Mir(err) => err.emit(file, span, diag),
             Self::EndOfFile => diag.push(
                 Diagnostic::error()
                     .with_message(self.to_string())
@@ -660,15 +660,7 @@ pub enum TypeError {
 
 impl TypeError {
     #[inline]
-    fn emit<'a, F>(
-        &self,
-        _files: &'a F,
-        file: FileId,
-        span: Span,
-        diag: &mut Vec<Diagnostic<FileId>>,
-    ) where
-        F: CodeFiles<'a, FileId = FileId>,
-    {
+    fn emit<'a>(&self, file: FileId, span: Span, diag: &mut Vec<Diagnostic<FileId>>) {
         match self {
             Self::TypeConflict {
                 call_type,
@@ -742,15 +734,7 @@ pub enum MirError {
 
 impl MirError {
     #[inline]
-    fn emit<'a, F>(
-        &self,
-        _files: &'a F,
-        file: FileId,
-        span: Span,
-        diag: &mut Vec<Diagnostic<FileId>>,
-    ) where
-        F: CodeFiles<'a, FileId = FileId>,
-    {
+    fn emit(&self, file: FileId, span: Span, diag: &mut Vec<Diagnostic<FileId>>) {
         diag.push(
             Diagnostic::error()
                 .with_message(self.to_string())
@@ -776,15 +760,7 @@ pub enum Warning {
 
 impl Warning {
     #[inline]
-    fn emit<'a, F>(
-        &self,
-        _files: &'a F,
-        file: FileId,
-        span: Span,
-        diag: &mut Vec<Diagnostic<FileId>>,
-    ) where
-        F: CodeFiles<'a, FileId = FileId>,
-    {
+    fn emit(&self, file: FileId, span: Span, diag: &mut Vec<Diagnostic<FileId>>) {
         diag.push(
             Diagnostic::warning()
                 .with_message(self.to_string())
