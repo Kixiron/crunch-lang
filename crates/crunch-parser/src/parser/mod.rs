@@ -73,7 +73,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                     errors += 1;
 
                     if errors >= self.config.max_errors {
-                        let loc = err.loc;
+                        let loc = err.location();
                         self.error_handler.push_err(err);
                         self.error_handler.push_err(Locatable::new(
                             Error::Syntax(SyntaxError::TooManyErrors(errors)),

@@ -22,11 +22,8 @@ path = "../crunch-shared"
 [dependencies.crunch-database]
 path = "../crunch-database"
 
-[dependencies.crunch-mir]
-path = "../crunch-mir"
-
 [dependencies.crunch-codegen]
 path = "../crunch-codegen"
 
 [dev-dependencies.goldentests]
-version = "0.3.4"
+version = "0.3.5"

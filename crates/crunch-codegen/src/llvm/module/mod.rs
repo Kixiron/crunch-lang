@@ -32,6 +32,7 @@ use std::{
     ptr::NonNull,
 };
 
+#[derive(PartialEq, Eq)]
 pub struct Module<'ctx> {
     module: NonNull<LLVMModule>,
     ctx: &'ctx Context,

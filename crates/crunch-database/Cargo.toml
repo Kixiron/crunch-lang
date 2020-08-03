@@ -10,8 +10,14 @@ path = "../crunch-shared"
 [dependencies.crunch-parser]
 path = "../crunch-parser"
 
+[dependencies.ladder]
+path = "../ladder"
+
 [dependencies.crunch-typecheck]
 path = "../crunch-typecheck"
 
-[dependencies.ladder]
-path = "../ladder"
+[dependencies.crunch-mir]
+path = "../crunch-mir"
+
+[dependencies.crunch-codegen]
+path = "../crunch-codegen"

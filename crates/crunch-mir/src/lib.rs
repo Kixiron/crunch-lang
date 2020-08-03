@@ -2,11 +2,14 @@
 
 extern crate alloc;
 
-use alloc::{vec, vec::Vec};
+use alloc::{sync::Arc, vec, vec::Vec};
 use core::iter::FromIterator;
 use crunch_shared::{
-    context::Context,
-    error::{Location, MirResult},
+    config::EmissionKind,
+    context::ContextDatabase,
+    error::{Error, ErrorHandler, Location, MirResult},
+    files::FileId,
+    salsa,
     trees::{
         ast::Integer,
         hir::{
@@ -25,6 +28,49 @@ use crunch_shared::{
     utils::{HashMap, Hasher},
     visitors::hir::{ExprVisitor, ItemVisitor, StmtVisitor, TypeVisitor},
 };
+use crunch_typecheck::TypecheckDatabase;
+use ladder::HirDatabase;
+
+#[salsa::query_group(MirDatabaseStorage)]
+pub trait MirDatabase: salsa::Database + ContextDatabase + HirDatabase + TypecheckDatabase {
+    // FIXME: Actual lifetimes when salsa allows
+    fn lower_mir(&self, file: FileId) -> Result<Arc<Mir>, Arc<ErrorHandler>>;
+}
+
+fn lower_mir(db: &dyn MirDatabase, file: FileId) -> Result<Arc<Mir>, Arc<ErrorHandler>> {
+    let config = db.config();
+    let items = db.lower_hir(file)?;
+    db.typecheck(file)?;
+
+    let mir = crunch_shared::allocator::CRUNCHC_ALLOCATOR
+        .record_region("mir lowering", || MirBuilder::new(db).lower(&*items))
+        .map_err(|err| {
+            let mut errors = ErrorHandler::new();
+            errors.push_err(err.map(Error::Mir));
+
+            errors
+        })?;
+
+    if config.emit.contains(&EmissionKind::Mir) {
+        let path = db
+            .config()
+            .out_dir
+            .join(&*db.file_name(file))
+            .with_extension("mir");
+
+        std::fs::write(
+            &path,
+            format!("{}", mir.write_pretty(db.context().strings())),
+        )
+        .unwrap();
+    }
+
+    if config.print.contains(&EmissionKind::Mir) {
+        println!("{}", mir.write_pretty(db.context().strings()));
+    }
+
+    Ok(Arc::new(mir))
+}
 
 #[derive(Debug)]
 struct BlockState {
@@ -32,8 +78,7 @@ struct BlockState {
     current_block: BlockId,
 }
 
-#[derive(Debug)]
-pub struct MirBuilder<'ctx> {
+pub struct MirBuilder<'db> {
     functions: Vec<Function>,
     external_functions: Vec<ExternFunc>,
     // TODO: Custom enum to represent the block superposition
@@ -41,32 +86,30 @@ pub struct MirBuilder<'ctx> {
     current_block: BlockId,
     // TODO: Custom struct w/ function arg & ret types
     function_names: HashMap<ItemPath, (FuncId, Type)>,
-    current_function: FuncId,
     func_counter: FuncId,
     variables: Vec<HashMap<Var, Variable>>,
     var_counter: VarId,
-    context: Context<'ctx>,
     // TODO: Give MirBuilder access to the type engine for type resolution or make a final pass in the engine to resolve types
     // TODO: Salsa for types?
+    db: &'db dyn MirDatabase,
 }
 
-impl<'ctx> MirBuilder<'ctx> {
-    pub fn new(context: Context<'ctx>) -> Self {
+impl<'db> MirBuilder<'db> {
+    pub fn new(db: &'db dyn MirDatabase) -> Self {
         Self {
             functions: Vec::new(),
             external_functions: Vec::new(),
             blocks: Vec::new(),
             current_block: BlockId::new(0),
             function_names: HashMap::with_hasher(Hasher::default()),
-            current_function: FuncId::new(0),
             func_counter: FuncId::new(0),
             variables: Vec::new(),
             var_counter: VarId::new(0),
-            context,
+            db,
         }
     }
 
-    pub fn lower(mut self, items: &[&'ctx Item<'ctx>]) -> MirResult<Mir> {
+    pub fn lower(mut self, items: &[&'db Item<'db>]) -> MirResult<Mir> {
         self.with_scope(|builder| {
             builder.function_names =
                 HashMap::from_iter(items.iter().filter_map(|item| match item {
@@ -190,7 +233,7 @@ impl<'ctx> MirBuilder<'ctx> {
         self.variables.iter().rev().find_map(|vars| vars.get(&var))
     }
 
-    fn make_block(&mut self, current_block: BlockId, arm: &MatchArm<'ctx>) -> MirResult<BlockId> {
+    fn make_block(&mut self, current_block: BlockId, arm: &MatchArm<'db>) -> MirResult<BlockId> {
         let block = self.next_block();
 
         self.move_to_block(block);
@@ -250,10 +293,10 @@ impl<'ctx> MirBuilder<'ctx> {
     }
 }
 
-impl<'ctx> ItemVisitor<'ctx> for MirBuilder<'ctx> {
+impl<'db> ItemVisitor<'db> for MirBuilder<'db> {
     type Output = MirResult<()>;
 
-    fn visit_func(&mut self, func: &HirFunction<'ctx>) -> Self::Output {
+    fn visit_func(&mut self, func: &HirFunction<'db>) -> Self::Output {
         self.with_blocks(
             |builder| {
                 builder.with_scope(|builder| {
@@ -327,10 +370,10 @@ impl<'ctx> ItemVisitor<'ctx> for MirBuilder<'ctx> {
     }
 }
 
-impl<'ctx> StmtVisitor<'ctx> for MirBuilder<'ctx> {
+impl<'db> StmtVisitor<'db> for MirBuilder<'db> {
     type Output = MirResult<Option<Rval>>;
 
-    fn visit_stmt(&mut self, stmt: &'ctx Stmt<'ctx>) -> <Self as StmtVisitor<'ctx>>::Output {
+    fn visit_stmt(&mut self, stmt: &'db Stmt<'db>) -> <Self as StmtVisitor<'db>>::Output {
         match stmt {
             Stmt::Item(item) => {
                 self.visit_item(item)?;
@@ -341,7 +384,7 @@ impl<'ctx> StmtVisitor<'ctx> for MirBuilder<'ctx> {
         }
     }
 
-    fn visit_var_decl(&mut self, var: &VarDecl<'ctx>) -> <Self as StmtVisitor<'ctx>>::Output {
+    fn visit_var_decl(&mut self, var: &VarDecl<'db>) -> <Self as StmtVisitor<'db>>::Output {
         let val = self
             .visit_expr(var.value)?
             .expect("Assigned nothing to a variable");
@@ -351,10 +394,10 @@ impl<'ctx> StmtVisitor<'ctx> for MirBuilder<'ctx> {
     }
 }
 
-impl<'ctx> ExprVisitor<'ctx> for MirBuilder<'ctx> {
+impl<'db> ExprVisitor<'db> for MirBuilder<'db> {
     type Output = MirResult<Option<Rval>>;
 
-    fn visit_return(&mut self, _loc: Location, ret: &Return<'ctx>) -> Self::Output {
+    fn visit_return(&mut self, _loc: Location, ret: &Return<'db>) -> Self::Output {
         match ret.val {
             Some(val) => {
                 // Evaluate the returned value and assign it to a temp variable before returning it
@@ -388,7 +431,7 @@ impl<'ctx> ExprVisitor<'ctx> for MirBuilder<'ctx> {
         todo!()
     }
 
-    fn visit_loop(&mut self, _loc: Location, _body: &Block<&'ctx Stmt<'ctx>>) -> Self::Output {
+    fn visit_loop(&mut self, _loc: Location, _body: &Block<&'db Stmt<'db>>) -> Self::Output {
         todo!()
     }
 
@@ -397,7 +440,7 @@ impl<'ctx> ExprVisitor<'ctx> for MirBuilder<'ctx> {
         loc: Location,
         &Match {
             cond, ref arms, ty, ..
-        }: &Match<'ctx>,
+        }: &Match<'db>,
     ) -> Self::Output {
         let current_block = self.current_block;
         let end_block = self.next_block();
@@ -604,7 +647,7 @@ impl<'ctx> ExprVisitor<'ctx> for MirBuilder<'ctx> {
         }
     }
 
-    fn visit_scope(&mut self, _loc: Location, body: &HirBlock<&'ctx Stmt<'ctx>>) -> Self::Output {
+    fn visit_scope(&mut self, _loc: Location, body: &HirBlock<&'db Stmt<'db>>) -> Self::Output {
         self.with_scope(|builder| {
             body.iter()
                 .filter_map(|s| builder.visit_stmt(s).transpose())
@@ -613,7 +656,7 @@ impl<'ctx> ExprVisitor<'ctx> for MirBuilder<'ctx> {
         })
     }
 
-    fn visit_func_call(&mut self, _loc: Location, call: &FuncCall<'ctx>) -> Self::Output {
+    fn visit_func_call(&mut self, _loc: Location, call: &FuncCall<'db>) -> Self::Output {
         let (function, ty) = self
             .function_names
             .get(&call.func)
@@ -640,19 +683,14 @@ impl<'ctx> ExprVisitor<'ctx> for MirBuilder<'ctx> {
     fn visit_comparison(
         &mut self,
         _loc: Location,
-        _lhs: &'ctx Expr<'ctx>,
+        _lhs: &'db Expr<'db>,
         _op: CompOp,
-        _rhs: &'ctx Expr<'ctx>,
+        _rhs: &'db Expr<'db>,
     ) -> Self::Output {
         todo!()
     }
 
-    fn visit_assign(
-        &mut self,
-        _loc: Location,
-        var: HirVar,
-        value: &'ctx Expr<'ctx>,
-    ) -> Self::Output {
+    fn visit_assign(&mut self, _loc: Location, var: HirVar, value: &'db Expr<'db>) -> Self::Output {
         let old_var = self
             .get_variable(var.into())
             .expect("Attempted to get a variable that doesn't exist")
@@ -673,9 +711,9 @@ impl<'ctx> ExprVisitor<'ctx> for MirBuilder<'ctx> {
     fn visit_binop(
         &mut self,
         _loc: Location,
-        lhs: &'ctx Expr<'ctx>,
+        lhs: &'db Expr<'db>,
         op: BinaryOp,
-        rhs: &'ctx Expr<'ctx>,
+        rhs: &'db Expr<'db>,
     ) -> Self::Output {
         let (lhs, rhs) = (
             self.visit_expr(lhs)?
@@ -704,7 +742,7 @@ impl<'ctx> ExprVisitor<'ctx> for MirBuilder<'ctx> {
         Ok(Some(Rval { ty, val }))
     }
 
-    fn visit_cast(&mut self, _loc: Location, &Cast { casted, ty }: &Cast<'ctx>) -> Self::Output {
+    fn visit_cast(&mut self, _loc: Location, &Cast { casted, ty }: &Cast<'db>) -> Self::Output {
         let ty = self.visit_type(ty);
         let casted = self
             .visit_expr(casted)?
@@ -717,7 +755,7 @@ impl<'ctx> ExprVisitor<'ctx> for MirBuilder<'ctx> {
     fn visit_reference(
         &mut self,
         _loc: Location,
-        Reference { mutable, reference }: &Reference<'ctx>,
+        Reference { mutable, reference }: &Reference<'db>,
     ) -> Self::Output {
         let reference = self
             .visit_expr(reference)?
@@ -735,11 +773,11 @@ impl<'ctx> ExprVisitor<'ctx> for MirBuilder<'ctx> {
     }
 }
 
-impl<'ctx> TypeVisitor<'ctx> for MirBuilder<'ctx> {
+impl<'db> TypeVisitor<'db> for MirBuilder<'db> {
     type Output = Type;
 
     fn visit_type(&mut self, ty: TypeId) -> Self::Output {
-        match self.context.get_hir_type(ty).unwrap().kind {
+        match self.db.context().get_hir_type(ty).unwrap().kind {
             HirTypeKind::Variable(ty) => self.visit_type(ty),
             HirTypeKind::Integer { signed, width } => {
                 match (signed.unwrap_or(true), width.unwrap_or(32)) {

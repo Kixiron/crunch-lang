@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 
 pub type ParseResult<T> = Result<T, Locatable<Error>>;
 pub type TypeResult<T> = Result<T, Locatable<Error>>;
-pub type MirResult<T> = Result<T, MirError>;
+pub type MirResult<T> = Result<T, Locatable<MirError>>;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Location {
@@ -186,14 +186,22 @@ impl Into<[usize; 2]> for Span {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Locatable<T> {
-    pub data: T,
-    pub loc: Location,
+    data: T,
+    loc: Option<Location>,
 }
 
 impl<T> Locatable<T> {
     #[inline]
     pub fn new(data: T, loc: Location) -> Self {
-        Self { data, loc }
+        Self {
+            data,
+            loc: Some(loc),
+        }
+    }
+
+    #[inline]
+    pub fn none(data: T) -> Self {
+        Self { data, loc: None }
     }
 
     #[inline]
@@ -208,17 +216,17 @@ impl<T> Locatable<T> {
 
     #[inline]
     pub fn location(&self) -> Location {
-        self.loc
+        self.loc.unwrap()
     }
 
     #[inline]
     pub fn span(&self) -> Span {
-        self.loc.span()
+        self.loc.unwrap().span()
     }
 
     #[inline]
     pub fn file(&self) -> FileId {
-        self.loc.file()
+        self.loc.unwrap().file()
     }
 
     #[inline]

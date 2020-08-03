@@ -1,6 +1,6 @@
 use crate::{
     error,
-    error::{MirError, MirResult},
+    error::{Locatable, MirError, MirResult},
     strings::{StrInterner, StrT},
     trees::{hir::Var as HirVar, CallConv, ItemPath, Ref, Sign},
 };
@@ -9,7 +9,7 @@ use core::iter;
 use derive_more::Display;
 use pretty::{BoxAllocator, DocAllocator, DocBuilder};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Mir {
     functions: Vec<Function>,
     external_functions: Vec<ExternFunc>,
@@ -71,7 +71,7 @@ impl Mir {
 }
 
 /// A function
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Function {
     /// The id of the current function
     pub id: FuncId,
@@ -135,7 +135,7 @@ impl Function {
 }
 
 /// A typed variable
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Variable {
     /// The id of the variable
     pub id: VarId,
@@ -168,7 +168,7 @@ impl Variable {
 }
 
 /// An externally defined function
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExternFunc {
     /// The id of the current function
     pub id: FuncId,
@@ -225,7 +225,7 @@ impl ExternFunc {
 /// Each basic block is a completely self-contained scope with its own variable scope
 /// starting at zero and outside communication only possible by passing arguments
 // TODO: Sealing
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BasicBlock {
     /// The id of the current block
     pub id: BlockId,
@@ -296,7 +296,9 @@ impl BasicBlock {
         // Make sure that the block has a terminator
         if terminator.is_none() {
             // TODO: Resolve the block's name for the error
-            return Err(MirError::MissingTerminator(id.0.to_string()));
+            return Err(Locatable::none(MirError::MissingTerminator(
+                id.0.to_string(),
+            )));
         }
 
         // Make sure no block args are duplicated
@@ -308,7 +310,7 @@ impl BasicBlock {
 
             if count > 1 {
                 // TODO: Resolve the block's name for the error
-                return Err(MirError::DuplicatedBBArg(id.0, arg.id.0));
+                return Err(Locatable::none(MirError::DuplicatedBBArg(id.0, arg.id.0)));
             }
         }
 
@@ -382,7 +384,7 @@ impl BasicBlock {
 }
 
 /// A block terminator, every `BasicBlock` is closed by one
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Terminator {
     /// A return instruction, `None` for a unit return and `Some` for returning a value
     Return(Option<VarId>),
@@ -497,7 +499,7 @@ impl Terminator {
 }
 
 /// A switch case, contains a condition and a block
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SwitchCase {
     /// The condition being tested
     pub condition: VarId,
@@ -535,7 +537,7 @@ impl SwitchCase {
 }
 
 /// The default case of a switch
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DefaultSwitchCase {
     /// The block jumped to
     pub block: BlockId,
@@ -571,7 +573,7 @@ impl DefaultSwitchCase {
 }
 
 /// An instruction
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instruction {
     /// An assignment of a value to a variable
     Assign(Assign),
@@ -617,7 +619,7 @@ impl Instruction {
 }
 
 /// A variable assignment
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Assign {
     /// The id of the variable being assigned to
     pub var: VarId,
@@ -653,7 +655,7 @@ impl Assign {
 }
 
 /// A function call
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FnCall {
     /// The function being called
     pub function: FuncId,
@@ -719,7 +721,7 @@ impl FnCall {
 }
 
 /// The right-hand side of an expression
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rval {
     pub val: Value,
     pub ty: Type,
@@ -777,7 +779,7 @@ impl Rval {
 }
 
 /// The inner value of an `Rval`
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Value {
     /// A variable
     Variable(VarId),
@@ -915,7 +917,7 @@ impl Value {
 }
 
 /// A compile time known constant value
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Constant {
     Integer {
         sign: Sign,
@@ -969,7 +971,7 @@ macro_rules! is_type {
 }
 
 /// A type
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     U8,
     I8,

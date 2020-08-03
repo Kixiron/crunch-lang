@@ -1,7 +1,14 @@
 pub mod llvm;
 
+use core::convert::TryInto;
+use crunch_mir::MirDatabase;
 use crunch_shared::{
-    strings::StrInterner,
+    allocator::CRUNCHC_ALLOCATOR,
+    config::EmissionKind,
+    context::ContextDatabase,
+    error::ErrorHandler,
+    files::FileId,
+    salsa,
     trees::{
         mir::{
             Assign, BasicBlock, BlockId, Constant, FnCall, FuncId, Function as MirFunction,
@@ -20,101 +27,127 @@ use llvm::{
         AnyValue, ArrayValue, BasicBlock as LLVMBasicBlock, CallSiteValue, FunctionValue,
         InstructionValue, SealedAnyValue, Value as RawLLVMValue,
     },
-    Context, Result,
+    Context, Result as LLVMResult,
 };
-use std::convert::TryInto;
+use std::sync::Arc;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum LLVMValue<'ctx> {
-    U8(RawLLVMValue<'ctx>),
-    I8(RawLLVMValue<'ctx>),
-    U16(RawLLVMValue<'ctx>),
-    I16(RawLLVMValue<'ctx>),
-    U32(RawLLVMValue<'ctx>),
-    I32(RawLLVMValue<'ctx>),
-    U64(RawLLVMValue<'ctx>),
-    I64(RawLLVMValue<'ctx>),
-    Bool(RawLLVMValue<'ctx>),
-    Raw(RawLLVMValue<'ctx>),
+#[derive(Debug, PartialEq, Eq)]
+pub struct BundledModule {
+    context: Option<Context>,
+    module: Option<Module<'static>>,
 }
 
-impl<'ctx> LLVMValue<'ctx> {
-    pub fn new(val: RawLLVMValue<'ctx>, ty: &Type) -> Self {
-        match ty {
-            Type::U8 => Self::U8(val),
-            Type::I8 => Self::I8(val),
-            Type::U16 => Self::U16(val),
-            Type::I16 => Self::I16(val),
-            Type::U32 => Self::U32(val),
-            Type::I32 => Self::I32(val),
-            Type::U64 => Self::U64(val),
-            Type::I64 => Self::I64(val),
-            Type::Bool => Self::Bool(val),
-
-            ty => {
-                crunch_shared::warn!("Unhandled LLVM type: {:?}", ty);
-                Self::Raw(val)
-            }
-        }
-    }
-
-    pub fn as_value(&self) -> RawLLVMValue<'ctx> {
-        unsafe { RawLLVMValue::from_raw(self.as_ptr()).unwrap() }
-    }
-
-    pub fn as_ptr(&self) -> *mut llvm_sys::LLVMValue {
-        match self {
-            Self::U8(int) => int.as_mut_ptr(),
-            Self::I8(int) => int.as_mut_ptr(),
-            Self::U16(int) => int.as_mut_ptr(),
-            Self::I16(int) => int.as_mut_ptr(),
-            Self::U32(int) => int.as_mut_ptr(),
-            Self::I32(int) => int.as_mut_ptr(),
-            Self::U64(int) => int.as_mut_ptr(),
-            Self::I64(int) => int.as_mut_ptr(),
-            Self::Bool(b) => b.as_mut_ptr(),
-            Self::Raw(raw) => raw.as_mut_ptr(),
-        }
+impl BundledModule {
+    pub fn get<'ctx>(&'ctx self) -> &'ctx Module<'ctx> {
+        self.module.as_ref().unwrap()
     }
 }
 
-impl<'ctx> Into<RawLLVMValue<'ctx>> for LLVMValue<'ctx> {
-    fn into(self) -> RawLLVMValue<'ctx> {
-        self.as_value()
+impl Drop for BundledModule {
+    fn drop(&mut self) {
+        drop(self.module.take());
+        drop(self.context.take());
     }
 }
 
-pub struct CodeGenerator<'ctx> {
-    module: &'ctx Module<'ctx>,
-    ctx: &'ctx Context,
-
-    functions: HashMap<FuncId, FunctionValue<'ctx>>,
-    blocks: HashMap<BlockId, LLVMBasicBlock<'ctx>>,
-    values: HashMap<VarId, (LLVMValue<'ctx>, Type)>,
-
-    function_builder: Option<FunctionBuilder<'ctx>>,
-    block_builder: Option<BuildingBlock<'ctx>>,
-
-    interner: &'ctx StrInterner,
+#[salsa::query_group(CodegenDatabaseStorage)]
+pub trait CodegenDatabase: salsa::Database + ContextDatabase + MirDatabase {
+    // FIXME: Actual lifetimes when salsa allows
+    // FIXME: Better system for LLVM Contexts
+    fn generate_module(&self, file: FileId) -> Result<Arc<BundledModule>, Arc<ErrorHandler>>;
 }
 
-impl<'ctx> CodeGenerator<'ctx> {
-    pub fn new(module: &'ctx Module<'ctx>, interner: &'ctx StrInterner) -> Self {
+fn generate_module(
+    db: &dyn CodegenDatabase,
+    file: FileId,
+) -> Result<Arc<BundledModule>, Arc<ErrorHandler>> {
+    let config = db.config();
+    let mir = db.lower_mir(file)?;
+
+    let context = Context::new().unwrap();
+    let module =
+        crunch_shared::allocator::CRUNCHC_ALLOCATOR.record_region("code generation", || {
+            let module = context.module(&*db.file_name(file)).unwrap();
+            CodeGenerator::new(db, &context, &module)
+                .generate(&*mir)
+                .unwrap();
+
+            // FIXME: Actual lifetimes when salsa allows + a context database?
+            unsafe { std::mem::transmute::<Module<'_>, Module<'static>>(module) }
+        });
+
+    // Verify the generated module
+    CRUNCHC_ALLOCATOR.record_region("module verification", || module.verify().unwrap());
+
+    if config.emit.contains(&EmissionKind::LlvmIr) {
+        let path = db
+            .config()
+            .out_dir
+            .join(&*db.file_name(file))
+            .with_extension("ll");
+
+        module.emit_ir_to_file(&path).unwrap();
+    }
+
+    // TODO: Use native LLVM function since it's probably more efficient
+    if config.print.contains(&EmissionKind::LlvmIr) {
+        crunch_shared::warn!("Using an inefficient method of printing LLVM IR to stdout");
+        println!("{:?}", module);
+    }
+
+    if config.emit.contains(&EmissionKind::LlvmBc) {
+        let path = db
+            .config()
+            .out_dir
+            .join(&*db.file_name(file))
+            .with_extension("bc");
+
+        module.emit_ir_to_file(config.out_dir.join(&path)).unwrap();
+    }
+
+    if config.emit.contains(&EmissionKind::LlvmBc) {
+        // TODO: Print object file to stdout?
+        println!("Printing LLVM Bitcode to stdout is currently unsupported");
+    }
+
+    Ok(Arc::new(BundledModule {
+        context: Some(context),
+        module: Some(module),
+    }))
+}
+
+pub struct CodeGenerator<'db> {
+    functions: HashMap<FuncId, FunctionValue<'db>>,
+    blocks: HashMap<BlockId, LLVMBasicBlock<'db>>,
+    values: HashMap<VarId, (LLVMValue<'db>, Type)>,
+    function_builder: Option<FunctionBuilder<'db>>,
+    block_builder: Option<BuildingBlock<'db>>,
+    context: &'db Context,
+    module: &'db Module<'db>,
+    db: &'db dyn CodegenDatabase,
+}
+
+impl<'db> CodeGenerator<'db> {
+    pub fn new(
+        db: &'db dyn CodegenDatabase,
+        context: &'db Context,
+        module: &'db Module<'db>,
+    ) -> Self {
         Self {
             module,
-            ctx: module.context(),
             values: HashMap::with_hasher(Hasher::default()),
             blocks: HashMap::with_hasher(Hasher::default()),
             functions: HashMap::with_hasher(Hasher::default()),
             function_builder: None,
             block_builder: None,
-            interner,
+            context,
+            db,
         }
     }
 
-    pub fn generate(mut self, mir: Mir) -> Result<()> {
+    pub fn generate(mut self, mir: &Mir) -> LLVMResult<()> {
         for function in mir.functions() {
-            let args: Vec<LLVMType<'ctx>> = function
+            let args: Vec<LLVMType<'db>> = function
                 .args
                 .iter()
                 .map(|Variable { ty, .. }| self.visit_type(ty).unwrap())
@@ -126,14 +159,14 @@ impl<'ctx> CodeGenerator<'ctx> {
 
             let function_val = self
                 .module
-                .create_function(function.name.to_string(self.interner), sig)?;
+                .create_function(function.name.to_string(self.db.context().strings()), sig)?;
 
             function_val.with_linkage(Linkage::External);
             self.functions.insert(function.id, function_val);
         }
 
         for function in mir.external_functions() {
-            let args: Vec<LLVMType<'ctx>> = function
+            let args: Vec<LLVMType<'db>> = function
                 .args
                 .iter()
                 .map(|Variable { ty, .. }| self.visit_type(ty).unwrap())
@@ -145,7 +178,7 @@ impl<'ctx> CodeGenerator<'ctx> {
 
             let function_val = self
                 .module
-                .create_function(function.name.to_string(self.interner), sig)?;
+                .create_function(function.name.to_string(self.db.context().strings()), sig)?;
 
             function_val
                 .with_linkage(Linkage::External)
@@ -163,40 +196,40 @@ impl<'ctx> CodeGenerator<'ctx> {
         Ok(())
     }
 
-    fn current_function(&self) -> FunctionValue<'ctx> {
+    fn current_function(&self) -> FunctionValue<'db> {
         self.function_builder
             .as_ref()
             .expect("called current_function outside of a function")
             .function()
     }
 
-    fn get_function_builder(&self) -> &FunctionBuilder<'ctx> {
+    fn get_function_builder(&self) -> &FunctionBuilder<'db> {
         self.function_builder
             .as_ref()
             .expect("Called CodeGenerator::get_function_builder outside of a function")
     }
 
-    fn get_block_builder(&self) -> &BuildingBlock<'ctx> {
+    fn get_block_builder(&self) -> &BuildingBlock<'db> {
         self.block_builder
             .as_ref()
             .expect("called CodeGenerator::get_builder outside of a basic block")
     }
 
-    fn get_function(&self, function: FuncId) -> FunctionValue<'ctx> {
+    fn get_function(&self, function: FuncId) -> FunctionValue<'db> {
         *self
             .functions
             .get(&function)
             .expect("attempted to get a function that doesn't exist")
     }
 
-    fn get_block(&self, block: BlockId) -> LLVMBasicBlock<'ctx> {
+    fn get_block(&self, block: BlockId) -> LLVMBasicBlock<'db> {
         *self
             .blocks
             .get(&block)
             .expect("attempted to get a basic block that doesn't exist")
     }
 
-    fn get_var(&self, id: VarId) -> (LLVMValue<'ctx>, &Type) {
+    fn get_var(&self, id: VarId) -> (LLVMValue<'db>, &Type) {
         let (val, ty) = self
             .values
             .get(&id)
@@ -205,14 +238,14 @@ impl<'ctx> CodeGenerator<'ctx> {
         (*val, ty)
     }
 
-    fn get_var_value(&self, id: VarId) -> LLVMValue<'ctx> {
+    fn get_var_value(&self, id: VarId) -> LLVMValue<'db> {
         self.get_var(id).0
     }
 
     // TODO: Query this shit
     // TODO: Macro this shit
 
-    fn add(&self, lhs: LLVMValue<'ctx>, rhs: LLVMValue<'ctx>) -> Result<LLVMValue<'ctx>> {
+    fn add(&self, lhs: LLVMValue<'db>, rhs: LLVMValue<'db>) -> LLVMResult<LLVMValue<'db>> {
         let block_builder = self.get_block_builder();
 
         Ok(match (lhs, rhs) {
@@ -248,7 +281,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         })
     }
 
-    fn sub(&self, lhs: LLVMValue<'ctx>, rhs: LLVMValue<'ctx>) -> Result<LLVMValue<'ctx>> {
+    fn sub(&self, lhs: LLVMValue<'db>, rhs: LLVMValue<'db>) -> LLVMResult<LLVMValue<'db>> {
         let block_builder = self.get_block_builder();
 
         Ok(match (lhs, rhs) {
@@ -284,7 +317,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         })
     }
 
-    fn mul(&self, lhs: LLVMValue<'ctx>, rhs: LLVMValue<'ctx>) -> Result<LLVMValue<'ctx>> {
+    fn mul(&self, lhs: LLVMValue<'db>, rhs: LLVMValue<'db>) -> LLVMResult<LLVMValue<'db>> {
         let block_builder = self.get_block_builder();
 
         Ok(match (lhs, rhs) {
@@ -320,7 +353,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         })
     }
 
-    fn div(&self, lhs: LLVMValue<'ctx>, rhs: LLVMValue<'ctx>) -> Result<LLVMValue<'ctx>> {
+    fn div(&self, lhs: LLVMValue<'db>, rhs: LLVMValue<'db>) -> LLVMResult<LLVMValue<'db>> {
         let block_builder = self.get_block_builder();
 
         Ok(match (lhs, rhs) {
@@ -357,14 +390,14 @@ impl<'ctx> CodeGenerator<'ctx> {
         })
     }
 
-    fn ret(&self, val: Option<LLVMValue<'ctx>>) -> Result<InstructionValue<'ctx>> {
+    fn ret(&self, val: Option<LLVMValue<'db>>) -> LLVMResult<InstructionValue<'db>> {
         crunch_shared::warn!("Check that returned values match their function signature");
 
         // TODO: Verify return type against current function's return type
         self.get_block_builder().ret(val.map(|v| v.as_value()))
     }
 
-    fn eq(&self, lhs: LLVMValue<'ctx>, rhs: LLVMValue<'ctx>) -> Result<LLVMValue<'ctx>> {
+    fn eq(&self, lhs: LLVMValue<'db>, rhs: LLVMValue<'db>) -> LLVMResult<LLVMValue<'db>> {
         crunch_shared::warn!("Check that lhs and rhs have the same types in Eq");
 
         Ok(LLVMValue::Bool(self.get_block_builder().icmp(
@@ -375,8 +408,8 @@ impl<'ctx> CodeGenerator<'ctx> {
     }
 }
 
-impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
-    type FunctionOutput = Result<FunctionValue<'ctx>>;
+impl<'db> MirVisitor for CodeGenerator<'db> {
+    type FunctionOutput = LLVMResult<FunctionValue<'db>>;
     fn visit_function(&mut self, function: &MirFunction) -> Self::FunctionOutput {
         self.block_builder = None;
         self.values.clear();
@@ -408,7 +441,7 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
             .finish()
     }
 
-    type BlockOutput = Result<LLVMBasicBlock<'ctx>>;
+    type BlockOutput = LLVMResult<LLVMBasicBlock<'db>>;
     fn visit_block(&mut self, block: &BasicBlock) -> Self::BlockOutput {
         let basic_block = self.get_block(block.id);
         let building_block = self.get_function_builder().move_to_end(basic_block)?;
@@ -432,7 +465,7 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
         Ok(basic_block)
     }
 
-    type InstructionOutput = Result<Either<VarId, CallSiteValue<'ctx>>>;
+    type InstructionOutput = LLVMResult<Either<VarId, CallSiteValue<'db>>>;
     fn visit_instruction(&mut self, instruction: &Instruction) -> Self::InstructionOutput {
         match instruction {
             Instruction::Assign(Assign { var, val, ty }) => {
@@ -453,7 +486,7 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
         }
     }
 
-    type TerminatorOutput = Result<InstructionValue<'ctx>>;
+    type TerminatorOutput = LLVMResult<InstructionValue<'db>>;
     // FIXME: Figure out BB arg -> Phi node mapping
     fn visit_terminator(&mut self, terminator: &Terminator) -> Self::TerminatorOutput {
         match terminator {
@@ -500,7 +533,7 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
         }
     }
 
-    type RvalOutput = Result<LLVMValue<'ctx>>;
+    type RvalOutput = LLVMResult<LLVMValue<'db>>;
     fn visit_rval(&mut self, Rval { ty, val }: &Rval) -> Self::RvalOutput {
         match val {
             &Value::Variable(id) => Ok(self.get_var_value(id)),
@@ -541,7 +574,7 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
         }
     }
 
-    type ConstantOutput = Result<LLVMValue<'ctx>>;
+    type ConstantOutput = LLVMResult<LLVMValue<'db>>;
     fn visit_constant(&mut self, constant: &Constant, ty: &Type) -> Self::ConstantOutput {
         let constant = match constant {
             Constant::Integer { sign, bits } => {
@@ -551,14 +584,14 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
 
                 #[rustfmt::skip]
                 let val = match ty {
-                    Type::U8  => IntType::<'ctx, u8>::from_ty(llvm_type).erase(),
-                    Type::I8  => IntType::<'ctx, i8>::from_ty(llvm_type).erase(),
-                    Type::U16 => IntType::<'ctx, u16>::from_ty(llvm_type).erase(),
-                    Type::I16 => IntType::<'ctx, i16>::from_ty(llvm_type).erase(),
-                    Type::U32 => IntType::<'ctx, u32>::from_ty(llvm_type).erase(),
-                    Type::I32 => IntType::<'ctx, i32>::from_ty(llvm_type).erase(),
-                    Type::U64 => IntType::<'ctx, u64>::from_ty(llvm_type).erase(),
-                    Type::I64 => IntType::<'ctx, i64>::from_ty(llvm_type).erase(),
+                    Type::U8  => IntType::<'db, u8>::from_ty(llvm_type).erase(),
+                    Type::I8  => IntType::<'db, i8>::from_ty(llvm_type).erase(),
+                    Type::U16 => IntType::<'db, u16>::from_ty(llvm_type).erase(),
+                    Type::I16 => IntType::<'db, i16>::from_ty(llvm_type).erase(),
+                    Type::U32 => IntType::<'db, u32>::from_ty(llvm_type).erase(),
+                    Type::I32 => IntType::<'db, i32>::from_ty(llvm_type).erase(),
+                    Type::U64 => IntType::<'db, u64>::from_ty(llvm_type).erase(),
+                    Type::I64 => IntType::<'db, i64>::from_ty(llvm_type).erase(),
 
                     _ => unreachable!(),
                 };
@@ -570,7 +603,7 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
                 assert!(ty.is_bool());
 
                 let ty = self.visit_type(ty)?;
-                let val = IntType::<'ctx, I1>::from_ty(ty).constant(*boolean as u64, true)?;
+                let val = IntType::<'db, I1>::from_ty(ty).constant(*boolean as u64, true)?;
 
                 val.into()
             }
@@ -579,7 +612,7 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
                 assert!(ty.is_string());
 
                 let string = ArrayValue::const_string(self.module.context(), string, false)?;
-                let string_type: ArrayType<'ctx> = string.as_type()?.try_into()?;
+                let string_type: ArrayType<'db> = string.as_type()?.try_into()?;
                 println!(
                     "Made a constant string, LLVM typed it as {:?} while the type's value is {:?}",
                     string_type,
@@ -603,12 +636,12 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
                         self.visit_constant(c, ty.array_elements().unwrap())
                             .map(|c| c.as_value())
                     })
-                    .collect::<Result<Vec<_>>>()?;
+                    .collect::<LLVMResult<Vec<_>>>()?;
 
                 let array = ArrayValue::const_array(llvm_type.into(), elements.as_slice())?;
                 assert_eq!(llvm_type, array.as_type().unwrap());
 
-                let array_type: ArrayType<'ctx> = llvm_type.try_into()?;
+                let array_type: ArrayType<'db> = llvm_type.try_into()?;
                 self.module
                     .add_global(array_type, None, "")?
                     .with_initializer(array.as_value())
@@ -619,24 +652,24 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
         Ok(LLVMValue::new(constant, ty))
     }
 
-    type TypeOutput = Result<LLVMType<'ctx>>;
+    type TypeOutput = LLVMResult<LLVMType<'db>>;
     #[rustfmt::skip]
     fn visit_type(&mut self, ty: &Type) -> Self::TypeOutput {
         let ty = match ty {
-            Type::Bool   => IntType::i1(self.ctx)?.into(),
-            Type::Unit   => VoidType::new(self.ctx)?.into(),
-            Type::String => IntType::i8(self.ctx)?.into(),
-            Type::Absurd => VoidType::new(self.ctx)?.into(), // TODO: ???
-            Type::U8     => IntType::u8(self.ctx)?.into(),
-            Type::I8     => IntType::i8(self.ctx)?.into(),
-            Type::U16    => IntType::u16(self.ctx)?.into(),
-            Type::I16    => IntType::i16(self.ctx)?.into(),
-            Type::U32    => IntType::u32(self.ctx)?.into(),
-            Type::I32    => IntType::i32(self.ctx)?.into(),
-            Type::U64    => IntType::u64(self.ctx)?.into(),
-            Type::I64    => IntType::i64(self.ctx)?.into(),
+            Type::Bool   => IntType::i1(&self.context)?.into(),
+            Type::Unit   => VoidType::new(&self.context)?.into(),
+            Type::String => IntType::i8(&self.context)?.into(),
+            Type::Absurd => VoidType::new(&self.context)?.into(), // TODO: ???
+            Type::U8     => IntType::u8(&self.context)?.into(),
+            Type::I8     => IntType::i8(&self.context)?.into(),
+            Type::U16    => IntType::u16(&self.context)?.into(),
+            Type::I16    => IntType::i16(&self.context)?.into(),
+            Type::U32    => IntType::u32(&self.context)?.into(),
+            Type::I32    => IntType::i32(&self.context)?.into(),
+            Type::U64    => IntType::u64(&self.context)?.into(),
+            Type::I64    => IntType::i64(&self.context)?.into(),
             Type::Slice { element } => {
-                self.module.create_struct(&[self.visit_type(element)?.make_pointer(AddressSpace::Generic)?.into(), IntType::u64(self.ctx)?.into()], false)?.into()
+                self.module.create_struct(&[self.visit_type(element)?.make_pointer(AddressSpace::Generic)?.into(), IntType::u64(&self.context)?.into()], false)?.into()
             }
             &Type::Array { ref element, length } => self.visit_type(element)?.make_array(length as u32)?.into(),
             Type::Pointer { pointee, .. } => self
@@ -650,5 +683,65 @@ impl<'ctx> MirVisitor for CodeGenerator<'ctx> {
         };
 
         Ok(ty)
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum LLVMValue<'db> {
+    U8(RawLLVMValue<'db>),
+    I8(RawLLVMValue<'db>),
+    U16(RawLLVMValue<'db>),
+    I16(RawLLVMValue<'db>),
+    U32(RawLLVMValue<'db>),
+    I32(RawLLVMValue<'db>),
+    U64(RawLLVMValue<'db>),
+    I64(RawLLVMValue<'db>),
+    Bool(RawLLVMValue<'db>),
+    Raw(RawLLVMValue<'db>),
+}
+
+impl<'db> LLVMValue<'db> {
+    pub fn new(val: RawLLVMValue<'db>, ty: &Type) -> Self {
+        match ty {
+            Type::U8 => Self::U8(val),
+            Type::I8 => Self::I8(val),
+            Type::U16 => Self::U16(val),
+            Type::I16 => Self::I16(val),
+            Type::U32 => Self::U32(val),
+            Type::I32 => Self::I32(val),
+            Type::U64 => Self::U64(val),
+            Type::I64 => Self::I64(val),
+            Type::Bool => Self::Bool(val),
+
+            ty => {
+                crunch_shared::warn!("Unhandled LLVM type: {:?}", ty);
+                Self::Raw(val)
+            }
+        }
+    }
+
+    pub fn as_value(&self) -> RawLLVMValue<'db> {
+        unsafe { RawLLVMValue::from_raw(self.as_ptr()).unwrap() }
+    }
+
+    pub fn as_ptr(&self) -> *mut llvm_sys::LLVMValue {
+        match self {
+            Self::U8(int) => int.as_mut_ptr(),
+            Self::I8(int) => int.as_mut_ptr(),
+            Self::U16(int) => int.as_mut_ptr(),
+            Self::I16(int) => int.as_mut_ptr(),
+            Self::U32(int) => int.as_mut_ptr(),
+            Self::I32(int) => int.as_mut_ptr(),
+            Self::U64(int) => int.as_mut_ptr(),
+            Self::I64(int) => int.as_mut_ptr(),
+            Self::Bool(b) => b.as_mut_ptr(),
+            Self::Raw(raw) => raw.as_mut_ptr(),
+        }
+    }
+}
+
+impl<'db> Into<RawLLVMValue<'db>> for LLVMValue<'db> {
+    fn into(self) -> RawLLVMValue<'db> {
+        self.as_value()
     }
 }

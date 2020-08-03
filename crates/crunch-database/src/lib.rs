@@ -1,5 +1,7 @@
 extern crate alloc;
 
+pub use crunch_codegen::CodegenDatabase;
+pub use crunch_mir::MirDatabase;
 pub use crunch_parser::database::ParseDatabase;
 pub use crunch_shared::{
     config::ConfigDatabase, context::ContextDatabase, databases::SourceDatabase,
@@ -7,6 +9,8 @@ pub use crunch_shared::{
 pub use crunch_typecheck::TypecheckDatabase;
 pub use ladder::HirDatabase;
 
+use crunch_codegen::CodegenDatabaseStorage;
+use crunch_mir::MirDatabaseStorage;
 use crunch_parser::database::ParseDatabaseStorage;
 use crunch_shared::{
     config::ConfigDatabaseStorage,
@@ -23,8 +27,10 @@ use ladder::HirDatabaseStorage;
     ContextDatabaseStorage,
     SourceDatabaseStorage,
     ParseDatabaseStorage,
+    HirDatabaseStorage,
     TypecheckDatabaseStorage,
-    HirDatabaseStorage
+    MirDatabaseStorage,
+    CodegenDatabaseStorage
 )]
 #[derive(Default)]
 pub struct CrunchDatabase {

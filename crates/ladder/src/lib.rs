@@ -38,8 +38,6 @@ pub trait HirDatabase: salsa::Database + ContextDatabase + ParseDatabase {
     ) -> Result<Arc<Vec<&'static Item<'static>>>, Arc<ErrorHandler>>;
 }
 
-// FIXME: Emit errors using query'd config
-// FIXME: Emit hir using query'd config
 fn lower_hir(
     db: &dyn HirDatabase,
     file: FileId,

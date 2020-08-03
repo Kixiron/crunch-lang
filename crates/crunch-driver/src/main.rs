@@ -1,14 +1,5 @@
-use crunch_codegen::{
-    llvm::{
-        target_machine::{CodegenFileKind, Target, TargetConf, TargetMachine},
-        Context as LLVMContext,
-    },
-    CodeGenerator,
-};
-use crunch_database::{
-    ConfigDatabase, CrunchDatabase, HirDatabase, SourceDatabase, TypecheckDatabase,
-};
-use crunch_mir::MirBuilder;
+use crunch_codegen::llvm::target_machine::{CodegenFileKind, Target, TargetConf, TargetMachine};
+use crunch_database::{CodegenDatabase, ConfigDatabase, CrunchDatabase, SourceDatabase};
 use crunch_shared::{
     allocator::{CrunchcAllocator, CRUNCHC_ALLOCATOR},
     codespan_reporting::term::{termcolor::StandardStream, Config as TermConfig},
@@ -152,102 +143,17 @@ fn run<'ctx>(
     });
     database.set_file_path(file_id, Arc::new(options.target_file.clone()));
 
-    // Lower the ast to hir
-    let hir = database.lower_hir(file_id).unwrap();
-
     // Check types and update the hir with concrete types
-    if let Err(errors) = database.typecheck(file_id) {
-        (&*errors)
-            .clone()
-            .emit(&FileCache::upcast(&database), &writer, &stdout_conf);
+    let module = match database.generate_module(file_id) {
+        Ok(ok) => ok,
+        Err(errors) => {
+            (&*errors)
+                .clone()
+                .emit(&FileCache::upcast(&database), &writer, &stdout_conf);
 
-        return Err(ExitStatus::default());
-    }
-
-    // Lower hir to mir
-    let mir = GLOBAL_ALLOCATOR.record_region("mir lowering", || {
-        MirBuilder::new(context.clone()).lower(&hir).unwrap()
-    });
-
-    if options.emit.contains(&EmissionKind::Mir) {
-        let path = out_file.with_extension("mir");
-
-        fs::write(&path, format!("{}", mir.write_pretty(context.strings()))).map_err(|err| {
-            ExitStatus::message(format!(
-                "failed to write mir to '{}': {:?}",
-                path.display(),
-                err
-            ))
-        })?;
-    }
-
-    if options.print.contains(&EmissionKind::Mir) {
-        println!("{}", mir.write_pretty(context.strings()));
-    }
-
-    // Create LLVM context
-    let llvm_context = LLVMContext::new().map_err(|err| {
-        ExitStatus::message(format!(
-            "Failed to create LLVM context for codegen: {:?}",
-            err
-        ))
-    })?;
-    let module = llvm_context
-        .module(&format!("{}.crunch", source_file))
-        .map_err(|err| ExitStatus::message(format!("error creating LLVM module: {:?}", err)))?;
-
-    // Generate LLVM ir
-    GLOBAL_ALLOCATOR.record_region("code generation", || {
-        CodeGenerator::new(&module, context.strings())
-            .generate(mir)
-            .map_err(|err| {
-                ExitStatus::message(format!("encountered an error during codegen: {:?}", err))
-            })
-    })?;
-
-    // Verify the generated module
-    GLOBAL_ALLOCATOR.record_region("module verification", || {
-        module
-            .verify()
-            .map_err(|err| ExitStatus::message(format!("generated invalid LLVM module: {:?}", err)))
-    })?;
-
-    if options.emit.contains(&EmissionKind::LlvmIr) {
-        let path = out_file.with_extension("ll");
-
-        module.emit_ir_to_file(&path).map_err(|err| {
-            ExitStatus::message(format!(
-                "encountered an error while emitting LLVM IR to '{}': {:?}",
-                path.display(),
-                err,
-            ))
-        })?;
-    }
-
-    // TODO: Use native LLVM function since it's probably more efficient
-    if options.print.contains(&EmissionKind::LlvmIr) {
-        crunch_shared::warn!("Using an inefficient method of printing LLVM IR to stdout");
-        println!("{:?}", module);
-    }
-
-    if options.emit.contains(&EmissionKind::LlvmBc) {
-        let path = out_file.with_extension("bc");
-
-        module
-            .emit_ir_to_file(options.out_dir.join(&path))
-            .map_err(|err| {
-                ExitStatus::message(format!(
-                    "encountered an error while emitting LLVM bitcode to '{}': {:?}",
-                    path.display(),
-                    err,
-                ))
-            })?;
-    }
-
-    if options.emit.contains(&EmissionKind::LlvmBc) {
-        // TODO: Print object file to stdout?
-        println!("Printing LLVM Bitcode to stdout is currently unsupported");
-    }
+            return Err(ExitStatus::default());
+        }
+    };
 
     // TODO: User input for all of this
     // FIXME: This is really funky with initializing and may not even work correctly
@@ -269,7 +175,7 @@ fn run<'ctx>(
     let object_file = out_file.with_extension("o");
     GLOBAL_ALLOCATOR.record_region("write object file", || {
         target_machine
-            .emit_to_file(&module, &object_file, CodegenFileKind::Object)
+            .emit_to_file(module.get(), &object_file, CodegenFileKind::Object)
             .map_err(|err| {
                 ExitStatus::message(format!(
                     "encountered an error while emitting object file to '{}': {:?}",
@@ -288,7 +194,7 @@ fn run<'ctx>(
         let path = out_file.with_extension("s");
 
         target_machine
-            .emit_to_file(&module, &out_file, CodegenFileKind::Assembly)
+            .emit_to_file(module.get(), &out_file, CodegenFileKind::Assembly)
             .map_err(|err| {
                 ExitStatus::message(format!(
                     "encountered an error while emitting assembly to '{}': {:?}",
