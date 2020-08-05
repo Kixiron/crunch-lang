@@ -3,7 +3,7 @@ use crate::{
     error::{Location, Span},
     utils::Upcast,
 };
-use alloc::string::String;
+use alloc::{string::String, sync::Arc};
 use codespan_reporting::files;
 use core::{fmt, ops::Range};
 use serde::{Deserialize, Serialize};
@@ -39,15 +39,15 @@ impl<'a> FileCache<'a> {
 
 impl<'a> files::Files<'a> for FileCache<'a> {
     type FileId = FileId;
-    type Name = String;
-    type Source = String;
+    type Name = StringRef;
+    type Source = StringRef;
 
-    fn name(&self, file: FileId) -> Option<String> {
-        Some(self.source.file_name(file).as_ref().clone())
+    fn name(&self, file: FileId) -> Option<StringRef> {
+        Some(StringRef::new(self.source.file_name(file).clone()))
     }
 
-    fn source(&self, file: FileId) -> Option<String> {
-        Some(self.source.source_text(file).as_ref().clone())
+    fn source(&self, file: FileId) -> Option<StringRef> {
+        Some(StringRef::new(self.source.source_text(file).clone()))
     }
 
     fn line_index(&self, file: FileId, byte_index: usize) -> Option<usize> {
@@ -92,5 +92,28 @@ impl CurrentFile {
 impl Into<FileId> for CurrentFile {
     fn into(self) -> FileId {
         self.file
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct StringRef {
+    string: Arc<String>,
+}
+
+impl StringRef {
+    pub const fn new(string: Arc<String>) -> Self {
+        Self { string }
+    }
+}
+
+impl fmt::Display for StringRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.string, f)
+    }
+}
+
+impl AsRef<str> for StringRef {
+    fn as_ref(&self) -> &str {
+        self.string.as_ref()
     }
 }

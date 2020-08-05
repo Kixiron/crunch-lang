@@ -1,4 +1,3 @@
-use alloc::borrow::Cow;
 use core::{
     fmt,
     ops::{Deref, DerefMut},
@@ -187,69 +186,6 @@ impl<L, R> Either<L, R> {
         } else {
             default()
         }
-    }
-}
-
-#[derive(Debug)]
-#[allow(missing_copy_implementations)]
-pub struct Timer {
-    #[cfg(not(feature = "no-std"))]
-    name: Cow<'static, str>,
-
-    #[cfg(not(feature = "no-std"))]
-    start: std::time::Instant,
-
-    #[cfg(not(feature = "no-std"))]
-    finished: bool,
-}
-
-impl Timer {
-    #[allow(unused_variables)]
-    pub fn start(name: impl Into<Cow<'static, str>>) -> Self {
-        cfg_if::cfg_if! {
-            if #[cfg(feature = "no-std")] {
-                Self { }
-            } else {
-                let name = name.into();
-                crate::info!("Started {}", name);
-
-                Self {
-                    name,
-                    start: std::time::Instant::now(),
-                    finished: false,
-                }
-            }
-        }
-    }
-
-    pub fn end(mut self) {
-        self.end_inner();
-    }
-
-    fn end_inner(&mut self) {
-        cfg_if::cfg_if! {
-            if #[cfg(not(feature = "no-std"))] {
-                if !self.finished {
-                    let elapsed = self.start.elapsed();
-
-                    crate::info!(
-                        "Finished {} in {}sec, {}ms and {}μs",
-                        self.name,
-                        elapsed.as_secs(),
-                        elapsed.subsec_micros() / 1000,
-                        elapsed.subsec_micros() % 1000,
-                    );
-
-                    self.finished = true;
-                }
-            }
-        }
-    }
-}
-
-impl Drop for Timer {
-    fn drop(&mut self) {
-        self.end_inner();
     }
 }
 

@@ -3,7 +3,7 @@
 extern crate alloc;
 
 use alloc::{sync::Arc, vec, vec::Vec};
-use core::iter::FromIterator;
+use core::{fmt, iter::FromIterator};
 use crunch_shared::{
     config::EmissionKind,
     context::ContextDatabase,
@@ -145,7 +145,7 @@ impl<'db> MirBuilder<'db> {
     }
 
     fn next_block(&mut self) -> BlockId {
-        let id = BlockId(self.blocks.len() as u64);
+        let id = BlockId(self.blocks.last().unwrap().blocks.len() as u64);
 
         self.blocks
             .last_mut()
@@ -153,6 +153,8 @@ impl<'db> MirBuilder<'db> {
             .blocks
             .push(BasicBlock::new(id, None));
         self.current_block = id;
+
+        crunch_shared::trace!("Created a new block: {:?}", id);
 
         id
     }
@@ -176,27 +178,26 @@ impl<'db> MirBuilder<'db> {
     }
 
     fn make_assignment(&mut self, var: impl Into<Option<Var>>, val: Rval) -> VarId {
-        if let &Value::Variable(var) = &val.val {
+        // FIXME: Stop reassigning variables to variables
+        // if let &Value::Variable(var) = &val.val {
+        //     // Replace usages somehow to remove re-assigns
+        // } else {
+        //     // Create var
+        // }
+
+        let var = if let Some(var) = var.into() {
             var
         } else {
-            let var = if let Some(var) = var.into() {
-                if let Some(var) = self.get_variable(var) {
-                    return var.id;
-                } else {
-                    var
-                }
-            } else {
-                Var::MirAuto(self.next_var().0)
-            };
+            Var::MirAuto(self.next_var().0)
+        };
 
-            let ty = val.ty.clone();
-            let id = self.create_variable(var, ty.clone());
+        let ty = val.ty.clone();
+        let id = self.create_variable(var, ty.clone());
 
-            self.current_block_mut()
-                .push(Instruction::Assign(Assign { var: id, val, ty }));
+        self.current_block_mut()
+            .push(Instruction::Assign(Assign { var: id, val, ty }));
 
-            id
-        }
+        id
     }
 
     fn move_to_block(&mut self, block_id: BlockId) {
@@ -504,6 +505,7 @@ impl<'db> ExprVisitor<'db> for MirBuilder<'db> {
         } else {
             let mut cases = Vec::with_capacity(arms.len());
             let mut default = None;
+
             for MatchArm {
                 bind: Binding { pattern, .. },
                 body,
@@ -525,15 +527,25 @@ impl<'db> ExprVisitor<'db> for MirBuilder<'db> {
                             args: Vec::new(),
                         });
                     }
-                    Pattern::Ident(_ident) => {
+                    &Pattern::Ident(ident) => {
+                        let passed_var =
+                            self.create_variable(Var::User(ident), condition_type.clone());
+
+                        self.move_to_block(case_block);
+                        self.current_block_mut().push_argument(
+                            Variable::new(passed_var, condition_type.clone()),
+                            vec![current_block],
+                        );
+
+                        self.move_to_block(current_block);
                         // FIXME: https://github.com/rust-lang/rust/issues/62633
                         let prev_default = default.replace(DefaultSwitchCase {
                             block: case_block,
-                            args: Vec::new(),
+                            args: vec![passed_var],
                         });
                         assert!(
                             prev_default.is_none(),
-                            "Inserted multiple default cases in a switch"
+                            "Inserted multiple default cases in a switch",
                         );
                     }
                     Pattern::ItemPath(..) => todo!(),
@@ -545,7 +557,7 @@ impl<'db> ExprVisitor<'db> for MirBuilder<'db> {
                         });
                         assert!(
                             prev_default.is_none(),
-                            "Inserted multiple default cases in a switch"
+                            "Inserted multiple default cases in a switch",
                         );
                     }
                 }
@@ -819,5 +831,18 @@ impl<'db> TypeVisitor<'db> for MirBuilder<'db> {
                 unreachable!("All types should have been inferred by now");
             }
         }
+    }
+}
+
+impl fmt::Debug for MirBuilder<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MirBuilder")
+            .field("functions", &self.functions)
+            .field("external_functions", &self.external_functions)
+            .field("blocks", &self.blocks)
+            .field("function_names", &self.function_names)
+            .field("func_counter", &self.func_counter)
+            .field("var_counter", &self.var_counter)
+            .finish()
     }
 }

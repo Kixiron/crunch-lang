@@ -16,7 +16,7 @@ use crunch_shared::{
         },
         CallConv,
     },
-    utils::{Either, HashMap, Hasher},
+    utils::{Either, HashMap, Hasher, Upcast},
     visitors::mir::MirVisitor,
 };
 use llvm::{
@@ -51,7 +51,13 @@ impl Drop for BundledModule {
 }
 
 #[salsa::query_group(CodegenDatabaseStorage)]
-pub trait CodegenDatabase: salsa::Database + ContextDatabase + MirDatabase {
+pub trait CodegenDatabase:
+    salsa::Database
+    + ContextDatabase
+    + MirDatabase
+    + Upcast<dyn ContextDatabase>
+    + Upcast<dyn MirDatabase>
+{
     // FIXME: Actual lifetimes when salsa allows
     // FIXME: Better system for LLVM Contexts
     fn generate_module(&self, file: FileId) -> Result<Arc<BundledModule>, Arc<ErrorHandler>>;
@@ -116,12 +122,18 @@ fn generate_module(
     }))
 }
 
+#[derive(Debug)]
+struct BlockContext<'db> {
+    block: LLVMBasicBlock<'db>,
+}
+
 pub struct CodeGenerator<'db> {
     functions: HashMap<FuncId, FunctionValue<'db>>,
-    blocks: HashMap<BlockId, LLVMBasicBlock<'db>>,
+    blocks: HashMap<BlockId, BlockContext<'db>>,
     values: HashMap<VarId, (LLVMValue<'db>, Type)>,
     function_builder: Option<FunctionBuilder<'db>>,
     block_builder: Option<BuildingBlock<'db>>,
+    current_block: Option<BlockId>,
     context: &'db Context,
     module: &'db Module<'db>,
     db: &'db dyn CodegenDatabase,
@@ -140,6 +152,7 @@ impl<'db> CodeGenerator<'db> {
             functions: HashMap::with_hasher(Hasher::default()),
             function_builder: None,
             block_builder: None,
+            current_block: None,
             context,
             db,
         }
@@ -223,10 +236,10 @@ impl<'db> CodeGenerator<'db> {
     }
 
     fn get_block(&self, block: BlockId) -> LLVMBasicBlock<'db> {
-        *self
-            .blocks
+        self.blocks
             .get(&block)
             .expect("attempted to get a basic block that doesn't exist")
+            .block
     }
 
     fn get_var(&self, id: VarId) -> (LLVMValue<'db>, &Type) {
@@ -240,6 +253,74 @@ impl<'db> CodeGenerator<'db> {
 
     fn get_var_value(&self, id: VarId) -> LLVMValue<'db> {
         self.get_var(id).0
+    }
+
+    fn with_function<F, T>(&mut self, function: &MirFunction, with: F) -> LLVMResult<T>
+    where
+        F: FnOnce(&mut Self, FunctionValue<'db>) -> T,
+    {
+        self.block_builder = None;
+        self.values.clear();
+        self.blocks.clear();
+
+        let func = self.get_function(function.id);
+        let builder = self.module.resume_function(func)?;
+        for block in function.blocks.iter() {
+            self.blocks.insert(
+                block.id,
+                BlockContext {
+                    block: builder.append_block()?.basic_block(),
+                },
+            );
+        }
+
+        self.function_builder = Some(builder);
+        let result = with(self, func);
+
+        Ok(result)
+    }
+
+    fn move_to_end(&mut self, block: BlockId) -> LLVMResult<LLVMBasicBlock<'db>> {
+        crunch_shared::trace!("Moving to the end of {:?}", block);
+
+        let basic_block = self.get_block(block);
+        self.current_block = Some(block);
+
+        let building_block = self.get_function_builder().move_to_end(basic_block)?;
+        self.block_builder = Some(building_block);
+
+        Ok(basic_block)
+    }
+
+    fn with_block<F, T>(&mut self, block: BlockId, with: F) -> LLVMResult<T>
+    where
+        F: FnOnce(&mut Self, LLVMBasicBlock<'db>) -> T,
+    {
+        let current_block = self.current_block;
+        crunch_shared::trace!("Moving to basic block {:?} from {:?}", block, current_block);
+
+        let basic_block = self.move_to_end(block)?;
+        let result = with(self, basic_block);
+
+        if let Some(current_block) = current_block {
+            crunch_shared::trace!(
+                "Moving back to basic block {:?} from {:?}",
+                current_block,
+                block,
+            );
+
+            self.move_to_end(current_block)?;
+        } else {
+            crunch_shared::trace!(
+                "There was no successor to {:?}, clearing block context",
+                block,
+            );
+
+            self.current_block = None;
+            self.block_builder = None;
+        }
+
+        Ok(result)
     }
 
     // TODO: Query this shit
@@ -275,6 +356,11 @@ impl<'db> CodeGenerator<'db> {
             }
             (LLVMValue::I64(lhs), LLVMValue::I64(rhs)) => {
                 LLVMValue::I64(block_builder.add(lhs, rhs)?.into())
+            }
+
+            (LLVMValue::Raw(lhs), LLVMValue::Raw(rhs)) => {
+                crunch_shared::warn!("Preforming addition on two unchecked values");
+                LLVMValue::Raw(block_builder.add(lhs, rhs)?.into())
             }
 
             (lhs, rhs) => panic!("Illegal instruction: Add {:?} by {:?}", lhs, rhs),
@@ -313,6 +399,11 @@ impl<'db> CodeGenerator<'db> {
                 LLVMValue::I64(block_builder.sub(lhs, rhs)?.into())
             }
 
+            (LLVMValue::Raw(lhs), LLVMValue::Raw(rhs)) => {
+                crunch_shared::warn!("Preforming subtraction on two unchecked values");
+                LLVMValue::Raw(block_builder.sub(lhs, rhs)?.into())
+            }
+
             (lhs, rhs) => panic!("Illegal instruction: Subtract {:?} by {:?}", lhs, rhs),
         })
     }
@@ -347,6 +438,11 @@ impl<'db> CodeGenerator<'db> {
             }
             (LLVMValue::I64(lhs), LLVMValue::I64(rhs)) => {
                 LLVMValue::I64(block_builder.mul(lhs, rhs)?.into())
+            }
+
+            (LLVMValue::Raw(lhs), LLVMValue::Raw(rhs)) => {
+                crunch_shared::warn!("Preforming multiplication on two unchecked values");
+                LLVMValue::Raw(block_builder.mul(lhs, rhs)?.into())
             }
 
             (lhs, rhs) => panic!("Illegal instruction: Multiply {:?} by {:?}", lhs, rhs),
@@ -386,7 +482,12 @@ impl<'db> CodeGenerator<'db> {
                 LLVMValue::I64(block_builder.sdiv(lhs, rhs)?.into())
             }
 
-            (lhs, rhs) => panic!("Illegal instruction: Divide {:?} by {:?}", lhs, rhs),
+            (LLVMValue::Raw(lhs), LLVMValue::Raw(rhs)) => {
+                crunch_shared::warn!("Preforming signed division on two unchecked values");
+                LLVMValue::Raw(block_builder.sdiv(lhs, rhs)?.into())
+            }
+
+            (lhs, rhs) => panic!("Illegal instruction: Signed divide {:?} by {:?}", lhs, rhs),
         })
     }
 
@@ -411,58 +512,66 @@ impl<'db> CodeGenerator<'db> {
 impl<'db> MirVisitor for CodeGenerator<'db> {
     type FunctionOutput = LLVMResult<FunctionValue<'db>>;
     fn visit_function(&mut self, function: &MirFunction) -> Self::FunctionOutput {
-        self.block_builder = None;
-        self.values.clear();
-        self.blocks.clear();
+        crunch_shared::trace!(
+            "Starting codegen for Function No.{} ('{}') with {} arg{} and {} basic block{}",
+            function.id,
+            function.name.to_string(self.db.context().strings()),
+            function.args.len(),
+            if function.args.len() == 1 { "" } else { "s" },
+            function.blocks.len(),
+            if function.blocks.len() == 1 { "" } else { "s" },
+        );
 
-        let builder = self
-            .module
-            .resume_function(self.get_function(function.id))?;
+        self.with_function(function, |this, llvm_function| {
+            for (Variable { id, ty }, val) in
+                function.args.iter().zip(this.current_function().args()?)
+            {
+                this.values
+                    .insert(*id, (LLVMValue::new(val, &ty), ty.clone()));
+            }
 
-        for block in function.blocks.iter() {
-            self.blocks
-                .insert(block.id, builder.append_block()?.basic_block());
-        }
-        self.function_builder = Some(builder);
+            for block in function.blocks.iter() {
+                this.visit_block(&block)?;
+            }
 
-        for (Variable { id, ty }, val) in function.args.iter().zip(self.current_function().args()?)
-        {
-            self.values
-                .insert(*id, (LLVMValue::new(val, &ty), ty.clone()));
-        }
-
-        for block in function.blocks.iter() {
-            self.visit_block(&block)?;
-        }
-
-        self.function_builder
-            .take()
-            .expect("there should be a finished function after a function finishes")
-            .finish()
+            Ok(llvm_function)
+        })?
     }
 
     type BlockOutput = LLVMResult<LLVMBasicBlock<'db>>;
     fn visit_block(&mut self, block: &BasicBlock) -> Self::BlockOutput {
-        let basic_block = self.get_block(block.id);
-        let building_block = self.get_function_builder().move_to_end(basic_block)?;
-        self.block_builder = Some(building_block);
+        #[rustfmt::skip]
+        crunch_shared::trace!(
+            "Started codegen for {} with {} arg{}, {} instruction{} and {} terminator",
+            block.name(self.db.upcast()),
+            block.args.len(),
+            if block.args.len() == 1 { "" } else { "s" },
+            block.instructions.len(),
+            if block.instructions.len() == 1 { "" } else { "s" },
+            block.terminator.as_ref().map_or("no", |_| "a"),
+        );
 
-        for (_arg, _successors) in block.args.iter() {
-            // https://docs.rs/llvm-sys/100.1.0/llvm_sys/core/fn.LLVMAddIncoming.html
-        }
+        self.with_block(block.id, |this, basic_block| {
+            for (_arg, _blocks) in block.args.iter() {
+                // https://docs.rs/llvm-sys/100.1.0/llvm_sys/core/fn.LLVMAddIncoming.html
+            }
 
-        for instruction in block.iter() {
-            self.visit_instruction(instruction)?;
-        }
+            for instruction in block.iter() {
+                this.visit_instruction(instruction)?;
+            }
 
-        self.visit_terminator(
-            block
-                .terminator
-                .as_ref()
-                .expect("BasicBlock was missing terminator"),
-        )?;
+            if block.terminator.is_none() {
+                crunch_shared::error!("{} has no terminator", block.name(this.db.upcast()));
+            }
+            this.visit_terminator(
+                block
+                    .terminator
+                    .as_ref()
+                    .expect("BasicBlock was missing terminator"),
+            )?;
 
-        Ok(basic_block)
+            Ok(basic_block)
+        })?
     }
 
     type InstructionOutput = LLVMResult<Either<VarId, CallSiteValue<'db>>>;
@@ -493,7 +602,13 @@ impl<'db> MirVisitor for CodeGenerator<'db> {
             &Terminator::Return(ret) => self.ret(ret.map(|ret| self.get_var_value(ret))),
 
             Terminator::Jump(block, _args) => {
-                self.get_block_builder().branch(self.get_block(*block))
+                let jump = self.get_block_builder().branch(self.get_block(*block))?;
+
+                self.with_block(*block, |_this, _basic_block| {
+                    // TODO: Add phi nodes to target block?
+                })?;
+
+                Ok(jump)
             }
 
             Terminator::Branch {

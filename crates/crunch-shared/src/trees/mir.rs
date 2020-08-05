@@ -1,5 +1,5 @@
 use crate::{
-    error,
+    context::ContextDatabase,
     error::{Locatable, MirError, MirResult},
     strings::{StrInterner, StrT},
     trees::{hir::Var as HirVar, CallConv, ItemPath, Ref, Sign},
@@ -250,6 +250,18 @@ impl BasicBlock {
         }
     }
 
+    pub fn name(&self, db: &dyn ContextDatabase) -> String {
+        if let Some(name) = self.name {
+            format!(
+                "BasicBlock No.{} ('{}')",
+                self.id,
+                db.context().strings().resolve(name).as_ref(),
+            )
+        } else {
+            format!("BasicBlock No.{}", self.id)
+        }
+    }
+
     /// Returns `true` if the current block has no instructions
     pub fn is_empty(&self) -> bool {
         self.instructions.is_empty()
@@ -278,7 +290,7 @@ impl BasicBlock {
     pub fn set_terminator(&mut self, terminator: Terminator) {
         if self.terminator.is_some() {
             // TODO: Should this be a fatal error?
-            error!("Overwrote a block's terminator");
+            crate::error!("Overwrote a block's terminator");
         }
 
         self.terminator = Some(terminator);

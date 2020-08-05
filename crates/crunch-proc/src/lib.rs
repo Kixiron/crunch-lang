@@ -94,61 +94,6 @@ fn recursion_guard_inner(mut meta: AttributeArgs, mut input: ItemFn) -> Result<T
 }
 
 #[proc_macro_attribute]
-pub fn instrument(attrs: TokenStream1, input: TokenStream1) -> TokenStream1 {
-    instrument_inner(
-        parse_macro_input!(attrs as _),
-        parse_macro_input!(input as _),
-    )
-    .unwrap_or_else(|err| err.to_compile_error())
-    .into()
-}
-
-fn instrument_inner(mut meta: AttributeArgs, mut input: ItemFn) -> Result<TokenStream> {
-    let function_name = if meta.is_empty() {
-        Ok(input.sig.ident.to_string())
-    } else if meta.len() > 1 {
-        Err(Error::new(
-            Span::join(
-                &meta.first().expect("There's more than 1").span(),
-                meta.last().expect("There's more than 1").span(),
-            )
-            .expect("An attribute can only be from one file"),
-            "Only one item is allowed for declaring the number of frames to add",
-        ))
-    } else {
-        let meta = meta.pop().expect("There is exactly 1");
-
-        match meta {
-            NestedMeta::Lit(Lit::Str(name)) => Ok(name.value()),
-            NestedMeta::Meta(Meta::NameValue(MetaNameValue {
-                path,
-                lit: Lit::Str(name),
-                ..
-            })) if path.is_ident("name") => Ok(name.value()),
-
-            NestedMeta::Meta(Meta::NameValue(MetaNameValue {
-                lit: Lit::Str(..), ..
-            })) => Err(Error::new(meta.span(), "Only string literals are allowed")),
-
-            meta => Err(Error::new(meta.span(), "Unrecognized attribute")),
-        }
-    }?;
-
-    let block = &mut input.block;
-
-    let instrument_name = format_ident!("__instrument_{}", function_name.replace(" ", "_"),);
-    *block = parse_quote!({
-        let #instrument_name = crunch_shared::utils::Timer::start(#function_name);
-
-        #block
-    });
-
-    Ok(quote! {
-        #input
-    })
-}
-
-#[proc_macro_attribute]
 pub fn nanopass(args: TokenStream1, input: TokenStream1) -> TokenStream1 {
     let args = parse_macro_input!(args as AttributeArgs);
     let base_enum = parse_macro_input!(input as ItemEnum);

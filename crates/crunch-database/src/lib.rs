@@ -61,14 +61,26 @@ impl Upcast<dyn ParseDatabase> for CrunchDatabase {
     }
 }
 
+impl Upcast<dyn HirDatabase> for CrunchDatabase {
+    fn upcast(&self) -> &dyn HirDatabase {
+        &*self
+    }
+}
+
 impl Upcast<dyn TypecheckDatabase> for CrunchDatabase {
     fn upcast(&self) -> &dyn TypecheckDatabase {
         &*self
     }
 }
 
-impl Upcast<dyn HirDatabase> for CrunchDatabase {
-    fn upcast(&self) -> &dyn HirDatabase {
+impl Upcast<dyn MirDatabase> for CrunchDatabase {
+    fn upcast(&self) -> &dyn MirDatabase {
+        &*self
+    }
+}
+
+impl Upcast<dyn CodegenDatabase> for CrunchDatabase {
+    fn upcast(&self) -> &dyn CodegenDatabase {
         &*self
     }
 }

@@ -3,7 +3,7 @@ use crunch_database::{CodegenDatabase, ConfigDatabase, CrunchDatabase, SourceDat
 use crunch_shared::{
     allocator::{CrunchcAllocator, CRUNCHC_ALLOCATOR},
     codespan_reporting::term::{termcolor::StandardStream, Config as TermConfig},
-    config::{BuildOptions, CrunchcOpts, EmissionKind},
+    config::{BuildOptions, CrunchcOpts, EmissionKind, TermColor},
     context::{Arenas, Context, ContextDatabase, OwnedArenas},
     files::FileCache,
     utils::DbgWrap,
@@ -34,13 +34,48 @@ fn main() {
         //       via environmental variables
         // TODO: Make different levels of verbosity actually do something
         } else if options.is_verbose() {
-            use simplelog::{ConfigBuilder, LevelFilter, TermLogger, TerminalMode};
+            use env_logger::{fmt::Color, Builder, Env, Target, WriteStyle};
+            use log::{Level, LevelFilter};
 
-            let log_level = LevelFilter::Trace;
-            let config = ConfigBuilder::new().add_filter_ignore_str("salsa").build();
-            let terminal_mode = TerminalMode::Stderr;
+            let env = Env::default().filter("CRUNCHC_LOG");
+            Builder::from_env(env)
+                .filter_level(LevelFilter::Trace)
+                .filter_module("salsa", LevelFilter::Off)
+                .format_timestamp(None)
+                .format(|buf, record| {
+                    let location = match (record.file(), record.line()) {
+                        (Some(file), Some(line)) => format!(" {}:{}", file, line),
+                        (Some(file), None) => format!(" {}", file),
+                        (..) => String::new(),
+                    };
 
-            TermLogger::init(log_level, config, terminal_mode).ok();
+                    let mut level_style = buf.style();
+                    match record.level() {
+                        Level::Error => level_style.set_color(Color::Red),
+                        Level::Warn => level_style.set_color(Color::Yellow),
+                        Level::Info => level_style.set_color(Color::Green),
+                        Level::Debug => level_style.set_color(Color::Blue),
+                        Level::Trace => level_style.set_color(Color::Cyan),
+                    }
+                    .set_bold(true);
+
+                    writeln!(
+                        buf,
+                        "[{level:>5} {module}{location}] {message}",
+                        level = level_style.value(record.level()),
+                        module = record.module_path().unwrap_or_else(|| record.target()),
+                        location = location,
+                        message = record.args(),
+                    )
+                })
+                .write_style(match options.color {
+                    TermColor::Always => WriteStyle::Always,
+                    TermColor::Auto => WriteStyle::Auto,
+                    TermColor::None => WriteStyle::Never,
+                })
+                // TODO: Configure via CLI
+                .target(Target::Stderr)
+                .init();
         }
 
         GLOBAL_ALLOCATOR.record_region("driver", || {

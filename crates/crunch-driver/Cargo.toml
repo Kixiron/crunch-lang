@@ -10,8 +10,10 @@ default-run = "crunchc"
 name = "crunchc"
 path = "src/main.rs"
 
-[dependencies.simplelog]
-version = "0.8.0"
+[dependencies.env_logger]
+version = "0.7.1"
+default-features = false
+features = ["termcolor"]
 
 [dependencies.log]
 version = "0.4.11"
@@ -26,4 +28,4 @@ path = "../crunch-database"
 path = "../crunch-codegen"
 
 [dev-dependencies.goldentests]
-version = "0.3.5"
+version = "0.3.6"
