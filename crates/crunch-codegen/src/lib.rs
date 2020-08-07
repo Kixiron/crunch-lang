@@ -651,35 +651,35 @@ impl<'db> MirVisitor for CodeGenerator<'db> {
 
                 let mut successors = Vec::with_capacity(blocks.len());
                 let mut values = Vec::with_capacity(blocks.len());
-                    for block in blocks.iter().copied() {
-                        fn compile(this: &mut CodeGenerator<'_>, block: BlockId) -> LLVMResult<()> {
-                            if !this.block_has_compiled(block) {
-                                crunch_shared::debug!("BasicBlock No.{} hasn't been compiled yet, compiling now to get incoming args", block.0);
+                for block in blocks.iter().copied() {
+                    fn compile(this: &mut CodeGenerator<'_>, block: BlockId) -> LLVMResult<()> {
+                        if !this.block_has_compiled(block) {
+                            crunch_shared::debug!("BasicBlock No.{} hasn't been compiled yet, compiling now to get incoming args", block.0);
 
-                                let mir_block = this.block_context(block).mir_block.unwrap();
-                                this.visit_block(mir_block)?;
-                            } else {
-                                crunch_shared::debug!("BasicBlock No.{} has been compiled, using existing args", block.0);
-                            }
-
-                            Ok(())
+                            let mir_block = this.block_context(block).mir_block.unwrap();
+                            this.visit_block(mir_block)?;
+                        } else {
+                            crunch_shared::debug!("BasicBlock No.{} has been compiled, using existing args", block.0);
                         }
 
-                        compile(this, block)?;
-
-                        let branches = this.block_context(block)
-                            .branches
-                            .as_ref()
-                            .unwrap()
-                            .get(&block)
-                            .unwrap();
-
-                        let basic_block = this.block_context(block).block;
-                        for value in branches {
-                            values.push(value);
-                            successors.push(basic_block);
-                        }
+                        Ok(())
                     }
+
+                    compile(this, block)?;
+
+                    let branches = this.block_context(block)
+                        .branches
+                        .as_ref()
+                        .unwrap()
+                        .get(&block)
+                        .unwrap();
+
+                    let basic_block = this.block_context(block).block;
+                    for value in branches {
+                        values.push(value);
+                        successors.push(basic_block);
+                    }
+                }
 
                 crunch_shared::trace!(
                     "Adding incoming values to BasicBlock No.{}\nValues: {:?}\nSuccessors: {:?}",
