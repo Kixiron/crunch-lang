@@ -11,8 +11,9 @@ use crunch_shared::{
     salsa,
     trees::{
         mir::{
-            Assign, BasicBlock, BlockId, Constant, FnCall, FuncId, Function as MirFunction,
-            Instruction, Mir, Rval, SwitchCase, Terminator, Type, Value, VarId, Variable,
+            Assign, BasicBlock, BlockId, Constant, ExternFunc, FnCall, FuncId,
+            Function as MirFunction, Instruction, Mir, Rval, Terminator, Type, Value, VarId,
+            Variable,
         },
         CallConv,
     },
@@ -74,8 +75,8 @@ fn generate_module(
     let module =
         crunch_shared::allocator::CRUNCHC_ALLOCATOR.record_region("code generation", || {
             let module = context.module(&*db.file_name(file)).unwrap();
-            CodeGenerator::new(db, &context, &module)
-                .generate(&*mir)
+            CodeGenerator::new(db, &*mir, &context, &module)
+                .generate()
                 .unwrap();
 
             // FIXME: Actual lifetimes when salsa allows + a context database?
@@ -123,25 +124,37 @@ fn generate_module(
 }
 
 #[derive(Debug)]
+struct FunctionContext<'db> {
+    mir_function: Either<&'db MirFunction, &'db ExternFunc>,
+    function: FunctionValue<'db>,
+}
+
+#[derive(Debug)]
 struct BlockContext<'db> {
+    mir_block: Option<&'db BasicBlock>,
     block: LLVMBasicBlock<'db>,
+    branches: Option<HashMap<BlockId, Vec<LLVMValue<'db>>>>,
+    has_been_compiled: bool,
 }
 
 pub struct CodeGenerator<'db> {
-    functions: HashMap<FuncId, FunctionValue<'db>>,
+    functions: HashMap<FuncId, FunctionContext<'db>>,
     blocks: HashMap<BlockId, BlockContext<'db>>,
     values: HashMap<VarId, (LLVMValue<'db>, Type)>,
     function_builder: Option<FunctionBuilder<'db>>,
     block_builder: Option<BuildingBlock<'db>>,
     current_block: Option<BlockId>,
+    current_function: Option<FuncId>,
     context: &'db Context,
     module: &'db Module<'db>,
+    mir: &'db Mir,
     db: &'db dyn CodegenDatabase,
 }
 
 impl<'db> CodeGenerator<'db> {
     pub fn new(
         db: &'db dyn CodegenDatabase,
+        mir: &'db Mir,
         context: &'db Context,
         module: &'db Module<'db>,
     ) -> Self {
@@ -153,13 +166,17 @@ impl<'db> CodeGenerator<'db> {
             function_builder: None,
             block_builder: None,
             current_block: None,
+            current_function: None,
             context,
+            mir,
             db,
         }
     }
 
-    pub fn generate(mut self, mir: &Mir) -> LLVMResult<()> {
-        for function in mir.functions() {
+    pub fn generate(mut self) -> LLVMResult<()> {
+        for function in self.mir.functions() {
+            self.current_function = Some(function.id);
+
             let args: Vec<LLVMType<'db>> = function
                 .args
                 .iter()
@@ -175,10 +192,18 @@ impl<'db> CodeGenerator<'db> {
                 .create_function(function.name.to_string(self.db.context().strings()), sig)?;
 
             function_val.with_linkage(Linkage::External);
-            self.functions.insert(function.id, function_val);
+            self.functions.insert(
+                function.id,
+                FunctionContext {
+                    mir_function: Either::Left(function),
+                    function: function_val,
+                },
+            );
         }
 
-        for function in mir.external_functions() {
+        for function in self.mir.external_functions() {
+            self.current_function = Some(function.id);
+
             let args: Vec<LLVMType<'db>> = function
                 .args
                 .iter()
@@ -199,10 +224,17 @@ impl<'db> CodeGenerator<'db> {
                     CallConv::C => CallingConvention::C,
                     CallConv::Crunch => CallingConvention::X86RegCall,
                 });
-            self.functions.insert(function.id, function_val);
+
+            self.functions.insert(
+                function.id,
+                FunctionContext {
+                    mir_function: Either::Right(function),
+                    function: function_val,
+                },
+            );
         }
 
-        for function in mir.functions() {
+        for function in self.mir.functions() {
             self.visit_function(function)?;
         }
 
@@ -228,11 +260,14 @@ impl<'db> CodeGenerator<'db> {
             .expect("called CodeGenerator::get_builder outside of a basic block")
     }
 
-    fn get_function(&self, function: FuncId) -> FunctionValue<'db> {
-        *self
-            .functions
+    fn get_function_context(&self, function: FuncId) -> &FunctionContext<'db> {
+        self.functions
             .get(&function)
             .expect("attempted to get a function that doesn't exist")
+    }
+
+    fn get_function_value(&self, function: FuncId) -> FunctionValue<'db> {
+        self.get_function_context(function).function
     }
 
     fn get_block(&self, block: BlockId) -> LLVMBasicBlock<'db> {
@@ -245,7 +280,7 @@ impl<'db> CodeGenerator<'db> {
     fn get_var(&self, id: VarId) -> (LLVMValue<'db>, &Type) {
         let (val, ty) = self
             .values
-            .get(&id)
+            .get(&dbg!(id))
             .expect("attempted to get a var that doesn't exist");
 
         (*val, ty)
@@ -253,6 +288,22 @@ impl<'db> CodeGenerator<'db> {
 
     fn get_var_value(&self, id: VarId) -> LLVMValue<'db> {
         self.get_var(id).0
+    }
+
+    fn block_context(&self, block: BlockId) -> &BlockContext<'db> {
+        self.blocks
+            .get(&block)
+            .expect("attempted to get block context for a block that doesn't exist")
+    }
+
+    fn block_context_mut(&mut self, block: BlockId) -> &mut BlockContext<'db> {
+        self.blocks
+            .get_mut(&block)
+            .expect("attempted to get block context for a block that doesn't exist")
+    }
+
+    fn block_has_compiled(&self, block: BlockId) -> bool {
+        self.block_context(block).has_been_compiled
     }
 
     fn with_function<F, T>(&mut self, function: &MirFunction, with: F) -> LLVMResult<T>
@@ -263,13 +314,25 @@ impl<'db> CodeGenerator<'db> {
         self.values.clear();
         self.blocks.clear();
 
-        let func = self.get_function(function.id);
+        let func = self.get_function_value(function.id);
         let builder = self.module.resume_function(func)?;
         for block in function.blocks.iter() {
+            let mir_block = if let Either::Left(block_ctx) = self
+                .get_function_context(self.current_function.unwrap())
+                .mir_function
+            {
+                Some(&block_ctx.blocks[block.id.0 as usize])
+            } else {
+                None
+            };
+
             self.blocks.insert(
                 block.id,
                 BlockContext {
+                    mir_block,
                     block: builder.append_block()?.basic_block(),
+                    branches: None,
+                    has_been_compiled: false,
                 },
             );
         }
@@ -299,8 +362,13 @@ impl<'db> CodeGenerator<'db> {
         let current_block = self.current_block;
         crunch_shared::trace!("Moving to basic block {:?} from {:?}", block, current_block);
 
+        if self.block_has_compiled(block) {
+            crunch_shared::warn!("Recompiling BasicBlock No.{}", block.0);
+        }
+
         let basic_block = self.move_to_end(block)?;
         let result = with(self, basic_block);
+        self.block_context_mut(block).has_been_compiled = true;
 
         if let Some(current_block) = current_block {
             crunch_shared::trace!(
@@ -530,8 +598,17 @@ impl<'db> MirVisitor for CodeGenerator<'db> {
                     .insert(*id, (LLVMValue::new(val, &ty), ty.clone()));
             }
 
-            for block in function.blocks.iter() {
-                this.visit_block(&block)?;
+            // This will cascade and allow all needed blocks to be compiled
+            while let Some(block) = function
+                .blocks
+                .iter()
+                .find(|b| !this.block_has_compiled(b.id))
+            {
+                this.visit_block(block)?;
+            }
+
+            for (id, _block) in this.blocks.iter().filter(|(_, b)| !b.has_been_compiled) {
+                crunch_shared::error!("BasicBlock No.{} was never compiled", id.0);
             }
 
             Ok(llvm_function)
@@ -540,20 +617,95 @@ impl<'db> MirVisitor for CodeGenerator<'db> {
 
     type BlockOutput = LLVMResult<LLVMBasicBlock<'db>>;
     fn visit_block(&mut self, block: &BasicBlock) -> Self::BlockOutput {
-        #[rustfmt::skip]
         crunch_shared::trace!(
             "Started codegen for {} with {} arg{}, {} instruction{} and {} terminator",
             block.name(self.db.upcast()),
             block.args.len(),
             if block.args.len() == 1 { "" } else { "s" },
             block.instructions.len(),
-            if block.instructions.len() == 1 { "" } else { "s" },
+            if block.instructions.len() == 1 {
+                ""
+            } else {
+                "s"
+            },
             block.terminator.as_ref().map_or("no", |_| "a"),
         );
 
         self.with_block(block.id, |this, basic_block| {
-            for (_arg, _blocks) in block.args.iter() {
-                // https://docs.rs/llvm-sys/100.1.0/llvm_sys/core/fn.LLVMAddIncoming.html
+            for (arg, blocks) in block.args.iter() {
+                let phi_ty = this.visit_type(&arg.ty)?;
+
+                crunch_shared::trace!(
+                    "Creating phi node for BasicBlock No.{} of type {:?} (llvm: {})",
+                    block.id.0,
+                    &arg.ty,
+                    phi_ty,
+                );
+                let phi = unsafe {
+                    llvm_sys::core::LLVMBuildPhi(
+                        this.get_block_builder().builder().as_mut_ptr(),
+                        phi_ty.as_mut_ptr(),
+                        EMPTY_CSTR,
+                    )
+                };
+
+                let mut successors = Vec::with_capacity(blocks.len());
+                let mut values = Vec::with_capacity(blocks.len());
+                    for block in blocks.iter().copied() {
+                        fn compile(this: &mut CodeGenerator<'_>, block: BlockId) -> LLVMResult<()> {
+                            if !this.block_has_compiled(block) {
+                                crunch_shared::debug!("BasicBlock No.{} hasn't been compiled yet, compiling now to get incoming args", block.0);
+
+                                let mir_block = this.block_context(block).mir_block.unwrap();
+                                this.visit_block(mir_block)?;
+                            } else {
+                                crunch_shared::debug!("BasicBlock No.{} has been compiled, using existing args", block.0);
+                            }
+
+                            Ok(())
+                        }
+
+                        compile(this, block)?;
+
+                        let branches = this.block_context(block)
+                            .branches
+                            .as_ref()
+                            .unwrap()
+                            .get(&block)
+                            .unwrap();
+
+                        let basic_block = this.block_context(block).block;
+                        for value in branches {
+                            values.push(value);
+                            successors.push(basic_block);
+                        }
+                    }
+
+                crunch_shared::trace!(
+                    "Adding incoming values to BasicBlock No.{}\nValues: {:?}\nSuccessors: {:?}",
+                    block.id.0,
+                    &values,
+                    &successors,
+                );
+
+                assert_eq!(successors.len(), values.len());
+                unsafe {
+                    llvm_sys::core::LLVMAddIncoming(
+                        phi,
+                        values.as_mut_ptr() as *mut _,
+                        successors.as_mut_ptr() as *mut _,
+                        successors.len() as u32,
+                    );
+                }
+
+                let inserted_phi = this.values.insert(
+                    arg.id,
+                    (
+                        unsafe { LLVMValue::Raw(RawLLVMValue::from_raw(phi)?) },
+                        arg.ty.clone(),
+                    ),
+                );
+                assert!(inserted_phi.is_none());
             }
 
             for instruction in block.iter() {
@@ -563,12 +715,16 @@ impl<'db> MirVisitor for CodeGenerator<'db> {
             if block.terminator.is_none() {
                 crunch_shared::error!("{} has no terminator", block.name(this.db.upcast()));
             }
-            this.visit_terminator(
+            let (_, branches) = this.visit_terminator(
                 block
                     .terminator
                     .as_ref()
                     .expect("BasicBlock was missing terminator"),
             )?;
+
+            let block_ctx = this.blocks.get_mut(&block.id).unwrap();
+            assert!(block_ctx.branches.is_none());
+            block_ctx.branches = Some(branches);
 
             Ok(basic_block)
         })?
@@ -588,63 +744,92 @@ impl<'db> MirVisitor for CodeGenerator<'db> {
                 let args = args.iter().map(|arg| self.get_var_value(*arg).as_value());
                 let call = self
                     .get_block_builder()
-                    .call(self.get_function(*function), args)?;
+                    .call(self.get_function_value(*function), args)?;
 
                 Ok(Either::Right(call))
             }
         }
     }
 
-    type TerminatorOutput = LLVMResult<InstructionValue<'db>>;
+    type TerminatorOutput =
+        LLVMResult<(InstructionValue<'db>, HashMap<BlockId, Vec<LLVMValue<'db>>>)>;
     // FIXME: Figure out BB arg -> Phi node mapping
     fn visit_terminator(&mut self, terminator: &Terminator) -> Self::TerminatorOutput {
         match terminator {
-            &Terminator::Return(ret) => self.ret(ret.map(|ret| self.get_var_value(ret))),
+            &Terminator::Return(ret) => {
+                let ret = self.ret(ret.map(|ret| self.get_var_value(ret)))?;
 
-            Terminator::Jump(block, _args) => {
-                let jump = self.get_block_builder().branch(self.get_block(*block))?;
+                Ok((ret, HashMap::with_hasher(Hasher::default())))
+            }
 
-                self.with_block(*block, |_this, _basic_block| {
-                    // TODO: Add phi nodes to target block?
-                })?;
+            &Terminator::Jump(block, ref args) => {
+                let jump = self.get_block_builder().branch(self.get_block(block))?;
 
-                Ok(jump)
+                let args = args.iter().map(|arg| self.get_var_value(*arg)).collect();
+                let mut branches = HashMap::with_capacity_and_hasher(1, Hasher::default());
+                branches.insert(block, args);
+
+                Ok((jump, branches))
             }
 
             Terminator::Branch {
                 condition,
                 truthy,
                 falsy,
-            } => self.get_block_builder().conditional_branch(
-                self.get_var_value(*condition).as_value(),
-                self.get_block(*truthy),
-                self.get_block(*falsy),
-            ),
+            } => {
+                let branch = self.get_block_builder().conditional_branch(
+                    self.get_var_value(*condition).as_value(),
+                    self.get_block(*truthy),
+                    self.get_block(*falsy),
+                )?;
+
+                crunch_shared::warn!("Allow branches to pass BB args");
+                Ok((branch, HashMap::with_hasher(Hasher::default())))
+            }
 
             Terminator::Switch {
                 condition,
                 cases,
                 default,
             } => {
-                let jumps = cases.iter().map(
-                    |SwitchCase {
-                         condition, block, ..
-                     }| {
-                        (
-                            self.get_var_value(*condition).as_value(),
-                            self.get_block(*block),
-                        )
-                    },
-                );
+                let jumps = cases.iter().map(|case| {
+                    (
+                        self.get_var_value(case.condition).as_value(),
+                        self.get_block(case.block),
+                    )
+                });
 
-                self.get_block_builder().switch(
+                let switch = self.get_block_builder().switch(
                     self.get_var_value(*condition).as_value(),
                     self.get_block(default.block),
                     jumps,
-                )
+                )?;
+
+                let mut branches =
+                    HashMap::with_capacity_and_hasher(1 + cases.len(), Hasher::default());
+                branches.insert(
+                    default.block,
+                    default
+                        .args
+                        .iter()
+                        .map(|a| self.get_var_value(*a))
+                        .collect(),
+                );
+
+                for case in cases.iter() {
+                    branches.insert(
+                        case.block,
+                        case.args.iter().map(|a| self.get_var_value(*a)).collect(),
+                    );
+                }
+
+                Ok((switch, branches))
             }
 
-            Terminator::Unreachable => self.get_block_builder().unreachable(),
+            Terminator::Unreachable => Ok((
+                self.get_block_builder().unreachable()?,
+                HashMap::with_hasher(Hasher::default()),
+            )),
         }
     }
 
@@ -663,7 +848,7 @@ impl<'db> MirVisitor for CodeGenerator<'db> {
                 let args = args.iter().map(|arg| self.get_var_value(*arg).as_value());
                 let call = self
                     .get_block_builder()
-                    .call(self.get_function(*function), args)?;
+                    .call(self.get_function_value(*function), args)?;
 
                 Ok(LLVMValue::Raw(call.as_value()))
             }

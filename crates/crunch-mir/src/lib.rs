@@ -25,14 +25,22 @@ use crunch_shared::{
         },
         ItemPath, Ref,
     },
-    utils::{HashMap, Hasher},
+    utils::{HashMap, Hasher, Upcast},
     visitors::hir::{ExprVisitor, ItemVisitor, StmtVisitor, TypeVisitor},
 };
 use crunch_typecheck::TypecheckDatabase;
 use ladder::HirDatabase;
 
 #[salsa::query_group(MirDatabaseStorage)]
-pub trait MirDatabase: salsa::Database + ContextDatabase + HirDatabase + TypecheckDatabase {
+pub trait MirDatabase:
+    salsa::Database
+    + ContextDatabase
+    + HirDatabase
+    + TypecheckDatabase
+    + Upcast<dyn ContextDatabase>
+    + Upcast<dyn HirDatabase>
+    + Upcast<dyn TypecheckDatabase>
+{
     // FIXME: Actual lifetimes when salsa allows
     fn lower_mir(&self, file: FileId) -> Result<Arc<Mir>, Arc<ErrorHandler>>;
 }
@@ -527,11 +535,13 @@ impl<'db> ExprVisitor<'db> for MirBuilder<'db> {
                             args: Vec::new(),
                         });
                     }
+
                     &Pattern::Ident(ident) => {
                         let passed_var =
                             self.create_variable(Var::User(ident), condition_type.clone());
 
                         self.move_to_block(case_block);
+                        //let arg_id = self.next_var();
                         self.current_block_mut().push_argument(
                             Variable::new(passed_var, condition_type.clone()),
                             vec![current_block],
@@ -541,14 +551,14 @@ impl<'db> ExprVisitor<'db> for MirBuilder<'db> {
                         // FIXME: https://github.com/rust-lang/rust/issues/62633
                         let prev_default = default.replace(DefaultSwitchCase {
                             block: case_block,
-                            args: vec![passed_var],
+                            args: vec![condition],
                         });
                         assert!(
                             prev_default.is_none(),
                             "Inserted multiple default cases in a switch",
                         );
                     }
-                    Pattern::ItemPath(..) => todo!(),
+
                     Pattern::Wildcard => {
                         // FIXME: https://github.com/rust-lang/rust/issues/62633
                         let prev_default = default.replace(DefaultSwitchCase {
@@ -560,6 +570,8 @@ impl<'db> ExprVisitor<'db> for MirBuilder<'db> {
                             "Inserted multiple default cases in a switch",
                         );
                     }
+
+                    Pattern::ItemPath(..) => todo!(),
                 }
 
                 self.move_to_block(case_block);

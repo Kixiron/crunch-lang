@@ -26,11 +26,18 @@ use crunch_shared::{
         },
         CallConv, ItemPath, Sided,
     },
+    utils::Upcast,
     visitors::ast::{ExprVisitor, ItemVisitor, StmtVisitor, TypeVisitor},
 };
 
 #[salsa::query_group(HirDatabaseStorage)]
-pub trait HirDatabase: salsa::Database + ContextDatabase + ParseDatabase {
+pub trait HirDatabase:
+    salsa::Database
+    + ContextDatabase
+    + ParseDatabase
+    + Upcast<dyn ContextDatabase>
+    + Upcast<dyn ParseDatabase>
+{
     // FIXME: Actual lifetimes when salsa allows
     fn lower_hir(
         &self,
