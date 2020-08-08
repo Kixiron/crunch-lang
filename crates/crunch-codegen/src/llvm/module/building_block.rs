@@ -46,6 +46,15 @@ impl<'ctx> BuildingBlock<'ctx> {
         self.block
     }
 
+    pub fn insert_instruction<V: Into<Value<'ctx>>>(&self, val: V) {
+        unsafe {
+            llvm_sys::core::LLVMInsertIntoBuilder(
+                self.builder.as_mut_ptr(),
+                val.into().as_mut_ptr(),
+            );
+        }
+    }
+
     /// Add two integers together, returning the result
     ///
     /// Note: If both provided arguments are constants, then the `*ConstAdd` functions will be used

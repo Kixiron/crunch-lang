@@ -1,11 +1,11 @@
 :: args: run --quiet --color=none
 :: expected exit status: 55
 
-fn main() -> i64
+fn main() -> i32
     return fibonacci(10)
 end
 
-fn fibonacci(n: i64) -> i64
+fn fibonacci(n: i32) -> i32
     return match n
         0 =>
             0

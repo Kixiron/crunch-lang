@@ -192,19 +192,9 @@ fn run<'ctx>(
 
     // TODO: User input for all of this
     // FIXME: This is really funky with initializing and may not even work correctly
-    const TARGET_TRIPLE: &str = "x86_64-pc-windows-msvc";
-    let llvm_config = TargetConf::all();
-    Target::init_native(llvm_config).map_err(|err| {
-        ExitStatus::message(format!("failed to initialize native target: {:?}", err))
-    })?;
 
-    let target = Target::from_triple(TARGET_TRIPLE)
-        .map_err(|err| ExitStatus::message(format!("failed to create LLVM target: {:?}", err)))?;
-
-    let target_machine = TargetMachine::new(&target, TARGET_TRIPLE, None, None, None, None, None)
-        .map_err(|err| {
-        ExitStatus::message(format!("failed to create LLVM target machine: {:?}", err))
-    })?;
+    Target::init_native(TargetConf::all()).unwrap();
+    let target_machine = TargetMachine::default();
 
     // Emit to an object file so we can link it
     let object_file = out_file.with_extension("o");

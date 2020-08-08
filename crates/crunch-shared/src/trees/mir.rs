@@ -232,7 +232,8 @@ pub struct BasicBlock {
     /// The name of the current block, if there is one
     pub name: Option<StrT>,
     /// The arguments passed to the current block when called
-    pub args: Vec<(Variable, Vec<BlockId>)>,
+    // FIXME: HashMap & Structs please
+    pub args: Vec<(Variable, Vec<(Variable, BlockId)>)>,
     /// The body of the block
     pub instructions: Vec<Instruction>,
     /// The block's terminator
@@ -281,9 +282,21 @@ impl BasicBlock {
         self.instructions.push(inst);
     }
 
-    pub fn push_argument(&mut self, arg: Variable, successors: Vec<BlockId>) {
+    // FIXME: This is uber hacky
+    pub fn make_argument(&mut self, arg: Variable, capacity: usize) {
+        assert!(!self.args.iter().any(|(a, _)| a.id == arg.id));
+
+        self.args.push((arg, Vec::with_capacity(capacity)));
+    }
+
+    pub fn push_argument(&mut self, arg: VarId, successor_var: Variable, successor_block: BlockId) {
         // TODO: Make sure the successors aren't duplicated
-        self.args.push((arg, successors));
+        if let Some((_, successors)) = self.args.iter_mut().find(|(v, _)| v.id == arg) {
+            successors.push((successor_var, successor_block));
+        } else {
+            // TODO: Result or at least a good error
+            panic!();
+        }
     }
 
     /// Sets the block's terminator
@@ -339,19 +352,34 @@ impl BasicBlock {
         D: DocAllocator<'a>,
         D::Doc: Clone,
     {
-        alloc
-            .nil()
-            .append(
-                self.name
-                    .map(|n| {
-                        alloc
-                            .text("@named(\"")
-                            .append(alloc.text(interner.resolve(n).as_ref().to_owned()))
-                            .append(alloc.text("\")"))
-                            .append(alloc.hardline())
-                    })
-                    .unwrap_or_else(|| alloc.nil()),
-            )
+        self.name
+            .map(|n| {
+                alloc
+                    .text(":: Name: \"")
+                    .append(alloc.text(interner.resolve(n).as_ref().to_owned()))
+                    .append(alloc.text("\""))
+                    .append(alloc.hardline())
+            })
+            .unwrap_or_else(|| alloc.nil())
+            .append(alloc.intersperse(
+                self.args.iter().map(|(var, blocks)| {
+                    alloc
+                        .text(":: ")
+                        .append(var.id.to_doc(alloc, interner))
+                        .append(alloc.text(" φ "))
+                        .append(alloc.intersperse(
+                            blocks.iter().map(|(var, block)| {
+                                var.id
+                                    .to_doc(alloc, interner)
+                                    .append(alloc.text(" @ "))
+                                    .append(block.to_doc(alloc, interner))
+                            }),
+                            alloc.text(",").append(alloc.space()),
+                        ))
+                        .append(alloc.hardline())
+                }),
+                alloc.nil(),
+            ))
             .append(alloc.text("block"))
             .append(alloc.space())
             .append(self.id.to_doc(alloc, interner))

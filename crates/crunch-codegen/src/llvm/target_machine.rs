@@ -5,13 +5,17 @@ use crate::llvm::{
     Error, ErrorKind, Result,
 };
 use llvm_sys::{
-    target::{LLVMCreateTargetData, LLVMDisposeTargetData, LLVMOpaqueTargetData},
+    target::{
+        LLVMCreateTargetData, LLVMDisposeTargetData, LLVMOpaqueTargetData,
+        LLVM_InitializeNativeTarget,
+    },
     target_machine::{
         LLVMCodeGenFileType, LLVMCodeGenOptLevel, LLVMCodeModel, LLVMCreateTargetMachine,
-        LLVMDisposeTargetMachine, LLVMGetHostCPUFeatures, LLVMGetHostCPUName,
-        LLVMGetTargetFromTriple, LLVMGetTargetMachineCPU, LLVMGetTargetMachineFeatureString,
-        LLVMGetTargetMachineTarget, LLVMGetTargetMachineTriple, LLVMOpaqueTargetMachine,
-        LLVMRelocMode, LLVMTarget, LLVMTargetMachineEmitToFile,
+        LLVMDisposeTargetMachine, LLVMGetDefaultTargetTriple, LLVMGetFirstTarget,
+        LLVMGetHostCPUFeatures, LLVMGetHostCPUName, LLVMGetTargetFromTriple,
+        LLVMGetTargetMachineCPU, LLVMGetTargetMachineFeatureString, LLVMGetTargetMachineTarget,
+        LLVMGetTargetMachineTriple, LLVMOpaqueTargetMachine, LLVMRelocMode, LLVMTarget,
+        LLVMTargetMachineEmitToFile,
     },
 };
 use std::{
@@ -58,7 +62,7 @@ impl Target {
     pub fn init_native(conf: TargetConf) -> Result<()> {
         use llvm_sys::target::{
             LLVM_InitializeNativeAsmParser, LLVM_InitializeNativeAsmPrinter,
-            LLVM_InitializeNativeDisassembler, LLVM_InitializeNativeTarget,
+            LLVM_InitializeNativeDisassembler,
         };
 
         let err = || {
@@ -177,6 +181,7 @@ impl Drop for TargetData {
     }
 }
 
+#[derive(Debug)]
 pub struct TargetMachine {
     machine: NonNull<LLVMOpaqueTargetMachine>,
 }
@@ -312,6 +317,31 @@ impl TargetMachine {
     #[inline]
     pub(crate) const fn as_mut_ptr(&self) -> *mut LLVMOpaqueTargetMachine {
         self.machine.as_ptr()
+    }
+}
+
+impl Default for TargetMachine {
+    fn default() -> Self {
+        unsafe {
+            let triple = LLVMGetDefaultTargetTriple();
+
+            LLVM_InitializeNativeTarget();
+            let target = LLVMGetFirstTarget();
+
+            let cpu = "x86-64\0".as_ptr() as *const i8;
+            let feature = "\0".as_ptr() as *const i8;
+
+            let opt_level = LLVMCodeGenOptLevel::LLVMCodeGenLevelNone;
+            let reloc_mode = LLVMRelocMode::LLVMRelocDefault;
+            let code_model = LLVMCodeModel::LLVMCodeModelDefault;
+
+            let machine = NonNull::new(LLVMCreateTargetMachine(
+                target, triple, cpu, feature, opt_level, reloc_mode, code_model,
+            ))
+            .unwrap();
+
+            Self { machine }
+        }
     }
 }
 

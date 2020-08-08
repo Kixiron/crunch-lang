@@ -100,7 +100,8 @@ impl<'ctx> Value<'ctx> {
     }
 
     pub fn is_const(self) -> bool {
-        unsafe { LLVMIsConstant(self.as_mut_ptr()) == 0 }
+        // Piece of shit inconsistent trashbin
+        unsafe { LLVMIsConstant(self.as_mut_ptr()) == 1 }
     }
 }
 

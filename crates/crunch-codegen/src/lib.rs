@@ -83,9 +83,6 @@ fn generate_module(
             unsafe { std::mem::transmute::<Module<'_>, Module<'static>>(module) }
         });
 
-    // Verify the generated module
-    CRUNCHC_ALLOCATOR.record_region("module verification", || module.verify().unwrap());
-
     if config.emit.contains(&EmissionKind::LlvmIr) {
         let path = db
             .config()
@@ -101,6 +98,9 @@ fn generate_module(
         crunch_shared::warn!("Using an inefficient method of printing LLVM IR to stdout");
         println!("{:?}", module);
     }
+
+    // Verify the generated module
+    CRUNCHC_ALLOCATOR.record_region("module verification", || module.verify().unwrap());
 
     if config.emit.contains(&EmissionKind::LlvmBc) {
         let path = db
@@ -133,7 +133,6 @@ struct FunctionContext<'db> {
 struct BlockContext<'db> {
     mir_block: Option<&'db BasicBlock>,
     block: LLVMBasicBlock<'db>,
-    branches: Option<HashMap<BlockId, Vec<LLVMValue<'db>>>>,
     has_been_compiled: bool,
 }
 
@@ -280,7 +279,7 @@ impl<'db> CodeGenerator<'db> {
     fn get_var(&self, id: VarId) -> (LLVMValue<'db>, &Type) {
         let (val, ty) = self
             .values
-            .get(&dbg!(id))
+            .get(&id)
             .expect("attempted to get a var that doesn't exist");
 
         (*val, ty)
@@ -331,7 +330,6 @@ impl<'db> CodeGenerator<'db> {
                 BlockContext {
                     mir_block,
                     block: builder.append_block()?.basic_block(),
-                    branches: None,
                     has_been_compiled: false,
                 },
             );
@@ -370,9 +368,11 @@ impl<'db> CodeGenerator<'db> {
         let result = with(self, basic_block);
         self.block_context_mut(block).has_been_compiled = true;
 
+        // crunch_shared::trace!("BasicBlock No.{} was compiled:\n{:?}", block, basic_block);
+
         if let Some(current_block) = current_block {
             crunch_shared::trace!(
-                "Moving back to basic block {:?} from {:?}",
+                "Moving back to BasicBlock No.{} from BasicBlock No.{}",
                 current_block,
                 block,
             );
@@ -380,7 +380,7 @@ impl<'db> CodeGenerator<'db> {
             self.move_to_end(current_block)?;
         } else {
             crunch_shared::trace!(
-                "There was no successor to {:?}, clearing block context",
+                "There was no successor to BasicBlock No.{}, clearing block context",
                 block,
             );
 
@@ -396,8 +396,7 @@ impl<'db> CodeGenerator<'db> {
 
     fn add(&self, lhs: LLVMValue<'db>, rhs: LLVMValue<'db>) -> LLVMResult<LLVMValue<'db>> {
         let block_builder = self.get_block_builder();
-
-        Ok(match (lhs, rhs) {
+        let val = match (lhs, rhs) {
             (LLVMValue::U8(lhs), LLVMValue::U8(rhs)) => {
                 LLVMValue::U8(block_builder.add(lhs, rhs)?.into())
             }
@@ -432,7 +431,9 @@ impl<'db> CodeGenerator<'db> {
             }
 
             (lhs, rhs) => panic!("Illegal instruction: Add {:?} by {:?}", lhs, rhs),
-        })
+        };
+
+        Ok(val)
     }
 
     fn sub(&self, lhs: LLVMValue<'db>, rhs: LLVMValue<'db>) -> LLVMResult<LLVMValue<'db>> {
@@ -651,49 +652,28 @@ impl<'db> MirVisitor for CodeGenerator<'db> {
 
                 let mut successors = Vec::with_capacity(blocks.len());
                 let mut values = Vec::with_capacity(blocks.len());
-                for block in blocks.iter().copied() {
-                    fn compile(this: &mut CodeGenerator<'_>, block: BlockId) -> LLVMResult<()> {
-                        if !this.block_has_compiled(block) {
-                            crunch_shared::debug!("BasicBlock No.{} hasn't been compiled yet, compiling now to get incoming args", block.0);
+                for (var, successor) in blocks.iter().map(|(v, b)| (v, *b)) {
+                    if !this.block_has_compiled(successor) {
+                        crunch_shared::debug!("BasicBlock No.{} hasn't been compiled yet, compiling now to get incoming args", successor);
 
-                            let mir_block = this.block_context(block).mir_block.unwrap();
-                            this.visit_block(mir_block)?;
-                        } else {
-                            crunch_shared::debug!("BasicBlock No.{} has been compiled, using existing args", block.0);
-                        }
-
-                        Ok(())
+                        let mir_block = this.block_context(successor).mir_block.unwrap();
+                        this.visit_block(mir_block)?;
+                    } else {
+                        crunch_shared::debug!("BasicBlock No.{} has been compiled, using existing args", successor);
                     }
 
-                    compile(this, block)?;
-
-                    let branches = this.block_context(block)
-                        .branches
-                        .as_ref()
-                        .unwrap()
-                        .get(&block)
-                        .unwrap();
-
-                    let basic_block = this.block_context(block).block;
-                    for value in branches {
-                        values.push(value);
-                        successors.push(basic_block);
-                    }
+                    let (value, successor) = (this.get_var_value(var.id), this.get_block(successor));
+                    values.push(value.as_ptr());
+                    successors.push(successor.as_mut_ptr());
                 }
 
-                crunch_shared::trace!(
-                    "Adding incoming values to BasicBlock No.{}\nValues: {:?}\nSuccessors: {:?}",
-                    block.id.0,
-                    &values,
-                    &successors,
-                );
-
+                crunch_shared::trace!("Adding {} successors & {} values to BasicBlock No.{}", successors.len(), values.len(), block.id);
                 assert_eq!(successors.len(), values.len());
                 unsafe {
                     llvm_sys::core::LLVMAddIncoming(
                         phi,
-                        values.as_mut_ptr() as *mut _,
-                        successors.as_mut_ptr() as *mut _,
+                        values.as_mut_ptr(),
+                        successors.as_mut_ptr(),
                         successors.len() as u32,
                     );
                 }
@@ -715,16 +695,12 @@ impl<'db> MirVisitor for CodeGenerator<'db> {
             if block.terminator.is_none() {
                 crunch_shared::error!("{} has no terminator", block.name(this.db.upcast()));
             }
-            let (_, branches) = this.visit_terminator(
+            this.visit_terminator(
                 block
                     .terminator
                     .as_ref()
                     .expect("BasicBlock was missing terminator"),
             )?;
-
-            let block_ctx = this.blocks.get_mut(&block.id).unwrap();
-            assert!(block_ctx.branches.is_none());
-            block_ctx.branches = Some(branches);
 
             Ok(basic_block)
         })?
@@ -751,41 +727,25 @@ impl<'db> MirVisitor for CodeGenerator<'db> {
         }
     }
 
-    type TerminatorOutput =
-        LLVMResult<(InstructionValue<'db>, HashMap<BlockId, Vec<LLVMValue<'db>>>)>;
+    type TerminatorOutput = LLVMResult<InstructionValue<'db>>;
     // FIXME: Figure out BB arg -> Phi node mapping
     fn visit_terminator(&mut self, terminator: &Terminator) -> Self::TerminatorOutput {
         match terminator {
-            &Terminator::Return(ret) => {
-                let ret = self.ret(ret.map(|ret| self.get_var_value(ret)))?;
+            &Terminator::Return(ret) => self.ret(ret.map(|ret| self.get_var_value(ret))),
 
-                Ok((ret, HashMap::with_hasher(Hasher::default())))
-            }
-
-            &Terminator::Jump(block, ref args) => {
-                let jump = self.get_block_builder().branch(self.get_block(block))?;
-
-                let args = args.iter().map(|arg| self.get_var_value(*arg)).collect();
-                let mut branches = HashMap::with_capacity_and_hasher(1, Hasher::default());
-                branches.insert(block, args);
-
-                Ok((jump, branches))
+            &Terminator::Jump(block, ref _args) => {
+                self.get_block_builder().branch(self.get_block(block))
             }
 
             Terminator::Branch {
                 condition,
                 truthy,
                 falsy,
-            } => {
-                let branch = self.get_block_builder().conditional_branch(
-                    self.get_var_value(*condition).as_value(),
-                    self.get_block(*truthy),
-                    self.get_block(*falsy),
-                )?;
-
-                crunch_shared::warn!("Allow branches to pass BB args");
-                Ok((branch, HashMap::with_hasher(Hasher::default())))
-            }
+            } => self.get_block_builder().conditional_branch(
+                self.get_var_value(*condition).as_value(),
+                self.get_block(*truthy),
+                self.get_block(*falsy),
+            ),
 
             Terminator::Switch {
                 condition,
@@ -799,37 +759,14 @@ impl<'db> MirVisitor for CodeGenerator<'db> {
                     )
                 });
 
-                let switch = self.get_block_builder().switch(
+                self.get_block_builder().switch(
                     self.get_var_value(*condition).as_value(),
                     self.get_block(default.block),
                     jumps,
-                )?;
-
-                let mut branches =
-                    HashMap::with_capacity_and_hasher(1 + cases.len(), Hasher::default());
-                branches.insert(
-                    default.block,
-                    default
-                        .args
-                        .iter()
-                        .map(|a| self.get_var_value(*a))
-                        .collect(),
-                );
-
-                for case in cases.iter() {
-                    branches.insert(
-                        case.block,
-                        case.args.iter().map(|a| self.get_var_value(*a)).collect(),
-                    );
-                }
-
-                Ok((switch, branches))
+                )
             }
 
-            Terminator::Unreachable => Ok((
-                self.get_block_builder().unreachable()?,
-                HashMap::with_hasher(Hasher::default()),
-            )),
+            Terminator::Unreachable => self.get_block_builder().unreachable(),
         }
     }
 

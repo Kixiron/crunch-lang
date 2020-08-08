@@ -191,15 +191,15 @@ impl Debug for FunctionBuilder<'_> {
     }
 }
 
-impl<'ctx> Drop for FunctionBuilder<'ctx> {
-    fn drop(&mut self) {
-        // Don't attempt to finish if the thread is panicking, since the code is likely invalid at
-        // that stage and will only incur a double panic
-        if !self.finished && !std::thread::panicking() {
-            self.finish_inner().expect("Failed to build function");
-        }
-    }
-}
+// impl<'ctx> Drop for FunctionBuilder<'ctx> {
+//     fn drop(&mut self) {
+//         // Don't attempt to finish if the thread is panicking, since the code is likely invalid at
+//         // that stage and will only incur a double panic
+//         if !self.finished && !std::thread::panicking() {
+//             self.finish_inner().expect("Failed to build function");
+//         }
+//     }
+// }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FunctionArg<'ctx> {

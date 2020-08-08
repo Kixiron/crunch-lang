@@ -454,20 +454,17 @@ impl<'db> ExprVisitor<'db> for MirBuilder<'db> {
         let current_block = self.current_block;
         let end_block = self.next_block();
 
-        let return_var = {
+        let (return_var, return_arg_id) = {
             let return_type = self.visit_type(ty);
 
             if return_type.is_unit() {
-                None
+                (None, None)
             } else {
                 let id = self.next_var();
                 let block = self.get_block_mut(end_block).unwrap();
-                block.push_argument(
-                    Variable::new(id, return_type.clone()),
-                    Vec::with_capacity(arms.len()),
-                );
+                block.make_argument(Variable::new(id, return_type.clone()), arms.len());
 
-                Some(Rval::new(Value::Variable(id), return_type))
+                (Some(Rval::new(Value::Variable(id), return_type)), Some(id))
             }
         };
 
@@ -536,15 +533,17 @@ impl<'db> ExprVisitor<'db> for MirBuilder<'db> {
                         });
                     }
 
-                    &Pattern::Ident(ident) => {
-                        let passed_var =
-                            self.create_variable(Var::User(ident), condition_type.clone());
+                    &Pattern::Ident(_ident) => {
+                        let case_arg = self.next_var();
+                        self.get_block_mut(case_block)
+                            .unwrap()
+                            .make_argument(Variable::new(case_arg, condition_type.clone()), 1);
 
                         self.move_to_block(case_block);
-                        //let arg_id = self.next_var();
                         self.current_block_mut().push_argument(
-                            Variable::new(passed_var, condition_type.clone()),
-                            vec![current_block],
+                            case_arg,
+                            Variable::new(condition, condition_type.clone()),
+                            current_block,
                         );
 
                         self.move_to_block(current_block);
@@ -583,13 +582,20 @@ impl<'db> ExprVisitor<'db> for MirBuilder<'db> {
                         .transpose()
                 })?;
 
-                if return_var.is_some() {
+                if let Some(ret_arg) = return_arg_id {
+                    assert!(return_var.is_some());
+
                     let passed_val = passed_val.expect("Expected to pass a value to a child block");
                     let passed_val = self.make_assignment(None, passed_val);
 
                     self.get_block_mut(case_block)
                         .unwrap()
-                        .set_terminator(Terminator::Jump(end_block, vec![passed_val]))
+                        .set_terminator(Terminator::Jump(end_block, vec![passed_val]));
+                    self.get_block_mut(end_block).unwrap().push_argument(
+                        ret_arg,
+                        Variable::new(passed_val, condition_type.clone()),
+                        case_block,
+                    );
                 }
             }
 
