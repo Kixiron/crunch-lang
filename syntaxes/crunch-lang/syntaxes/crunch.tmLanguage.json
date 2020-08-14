@@ -196,7 +196,7 @@
         },
         "support": {
             "patterns": [{
-                    "name": "support.type.primitive.rust",
+                    "name": "support.type.primitive.crunch",
                     "match": "\\b(absurd|bool|unit|str|rune|[ui]reg|[ui]ptr|[iuf][0-9][0-9_]*)\\b"
                 },
                 {

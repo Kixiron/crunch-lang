@@ -533,17 +533,11 @@ impl<'db> ExprVisitor<'db> for MirBuilder<'db> {
                         });
                     }
 
-                    &Pattern::Ident(_ident) => {
-                        let case_arg = self.next_var();
-                        self.get_block_mut(case_block)
-                            .unwrap()
-                            .make_argument(Variable::new(case_arg, condition_type.clone()), 1);
-
+                    &Pattern::Ident(ident) => {
                         self.move_to_block(case_block);
-                        self.current_block_mut().push_argument(
-                            case_arg,
-                            Variable::new(condition, condition_type.clone()),
-                            current_block,
+                        self.make_assignment(
+                            Var::User(ident),
+                            Rval::new(Value::Variable(condition), condition_type.clone()),
                         );
 
                         self.move_to_block(current_block);

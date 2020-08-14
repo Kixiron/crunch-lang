@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Chase Wilson <contact@chasewilson.dev>"]
 license = "Zlib"
 edition = "2018"
+build = "build.rs"
 
 [dependencies.crunch-shared]
 path = "../crunch-shared"

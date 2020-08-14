@@ -1,0 +1,15 @@
+start;
+insert Expr(0, Lit { Integer { 10 } }, Unknown);
+insert Expr(1, Assign { 0, 0 }, Unknown);
+insert Expr(2, Variable { 0 }, Unknown);
+
+insert InputItems(ItemFunc { Function {
+    [0],
+    FileLocal,
+    [FuncArg { 0, Unknown }],
+    [StmtExpr { 0 }, StmtExpr { 2 }],
+    Unknown
+}});
+commit;
+
+dump;
