@@ -2,7 +2,7 @@
 name = "crunch-parser"
 version = "0.1.0"
 authors = ["Chase Wilson <contact@chasewilson.dev>"]
-license = "Zlib"
+license = "Apache-2.0 OR MIT"
 edition = "2018"
 
 # Lexing

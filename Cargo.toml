@@ -1,6 +1,6 @@
 [workspace]
 members = ["crates/*"]
-exclude = ["crates/crunch-fuzzing"]
+exclude = ["crates/crunch-fuzzing", "crates/repl"]
 
 [profile.release]
 debug = false
