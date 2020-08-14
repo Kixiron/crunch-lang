@@ -1,0 +1,177 @@
+typedef Var = u64
+
+typedef ExprId = u64
+typedef FileId = u32
+
+// TODO: Write rust hook into `lasso` for debug printing
+typedef StrT = u32
+// TODO: Write rust hook into `lasso` for debug printing
+typedef ItemPath = Intern<Vec<StrT>>
+
+typedef Span = Span { start: u32, end: u32 }
+typedef Location = Location {
+    span: Span,
+    file: FileId
+}
+
+typedef ExprKind =
+    Lit { lit: Intern<LiteralVal> }
+    | Variable { variable: Var }
+    | Assign { variable: Var, expr_id: ExprId }
+
+typedef TypeKind =
+    Unknown
+    | Str
+    | Bool
+    | Unit
+    | Absurd
+    | Error
+    | Int { is_signed  : Option<bool>
+          , width      : Option<u16> }
+
+function is_unknown(kind: Intern<TypeKind>): bool {
+    kind == intern(Unknown)
+}
+
+function is_int(ty: Intern<TypeKind>): bool {
+    match (ty.ival()) {
+        Int {} -> true,
+        _      -> false
+    }
+}
+
+typedef LiteralVal =
+    String { str: string }
+    | Boolean { boolean: bool }
+    | Integer { int: u64 }
+
+function typeof_literal(literal: Intern<LiteralVal>): Intern<TypeKind> {
+    var ty = match (literal.ival()) {
+        String  { } -> Str,
+        Boolean { } -> Bool,
+        Integer { } -> Int { None, None }
+    };
+
+    intern(ty)
+}
+
+typedef Vis = FileLocal | Package | Exposed
+
+typedef FuncArg = FuncArg {
+    name: Var,
+    kind: Intern<TypeKind>
+}
+
+typedef Function = Function {
+    name: ItemPath,
+    vis: Vis,
+    args: Vec<FuncArg>,
+    body: Intern<Stmt>,
+    ret: Intern<TypeKind>
+}
+
+typedef Stmt = StmtExpr { expr: ExprId }
+               | StmtItem { item: Item }
+               | StmtSeq { first: Intern<Stmt>, second: Intern<Stmt> }
+
+typedef Item = ItemFunc { func: Function } | ItemStruct {}
+
+typedef Signature = FuncSig { args: Vec<FuncArg>, ret: Intern<TypeKind> }
+
+function signature(item: Item): Signature {
+    // FIXME: Module scoping for the path
+    // TODO: Structs & stuff
+    // TODO: Trait impls on stuff
+    match (item) {
+        ItemFunc { Function { .args = args, .ret = ret }} -> FuncSig { args, ret },
+        // FIXME: Do this
+        ItemStruct { } -> FuncSig { vec_empty(), intern(Unknown) }
+    }
+}
+
+function corrected_signature(item: Item): Signature {
+    // FIXME: Module scoping for the path
+    // TODO: Structs & stuff
+    // TODO: Trait impls on stuff
+    match (item) {
+        ItemFunc { Function { .args = old_args, .ret = ret }} -> {
+            var ret = if (ret.is_unknown()) {
+                intern(Error)
+            } else {
+                ret
+            };
+
+            var args = vec_with_capacity(old_args.len());
+            for (arg in old_args) {
+                var arg = if (arg.kind.is_unknown()) {
+                    FuncArg { arg.name, intern(Error) }
+                } else {
+                    arg
+                };
+
+                args.push(arg)
+            };
+
+            FuncSig { args, ret }
+        },
+        // FIXME: Do this
+        ItemStruct { } -> FuncSig { vec_empty(), intern(Unknown) }
+    }
+}
+
+function path(item: Item): ItemPath {
+    // FIXME: Module scoping for the path
+    // TODO: Structs & stuff
+    // TODO: Trait impls on stuff
+    match (item) {
+        ItemFunc { Function { .name = path }} -> path,
+        // FIXME: Do this
+        ItemStruct { } -> intern(vec_empty())
+    }
+}
+
+function has_unknown_types(item: Item): bool {
+    match (item) {
+        ItemFunc { Function { .args = args, .ret = ret }} -> {
+            if (ret.is_unknown()) { return true };
+
+            for (arg in args) {
+                if (arg.kind.is_unknown()) {
+                    return true
+                }
+            };
+
+            false
+        },
+
+        // FIXME: Do this
+        ItemStruct { } -> false
+    }
+}
+
+function unknown_type_errors(item: Item): Vec<string> {
+    match (item) {
+        ItemFunc { func } -> {
+            var errors = vec_empty();
+            for (arg in func.args) {
+                if (arg.kind.is_unknown()) {
+                    errors.push("Function arguments cannot be unknown")
+                }
+            };
+
+            if (func.ret.is_unknown()) {
+                errors.push("Function return types cannot be unknown")
+            };
+
+            errors
+        },
+
+        // FIXME: Do this
+        ItemStruct {} -> vec_empty()
+    }
+}
+
+typedef Scope = ScopeFunction { func: Intern<Function> }
+                | ScopeSeq1 { parent: Intern<Scope> } 
+                | ScopeSeq2 { parent: Intern<Scope> }
+
