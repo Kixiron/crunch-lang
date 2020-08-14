@@ -10,7 +10,7 @@ use std::{
 fn main() -> Result<(), Box<dyn Error>> {
     // Traverse ddlog/ and rerun the DDlog build if any files have changed
     traverse("ddlog", &|entry| {
-        let path = dbg!(entry.path());
+        let path = entry.path();
         if matches!(
             path.extension(),
             Some(ext) if ext == "dl" || ext == "dat"
@@ -19,7 +19,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     })?;
 
-    build_ddlog()?;
+    // TODO: Remove this once ddlog gets windows builds
+    if let Err(err) = build_ddlog() {
+        println!("cargo:warning=Failed to run ddlog: {}", err);
+    }
 
     Ok(())
 }

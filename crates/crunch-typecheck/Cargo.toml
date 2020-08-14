@@ -12,5 +12,5 @@ path = "../crunch-shared"
 [dependencies.ladder]
 path = "../ladder"
 
-[dependencies.typecheck_ddlog]
+[dependencies.typecheck]
 path = "typecheck_ddlog"
