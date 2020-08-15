@@ -9,7 +9,7 @@
 
 extern crate alloc;
 
-mod bidirectional;
+mod ddlog;
 
 use alloc::sync::Arc;
 use core::fmt::{self, Result as FmtResult, Write};
