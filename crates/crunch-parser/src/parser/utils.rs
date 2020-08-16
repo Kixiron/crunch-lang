@@ -28,7 +28,6 @@ impl StackGuard {
 }
 
 impl<'src, 'ctx> Parser<'src, 'ctx> {
-    #[track_caller]
     pub(crate) fn intern_ident(&self, ident: Token) -> StrT {
         use alloc::borrow::Cow;
         use unicode_normalization::{IsNormalized, UnicodeNormalization};

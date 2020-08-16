@@ -7,6 +7,7 @@ use core::convert::TryFrom;
 use crunch_shared::{
     crunch_proc::recursion_guard,
     error::{Error, Locatable, Location, ParseResult, Span, SyntaxError},
+    tracing,
     trees::{
         ast::{Integer, Type, TypeOp},
         Sided,
@@ -49,6 +50,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// ```
     // TODO: Decide about `Self` and `self`
     // TODO: Add `'&' 'mut'? Type` and `'ref'? 'mut'? Type`
+    #[crunch_shared::instrument(name = "type", skip(self))]
     #[recursion_guard]
     pub(super) fn ascribed_type(&mut self) -> ParseResult<Locatable<&'ctx Type<'ctx>>> {
         self.ascribed_type_internal(0)

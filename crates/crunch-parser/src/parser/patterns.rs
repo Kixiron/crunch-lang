@@ -2,6 +2,7 @@ use crate::{parser::Parser, token::TokenType};
 use crunch_shared::{
     crunch_proc::recursion_guard,
     error::ParseResult,
+    tracing,
     trees::ast::{Binding, Pattern},
 };
 
@@ -11,6 +12,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// Binding ::= 'ref'? 'mut'? Pattern (':' Type)?
     /// ```
     #[recursion_guard]
+    #[crunch_shared::instrument(name = "binding", skip(self))]
     pub(super) fn binding(&mut self) -> ParseResult<Binding<'ctx>> {
         let (mut reference, mut mutable) = (false, false);
         match self.peek()?.ty() {
@@ -52,6 +54,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// Pattern ::= Literal | Ident | ItemPath
     /// ```
     #[recursion_guard]
+    #[crunch_shared::instrument(name = "pattern", skip(self))]
     fn pattern(&mut self) -> ParseResult<Pattern<'ctx>> {
         let token = self.eat_of(
             [

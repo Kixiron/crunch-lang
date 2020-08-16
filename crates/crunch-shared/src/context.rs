@@ -9,7 +9,6 @@ use crate::{
     },
     utils::{HashMap, Hasher},
 };
-use alloc::sync::Arc;
 use core::{
     cell::{Cell, RefCell},
     fmt::{Debug, Formatter, Result as FmtResult},
@@ -55,7 +54,6 @@ pub struct OwnedArenas<'arena> {
 }
 
 impl<'arena> OwnedArenas<'arena> {
-    #[inline]
     pub fn new() -> Self {
         CRUNCHC_ALLOCATOR.record_region("init arenas", || Self {
             ast_item: Arena::new(),
@@ -73,14 +71,12 @@ impl<'arena> OwnedArenas<'arena> {
 }
 
 impl<'ctx> Default for OwnedArenas<'ctx> {
-    #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
 impl Debug for OwnedArenas<'_> {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         f.debug_struct("OwnedArenas").finish()
     }
@@ -106,7 +102,6 @@ impl<'ar> From<&'ar OwnedArenas<'ar>> for AstArena<'ar> {
 }
 
 impl Debug for AstArena<'_> {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         f.debug_struct("AstArena").finish()
     }
@@ -138,7 +133,6 @@ impl<'ar> From<&'ar OwnedArenas<'ar>> for HirArena<'ar> {
 }
 
 impl Debug for HirArena<'_> {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         f.debug_struct("HirArena").finish()
     }
@@ -165,21 +159,21 @@ impl<'ar> From<&'ar OwnedArenas<'ar>> for Arenas<'ar> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Context<'ctx> {
     arenas: Arenas<'ctx>,
     // TODO: Pull strings out of refcells
     strings: StrInterner,
-    file_id: Arc<AtomicU32>,
+    file_id: AtomicU32,
 }
 
 impl<'ctx> Context<'ctx> {
-    #[inline]
+    #[crate::instrument(level = "trace", name = "context_creation" skip(arenas))]
     pub fn new(arenas: Arenas<'ctx>) -> Self {
         Self {
             arenas,
             strings: Self::construct_string_interner(),
-            file_id: Arc::new(AtomicU32::new(0)),
+            file_id: AtomicU32::new(0),
         }
     }
 
@@ -203,7 +197,6 @@ impl<'ctx> Context<'ctx> {
         strings
     }
 
-    #[inline]
     pub const fn strings(&self) -> &StrInterner {
         &self.strings
     }
@@ -215,42 +208,34 @@ impl<'ctx> Context<'ctx> {
     // In regards to the following: Fuck you, you deal with this bullshit
     // TODO: Replace with queries?
 
-    #[inline]
     pub fn ast_item(&self, item: AstItem<'ctx>) -> &'ctx AstItem<'ctx> {
         self.arenas.ast.item.alloc(item)
     }
 
-    #[inline]
     pub fn ast_stmt(&self, stmt: AstStmt<'ctx>) -> &'ctx AstStmt<'ctx> {
         self.arenas.ast.stmt.alloc(stmt)
     }
 
-    #[inline]
     pub fn ast_expr(&self, expr: AstExpr<'ctx>) -> &'ctx AstExpr<'ctx> {
         self.arenas.ast.expr.alloc(expr)
     }
 
-    #[inline]
     pub fn ast_type(&self, ty: AstType<'ctx>) -> &'ctx AstType<'ctx> {
         self.arenas.ast.types.alloc(ty)
     }
 
-    #[inline]
     pub fn hir_item(&'ctx self, item: HirItem<'ctx>) -> &'ctx HirItem<'ctx> {
         self.arenas.hir.item.alloc(item)
     }
 
-    #[inline]
     pub fn hir_stmt(&self, stmt: HirStmt<'ctx>) -> &'ctx HirStmt<'ctx> {
         self.arenas.hir.stmt.alloc(stmt)
     }
 
-    #[inline]
     pub fn hir_expr(&self, expr: HirExpr<'ctx>) -> &'ctx HirExpr<'ctx> {
         self.arenas.hir.expr.alloc(expr)
     }
 
-    #[inline]
     pub fn hir_type(&self, ty: HirType) -> TypeId {
         let reference = self.arenas.hir.types.alloc(ty);
 
@@ -265,7 +250,6 @@ impl<'ctx> Context<'ctx> {
         id
     }
 
-    #[inline]
     pub fn overwrite_hir_type(&self, target: TypeId, new: TypeId) {
         let new: &'ctx HirType = *self
             .arenas
@@ -283,7 +267,6 @@ impl<'ctx> Context<'ctx> {
             .expect("Context::overwrite_hir_type was called but no type was overwritten");
     }
 
-    #[inline]
     pub fn get_hir_type(&self, id: TypeId) -> Option<&'ctx HirType> {
         self.arenas.hir.type_map.borrow().get(&id).copied()
     }

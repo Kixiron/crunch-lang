@@ -4,44 +4,49 @@ use serde::{Deserialize, Serialize};
 
 pub use interner::StrInterner;
 
+// TODO: Encapsulate interners into a trait and use a `Box<dyn Interner>`
+
 #[cfg(all(feature = "concurrent", not(feature = "no-std")))]
 mod interner {
     use crate::utils::Hasher;
     use alloc::sync::Arc;
-    use lasso::ThreadedRodeo;
-    use lasso::{Capacity, Key, Spur};
+    use core::fmt::{Debug, Display};
+    use lasso::{Capacity, Key, Spur, ThreadedRodeo};
 
     #[derive(Debug, Clone)]
     #[repr(transparent)]
     pub struct StrInterner(Arc<ThreadedRodeo<Spur, Hasher>>);
 
     impl StrInterner {
-        #[inline]
         pub fn new() -> Self {
+            crate::trace!(target: "string_interning", "created a string interner");
+
             Self(Arc::new(ThreadedRodeo::with_capacity_and_hasher(
                 Capacity::for_strings(1000),
                 Hasher::default(),
             )))
         }
 
-        #[inline]
-        pub fn resolve<'a>(&'a self, sym: StrT) -> impl AsRef<str> + 'a {
+        pub fn resolve<'a>(&'a self, sym: StrT) -> impl AsRef<str> + Display + Debug + 'a {
+            crate::trace!(target: "string_interning", "resolved key: {:?}", sym);
+
             self.0.resolve(&sym.get())
         }
 
-        #[inline]
         pub fn intern(&self, string: impl AsRef<str>) -> StrT {
+            crate::trace!(target: "string_interning", "interned string: {:?}", string.as_ref());
+
             StrT::from(self.0.get_or_intern(string.as_ref()))
         }
 
-        #[inline]
         pub fn intern_static(&self, string: &'static str) -> StrT {
+            crate::trace!(target: "string_interning", "interned static string: {:?}", string);
+
             StrT::from(self.0.get_or_intern_static(string))
         }
     }
 
     impl Default for StrInterner {
-        #[inline]
         fn default() -> Self {
             Self::new()
         }
@@ -54,20 +59,18 @@ mod interner {
     use crate::utils::Hasher;
     use alloc::rc::Rc;
     use core::{
-        cell::{Ref, RefCell},
-        ops::Deref,
+        cell::RefCell,
+        fmt::{Debug, Display},
     };
-    use lasso::Rodeo;
-    use lasso::{Capacity, Spur};
+    use lasso::{Capacity, Rodeo, Spur};
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug)]
     #[repr(transparent)]
     pub struct StrInterner(Rc<RefCell<Rodeo<Spur, Hasher>>>);
 
     impl StrInterner {
-        #[inline]
         pub fn new() -> Self {
-            crate::debug!("Creating a new string interner");
+            crate::trace!(target: "string_interning", "created a string interner");
 
             let rodeo =
                 Rodeo::with_capacity_and_hasher(Capacity::for_strings(1000), Hasher::default());
@@ -75,56 +78,36 @@ mod interner {
             Self(Rc::new(RefCell::new(rodeo)))
         }
 
-        #[inline]
-        pub fn resolve<'a>(&'a self, sym: StrT) -> impl AsRef<str> + 'a {
-            crate::debug!(
-                "borrowing strings immutably (strong count is {}, weak count is {})",
-                Rc::strong_count(&self.0),
-                Rc::weak_count(&self.0),
-            );
+        pub fn resolve<'a>(&'a self, sym: StrT) -> impl AsRef<str> + Display + Debug + 'a {
+            crate::trace!(target: "string_interning", "resolved key: {:?}", sym);
 
-            #[repr(transparent)]
-            struct RefWrap<T>(T);
+            let borrow = self.0.borrow();
+            let string: &str = borrow.resolve(&sym.get());
 
-            impl<'a> AsRef<str> for RefWrap<Ref<'a, str>> {
-                fn as_ref(&self) -> &str {
-                    self.0.deref()
-                }
-            }
-
-            RefWrap(Ref::map(self.0.borrow(), |i| i.resolve(&sym.get())))
+            // Safety: The string's actual location in memory will never change, so tying the lifetime to
+            //         the interner is safe. Even if the interner has strings appended to it the only things
+            //         capable of moving in memory are the tables that store pointers *to* the strings, which
+            //         are still inside immovable buckets. This allows us to ignore the `RefCell` song and dance
+            //         since it's not needed after we've gotten the pointer we need.
+            unsafe { core::mem::transmute::<&str, &'a str>(string) }
         }
 
-        #[inline]
-        #[track_caller]
         pub fn intern(&self, string: impl AsRef<str>) -> StrT {
-            crate::debug!(
-                "borrowed strings mutably for interning (strong count is {}, weak count is {}) @ {}",
-                Rc::strong_count(&self.0),
-                Rc::weak_count(&self.0),
-                core::panic::Location::caller(),
-            );
+            crate::trace!(target: "string_interning", "interned string: {:?}", string.as_ref());
 
             let mut borrow = self.0.borrow_mut();
             StrT::from(borrow.get_or_intern(string.as_ref()))
         }
 
-        #[inline]
-        #[track_caller]
         pub fn intern_static(&self, string: &'static str) -> StrT {
-            crate::debug!(
-                "borrowed strings mutably for static interning (strong count is {}, weak count is {}) @ {}",
-                Rc::strong_count(&self.0),
-                Rc::weak_count(&self.0),
-                core::panic::Location::caller(),
-            );
+            crate::trace!(target: "string_interning", "interned static string: {:?}", string);
 
-            StrT::from(self.0.borrow_mut().get_or_intern_static(string))
+            let mut borrow = self.0.borrow_mut();
+            StrT::from(borrow.get_or_intern_static(string.as_ref()))
         }
     }
 
     impl Default for StrInterner {
-        #[inline]
         fn default() -> Self {
             Self::new()
         }
@@ -141,19 +124,16 @@ mod interner {
     pub struct StrInterner;
 
     impl StrInterner {
-        #[inline]
         pub fn new() -> Self {
             unreachable!()
         }
 
-        #[inline]
         #[allow(unreachable_code)]
         pub fn resolve<'a>(&'a self, _sym: StrT) -> impl AsRef<str> + 'a {
             unreachable!();
             "" // This looks weird and it is, but for some reason `!` wasn't coercing to an `impl AsRef<str>`, so here we are
         }
 
-        #[inline]
         pub fn intern(&self, _string: impl AsRef<str>) -> StrT {
             unreachable!()
         }
@@ -166,26 +146,22 @@ mod interner {
 pub struct StrT(Spur);
 
 impl StrT {
-    #[inline]
     pub fn new(key: usize) -> Self {
         Self(Spur::try_from_usize(key).unwrap())
     }
 
-    #[inline]
     pub fn get(self) -> Spur {
         self.0
     }
 }
 
 impl From<Spur> for StrT {
-    #[inline]
     fn from(spur: Spur) -> Self {
         Self(spur)
     }
 }
 
 impl fmt::Debug for StrT {
-    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Safety: We're just doing a debug print, the unsafety doesn't apply
         write!(f, "{}", unsafe { self.get().into_usize() })

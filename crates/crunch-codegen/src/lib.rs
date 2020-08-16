@@ -8,7 +8,7 @@ use crunch_shared::{
     context::ContextDatabase,
     error::ErrorHandler,
     files::FileId,
-    salsa,
+    salsa, tracing,
     trees::{
         mir::{
             Assign, BasicBlock, BlockId, Constant, ExternFunc, FnCall, FuncId,
@@ -64,6 +64,7 @@ pub trait CodegenDatabase:
     fn generate_module(&self, file: FileId) -> Result<Arc<BundledModule>, Arc<ErrorHandler>>;
 }
 
+#[crunch_shared::instrument(name = "native codegen", skip(db))]
 fn generate_module(
     db: &dyn CodegenDatabase,
     file: FileId,
@@ -318,7 +319,7 @@ impl<'db> CodeGenerator<'db> {
         for (&block_id, mir_block) in function.blocks.iter() {
             // Safety: Just trust me man
             let mir_block =
-                Some(unsafe { &*(&mir_block as *const &BasicBlock as *const BasicBlock) });
+                Some(unsafe { core::mem::transmute::<&BasicBlock, &'db BasicBlock>(mir_block) });
 
             self.blocks.insert(
                 block_id,

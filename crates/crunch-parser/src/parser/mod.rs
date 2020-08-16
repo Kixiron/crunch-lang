@@ -6,6 +6,7 @@ use crunch_shared::{
     context::Context,
     error::{Error, ErrorHandler, Locatable, Location, ParseResult, SyntaxError},
     files::CurrentFile,
+    tracing,
     trees::ast::Item,
 };
 
@@ -58,7 +59,9 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         }
     }
 
+    #[crunch_shared::instrument(name = "parsing", skip(self), fields(file_id = ?self.current_file.file()))]
     pub fn parse(mut self) -> Result<ParserReturn<'ctx>, ErrorHandler> {
+        crunch_shared::trace!("started parsing");
         let (mut items, mut errors) = (Vec::with_capacity(20), 0);
 
         while self.peek().is_ok() {

@@ -9,6 +9,7 @@ use crunch_shared::{
     files::FileId,
     salsa,
     strings::StrT,
+    tracing,
     trees::{
         ast::{
             Arm as AstMatchArm, AssignKind, BinaryOp, Binding as AstBinding, Block as AstBlock,
@@ -45,6 +46,7 @@ pub trait HirDatabase:
     ) -> Result<Arc<Vec<&'static Item<'static>>>, Arc<ErrorHandler>>;
 }
 
+#[crunch_shared::instrument(name = "hir lowering", skip(db))]
 fn lower_hir(
     db: &dyn HirDatabase,
     file: FileId,
@@ -90,7 +92,6 @@ impl<'ctx> Ladder<'ctx> {
         }
     }
 
-    #[inline]
     pub fn lower(&mut self, items: &[&AstItem<'_>]) -> Vec<&'ctx Item<'ctx>> {
         items
             .iter()

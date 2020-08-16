@@ -10,7 +10,8 @@
     unreachable_patterns,
     unused_variables,
     clippy::unknown_clippy_lints,
-    clippy::missing_safety_doc
+    clippy::missing_safety_doc,
+    clippy::all
 )]
 
 use num::bigint::BigInt;

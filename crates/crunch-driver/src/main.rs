@@ -34,48 +34,22 @@ fn main() {
         //       via environmental variables
         // TODO: Make different levels of verbosity actually do something
         } else if options.is_verbose() {
-            use env_logger::{fmt::Color, Builder, Env, Target, WriteStyle};
-            use log::{Level, LevelFilter};
+            use crunch_shared::tracing;
+            use tracing_subscriber::{layer::SubscriberExt, registry::Registry, EnvFilter};
+            use tracing_tree::HierarchicalLayer;
 
-            let env = Env::default().filter("CRUNCHC_LOG");
-            Builder::from_env(env)
-                .filter_level(LevelFilter::Trace)
-                .filter_module("salsa", LevelFilter::Off)
-                .format_timestamp(None)
-                .format(|buf, record| {
-                    let location = match (record.file(), record.line()) {
-                        (Some(file), Some(line)) => format!(" {}:{}", file, line),
-                        (Some(file), None) => format!(" {}", file),
-                        (..) => String::new(),
-                    };
-
-                    let mut level_style = buf.style();
-                    match record.level() {
-                        Level::Error => level_style.set_color(Color::Red),
-                        Level::Warn => level_style.set_color(Color::Yellow),
-                        Level::Info => level_style.set_color(Color::Green),
-                        Level::Debug => level_style.set_color(Color::Blue),
-                        Level::Trace => level_style.set_color(Color::Cyan),
-                    }
-                    .set_bold(true);
-
-                    writeln!(
-                        buf,
-                        "[{level:>5} {module}{location}] {message}",
-                        level = level_style.value(record.level()),
-                        module = record.module_path().unwrap_or_else(|| record.target()),
-                        location = location,
-                        message = record.args(),
-                    )
+            let env_layer = EnvFilter::try_from_env("CRUNCHC_LOG")
+                .unwrap_or_else(|_| EnvFilter::new("trace,salsa=off"));
+            let tree_layer = HierarchicalLayer::new(2)
+                .with_ansi(match options.color {
+                    TermColor::Always | TermColor::Auto => true,
+                    TermColor::None => false,
                 })
-                .write_style(match options.color {
-                    TermColor::Always => WriteStyle::Always,
-                    TermColor::Auto => WriteStyle::Auto,
-                    TermColor::None => WriteStyle::Never,
-                })
-                // TODO: Configure via CLI
-                .target(Target::Stderr)
-                .init();
+                .with_wraparound(80);
+
+            let registry = Registry::default().with(env_layer).with(tree_layer);
+            tracing::subscriber::set_global_default(registry)
+                .unwrap_or_else(|err| eprintln!("failed to initialize logging: {:?}", err));
         }
 
         GLOBAL_ALLOCATOR.record_region("driver", || {
@@ -173,8 +147,9 @@ fn run<'ctx>(
         database.config().color.into(),
     ))));
     database.set_stdout_config(Arc::new(DbgWrap::new(TermConfig::default())));
-    database
-        .set_context(unsafe { &*(&context as *const &Context<'ctx> as *const Context<'static>) });
+    database.set_context(unsafe {
+        core::mem::transmute::<&'ctx Context<'ctx>, &'static Context<'static>>(context)
+    });
     database.set_file_path(file_id, Arc::new(options.target_file.clone()));
 
     // Check types and update the hir with concrete types

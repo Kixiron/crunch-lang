@@ -9,7 +9,7 @@ use crunch_shared::{
     context::ContextDatabase,
     error::{Error, ErrorHandler, Location, MirResult},
     files::FileId,
-    salsa,
+    salsa, tracing,
     trees::{
         ast::Integer,
         hir::{
@@ -45,6 +45,7 @@ pub trait MirDatabase:
     fn lower_mir(&self, file: FileId) -> Result<Arc<Mir>, Arc<ErrorHandler>>;
 }
 
+#[crunch_shared::instrument(name = "mir lowering", skip(db))]
 fn lower_mir(db: &dyn MirDatabase, file: FileId) -> Result<Arc<Mir>, Arc<ErrorHandler>> {
     let config = db.config();
     let items = db.lower_hir(file)?;

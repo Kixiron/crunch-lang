@@ -7,6 +7,7 @@ use core::convert::TryFrom;
 use crunch_shared::{
     crunch_proc::recursion_guard,
     error::{Error, Locatable, Location, ParseResult, Span, SyntaxError},
+    tracing,
     trees::{
         ast::{Arm, Block, Expr, ExprKind, For, If, IfCond, Loop, Match, While},
         Sided,
@@ -22,6 +23,7 @@ type InfixParselet<'src, 'ctx> =
 
 /// Expr Parsing
 impl<'src, 'ctx> Parser<'src, 'ctx> {
+    #[crunch_shared::instrument(name = "expression", skip(self))]
     #[recursion_guard]
     pub fn expr(&mut self) -> ParseResult<&'ctx Expr<'ctx>> {
         self.parse_expr(0)

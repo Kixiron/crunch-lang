@@ -10,21 +10,27 @@
 
 extern crate alloc;
 // TODO: Better abstraction for this
+#[doc(hidden)]
 pub extern crate codespan_reporting;
 pub extern crate crunch_proc;
+#[doc(hidden)]
 pub extern crate salsa;
+#[doc(hidden)]
+pub extern crate tracing;
 
-pub use log::{debug, error, info, trace, warn};
+pub use tracing::{
+    debug, debug_span, error, error_span, event, info, info_span, instrument, span, trace,
+    trace_span, warn, warn_span,
+};
 
+pub mod allocator;
+pub mod config;
 pub mod context;
+pub mod databases;
 pub mod error;
 pub mod file_hash;
 pub mod files;
 pub mod meta;
-// mod passes;
-pub mod allocator;
-pub mod config;
-pub mod databases;
 pub mod strings;
 pub mod trees;
 pub mod utils;

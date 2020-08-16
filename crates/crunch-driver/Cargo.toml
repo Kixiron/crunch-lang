@@ -10,13 +10,13 @@ default-run = "crunchc"
 name = "crunchc"
 path = "src/main.rs"
 
-[dependencies.env_logger]
-version = "0.7.1"
+[dependencies.tracing-subscriber]
+version = "0.2.11"
 default-features = false
-features = ["termcolor"]
+features = ["env-filter", "ansi", "registry"]
 
-[dependencies.log]
-version = "0.4.11"
+[dependencies.tracing-tree]
+version = "0.1.5"
 
 [dependencies.crunch-shared]
 path = "../crunch-shared"

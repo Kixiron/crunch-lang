@@ -7,6 +7,7 @@ use alloc::vec::Vec;
 use crunch_shared::{
     crunch_proc::recursion_guard,
     error::{Error, Locatable, Location, ParseResult, SemanticError, Span},
+    tracing,
     trees::ast::{Block, Stmt, StmtKind, Type, VarDecl},
 };
 
@@ -14,6 +15,7 @@ use crunch_shared::{
 
 /// Statement parsing
 impl<'src, 'ctx> Parser<'src, 'ctx> {
+    #[crunch_shared::instrument(name = "statement", skip(self))]
     #[recursion_guard]
     pub fn stmt(&mut self) -> ParseResult<Option<&'ctx Stmt<'ctx>>> {
         match self.peek()?.ty() {

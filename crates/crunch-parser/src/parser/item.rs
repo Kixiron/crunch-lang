@@ -7,6 +7,7 @@ use core::{mem, str::FromStr};
 use crunch_shared::{
     crunch_proc::recursion_guard,
     error::{Error, Locatable, Location, ParseResult, Span, SyntaxError},
+    tracing,
     trees::{
         ast::{
             Attribute, Decorator, Dest, Exposure, ExtendBlock, ExternBlock, ExternFunc, FuncArg,
@@ -20,6 +21,7 @@ use crunch_shared::{
 
 impl<'src, 'ctx> Parser<'src, 'ctx> {
     #[recursion_guard]
+    #[crunch_shared::instrument(name = "item", skip(self))]
     pub(super) fn item(&mut self) -> ParseResult<Option<&'ctx Item<'ctx>>> {
         let (mut decorators, mut attributes, mut vis) =
             (Vec::with_capacity(5), Vec::with_capacity(5), None);
@@ -27,6 +29,8 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         while self.peek().is_ok() {
             if let Some(node) = self.item_impl(&mut decorators, &mut attributes, &mut vis)? {
                 return Ok(Some(node));
+            } else {
+                crunch_shared::trace!("inner item parsing returned None");
             }
         }
 
@@ -41,6 +45,8 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         attributes: &mut Vec<Attribute>,
         vis: &mut Option<Vis>,
     ) -> ParseResult<Option<&'ctx Item<'ctx>>> {
+        crunch_shared::trace!("inner item parsing");
+
         let peek = self.peek()?;
 
         match peek.ty() {
@@ -164,16 +170,20 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     }
 
     #[recursion_guard]
+    #[crunch_shared::instrument(name = "import", skip(self, decorators, vis))]
     fn import(
         &mut self,
         decorators: Vec<Decorator<'ctx>>,
         vis: Vis,
     ) -> ParseResult<&'ctx Item<'ctx>> {
+        crunch_shared::trace!("parsing an import");
+
         let start_span = self.eat(TokenType::Import, [TokenType::Newline])?.span();
 
         let file = self.eat(TokenType::Ident, [TokenType::Newline])?;
         let file = self.intern_ident(file);
         let file = self.item_path(file)?;
+        crunch_shared::trace!("import path: {:?}", file.to_string(self.context.strings()),);
 
         let dest = if self.peek()?.ty() == TokenType::Library {
             self.eat(TokenType::Library, [TokenType::Newline])?;
@@ -205,12 +215,9 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
                     let alias = if self.peek()?.ty() == TokenType::As {
                         self.eat(TokenType::As, [TokenType::Newline])?;
-                        let alias = {
-                            let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
-                            self.intern_ident(ident)
-                        };
 
-                        alias
+                        let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
+                        self.intern_ident(ident)
                     } else {
                         *member.last().expect("There should be at least one segment")
                     };
@@ -286,6 +293,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     }
 
     #[recursion_guard]
+    #[crunch_shared::instrument(name = "trait_decl", skip(self, decorators, attrs, vis))]
     fn trait_decl(
         &mut self,
         decorators: Vec<Decorator<'ctx>>,
@@ -351,6 +359,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     }
 
     #[recursion_guard]
+    #[crunch_shared::instrument(name = "enum", skip(self, decorators, attrs, vis))]
     fn enum_decl(
         &mut self,
         decorators: Vec<Decorator<'ctx>>,
@@ -445,9 +454,12 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
     #[recursion_guard]
     fn decorator(&mut self, decorators: &mut Vec<Decorator<'ctx>>) -> ParseResult<()> {
+        crunch_shared::trace!("parsing a decorator");
+
         let start = self.eat(TokenType::AtSign, [TokenType::Newline])?.span();
         let (name, name_span) = {
             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
+            crunch_shared::trace!("decorator name: {:?}", ident.source());
 
             (
                 Locatable::new(
@@ -503,15 +515,20 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     ///     'end'
     /// ```
     #[recursion_guard]
+    #[crunch_shared::instrument(name = "type", skip(self, decorators, attrs, vis))]
     fn type_decl(
         &mut self,
         decorators: Vec<Decorator<'ctx>>,
         attrs: Vec<Attribute>,
         vis: Vis,
     ) -> ParseResult<&'ctx Item<'ctx>> {
+        crunch_shared::trace!("parsing a type declaration");
+
         let start_span = self.eat(TokenType::Type, [TokenType::Newline])?.span();
         let name = {
             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
+            crunch_shared::trace!("type decl name: {:?}", ident.source());
+
             self.intern_ident(ident)
         };
         let generics = self.generics()?;
@@ -585,6 +602,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             ));
         }
 
+        crunch_shared::trace!("type had {} members", members.len());
         let kind = ItemKind::Type { generics, members };
 
         Ok(self.context.ast_item(Item {
@@ -604,11 +622,14 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     ///     'end'
     /// ```
     #[recursion_guard]
+    #[crunch_shared::instrument(name = "extend_block", skip(self, _decorators, _attrs))]
     fn extend_block(
         &mut self,
         _decorators: Vec<Decorator<'ctx>>,
         mut _attrs: Vec<Attribute>,
     ) -> ParseResult<&'ctx Item<'ctx>> {
+        crunch_shared::trace!("parsing an extend block");
+
         let start = self.eat(TokenType::Extend, [TokenType::Newline])?.span();
         let target = self.ascribed_type()?;
 
@@ -660,12 +681,15 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// Decorator* Attribute* 'alias' Type = Type '\n'
     /// ```
     #[recursion_guard]
+    #[crunch_shared::instrument(name = "alias", skip(self, decorators, attrs, vis))]
     fn alias(
         &mut self,
         decorators: Vec<Decorator<'ctx>>,
         attrs: Vec<Attribute>,
         vis: Vis,
     ) -> ParseResult<&'ctx Item<'ctx>> {
+        crunch_shared::trace!("parsing an alias");
+
         let start = self.eat(TokenType::Alias, [TokenType::Newline])?.span();
         let alias = self.ascribed_type()?;
         self.eat(TokenType::Equal, [TokenType::Newline])?;
@@ -692,17 +716,23 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     ///     'end'
     /// ```
     #[recursion_guard]
+    #[crunch_shared::instrument(name = "function", skip(self, decorators, attrs, vis))]
     fn function(
         &mut self,
         decorators: Vec<Decorator<'ctx>>,
         attrs: Vec<Attribute>,
         vis: Vis,
     ) -> ParseResult<&'ctx Item<'ctx>> {
+        crunch_shared::trace!("parsing a function");
+
         let start_span = self.eat(TokenType::Function, [TokenType::Newline])?.span();
         let name = {
             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
+            crunch_shared::trace!("function name: {:?}", ident.source());
+
             self.intern_ident(ident)
         };
+
         let generics = self.generics()?;
         let args = self.function_args()?;
 
@@ -762,6 +792,8 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// ```
     #[recursion_guard]
     fn function_args(&mut self) -> ParseResult<Locatable<Vec<FuncArg<'ctx>>>> {
+        crunch_shared::trace!("parsing a function argument");
+
         let start = self.eat(TokenType::LeftParen, [TokenType::Newline])?.span();
 
         let mut args = Vec::with_capacity(7);
@@ -812,11 +844,14 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     ///     'end'
     /// ```
     #[recursion_guard]
+    #[crunch_shared::instrument(name = "external block", skip(self))]
     fn extern_block(
         &mut self,
         decorators: Vec<Decorator<'ctx>>,
         attrs: Vec<Attribute>,
     ) -> ParseResult<&'ctx Item<'ctx>> {
+        crunch_shared::trace!("parsing an external block");
+
         let start = self.eat(TokenType::Extern, [TokenType::Newline])?.span();
         let mut items = Vec::with_capacity(5);
 
@@ -855,6 +890,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         }
         let end = self.eat(TokenType::End, [TokenType::Newline])?.span();
 
+        crunch_shared::trace!("extern block had {} items", items.len());
         Ok(self.context.ast_item(Item {
             name: None,
             vis: None,
@@ -870,15 +906,20 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     ///     Vis? Decorator* Attribute* 'fn' Ident '(' FunctionArgs* ')' ('->' Type)? ';'
     /// ```
     #[recursion_guard]
+    #[crunch_shared::instrument(name = "external function", skip(self))]
     fn extern_func(
         &mut self,
         mut decorators: Vec<Decorator<'ctx>>,
         attrs: Vec<Attribute>,
         vis: Vis,
     ) -> ParseResult<&'ctx Item<'ctx>> {
+        crunch_shared::trace!("parsing an external function");
+
         let start = self.eat(TokenType::Function, [TokenType::Newline])?.span();
         let name = {
             let ident = self.eat(TokenType::Ident, [TokenType::Newline])?;
+            crunch_shared::trace!("external function name: {:?}", ident.source());
+
             self.intern_ident(ident)
         };
         let generics = self.generics()?;

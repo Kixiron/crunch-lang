@@ -16,9 +16,15 @@ version = "0.8.2"
 optional = true
 default-features = false
 
-[dependencies.log]
-version = "0.4.11"
+[dependencies.tracing]
+version = "0.1.19"
 default-features = false
+features = [
+    "std",
+    "attributes",
+    "max_level_trace", # Trace is the lowest log level compiled for debug
+    "release_max_level_info", # Info is the lowest log level compiled for release
+]
 
 [dependencies.serde]
 version = "1.0.115"

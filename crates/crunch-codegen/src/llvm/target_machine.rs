@@ -235,7 +235,8 @@ impl TargetMachine {
         path: impl AsRef<Path>,
         codegen: CodegenFileKind,
     ) -> Result<()> {
-        let path = CString::new(unsafe { &*(path.as_ref() as *const Path as *const [u8]) })?;
+        #[allow(clippy::transmute_ptr_to_ptr)]
+        let path = CString::new(unsafe { core::mem::transmute::<&Path, &[u8]>(path.as_ref()) })?;
         let mut err_message = MaybeUninit::zeroed();
 
         let failed = unsafe {

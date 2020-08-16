@@ -17,7 +17,7 @@ use crunch_shared::{
     context::ContextDatabase,
     error::{ErrorHandler, Locatable, Location, Span, TypeError, TypeResult},
     files::{FileCache, FileId},
-    salsa,
+    salsa, tracing,
     trees::{
         hir::{
             BinaryOp, Block, Break, Cast, CompOp, Expr, ExternFunc, FuncArg, FuncCall, Function,
@@ -38,6 +38,7 @@ pub trait TypecheckDatabase: salsa::Database + ContextDatabase + HirDatabase {
     fn typecheck(&self, file: FileId) -> Result<(), ArcError>;
 }
 
+#[crunch_shared::instrument(name = "type checking", skip(db))]
 fn typecheck(db: &dyn TypecheckDatabase, file: FileId) -> Result<(), ArcError> {
     let hir = db.lower_hir(file)?;
 
