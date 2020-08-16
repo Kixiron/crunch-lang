@@ -36,6 +36,10 @@ impl MemoryBuffer {
         unsafe { LLVMGetBufferSize(self.as_mut_ptr()) as usize }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Creates a byte slice pointing to the underlying memory  
     pub fn as_slice<'a>(&'a self) -> Result<&'a [u8]> {
         let (ptr, len) = (self.buffer_start()?, self.len());

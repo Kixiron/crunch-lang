@@ -8,12 +8,12 @@ extern
 end
 
 fn main()
-    puts(int_to_str(10))
+    puts(int_to_str(10) as *const i8)
 end
 
-fn int_to_str(int: i32) -> str
-    let mut string := "\0\0\0\0\0\0\0\0\0\0\0"
-    let letters := "zyxwvutsrqponmlkjihgfedcba9876543210123456789abcdefghijklmnopqrstuvwxyz"
+fn int_to_str(int: i32) -> arr[u8; 11]
+    let mut string := b"\0\0\0\0\0\0\0\0\0\0\0"
+    let letters := b"zyxwvutsrqponmlkjihgfedcba9876543210123456789abcdefghijklmnopqrstuvwxyz"
     let mut tmp_value := 0
     let mut idx := 0
 
@@ -25,11 +25,12 @@ fn int_to_str(int: i32) -> str
 
     loop
         tmp_value := int
-        value /= 10
-        string[idx] := letters[35 + (tmp_value - (value * base))]
+        tmp_value /= 10
+        let i := string[idx]
+        i := letters[35 + (tmp_value - (tmp_value * 10))]
         idx += 1
 
-        if value != 0
+        if tmp_value != 0
             break
         end
     end

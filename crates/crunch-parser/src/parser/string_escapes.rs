@@ -55,24 +55,24 @@ pub(super) fn unescape_string<I: Iterator<Item = char>>(
     let (low, high) = queue.size_hint();
     let mut s = String::with_capacity(high.unwrap_or(low));
 
-    let mut queue = CharStream::new(queue.into_iter());
+    let mut queue = CharStream::new(queue);
     let mut index = 0;
 
     while let Ok(c) = queue.next(&mut index) {
         if c != '\\' {
-            s.push(c.into());
+            s.push(c);
             continue;
         }
 
         #[rustfmt::skip]
         match queue.next(&mut index)? {
-            '\\' => s.push('\\'.into()),
-            '"'  => s.push('"'.into()),
-            '\'' => s.push('\''.into()),
-            'n'  => s.push('\n'.into()),
-            'r'  => s.push('\r'.into()),
-            't'  => s.push('\t'.into()),
-            '0'  => s.push('\0'.into()),
+            '\\' => s.push('\\'),
+            '"'  => s.push('"'),
+            '\'' => s.push('\''),
+            'n'  => s.push('\n'),
+            'r'  => s.push('\r'),
+            't'  => s.push('\t'),
+            '0'  => s.push('\0'),
             'x'  => s.push(byte(&mut queue, &mut index)?.as_char()),
             'u'  => s.push(unicode_16(&mut queue, index, &mut index)?.as_char()),
             'U'  => s.push(unicode_32(&mut queue, index, &mut index)?.as_char()),
@@ -95,7 +95,7 @@ pub(super) fn unescape_string<I: Iterator<Item = char>>(
 pub(super) fn unescape_rune<I: Iterator<Item = char>>(
     queue: I,
 ) -> Result<Rune, (Error, Range<usize>)> {
-    let mut queue = CharStream::new(queue.into_iter());
+    let mut queue = CharStream::new(queue);
     let mut index = 0;
 
     let c = queue.next(&mut index)?;

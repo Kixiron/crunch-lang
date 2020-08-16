@@ -123,6 +123,7 @@ pub enum ExprKind<'ctx> {
     BinOp(Sided<BinaryOp, &'ctx Expr<'ctx>>),
     Cast(Cast<'ctx>),
     Reference(Reference<'ctx>),
+    Index { var: Var, index: &'ctx Expr<'ctx> },
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -334,6 +335,16 @@ impl Type {
     pub fn is_unknown(&self) -> bool {
         self.kind.is_unknown()
     }
+
+    #[inline]
+    pub fn is_array(&self) -> bool {
+        self.kind.is_array()
+    }
+
+    #[inline]
+    pub fn is_slice(&self) -> bool {
+        self.kind.is_array()
+    }
 }
 
 /// The type that a type actually is
@@ -397,6 +408,16 @@ impl TypeKind {
     #[inline]
     pub fn is_unknown(&self) -> bool {
         matches!(self, Self::Unknown)
+    }
+
+    #[inline]
+    pub fn is_array(&self) -> bool {
+        matches!(self, Self::Array { .. })
+    }
+
+    #[inline]
+    pub fn is_slice(&self) -> bool {
+        matches!(self, Self::Slice { .. })
     }
 }
 

@@ -36,7 +36,7 @@ impl CrunchcAllocator {
         crate::info!(
             "    • Finished in {}sec, {}ms and {}μs",
             elapsed.as_secs(),
-            elapsed.subsec_micros() / 1000,
+            elapsed.subsec_millis(),
             elapsed.subsec_micros() % 1000,
         );
         crate::info!(

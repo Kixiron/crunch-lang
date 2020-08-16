@@ -26,6 +26,7 @@ use std::{
 pub struct IntType<'ctx, W: IntWidth>(Type<'ctx>, PhantomData<W>);
 
 impl<'ctx, W: IntWidth> IntType<'ctx, W> {
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(ctx: &'ctx Context, bits: u32) -> Result<IntType<'ctx, Unknown>> {
         unsafe { IntType::from_raw(LLVMIntTypeInContext(ctx.as_mut_ptr(), bits)) }
     }

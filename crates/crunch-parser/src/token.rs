@@ -467,7 +467,7 @@ mod tests {
 
     #[test]
     fn break_up_weird_stuff() {
-        let mut stream = TokenStream::new("bredcp", true, true).into_iter();
+        let mut stream = TokenStream::new("bredcp", true, true);
 
         assert_eq!(
             stream.next(),
@@ -479,7 +479,7 @@ mod tests {
         );
         assert_eq!(stream.next(), None);
 
-        let mut stream = TokenStream::new("breuyue", true, true).into_iter();
+        let mut stream = TokenStream::new("breuyue", true, true);
 
         assert_eq!(
             stream.next(),
@@ -494,7 +494,7 @@ mod tests {
 
     #[test]
     fn keyword_led_ident() {
-        let mut exposed_function = TokenStream::new("exposed_function", true, true).into_iter();
+        let mut exposed_function = TokenStream::new("exposed_function", true, true);
 
         assert_eq!(
             exposed_function.next(),
@@ -509,8 +509,7 @@ mod tests {
 
     #[test]
     fn dont_capture_comments() {
-        let mut stream =
-            TokenStream::new(":: fn something(int: str) -> bool {}\n", true, true).into_iter();
+        let mut stream = TokenStream::new(":: fn something(int: str) -> bool {}\n", true, true);
 
         assert_eq!(
             stream.next(),
@@ -522,7 +521,7 @@ mod tests {
         );
         assert_eq!(stream.next(), None);
 
-        let mut stream = TokenStream::new(":: test<int, bool>(test2)\n", true, true).into_iter();
+        let mut stream = TokenStream::new(":: test<int, bool>(test2)\n", true, true);
 
         assert_eq!(
             stream.next(),
@@ -534,8 +533,7 @@ mod tests {
         );
         assert_eq!(stream.next(), None);
 
-        let mut stream =
-            TokenStream::new("::: fn something(int: str) -> bool {}\n", true, true).into_iter();
+        let mut stream = TokenStream::new("::: fn something(int: str) -> bool {}\n", true, true);
 
         assert_eq!(
             stream.next(),
@@ -547,7 +545,7 @@ mod tests {
         );
         assert_eq!(stream.next(), None);
 
-        let mut stream = TokenStream::new("::: test<int, bool>(test2)\n", true, true).into_iter();
+        let mut stream = TokenStream::new("::: test<int, bool>(test2)\n", true, true);
 
         assert_eq!(
             stream.next(),
@@ -568,7 +566,7 @@ mod tests {
         proptest! {
             #[test]
             fn strings(s in r#"b?"(\\.|[^\\"])*""#) {
-                let mut stream = TokenStream::new(&s, true, true).into_iter();
+                let mut stream = TokenStream::new(&s, true, true);
 
                 let cond = matches!(stream.next(), Some(Token { ty: _ty @ TokenType::String, .. }));
                 prop_assert!(cond);
@@ -577,7 +575,7 @@ mod tests {
 
             #[test]
             fn runes(s in "b?'[^']*'") {
-                let mut stream = TokenStream::new(&s, true, true).into_iter();
+                let mut stream = TokenStream::new(&s, true, true);
 
                 let cond = matches!(stream.next(), Some(Token { ty: _ty @ TokenType::Rune, .. }));
                 prop_assert!(cond);
@@ -586,7 +584,7 @@ mod tests {
 
             #[test]
             fn base10_int(s in "[+-]?[0-9][0-9_]*") {
-                let mut stream = TokenStream::new(&s, true, true).into_iter();
+                let mut stream = TokenStream::new(&s, true, true);
 
                 let cond = matches!(stream.next(), Some(Token { ty: _ty @ TokenType::Int, .. }));
                 prop_assert!(cond);
@@ -595,7 +593,7 @@ mod tests {
 
             #[test]
             fn base16_int(s in "[+-]?0x[0-9a-fA-F][0-9a-fA-F_]*") {
-                let mut stream = TokenStream::new(&s, true, true).into_iter();
+                let mut stream = TokenStream::new(&s, true, true);
 
                 let cond = matches!(stream.next(), Some(Token { ty: _ty @ TokenType::Int, .. }));
                 prop_assert!(cond);
@@ -604,7 +602,7 @@ mod tests {
 
             #[test]
             fn base2_int(s in "[+-]?0b[0-1][0-1_]*") {
-                let mut stream = TokenStream::new(&s, true, true).into_iter();
+                let mut stream = TokenStream::new(&s, true, true);
 
                 let cond = matches!(stream.next(), Some(Token { ty: _ty @ TokenType::Int, .. }));
                 prop_assert!(cond);
@@ -613,7 +611,7 @@ mod tests {
 
             #[test]
             fn base10_float(s in "[+-]?[0-9][0-9_]*\\.[0-9][0-9_]*([eE][+-]?[0-9][0-9_]*)?") {
-                let mut stream = TokenStream::new(&s, true, true).into_iter();
+                let mut stream = TokenStream::new(&s, true, true);
 
                 let cond = matches!(stream.next(), Some(Token { ty: _ty @ TokenType::Float, .. }));
                 prop_assert!(cond);
@@ -622,7 +620,7 @@ mod tests {
 
             #[test]
             fn base16_float(s in "[+-]?0x[0-9a-fA-F][0-9a-fA-F_]*\\.[0-9a-fA-F][0-9a-fA-F_]*([pP][+-]?[0-9][0-9_]?)?") {
-                let mut stream = TokenStream::new(&s, true, true).into_iter();
+                let mut stream = TokenStream::new(&s, true, true);
 
                 let cond = matches!(stream.next(), Some(Token { ty: _ty @ TokenType::Float, .. }));
                 prop_assert!(cond);

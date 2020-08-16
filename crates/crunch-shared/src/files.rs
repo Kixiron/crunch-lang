@@ -43,11 +43,11 @@ impl<'a> files::Files<'a> for FileCache<'a> {
     type Source = StringRef;
 
     fn name(&self, file: FileId) -> Option<StringRef> {
-        Some(StringRef::new(self.source.file_name(file).clone()))
+        Some(StringRef::new(self.source.file_name(file)))
     }
 
     fn source(&self, file: FileId) -> Option<StringRef> {
-        Some(StringRef::new(self.source.source_text(file).clone()))
+        Some(StringRef::new(self.source.source_text(file)))
     }
 
     fn line_index(&self, file: FileId, byte_index: usize) -> Option<usize> {

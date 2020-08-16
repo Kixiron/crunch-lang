@@ -164,8 +164,12 @@ impl<'ctx> Sealed for StructType<'ctx> {}
 pub struct VectorType<'ctx, E>(Type<'ctx>, PhantomData<E>);
 
 impl<'ctx, E> VectorType<'ctx, E> {
-    pub fn len(self) -> u32 {
+    pub fn len(&self) -> u32 {
         unsafe { LLVMGetVectorSize(self.as_mut_ptr()) }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 

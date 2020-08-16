@@ -51,7 +51,7 @@ pub trait AnyValue<'ctx>: SealedAnyValue<'ctx> {
             .map(|name| std::str::from_utf8(name).map_err(|err| err.into()))
     }
 
-    fn name_lossy<'a>(&'a self) -> Option<Cow<'a, str>> {
+    fn name_lossy(&self) -> Option<Cow<'_, str>> {
         self.get_name_raw().map(String::from_utf8_lossy)
     }
 
@@ -60,7 +60,7 @@ pub trait AnyValue<'ctx>: SealedAnyValue<'ctx> {
     }
 
     // https://github.com/rust-lang/rust/pull/67033
-    fn get_name_raw<'a>(&'a self) -> Option<&'a [u8]> {
+    fn get_name_raw(&self) -> Option<&[u8]> {
         unsafe {
             let mut len = 0;
             let data = NonNull::new(LLVMGetValueName2(self.as_mut_ptr(), &mut len) as *mut u8)?;
@@ -70,7 +70,7 @@ pub trait AnyValue<'ctx>: SealedAnyValue<'ctx> {
     }
 
     // https://github.com/rust-lang/rust/pull/67033
-    fn set_name_raw<'a>(&self, name: &[u8]) {
+    fn set_name_raw(&self, name: &[u8]) {
         unsafe {
             let data = name.as_ptr().cast();
             LLVMSetValueName2(self.as_mut_ptr(), data, name.len());

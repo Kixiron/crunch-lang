@@ -49,7 +49,7 @@ pub trait ItemVisitor<'ctx> {
                 target,
                 extender,
                 items,
-            }) => self.visit_extend_block(item, *target, extender.as_ref().map(|t| *t), items),
+            }) => self.visit_extend_block(item, *target, extender.as_ref().copied(), items),
             ItemKind::Alias { alias, actual } => self.visit_alias(item, *alias, *actual),
             ItemKind::ExternBlock(ExternBlock { items }) => self.visit_extern_block(item, items),
             ItemKind::ExternFunc(ExternFunc {

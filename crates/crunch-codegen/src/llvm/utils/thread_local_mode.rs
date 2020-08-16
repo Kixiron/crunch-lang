@@ -22,6 +22,7 @@ impl ThreadLocalMode {
     }
 
     #[rustfmt::skip]
+    #[allow(clippy::wrong_self_convention)]
     pub(crate) fn into_llvm_mode(mode: Option<Self>) -> LLVMThreadLocalMode {
         match mode {
             None                          => LLVMThreadLocalMode::LLVMNotThreadLocal,

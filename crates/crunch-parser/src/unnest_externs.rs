@@ -18,8 +18,8 @@ impl FlattenExternals {
     pub fn flatten<'ctx>(mut self, mut items: Vec<&'ctx Item<'ctx>>) -> Vec<&'ctx Item<'ctx>> {
         let mut out_items = Vec::with_capacity(items.len());
         while !items.is_empty() {
-            let mut item = items.remove(0);
-            if self.visit_item(&mut items, &mut item) {
+            let item = items.remove(0);
+            if self.visit_item(&mut items, &item) {
                 out_items.push(item);
             }
         }

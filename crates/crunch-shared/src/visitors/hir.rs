@@ -56,6 +56,7 @@ pub trait ExprVisitor<'ctx> {
             ExprKind::BinOp(Sided { lhs, op, rhs }) => self.visit_binop(loc, lhs, *op, rhs),
             ExprKind::Cast(cast) => self.visit_cast(loc, cast),
             ExprKind::Reference(reference) => self.visit_reference(loc, reference),
+            ExprKind::Index { var, index } => self.visit_index(loc, *var, index),
         }
     }
 
@@ -85,6 +86,7 @@ pub trait ExprVisitor<'ctx> {
     ) -> Self::Output;
     fn visit_cast(&mut self, loc: Location, cast: &Cast<'ctx>) -> Self::Output;
     fn visit_reference(&mut self, loc: Location, reference: &Reference<'ctx>) -> Self::Output;
+    fn visit_index(&mut self, loc: Location, var: Var, index: &'ctx Expr<'ctx>) -> Self::Output;
 }
 
 pub trait TypeVisitor<'ctx> {

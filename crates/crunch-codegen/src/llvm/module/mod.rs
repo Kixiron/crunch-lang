@@ -234,7 +234,7 @@ impl<'ctx> Module<'ctx> {
     }
 
     pub fn emit_ir_to_file(&self, path: impl AsRef<Path>) -> Result<()> {
-        let path = CString::new(unsafe { std::mem::transmute::<&Path, &[u8]>(path.as_ref()) })?;
+        let path = CString::new(unsafe { &*(path.as_ref() as *const Path as *const [u8]) })?;
         let mut err_message = MaybeUninit::zeroed();
 
         let failed = unsafe {
@@ -255,7 +255,7 @@ impl<'ctx> Module<'ctx> {
     }
 
     pub fn emit_bitcode_to_file(&self, path: impl AsRef<Path>) -> Result<()> {
-        let path = CString::new(unsafe { std::mem::transmute::<&Path, &[u8]>(path.as_ref()) })?;
+        let path = CString::new(unsafe { &*(path.as_ref() as *const Path as *const [u8]) })?;
 
         let failed =
             unsafe { LLVMWriteBitcodeToFile(self.as_mut_ptr(), path.as_ptr() as *mut i8) == 0 };

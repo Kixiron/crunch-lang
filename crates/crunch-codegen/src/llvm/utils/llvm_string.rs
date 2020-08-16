@@ -49,13 +49,13 @@ impl LLVMString {
 
     /// Returns the contents of the string as bytes, not including the null byte
     #[inline]
-    pub fn as_bytes<'a>(&'a self) -> &'a [u8] {
+    pub fn as_bytes(&self) -> &[u8] {
         self.as_cstr().to_bytes()
     }
 
     /// Returns the contents of the string as bytes, including the null byte
     #[inline]
-    pub fn as_bytes_with_nul<'a>(&'a self) -> &'a [u8] {
+    pub fn as_bytes_with_nul(&self) -> &[u8] {
         self.as_cstr().to_bytes_with_nul()
     }
 

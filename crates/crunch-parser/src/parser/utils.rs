@@ -28,6 +28,7 @@ impl StackGuard {
 }
 
 impl<'src, 'ctx> Parser<'src, 'ctx> {
+    #[track_caller]
     pub(crate) fn intern_ident(&self, ident: Token) -> StrT {
         use alloc::borrow::Cow;
         use unicode_normalization::{IsNormalized, UnicodeNormalization};
@@ -150,7 +151,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             }
 
             TokenType::Rune => {
-                let byte_rune = if source.chars().next() == Some('b') {
+                let byte_rune = if source.starts_with('b') {
                     source = &source[1..];
                     true
                 } else {
@@ -193,7 +194,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             }
 
             TokenType::String => {
-                let byte_str = if source.chars().next() == Some('b') {
+                let byte_str = if source.starts_with('b') {
                     source = &source[1..];
                     true
                 } else {

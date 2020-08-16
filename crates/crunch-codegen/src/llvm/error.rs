@@ -48,7 +48,7 @@ impl Error {
     ///
     /// [`Cow`]: https://doc.rust-lang.org/std/borrow/enum.Cow.html
     #[inline]
-    pub fn message_ref<'a>(&'a self) -> Cow<'a, str> {
+    pub fn message_ref(&self) -> Cow<'_, str> {
         match self.message {
             ErrorString::String(ref string) => Cow::Borrowed(string),
             ErrorString::LLVMString(ref llvm_string) => llvm_string.to_string_lossy(),

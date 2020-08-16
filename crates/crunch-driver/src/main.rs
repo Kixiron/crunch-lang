@@ -173,9 +173,8 @@ fn run<'ctx>(
         database.config().color.into(),
     ))));
     database.set_stdout_config(Arc::new(DbgWrap::new(TermConfig::default())));
-    database.set_context(unsafe {
-        std::mem::transmute::<&'ctx Context<'ctx>, &'static Context<'static>>(&context)
-    });
+    database
+        .set_context(unsafe { &*(&context as *const &Context<'ctx> as *const Context<'static>) });
     database.set_file_path(file_id, Arc::new(options.target_file.clone()));
 
     // Check types and update the hir with concrete types
@@ -240,7 +239,7 @@ fn run<'ctx>(
     } else if cfg!(windows) {
         out_file.with_extension("exe")
     } else {
-        out_file.clone()
+        out_file
     };
 
     // TODO: Use `cc` to get the relevant linkers

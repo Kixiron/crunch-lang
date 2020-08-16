@@ -105,7 +105,7 @@ impl<'ctx> Engine<'ctx> {
             .copied()
             .ok_or_else(|| {
                 Locatable::new(
-                    TypeError::VarNotInScope(var.to_string(&self.db.context().strings())).into(),
+                    TypeError::VarNotInScope(var.to_string(self.db.context().strings())).into(),
                     loc,
                 )
             })
@@ -189,13 +189,29 @@ impl<'ctx> Engine<'ctx> {
             ) => {
                 match (signed_a, signed_b) {
                     (Some(signed_a), Some(signed_b)) if signed_a != signed_b => {
-                        todo!("Conflicting sign, return error")
+                        return Err(Locatable::new(
+                            TypeError::TypeConflict {
+                                call_type: self.display_type(&left_ty.kind),
+                                def_type: self.display_type(&right_ty.kind),
+                                def_site: right_ty.location(),
+                            }
+                            .into(),
+                            left_ty.location(),
+                        ));
                     }
                     _ => {}
                 }
                 match (width_a, width_b) {
                     (Some(width_a), Some(width_b)) if width_a != width_b => {
-                        todo!("Conflicting width, return error")
+                        return Err(Locatable::new(
+                            TypeError::TypeConflict {
+                                call_type: self.display_type(&left_ty.kind),
+                                def_type: self.display_type(&right_ty.kind),
+                                def_site: right_ty.location(),
+                            }
+                            .into(),
+                            left_ty.location(),
+                        ));
                     }
                     _ => {}
                 }
@@ -585,8 +601,12 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
         todo!()
     }
 
-    fn visit_loop(&mut self, _loc: Location, _body: &Block<&'ctx Stmt<'ctx>>) -> Self::Output {
-        todo!()
+    fn visit_loop(&mut self, loc: Location, body: &Block<&'ctx Stmt<'ctx>>) -> Self::Output {
+        for stmt in body.iter() {
+            self.visit_stmt(stmt)?;
+        }
+
+        Ok(self.db.context().hir_type(Type::new(TypeKind::Absurd, loc)))
     }
 
     fn visit_match(
@@ -682,7 +702,7 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
             .get(&call.func)
             .ok_or_else(|| {
                 Locatable::new(
-                    TypeError::FuncNotInScope(call.func.to_string(&self.db.context().strings()))
+                    TypeError::FuncNotInScope(call.func.to_string(self.db.context().strings()))
                         .into(),
                     loc,
                 )
@@ -791,6 +811,44 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
         Ok(self
             .db
             .hir_type(Type::new(TypeKind::Reference { referee, mutable }, loc)))
+    }
+
+    fn visit_index(&mut self, loc: Location, var: Var, index: &'ctx Expr<'ctx>) -> Self::Output {
+        let you_size = self.db.hir_type(Type::new(
+            TypeKind::Integer {
+                signed: None,
+                width: None,
+            },
+            index.location(),
+        ));
+        let index = self.visit_expr(index)?;
+        self.unify(you_size, index)?;
+
+        let var = self.var_type(&var, loc)?;
+        let arr_ty = self.db.context().get_hir_type(var).unwrap();
+
+        let mut kind = arr_ty.kind;
+        loop {
+            match kind {
+                TypeKind::Array { element, .. } | TypeKind::Slice { element } => {
+                    return Ok(element)
+                }
+
+                TypeKind::Variable(ty) => kind = self.db.context().get_hir_type(ty).unwrap().kind,
+
+                _ => {
+                    return Err(Locatable::new(
+                        TypeError::TypeConflict {
+                            call_type: self.display_type(&arr_ty.kind),
+                            def_type: "slice or arr".to_owned(),
+                            def_site: loc,
+                        }
+                        .into(),
+                        loc,
+                    ))
+                }
+            }
+        }
     }
 }
 

@@ -39,7 +39,7 @@ pub struct BundledModule {
 }
 
 impl BundledModule {
-    pub fn get<'ctx>(&'ctx self) -> &'ctx Module<'ctx> {
+    pub fn get(&self) -> &Module {
         self.module.as_ref().unwrap()
     }
 }
@@ -315,18 +315,13 @@ impl<'db> CodeGenerator<'db> {
 
         let func = self.get_function_value(function.id);
         let builder = self.module.resume_function(func)?;
-        for block in function.blocks.iter() {
-            let mir_block = if let Either::Left(block_ctx) = self
-                .get_function_context(self.current_function.unwrap())
-                .mir_function
-            {
-                Some(&block_ctx.blocks[block.id.0 as usize])
-            } else {
-                None
-            };
+        for (&block_id, mir_block) in function.blocks.iter() {
+            // Safety: Just trust me man
+            let mir_block =
+                Some(unsafe { &*(&mir_block as *const &BasicBlock as *const BasicBlock) });
 
             self.blocks.insert(
-                block.id,
+                block_id,
                 BlockContext {
                     mir_block,
                     block: builder.append_block()?.basic_block(),
@@ -397,37 +392,33 @@ impl<'db> CodeGenerator<'db> {
     fn add(&self, lhs: LLVMValue<'db>, rhs: LLVMValue<'db>) -> LLVMResult<LLVMValue<'db>> {
         let block_builder = self.get_block_builder();
         let val = match (lhs, rhs) {
-            (LLVMValue::U8(lhs), LLVMValue::U8(rhs)) => {
-                LLVMValue::U8(block_builder.add(lhs, rhs)?.into())
-            }
-            (LLVMValue::I8(lhs), LLVMValue::I8(rhs)) => {
-                LLVMValue::I8(block_builder.add(lhs, rhs)?.into())
-            }
+            (LLVMValue::U8(lhs), LLVMValue::U8(rhs)) => LLVMValue::U8(block_builder.add(lhs, rhs)?),
+            (LLVMValue::I8(lhs), LLVMValue::I8(rhs)) => LLVMValue::I8(block_builder.add(lhs, rhs)?),
 
             (LLVMValue::U16(lhs), LLVMValue::U16(rhs)) => {
-                LLVMValue::U16(block_builder.add(lhs, rhs)?.into())
+                LLVMValue::U16(block_builder.add(lhs, rhs)?)
             }
             (LLVMValue::I16(lhs), LLVMValue::I16(rhs)) => {
-                LLVMValue::I16(block_builder.add(lhs, rhs)?.into())
+                LLVMValue::I16(block_builder.add(lhs, rhs)?)
             }
 
             (LLVMValue::U32(lhs), LLVMValue::U32(rhs)) => {
-                LLVMValue::U32(block_builder.add(lhs, rhs)?.into())
+                LLVMValue::U32(block_builder.add(lhs, rhs)?)
             }
             (LLVMValue::I32(lhs), LLVMValue::I32(rhs)) => {
-                LLVMValue::I32(block_builder.add(lhs, rhs)?.into())
+                LLVMValue::I32(block_builder.add(lhs, rhs)?)
             }
 
             (LLVMValue::U64(lhs), LLVMValue::U64(rhs)) => {
-                LLVMValue::U64(block_builder.add(lhs, rhs)?.into())
+                LLVMValue::U64(block_builder.add(lhs, rhs)?)
             }
             (LLVMValue::I64(lhs), LLVMValue::I64(rhs)) => {
-                LLVMValue::I64(block_builder.add(lhs, rhs)?.into())
+                LLVMValue::I64(block_builder.add(lhs, rhs)?)
             }
 
             (LLVMValue::Raw(lhs), LLVMValue::Raw(rhs)) => {
                 crunch_shared::warn!("Preforming addition on two unchecked values");
-                LLVMValue::Raw(block_builder.add(lhs, rhs)?.into())
+                LLVMValue::Raw(block_builder.add(lhs, rhs)?)
             }
 
             (lhs, rhs) => panic!("Illegal instruction: Add {:?} by {:?}", lhs, rhs),
@@ -440,37 +431,33 @@ impl<'db> CodeGenerator<'db> {
         let block_builder = self.get_block_builder();
 
         Ok(match (lhs, rhs) {
-            (LLVMValue::U8(lhs), LLVMValue::U8(rhs)) => {
-                LLVMValue::U8(block_builder.sub(lhs, rhs)?.into())
-            }
-            (LLVMValue::I8(lhs), LLVMValue::I8(rhs)) => {
-                LLVMValue::I8(block_builder.sub(lhs, rhs)?.into())
-            }
+            (LLVMValue::U8(lhs), LLVMValue::U8(rhs)) => LLVMValue::U8(block_builder.sub(lhs, rhs)?),
+            (LLVMValue::I8(lhs), LLVMValue::I8(rhs)) => LLVMValue::I8(block_builder.sub(lhs, rhs)?),
 
             (LLVMValue::U16(lhs), LLVMValue::U16(rhs)) => {
-                LLVMValue::U16(block_builder.sub(lhs, rhs)?.into())
+                LLVMValue::U16(block_builder.sub(lhs, rhs)?)
             }
             (LLVMValue::I16(lhs), LLVMValue::I16(rhs)) => {
-                LLVMValue::I16(block_builder.sub(lhs, rhs)?.into())
+                LLVMValue::I16(block_builder.sub(lhs, rhs)?)
             }
 
             (LLVMValue::U32(lhs), LLVMValue::U32(rhs)) => {
-                LLVMValue::U32(block_builder.sub(lhs, rhs)?.into())
+                LLVMValue::U32(block_builder.sub(lhs, rhs)?)
             }
             (LLVMValue::I32(lhs), LLVMValue::I32(rhs)) => {
-                LLVMValue::I32(block_builder.sub(lhs, rhs)?.into())
+                LLVMValue::I32(block_builder.sub(lhs, rhs)?)
             }
 
             (LLVMValue::U64(lhs), LLVMValue::U64(rhs)) => {
-                LLVMValue::U64(block_builder.sub(lhs, rhs)?.into())
+                LLVMValue::U64(block_builder.sub(lhs, rhs)?)
             }
             (LLVMValue::I64(lhs), LLVMValue::I64(rhs)) => {
-                LLVMValue::I64(block_builder.sub(lhs, rhs)?.into())
+                LLVMValue::I64(block_builder.sub(lhs, rhs)?)
             }
 
             (LLVMValue::Raw(lhs), LLVMValue::Raw(rhs)) => {
                 crunch_shared::warn!("Preforming subtraction on two unchecked values");
-                LLVMValue::Raw(block_builder.sub(lhs, rhs)?.into())
+                LLVMValue::Raw(block_builder.sub(lhs, rhs)?)
             }
 
             (lhs, rhs) => panic!("Illegal instruction: Subtract {:?} by {:?}", lhs, rhs),
@@ -481,37 +468,33 @@ impl<'db> CodeGenerator<'db> {
         let block_builder = self.get_block_builder();
 
         Ok(match (lhs, rhs) {
-            (LLVMValue::U8(lhs), LLVMValue::U8(rhs)) => {
-                LLVMValue::U8(block_builder.mul(lhs, rhs)?.into())
-            }
-            (LLVMValue::I8(lhs), LLVMValue::I8(rhs)) => {
-                LLVMValue::I8(block_builder.mul(lhs, rhs)?.into())
-            }
+            (LLVMValue::U8(lhs), LLVMValue::U8(rhs)) => LLVMValue::U8(block_builder.mul(lhs, rhs)?),
+            (LLVMValue::I8(lhs), LLVMValue::I8(rhs)) => LLVMValue::I8(block_builder.mul(lhs, rhs)?),
 
             (LLVMValue::U16(lhs), LLVMValue::U16(rhs)) => {
-                LLVMValue::U16(block_builder.mul(lhs, rhs)?.into())
+                LLVMValue::U16(block_builder.mul(lhs, rhs)?)
             }
             (LLVMValue::I16(lhs), LLVMValue::I16(rhs)) => {
-                LLVMValue::I16(block_builder.mul(lhs, rhs)?.into())
+                LLVMValue::I16(block_builder.mul(lhs, rhs)?)
             }
 
             (LLVMValue::U32(lhs), LLVMValue::U32(rhs)) => {
-                LLVMValue::U32(block_builder.mul(lhs, rhs)?.into())
+                LLVMValue::U32(block_builder.mul(lhs, rhs)?)
             }
             (LLVMValue::I32(lhs), LLVMValue::I32(rhs)) => {
-                LLVMValue::I32(block_builder.mul(lhs, rhs)?.into())
+                LLVMValue::I32(block_builder.mul(lhs, rhs)?)
             }
 
             (LLVMValue::U64(lhs), LLVMValue::U64(rhs)) => {
-                LLVMValue::U64(block_builder.mul(lhs, rhs)?.into())
+                LLVMValue::U64(block_builder.mul(lhs, rhs)?)
             }
             (LLVMValue::I64(lhs), LLVMValue::I64(rhs)) => {
-                LLVMValue::I64(block_builder.mul(lhs, rhs)?.into())
+                LLVMValue::I64(block_builder.mul(lhs, rhs)?)
             }
 
             (LLVMValue::Raw(lhs), LLVMValue::Raw(rhs)) => {
                 crunch_shared::warn!("Preforming multiplication on two unchecked values");
-                LLVMValue::Raw(block_builder.mul(lhs, rhs)?.into())
+                LLVMValue::Raw(block_builder.mul(lhs, rhs)?)
             }
 
             (lhs, rhs) => panic!("Illegal instruction: Multiply {:?} by {:?}", lhs, rhs),
@@ -523,37 +506,37 @@ impl<'db> CodeGenerator<'db> {
 
         Ok(match (lhs, rhs) {
             (LLVMValue::U8(lhs), LLVMValue::U8(rhs)) => {
-                LLVMValue::U8(block_builder.udiv(lhs, rhs)?.into())
+                LLVMValue::U8(block_builder.udiv(lhs, rhs)?)
             }
 
             (LLVMValue::I8(lhs), LLVMValue::I8(rhs)) => {
-                LLVMValue::I8(block_builder.sdiv(lhs, rhs)?.into())
+                LLVMValue::I8(block_builder.sdiv(lhs, rhs)?)
             }
 
             (LLVMValue::U16(lhs), LLVMValue::U16(rhs)) => {
-                LLVMValue::U16(block_builder.udiv(lhs, rhs)?.into())
+                LLVMValue::U16(block_builder.udiv(lhs, rhs)?)
             }
             (LLVMValue::I16(lhs), LLVMValue::I16(rhs)) => {
-                LLVMValue::I16(block_builder.sdiv(lhs, rhs)?.into())
+                LLVMValue::I16(block_builder.sdiv(lhs, rhs)?)
             }
 
             (LLVMValue::U32(lhs), LLVMValue::U32(rhs)) => {
-                LLVMValue::U32(block_builder.udiv(lhs, rhs)?.into())
+                LLVMValue::U32(block_builder.udiv(lhs, rhs)?)
             }
             (LLVMValue::I32(lhs), LLVMValue::I32(rhs)) => {
-                LLVMValue::I32(block_builder.sdiv(lhs, rhs)?.into())
+                LLVMValue::I32(block_builder.sdiv(lhs, rhs)?)
             }
 
             (LLVMValue::U64(lhs), LLVMValue::U64(rhs)) => {
-                LLVMValue::U64(block_builder.udiv(lhs, rhs)?.into())
+                LLVMValue::U64(block_builder.udiv(lhs, rhs)?)
             }
             (LLVMValue::I64(lhs), LLVMValue::I64(rhs)) => {
-                LLVMValue::I64(block_builder.sdiv(lhs, rhs)?.into())
+                LLVMValue::I64(block_builder.sdiv(lhs, rhs)?)
             }
 
             (LLVMValue::Raw(lhs), LLVMValue::Raw(rhs)) => {
                 crunch_shared::warn!("Preforming signed division on two unchecked values");
-                LLVMValue::Raw(block_builder.sdiv(lhs, rhs)?.into())
+                LLVMValue::Raw(block_builder.sdiv(lhs, rhs)?)
             }
 
             (lhs, rhs) => panic!("Illegal instruction: Signed divide {:?} by {:?}", lhs, rhs),
@@ -600,10 +583,10 @@ impl<'db> MirVisitor for CodeGenerator<'db> {
             }
 
             // This will cascade and allow all needed blocks to be compiled
-            while let Some(block) = function
+            while let Some((_, block)) = function
                 .blocks
                 .iter()
-                .find(|b| !this.block_has_compiled(b.id))
+                .find(|(id, _)| !this.block_has_compiled(**id))
             {
                 this.visit_block(block)?;
             }
@@ -875,7 +858,7 @@ impl<'db> MirVisitor for CodeGenerator<'db> {
                     })
                     .collect::<LLVMResult<Vec<_>>>()?;
 
-                let array = ArrayValue::const_array(llvm_type.into(), elements.as_slice())?;
+                let array = ArrayValue::const_array(llvm_type, elements.as_slice())?;
                 assert_eq!(llvm_type, array.as_type().unwrap());
 
                 let array_type: ArrayType<'db> = llvm_type.try_into()?;
@@ -906,7 +889,7 @@ impl<'db> MirVisitor for CodeGenerator<'db> {
             Type::U64    => IntType::u64(&self.context)?.into(),
             Type::I64    => IntType::i64(&self.context)?.into(),
             Type::Slice { element } => {
-                self.module.create_struct(&[self.visit_type(element)?.make_pointer(AddressSpace::Generic)?.into(), IntType::u64(&self.context)?.into()], false)?.into()
+                self.module.create_struct(&[self.visit_type(element)?.make_pointer(AddressSpace::Generic)?.into(), IntType::u64(&self.context)?.into()], false)?
             }
             &Type::Array { ref element, length } => self.visit_type(element)?.make_array(length as u32)?.into(),
             Type::Pointer { pointee, .. } => self

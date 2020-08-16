@@ -1,4 +1,3 @@
-#[cfg(test)]
 #[test]
 fn ddlog_test() -> Result<(), String> {
     use differential_datalog::{
@@ -105,7 +104,7 @@ fn ddlog_test() -> Result<(), String> {
 
     // an entire transaction. changes execute on commit
     program.transaction_start()?;
-    program.apply_valupdates(updates.clone().into_iter())?;
+    program.apply_valupdates(updates.into_iter())?;
     program.transaction_commit_dump_changes()?;
 
     program.stop()

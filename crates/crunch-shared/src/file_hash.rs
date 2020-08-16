@@ -41,6 +41,12 @@ impl FileHasher {
     }
 }
 
+impl Default for FileHasher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// The metadata of a source file
 #[derive(Debug, Clone, Hash)]
 struct FileMeta<'a> {
@@ -121,12 +127,12 @@ fn hashes_are_consistent() {
     assert!(hashes.windows(2).all(|w| w[0] == w[1]));
 
     let hasher = FileHasher::new();
-    let hashes = [
+    let repeated_hashes = [
         hasher.hash_file("Cargo.toml").unwrap(),
         hasher.hash_file("Cargo.toml").unwrap(),
         hasher.hash_file("Cargo.toml").unwrap(),
         hasher.hash_file("Cargo.toml").unwrap(),
         hasher.hash_file("Cargo.toml").unwrap(),
     ];
-    assert!(hashes.windows(2).all(|w| w[0] == w[1]));
+    assert!(repeated_hashes.windows(2).all(|w| w[0] == w[1]));
 }

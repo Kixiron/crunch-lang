@@ -313,7 +313,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                 Ok(Locatable::new(
                     parser.context.ast_type(ty),
                     Location::new(
-                        Span::merge(token.span(), end.unwrap_or(token.span())),
+                        Span::merge(token.span(), end.unwrap_or_else(|| token.span())),
                         parser.current_file,
                     ),
                 ))

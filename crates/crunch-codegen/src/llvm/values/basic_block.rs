@@ -25,7 +25,7 @@ pub struct BasicBlock<'ctx> {
 
 impl<'ctx> BasicBlock<'ctx> {
     #[inline]
-    pub fn name<'b>(&'b self) -> Option<Cow<'b, str>> {
+    pub fn name(&self) -> Option<Cow<'_, str>> {
         unsafe {
             let name = NonNull::new(LLVMGetBasicBlockName((*self).as_mut_ptr()) as *mut i8);
 
@@ -36,7 +36,7 @@ impl<'ctx> BasicBlock<'ctx> {
     pub fn parent(self) -> Option<Self> {
         unsafe {
             Val::from_raw(LLVMGetBasicBlockParent(self.as_mut_ptr()))
-                .and_then(|val| Self::from_val(val))
+                .and_then(Self::from_val)
                 .ok()
         }
     }
@@ -93,7 +93,7 @@ impl<'ctx> BasicBlock<'ctx> {
 }
 
 impl<'ctx> AnyValue<'ctx> for BasicBlock<'ctx> {
-    fn get_name_raw<'a>(&'a self) -> Option<&'a [u8]> {
+    fn get_name_raw(&self) -> Option<&[u8]> {
         let string = unsafe {
             let ptr =
                 NonNull::new(LLVMGetBasicBlockName(BasicBlock::as_mut_ptr(*self)) as *mut i8)?;

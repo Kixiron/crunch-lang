@@ -13,7 +13,7 @@ use codespan_reporting::{
 };
 use core::{
     fmt,
-    hash::{Hash, Hasher},
+    hash::Hash,
     mem,
     ops::{Deref, DerefMut, Range},
 };
@@ -184,7 +184,7 @@ impl Into<[usize; 2]> for Span {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Locatable<T> {
     data: T,
     loc: Option<Location>,
@@ -289,16 +289,6 @@ impl<T> DerefMut for Locatable<T> {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.data
-    }
-}
-
-impl<T> Hash for Locatable<T>
-where
-    T: Hash,
-{
-    #[inline]
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.data.hash(state)
     }
 }
 
@@ -668,7 +658,7 @@ pub enum TypeError {
 
 impl TypeError {
     #[inline]
-    fn emit<'a>(&self, file: FileId, span: Span, diag: &mut Vec<Diagnostic<FileId>>) {
+    fn emit(&self, file: FileId, span: Span, diag: &mut Vec<Diagnostic<FileId>>) {
         match self {
             Self::TypeConflict {
                 call_type,

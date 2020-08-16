@@ -946,12 +946,10 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
             CallConv::from_str(&callconv.to_string())
                 .map_err(|err| Locatable::new(err.into(), literal.location()))
+        } else if optional {
+            Ok(CallConv::Crunch)
         } else {
-            if optional {
-                Ok(CallConv::Crunch)
-            } else {
-                todo!("Error handling")
-            }
+            todo!("Error handling")
         }
     }
 

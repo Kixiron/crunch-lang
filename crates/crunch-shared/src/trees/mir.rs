@@ -3,6 +3,7 @@ use crate::{
     error::{Locatable, MirError, MirResult},
     strings::{StrInterner, StrT},
     trees::{hir::Var as HirVar, CallConv, ItemPath, Ref, Sign},
+    utils::HashMap,
 };
 use alloc::{string::ToString, vec::Vec};
 use core::iter;
@@ -82,13 +83,13 @@ pub struct Function {
     /// The return type of the function
     pub ret: Type,
     /// The body of the function
-    pub blocks: Vec<BasicBlock>,
+    pub blocks: HashMap<BlockId, BasicBlock>,
 }
 
 impl Function {
     /// An iterator over the `BasicBlock`s of a function
-    pub fn iter(&self) -> impl Iterator<Item = &BasicBlock> {
-        self.blocks.iter()
+    pub fn iter(&self) -> impl Iterator<Item = (BlockId, &BasicBlock)> {
+        self.blocks.iter().map(|(id, block)| (*id, block))
     }
 
     pub fn to_doc<'a, D>(
@@ -123,7 +124,9 @@ impl Function {
             .append(
                 alloc
                     .intersperse(
-                        self.blocks.iter().map(|b| b.to_doc(alloc, mir, interner)),
+                        self.blocks
+                            .iter()
+                            .map(|(_, b)| b.to_doc(alloc, mir, interner)),
                         alloc.hardline().append(alloc.hardline()),
                     )
                     .indent(4),

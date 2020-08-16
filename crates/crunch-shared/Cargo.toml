@@ -12,7 +12,7 @@ concurrent = ["lasso/multi-threaded"]
 no-std = ["hashbrown", "lasso/no-std"]
 
 [dependencies.hashbrown]
-version = "0.8.1"
+version = "0.8.2"
 optional = true
 default-features = false
 
@@ -21,7 +21,7 @@ version = "0.4.11"
 default-features = false
 
 [dependencies.serde]
-version = "1.0.114"
+version = "1.0.115"
 features = ["derive"]
 default-features = false
 
@@ -39,11 +39,11 @@ version = "0.10.0"
 default-features = false
 
 [dependencies.salsa]
-version = "0.15.1"
+version = "0.15.2"
 default-features = false
 
 [dependencies.structopt]
-version = "0.3.15"
+version = "0.3.16"
 default-features = false
 
 [dependencies.lasso]

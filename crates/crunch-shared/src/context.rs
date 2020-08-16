@@ -196,6 +196,8 @@ impl<'ctx> Context<'ctx> {
         let strings = StrInterner::new();
         intern_static!((strings) => {
             "callconv",
+            "main",
+            "suspend",
         });
 
         strings
@@ -283,6 +285,6 @@ impl<'ctx> Context<'ctx> {
 
     #[inline]
     pub fn get_hir_type(&self, id: TypeId) -> Option<&'ctx HirType> {
-        self.arenas.hir.type_map.borrow().get(&id).map(|ty| *ty)
+        self.arenas.hir.type_map.borrow().get(&id).copied()
     }
 }

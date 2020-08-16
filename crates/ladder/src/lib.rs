@@ -943,7 +943,7 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
             &AstLiteralVal::Float(float) => LiteralVal::Float(float),
             AstLiteralVal::Array(array) => {
                 let elements = array
-                    .into_iter()
+                    .iter()
                     .map(|literal| self.visit_literal(literal))
                     .collect();
 
@@ -1007,7 +1007,7 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
         {
             Var::User(**var)
         } else {
-            todo!()
+            self.next_var()
         };
 
         if let AssignKind::BinaryOp(op) = op {
@@ -1025,6 +1025,7 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
                 loc: expr.location(),
             })
         } else {
+            // FIXME: This is wrong lol
             let kind = ExprKind::Assign(var, self.visit_expr(rhs));
 
             self.context().hir_expr(Expr {
@@ -1034,8 +1035,8 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
         }
     }
 
-    fn visit_paren(&mut self, _expr: &AstExpr<'_>, _inner: &AstExpr<'_>) -> Self::Output {
-        todo!()
+    fn visit_paren(&mut self, _expr: &AstExpr<'_>, inner: &AstExpr<'_>) -> Self::Output {
+        self.visit_expr(inner)
     }
 
     fn visit_array(&mut self, _expr: &AstExpr<'_>, _elements: &[&AstExpr<'_>]) -> Self::Output {
@@ -1057,11 +1058,83 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
 
     fn visit_index(
         &mut self,
-        _expr: &AstExpr<'_>,
-        _var: &AstExpr<'_>,
-        _index: &AstExpr<'_>,
+        expr: &AstExpr<'_>,
+        var: &AstExpr<'_>,
+        index: &AstExpr<'_>,
     ) -> Self::Output {
-        todo!()
+        let mut scope = Vec::with_capacity(2);
+        let indexee_name = if let AstExpr {
+            kind: AstExprKind::Variable(var),
+            ..
+        } = var
+        {
+            Var::User(**var)
+        } else {
+            let value = self.visit_expr(var);
+            let name = self.next_var();
+            let ty = self
+                .db
+                .context()
+                .hir_type(Type::new(TypeKind::Unknown, expr.location()));
+
+            scope.push(self.context().hir_stmt(Stmt::VarDecl(VarDecl {
+                name,
+                value,
+                mutable: false,
+                ty,
+                loc: expr.location(),
+            })));
+
+            name
+        };
+
+        let (index_name, index_ty) = if let AstExpr {
+            kind: AstExprKind::Variable(var),
+            ..
+        } = index
+        {
+            (
+                Var::User(**var),
+                self.db
+                    .context()
+                    .hir_type(Type::new(TypeKind::Unknown, expr.location())),
+            )
+        } else {
+            let value = self.visit_expr(index);
+            let name = self.next_var();
+            let ty = self
+                .db
+                .context()
+                .hir_type(Type::new(TypeKind::Unknown, expr.location()));
+
+            scope.push(self.context().hir_stmt(Stmt::VarDecl(VarDecl {
+                name,
+                value,
+                mutable: false,
+                ty,
+                loc: expr.location(),
+            })));
+
+            (name, ty)
+        };
+
+        let index = self.context().hir_expr(Expr {
+            kind: ExprKind::Variable(index_name, index_ty),
+            loc: expr.location(),
+        });
+        let index = self.context().hir_expr(Expr {
+            kind: ExprKind::Index {
+                var: indexee_name,
+                index,
+            },
+            loc: expr.location(),
+        });
+        scope.push(self.context().hir_stmt(Stmt::Expr(index)));
+
+        self.context().hir_expr(Expr {
+            kind: ExprKind::Scope(Block::new(scope, expr.location())),
+            loc: expr.location(),
+        })
     }
 
     fn visit_func_call(

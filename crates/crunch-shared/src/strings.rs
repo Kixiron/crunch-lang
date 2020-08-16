@@ -6,19 +6,21 @@ pub use interner::StrInterner;
 
 #[cfg(all(feature = "concurrent", not(feature = "no-std")))]
 mod interner {
-    use super::StrT;
+    use crate::utils::Hasher;
     use alloc::sync::Arc;
-    use lasso::{Capacity, Spur, ThreadedRodeo};
+    use lasso::ThreadedRodeo;
+    use lasso::{Capacity, Key, Spur};
 
     #[derive(Debug, Clone)]
     #[repr(transparent)]
-    pub struct StrInterner(Arc<ThreadedRodeo<Spur>>);
+    pub struct StrInterner(Arc<ThreadedRodeo<Spur, Hasher>>);
 
     impl StrInterner {
         #[inline]
         pub fn new() -> Self {
-            Self(Arc::new(ThreadedRodeo::with_capacity(
+            Self(Arc::new(ThreadedRodeo::with_capacity_and_hasher(
                 Capacity::for_strings(1000),
+                Hasher::default(),
             )))
         }
 
@@ -49,27 +51,38 @@ mod interner {
 #[cfg(not(feature = "concurrent"))]
 mod interner {
     use super::StrT;
+    use crate::utils::Hasher;
     use alloc::rc::Rc;
     use core::{
         cell::{Ref, RefCell},
         ops::Deref,
     };
-    use lasso::{Capacity, Rodeo, Spur};
+    use lasso::Rodeo;
+    use lasso::{Capacity, Spur};
 
     #[derive(Debug, Clone)]
     #[repr(transparent)]
-    pub struct StrInterner(Rc<RefCell<Rodeo<Spur>>>);
+    pub struct StrInterner(Rc<RefCell<Rodeo<Spur, Hasher>>>);
 
     impl StrInterner {
         #[inline]
         pub fn new() -> Self {
-            Self(Rc::new(RefCell::new(Rodeo::with_capacity(
-                Capacity::for_strings(1000),
-            ))))
+            crate::debug!("Creating a new string interner");
+
+            let rodeo =
+                Rodeo::with_capacity_and_hasher(Capacity::for_strings(1000), Hasher::default());
+
+            Self(Rc::new(RefCell::new(rodeo)))
         }
 
         #[inline]
         pub fn resolve<'a>(&'a self, sym: StrT) -> impl AsRef<str> + 'a {
+            crate::debug!(
+                "borrowing strings immutably (strong count is {}, weak count is {})",
+                Rc::strong_count(&self.0),
+                Rc::weak_count(&self.0),
+            );
+
             #[repr(transparent)]
             struct RefWrap<T>(T);
 
@@ -83,12 +96,29 @@ mod interner {
         }
 
         #[inline]
+        #[track_caller]
         pub fn intern(&self, string: impl AsRef<str>) -> StrT {
-            StrT::from(self.0.borrow_mut().get_or_intern(string.as_ref()))
+            crate::debug!(
+                "borrowed strings mutably for interning (strong count is {}, weak count is {}) @ {}",
+                Rc::strong_count(&self.0),
+                Rc::weak_count(&self.0),
+                core::panic::Location::caller(),
+            );
+
+            let mut borrow = self.0.borrow_mut();
+            StrT::from(borrow.get_or_intern(string.as_ref()))
         }
 
         #[inline]
+        #[track_caller]
         pub fn intern_static(&self, string: &'static str) -> StrT {
+            crate::debug!(
+                "borrowed strings mutably for static interning (strong count is {}, weak count is {}) @ {}",
+                Rc::strong_count(&self.0),
+                Rc::weak_count(&self.0),
+                core::panic::Location::caller(),
+            );
+
             StrT::from(self.0.borrow_mut().get_or_intern_static(string))
         }
     }

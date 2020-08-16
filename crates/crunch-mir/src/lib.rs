@@ -66,11 +66,7 @@ fn lower_mir(db: &dyn MirDatabase, file: FileId) -> Result<Arc<Mir>, Arc<ErrorHa
             .join(&*db.file_name(file))
             .with_extension("mir");
 
-        std::fs::write(
-            &path,
-            format!("{}", mir.write_pretty(db.context().strings())),
-        )
-        .unwrap();
+        std::fs::write(&path, mir.write_pretty(db.context().strings())).unwrap();
     }
 
     if config.print.contains(&EmissionKind::Mir) {
@@ -119,14 +115,13 @@ impl<'db> MirBuilder<'db> {
 
     pub fn lower(mut self, items: &[&'db Item<'db>]) -> MirResult<Mir> {
         self.with_scope(|builder| {
-            builder.function_names =
-                HashMap::from_iter(items.iter().filter_map(|item| match item {
-                    &&Item::Function(HirFunction { ref name, ret, .. })
-                    | &&Item::ExternFunc(HirExternFunc { ref name, ret, .. }) => Some((
-                        name.clone(),
-                        (builder.next_func_id(), builder.visit_type(ret)),
-                    )),
-                }));
+            builder.function_names = HashMap::from_iter(items.iter().map(|item| match item {
+                &&Item::Function(HirFunction { ref name, ret, .. })
+                | &&Item::ExternFunc(HirExternFunc { ref name, ret, .. }) => (
+                    name.clone(),
+                    (builder.next_func_id(), builder.visit_type(ret)),
+                ),
+            }));
 
             for item in items {
                 builder.visit_item(item)?;
@@ -334,10 +329,19 @@ impl<'db> ItemVisitor<'db> for MirBuilder<'db> {
                 //        This would guarantee that only used blocks are ever created instead of speculatively
                 //        creating blocks for future use
                 // FIXME: https://github.com/rust-lang/rust/issues/43244
-                let blocks = blocks
-                    .into_iter()
-                    .filter(|block| !block.is_empty())
-                    .collect();
+                let blocks = HashMap::from_iter(blocks.into_iter().filter_map(|block| {
+                    if block.is_empty() {
+                        crunch_shared::warn!(
+                            "Generated an empty MIR basic block: {} in {}",
+                            block.id,
+                            func.name.to_string(builder.db.context().strings()),
+                        );
+
+                        None
+                    } else {
+                        Some((block.id, block))
+                    }
+                }));
 
                 let func = Function {
                     id,
@@ -658,7 +662,7 @@ impl<'db> ExprVisitor<'db> for MirBuilder<'db> {
                 },
                 val: Value::Const(Constant::Array(
                     elements
-                        .into_iter()
+                        .iter()
                         .map(|e| {
                             self.visit_literal(loc, e)
                                 .map(|e| e.unwrap().into_constant().unwrap())
@@ -794,6 +798,10 @@ impl<'db> ExprVisitor<'db> for MirBuilder<'db> {
         };
 
         Ok(Some(Rval { ty, val }))
+    }
+
+    fn visit_index(&mut self, _loc: Location, _var: HirVar, _index: &Expr<'db>) -> Self::Output {
+        todo!()
     }
 }
 

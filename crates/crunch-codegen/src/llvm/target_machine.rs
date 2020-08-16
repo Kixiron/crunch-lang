@@ -235,7 +235,7 @@ impl TargetMachine {
         path: impl AsRef<Path>,
         codegen: CodegenFileKind,
     ) -> Result<()> {
-        let path = CString::new(unsafe { std::mem::transmute::<&Path, &[u8]>(path.as_ref()) })?;
+        let path = CString::new(unsafe { &*(path.as_ref() as *const Path as *const [u8]) })?;
         let mut err_message = MaybeUninit::zeroed();
 
         let failed = unsafe {
@@ -258,7 +258,7 @@ impl TargetMachine {
     }
 
     #[inline]
-    pub fn target<'a>(&'a self) -> Result<Target> {
+    pub fn target(&self) -> Result<Target> {
         unsafe { Target::from_raw(LLVMGetTargetMachineTarget(self.as_mut_ptr())) }
     }
 
