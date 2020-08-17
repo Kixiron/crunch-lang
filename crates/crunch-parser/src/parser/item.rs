@@ -844,7 +844,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     ///     'end'
     /// ```
     #[recursion_guard]
-    #[crunch_shared::instrument(name = "external block", skip(self))]
+    #[crunch_shared::instrument(name = "external block", skip(self, decorators, attrs))]
     fn extern_block(
         &mut self,
         decorators: Vec<Decorator<'ctx>>,
@@ -906,7 +906,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     ///     Vis? Decorator* Attribute* 'fn' Ident '(' FunctionArgs* ')' ('->' Type)? ';'
     /// ```
     #[recursion_guard]
-    #[crunch_shared::instrument(name = "external function", skip(self))]
+    #[crunch_shared::instrument(name = "external function", skip(self, decorators, attrs, vis))]
     fn extern_func(
         &mut self,
         mut decorators: Vec<Decorator<'ctx>>,
@@ -961,6 +961,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         optional: bool,
         decorators: &mut Vec<Decorator<'ctx>>,
     ) -> ParseResult<CallConv> {
+        crunch_shared::trace!("parsing a calling convention");
         let callconv = self.context.strings().intern_static("callconv");
 
         if let Some(idx) = decorators.iter().position(|dec| *dec.name == callconv) {
@@ -983,11 +984,17 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             let callconv = literal
                 .val
                 .as_string()
-                .ok_or_else(|| expected(literal.location()))?;
+                .ok_or_else(|| expected(literal.location()))?
+                .to_string();
 
-            CallConv::from_str(&callconv.to_string())
+            crunch_shared::trace!("calling convention: {:?}", &callconv);
+            CallConv::from_str(&callconv)
                 .map_err(|err| Locatable::new(err.into(), literal.location()))
         } else if optional {
+            crunch_shared::trace!(
+                "calling convention was optional and not given, defaulting to 'Crunch'",
+            );
+
             Ok(CallConv::Crunch)
         } else {
             todo!("Error handling")
@@ -1002,6 +1009,8 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     pub(super) fn generics(
         &mut self,
     ) -> ParseResult<Option<Locatable<Vec<Locatable<&'ctx Type<'ctx>>>>>> {
+        crunch_shared::trace!("parsing generic parameters");
+
         let peek = if let Ok(peek) = self.peek() {
             peek
         } else {
@@ -1027,11 +1036,14 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                 .eat(TokenType::RightBrace, [TokenType::Newline])?
                 .span();
 
+            crunch_shared::trace!("parsed {} generics", generics.len());
             Ok(Some(Locatable::new(
                 generics,
                 Location::new(Span::merge(start, end), self.current_file),
             )))
         } else {
+            crunch_shared::trace!("no brackets found, not parsing any generics");
+
             Ok(None)
         }
     }
@@ -1041,10 +1053,17 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// ```
     #[recursion_guard]
     fn attr(&self, token: &Token<'_>, file: CurrentFile) -> ParseResult<Attribute> {
+        crunch_shared::trace!("parsing an attribute");
+
         Ok(match token.ty() {
-            TokenType::Const => Attribute::Const,
+            TokenType::Const => {
+                crunch_shared::trace!("parsed a 'const' attribute");
+                Attribute::Const
+            }
 
             _ => {
+                crunch_shared::error!("invalid attribute: {:?}", token.source());
+
                 return Err(Locatable::new(
                     Error::Syntax(SyntaxError::Generic(format!(
                         "Expected an attribute, got `{}`",
@@ -1061,16 +1080,26 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     /// ```
     #[recursion_guard]
     fn vis(&mut self) -> ParseResult<Vis> {
-        Ok(
-            match self
-                .eat_of([TokenType::Exposed, TokenType::Package], [])?
-                .ty()
-            {
-                TokenType::Exposed => Vis::Exposed,
-                TokenType::Package => Vis::Package,
+        crunch_shared::trace!("parsing a visibility");
 
-                _ => todo!("Error"),
-            },
-        )
+        let token = self.eat_of([TokenType::Exposed, TokenType::Package], [])?;
+
+        Ok(match token.ty() {
+            TokenType::Exposed => {
+                crunch_shared::trace!("parsed an 'exposed' visibility");
+                Vis::Exposed
+            }
+
+            TokenType::Package => {
+                crunch_shared::trace!("parsed a 'package' visibility");
+                Vis::Package
+            }
+
+            _ => {
+                crunch_shared::error!("invalid visibility: {:?}", token.source());
+
+                todo!("Error")
+            }
+        })
     }
 }

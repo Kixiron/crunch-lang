@@ -75,6 +75,8 @@ pub struct Engine<'ctx> {
 
 impl<'ctx> Engine<'ctx> {
     pub fn new(db: &'ctx dyn TypecheckDatabase) -> Self {
+        crunch_shared::trace!("creating a new type engine");
+
         Self {
             errors: ErrorHandler::default(),
             current_func: None,
@@ -85,20 +87,10 @@ impl<'ctx> Engine<'ctx> {
         }
     }
 
-    /// Create a new type term with whatever we have about its type
-    fn insert(&mut self, var: Var, type_id: TypeId) {
-        if let Some(old_type) = self.variables.last_mut().unwrap().insert(var, type_id) {
-            crunch_shared::warn!(
-                "The variable {:?} previously had the type {:?} but it was overwritten with {:?}",
-                var,
-                type_id,
-                old_type,
-            );
-        }
-    }
-
     // TODO: Caching
     fn var_type(&self, var: &Var, loc: Location) -> TypeResult<TypeId> {
+        crunch_shared::trace!("getting the type of the variable {:?}", var);
+
         self.variables
             .iter()
             .rev()
@@ -112,15 +104,28 @@ impl<'ctx> Engine<'ctx> {
             })
     }
 
-    fn insert_variable(&mut self, var: Var, ty: TypeId) {
-        self.variables.last_mut().unwrap().insert(var, ty);
+    fn insert_variable(&mut self, var: Var, type_id: TypeId) {
+        crunch_shared::trace!("inserting a variable {:?} with the type {:?}", var, type_id);
+
+        if let Some(old_type) = self.variables.last_mut().unwrap().insert(var, type_id) {
+            crunch_shared::warn!(
+                "The variable {:?} previously had the type {:?} but it was overwritten with {:?}",
+                var,
+                type_id,
+                old_type,
+            );
+        }
     }
 
     fn push_scope(&mut self) {
+        crunch_shared::trace!("pushing a variable scope");
+
         self.variables.push(HashMap::with_hasher(Hasher::default()));
     }
 
     fn pop_scope(&mut self) {
+        crunch_shared::trace!("popping a variable scope");
+
         self.variables.pop().unwrap();
     }
 
@@ -128,29 +133,72 @@ impl<'ctx> Engine<'ctx> {
     where
         F: FnOnce(&mut Self) -> T,
     {
-        self.push_scope();
-        let result = func(self);
-        self.pop_scope();
+        crunch_shared::trace_span!("variable_scope").in_scope(|| {
+            crunch_shared::trace!("preforming a function with a new variable scope");
 
-        result
+            self.push_scope();
+            let result = func(self);
+            self.pop_scope();
+
+            result
+        })
     }
 
     /// Make the types of two type terms equivalent (or produce an error if
     /// there is a conflict between them)
+    ///
+    /// The log spam can be silenced by using `type_unification=info`
     // TODO: Caching
+    #[crunch_shared::instrument(
+        target = "type_unification",
+        level = "trace",
+        name = "type unification",
+        skip(self)
+    )]
     fn unify(&mut self, left: TypeId, right: TypeId) -> TypeResult<()> {
-        if left == right {
-            return Ok(());
-        }
-
-        const EXPECT_MSG: &str = "Attempted to get a type that does not exist";
-        let (left_ty, right_ty) = (
-            self.db.context().get_hir_type(left).expect(EXPECT_MSG),
-            self.db.context().get_hir_type(right).expect(EXPECT_MSG),
+        crunch_shared::trace!(
+            target: "type_unification",
+            "unifying types {:?} and {:?}",
+            left,
+            right,
         );
 
-        // TODO: Cycle detection
+        let (mut left_ty, mut right_ty) = (
+            self.db.context().get_hir_type(left).unwrap(),
+            self.db.context().get_hir_type(right).unwrap(),
+        );
+
+        // Drill through type references to the underlying types
+        // FIXME: Cycle detection
+        loop {
+            if left == right {
+                crunch_shared::trace!(
+                    target: "type_unification",
+                    "the unified types are equal, returning immediately",
+                );
+
+                return Ok(());
+            }
+
+            match (left_ty.kind, right_ty.kind) {
+                (TypeKind::Variable(l), TypeKind::Variable(r)) => {
+                    left_ty = self.db.context().get_hir_type(l).unwrap();
+                    right_ty = self.db.context().get_hir_type(r).unwrap();
+                }
+
+                // FIXME: Add back once cycles are detected
+                // (TypeKind::Variable(l), _) => {
+                //     left_ty = self.db.context().get_hir_type(l).unwrap();
+                // }
+                // (_, TypeKind::Variable(r)) => {
+                //     right_ty = self.db.context().get_hir_type(r).unwrap();
+                // }
+                (_, _) => break,
+            }
+        }
+
         match (left_ty.kind, right_ty.kind) {
+            // FIXME: Remove this once cycle detection works
             (TypeKind::Variable(left), _) => self.unify(left, right),
             (_, TypeKind::Variable(right)) => self.unify(left, right),
 
@@ -173,10 +221,22 @@ impl<'ctx> Engine<'ctx> {
                 Ok(())
             }
 
-            (TypeKind::Absurd, _) | (_, TypeKind::Absurd) => Ok(()),
+            (TypeKind::Absurd, _) | (_, TypeKind::Absurd) => {
+                crunch_shared::trace!(
+                    target: "type_unification",
+                    "one of the sides is absurd, unifying",
+                );
+                Ok(())
+            }
             (TypeKind::String, TypeKind::String)
             | (TypeKind::Bool, TypeKind::Bool)
-            | (TypeKind::Unit, TypeKind::Unit) => Ok(()),
+            | (TypeKind::Unit, TypeKind::Unit) => {
+                crunch_shared::trace!(
+                    target: "type_unification",
+                    "identical primitives, unifying",
+                );
+                Ok(())
+            }
 
             (
                 TypeKind::Integer {
@@ -188,8 +248,22 @@ impl<'ctx> Engine<'ctx> {
                     width: width_b,
                 },
             ) => {
+                crunch_shared::trace!(
+                    target: "type_unification",
+                    "unifying {:?} and {:?}",
+                    left_ty.kind,
+                    right_ty.kind,
+                );
+
                 match (signed_a, signed_b) {
                     (Some(signed_a), Some(signed_b)) if signed_a != signed_b => {
+                        crunch_shared::error!(
+                            target: "type_unification",
+                            "the signedness of {:?} and {:?} are not equal",
+                            left_ty.kind,
+                            right_ty.kind,
+                        );
+
                         return Err(Locatable::new(
                             TypeError::TypeConflict {
                                 call_type: self.display_type(&left_ty.kind),
@@ -202,8 +276,16 @@ impl<'ctx> Engine<'ctx> {
                     }
                     _ => {}
                 }
+
                 match (width_a, width_b) {
                     (Some(width_a), Some(width_b)) if width_a != width_b => {
+                        crunch_shared::error!(
+                            target: "type_unification",
+                            "the bit width of {:?} and {:?} are not equal",
+                            left_ty.kind,
+                            right_ty.kind,
+                        );
+
                         return Err(Locatable::new(
                             TypeError::TypeConflict {
                                 call_type: self.display_type(&left_ty.kind),
@@ -236,6 +318,10 @@ impl<'ctx> Engine<'ctx> {
                     length: right_len,
                 },
             ) if left_len == right_len => {
+                crunch_shared::error!(
+                    target: "type_unification",
+                    "array lengths are equal, unifying element types",
+                );
                 self.unify(left_elem, right_elem)?;
 
                 Ok(())
@@ -261,25 +347,40 @@ impl<'ctx> Engine<'ctx> {
                     mutable: right_mut,
                 },
             ) if left_mut == right_mut => {
+                crunch_shared::error!(
+                    target: "type_unification",
+                    "reference/pointer mutability are equal, unifying pointee types",
+                );
                 self.unify(left, right)?;
 
                 Ok(())
             }
 
             // If no previous attempts to unify were successful, raise an error
-            (call_type, def_type) => Err(Locatable::new(
-                TypeError::TypeConflict {
-                    call_type: self.display_type(&call_type),
-                    def_type: self.display_type(&def_type),
-                    def_site: right_ty.location(),
-                }
-                .into(),
-                left_ty.location(),
-            )),
+            (call_type, def_type) => {
+                crunch_shared::error!(
+                    target: "type_unification",
+                    "{:?} and {:?} are not unifiable, returning an error",
+                    call_type,
+                    def_type,
+                );
+
+                Err(Locatable::new(
+                    TypeError::TypeConflict {
+                        call_type: self.display_type(&call_type),
+                        def_type: self.display_type(&def_type),
+                        def_site: right_ty.location(),
+                    }
+                    .into(),
+                    left_ty.location(),
+                ))
+            }
         }
     }
 
     pub fn walk(&mut self, items: &[&'ctx Item<'ctx>]) -> Result<ErrorHandler, ErrorHandler> {
+        crunch_shared::trace!("walking a tree for type checking");
+
         self.with_scope(|builder| {
             for item in items.iter() {
                 match item {
@@ -307,6 +408,11 @@ impl<'ctx> Engine<'ctx> {
                                 .is_unknown();
 
                             if is_unknown {
+                                crunch_shared::error!(
+                                    "the function {:?} is missing a function argument type",
+                                    name.to_string(builder.db.context().strings()),
+                                );
+
                                 builder.errors.push_err(Locatable::new(
                                     TypeError::MissingType(
                                         "Types for function arguments".to_owned(),
@@ -320,6 +426,11 @@ impl<'ctx> Engine<'ctx> {
                         // TODO: Use error types as fillers here if they're unknown
                         let ret_ty = builder.db.context().get_hir_type(ret).unwrap();
                         if ret_ty.kind.is_unknown() {
+                            crunch_shared::error!(
+                                "the function {:?} is missing a return type",
+                                name.to_string(builder.db.context().strings()),
+                            );
+
                             builder.errors.push_err(Locatable::new(
                                 TypeError::MissingType("Return types for functions".to_owned())
                                     .into(),
@@ -332,7 +443,7 @@ impl<'ctx> Engine<'ctx> {
                         let args: Vec<TypeId> = args
                             .iter()
                             .map(|&FuncArg { name, kind, .. }| {
-                                builder.insert(name, kind);
+                                builder.insert_variable(name, kind);
                                 kind
                             })
                             .collect();
@@ -344,6 +455,11 @@ impl<'ctx> Engine<'ctx> {
                             sig,
                         };
 
+                        crunch_shared::trace!(
+                            "inserting a function into the builder: {:?}",
+                            name.to_string(builder.db.context().strings()),
+                        );
+
                         builder.functions.insert(name.clone(), func);
                     }
                 }
@@ -351,19 +467,28 @@ impl<'ctx> Engine<'ctx> {
 
             for item in items {
                 if let Err(err) = builder.visit_item(item) {
+                    crunch_shared::error!("item encountered an error while type checking");
+
                     builder.errors.push_err(err);
                 }
             }
 
             if builder.errors.is_fatal() {
+                crunch_shared::error!(
+                    "fatal errors encountered when type checking, returning an error",
+                );
+
                 Err(builder.errors.take())
             } else {
+                crunch_shared::info!("type checking succeeded");
+
                 Ok(builder.errors.take())
             }
         })
     }
 
     // TODO: Caching
+    #[crunch_shared::instrument(name = "intern literal", skip(self, val, ty, loc, _loc))]
     fn intern_literal(
         &mut self,
         &Literal { ref val, ty, loc }: &Literal,
@@ -381,10 +506,15 @@ impl<'ctx> Engine<'ctx> {
                     loc,
                 ));
 
-                for elem in elements {
-                    let elem = self.intern_literal(elem, elem.location())?;
-                    self.unify(element, elem)?;
-                }
+                crunch_shared::trace_span!("check_array_elements").in_scope(|| {
+                    crunch_shared::trace!("checking array element types");
+                    for elem in elements {
+                        let elem = self.intern_literal(elem, elem.location())?;
+                        self.unify(element, elem)?;
+                    }
+
+                    Ok(())
+                })?;
             }
 
             ignored => crunch_shared::debug!("Ignoring {:?} in intern_literal", ignored),
@@ -463,13 +593,25 @@ impl<'ctx> Engine<'ctx> {
 impl<'ctx> ItemVisitor<'ctx> for Engine<'ctx> {
     type Output = TypeResult<()>;
 
+    #[crunch_shared::instrument(name = "item", skip(self, item))]
     fn visit_item(&mut self, item: &Item<'ctx>) -> Self::Output {
         match item {
-            Item::Function(func) => self.visit_func(func),
-            Item::ExternFunc(func) => self.visit_extern_func(func),
+            Item::Function(func) => {
+                crunch_shared::trace!("item is a function, visiting");
+                self.visit_func(func)
+            }
+            Item::ExternFunc(func) => {
+                crunch_shared::trace!("item is an external function, visiting");
+                self.visit_extern_func(func)
+            }
         }
     }
 
+    #[crunch_shared::instrument(
+        name = "function",
+        skip(self, name, body, args),
+        fields(name = ?name.to_string(self.db.context().strings())),
+    )]
     fn visit_func(
         &mut self,
         Function {
@@ -480,7 +622,7 @@ impl<'ctx> ItemVisitor<'ctx> for Engine<'ctx> {
             builder.current_func = Some(builder.functions.get(name).unwrap().clone());
 
             for arg in args.iter() {
-                builder.insert(arg.name, arg.kind);
+                builder.insert_variable(arg.name, arg.kind);
             }
 
             for stmt in body.iter() {
@@ -493,9 +635,19 @@ impl<'ctx> ItemVisitor<'ctx> for Engine<'ctx> {
         })
     }
 
+    #[crunch_shared::instrument(
+        name = "external function",
+        skip(self, name, ret, args),
+        fields(name = ?name.to_string(self.db.context().strings())),
+    )]
     fn visit_extern_func(
         &mut self,
-        &ExternFunc { ref args, ret, .. }: &ExternFunc,
+        &ExternFunc {
+            ref args,
+            ret,
+            ref name,
+            ..
+        }: &ExternFunc,
     ) -> Self::Output {
         let mut missing_arg_ty = None;
 
@@ -540,8 +692,7 @@ impl<'ctx> ItemVisitor<'ctx> for Engine<'ctx> {
 
 impl<'ctx> StmtVisitor<'ctx> for Engine<'ctx> {
     type Output = TypeResult<Option<TypeId>>;
-
-    #[inline]
+    #[crunch_shared::instrument(name = "statement", skip(self, stmt))]
     fn visit_stmt(&mut self, stmt: &'ctx Stmt<'ctx>) -> <Self as StmtVisitor<'ctx>>::Output {
         match stmt {
             Stmt::VarDecl(decl) => self.visit_var_decl(decl),
@@ -556,7 +707,11 @@ impl<'ctx> StmtVisitor<'ctx> for Engine<'ctx> {
             Stmt::Expr(expr) => self.visit_expr(expr).map(Some),
         }
     }
-
+    #[crunch_shared::instrument(
+        name = "variable declaration",
+        skip(self, name, value, ty, loc),
+        fields(name = ?name.to_string(self.db.context().strings()), ty = ?ty),
+    )]
     fn visit_var_decl(
         &mut self,
         &VarDecl {
@@ -568,7 +723,7 @@ impl<'ctx> StmtVisitor<'ctx> for Engine<'ctx> {
         }: &VarDecl<'ctx>,
     ) -> <Self as StmtVisitor<'ctx>>::Output {
         let expr = self.visit_expr(value)?;
-        self.insert(name, ty);
+        self.insert_variable(name, ty);
         self.unify(expr, ty)?;
 
         Ok(Some(self.db.hir_type(Type::new(TypeKind::Unit, loc))))
@@ -578,6 +733,7 @@ impl<'ctx> StmtVisitor<'ctx> for Engine<'ctx> {
 impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
     type Output = TypeResult<TypeId>;
 
+    #[crunch_shared::instrument(name = "return", skip(self, loc, ret))]
     fn visit_return(&mut self, loc: Location, ret: &Return<'ctx>) -> Self::Output {
         let func_ret = self.current_func.as_ref().unwrap().ret;
         self.check = Some(func_ret);
@@ -594,15 +750,23 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
         Ok(self.db.hir_type(Type::new(TypeKind::Absurd, loc)))
     }
 
+    #[crunch_shared::instrument(name = "break", skip(self, _loc, _value))]
     fn visit_break(&mut self, _loc: Location, _value: &Break<'ctx>) -> Self::Output {
         todo!()
     }
 
+    #[crunch_shared::instrument(name = "continue", skip(self, _loc))]
     fn visit_continue(&mut self, _loc: Location) -> Self::Output {
         todo!()
     }
 
+    #[crunch_shared::instrument(name = "loop", skip(self, loc, body))]
     fn visit_loop(&mut self, loc: Location, body: &Block<&'ctx Stmt<'ctx>>) -> Self::Output {
+        crunch_shared::trace!(
+            "visiting an unconditional loop with {} body statements",
+            body.len(),
+        );
+
         for stmt in body.iter() {
             self.visit_stmt(stmt)?;
         }
@@ -610,6 +774,7 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
         Ok(self.db.context().hir_type(Type::new(TypeKind::Absurd, loc)))
     }
 
+    #[crunch_shared::instrument(name = "match", skip(self, loc, cond, arms, ty))]
     fn visit_match(
         &mut self,
         loc: Location,
@@ -618,60 +783,77 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
         let check = self.check;
         let condition_type = self.visit_expr(cond)?;
 
-        for arm in arms.iter() {
-            match &arm.bind.pattern {
-                Pattern::Literal(literal) => {
-                    self.check = Some(condition_type);
-                    let literal_type = self.visit_literal(loc, literal)?;
-                    self.unify(condition_type, literal_type)?;
+        crunch_shared::trace_span!("match_arms").in_scope(|| {
+            for arm in arms.iter() {
+                crunch_shared::trace_span!("match_arm").in_scope(|| {
+                    crunch_shared::trace!("checking match arm pattern");
+                    match &arm.bind.pattern {
+                        Pattern::Literal(literal) => {
+                            crunch_shared::trace!("pattern was a literal");
 
-                    self.check.take();
-                }
+                            self.check = Some(condition_type);
+                            let literal_type = self.visit_literal(loc, literal)?;
+                            self.unify(condition_type, literal_type)?;
 
-                &Pattern::Ident(variable) => {
-                    self.check = Some(condition_type);
-                    let variable_type = self
-                        .db
-                        .hir_type(Type::new(TypeKind::Variable(condition_type), loc));
+                            self.check.take();
+                        }
 
-                    self.insert_variable(Var::User(variable), variable_type);
-                    self.unify(condition_type, variable_type)?;
+                        &Pattern::Ident(variable) => {
+                            crunch_shared::trace!("pattern was an ident");
 
-                    self.check.take();
-                }
+                            self.check = Some(condition_type);
+                            let variable_type = self
+                                .db
+                                .hir_type(Type::new(TypeKind::Variable(condition_type), loc));
 
-                // TODO: Is this correct?
-                Pattern::Wildcard => {
-                    crunch_shared::warn!("Match pattern wildcards are currently ignored");
-                }
-                Pattern::ItemPath(..) => todo!(),
-            }
+                            self.insert_variable(Var::User(variable), variable_type);
+                            self.unify(condition_type, variable_type)?;
 
-            if let Some(guard) = arm.guard {
-                let guard_ty = self.visit_expr(guard)?;
-                let boolean = self
-                    .db
-                    .hir_type(Type::new(TypeKind::Bool, guard.location()));
+                            self.check.take();
+                        }
 
-                self.unify(guard_ty, boolean)?;
-            }
+                        // TODO: Is this correct?
+                        Pattern::Wildcard => {
+                            crunch_shared::trace!("pattern was a wildcard");
+                            crunch_shared::warn!("Match pattern wildcards are currently ignored");
+                        }
+                        Pattern::ItemPath(..) => todo!(),
+                    }
 
-            self.check = Some(ty);
-            let arm_type = self.with_scope(|builder| {
-                arm.body
-                    .iter()
-                    .filter_map(|s| builder.visit_stmt(s).transpose())
-                    .last()
-                    .unwrap_or_else(|| {
-                        Ok(builder
+                    crunch_shared::trace!("checking match arm guard");
+                    if let Some(guard) = arm.guard {
+                        let guard_ty = self.visit_expr(guard)?;
+                        let boolean = self
                             .db
-                            .hir_type(Type::new(TypeKind::Unit, arm.body.location())))
-                    })
-            })?;
+                            .hir_type(Type::new(TypeKind::Bool, guard.location()));
 
-            self.unify(ty, arm_type)?;
-            self.check.take();
-        }
+                        self.unify(guard_ty, boolean)?;
+                    }
+
+                    self.check = Some(ty);
+                    crunch_shared::trace!("checking match arm body");
+                    let arm_type = self.with_scope(|builder| {
+                        arm.body
+                            .iter()
+                            .filter_map(|s| builder.visit_stmt(s).transpose())
+                            .last()
+                            .unwrap_or_else(|| {
+                                Ok(builder
+                                    .db
+                                    .hir_type(Type::new(TypeKind::Unit, arm.body.location())))
+                            })
+                    })?;
+
+                    crunch_shared::trace!("unifying match arm type");
+                    self.unify(ty, arm_type)?;
+                    self.check.take();
+
+                    Ok(())
+                })?;
+            }
+
+            Ok(())
+        })?;
 
         if let Some(check) = check {
             self.unify(ty, check)?;
@@ -680,15 +862,20 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
         Ok(ty)
     }
 
+    #[crunch_shared::instrument(name = "variable", skip(self, loc))]
     fn visit_variable(&mut self, loc: Location, var: Var, _ty: TypeId) -> Self::Output {
         self.var_type(&var, loc)
     }
 
+    #[crunch_shared::instrument(name = "literal", skip(self, loc, literal))]
     fn visit_literal(&mut self, loc: Location, literal: &Literal) -> Self::Output {
         self.intern_literal(literal, loc)
     }
 
+    #[crunch_shared::instrument(name = "scope", skip(self, loc, body))]
     fn visit_scope(&mut self, loc: Location, body: &Block<&'ctx Stmt<'ctx>>) -> Self::Output {
+        crunch_shared::trace!("visiting a scope with {} body statements", body.len());
+
         self.with_scope(|builder| {
             body.iter()
                 .filter_map(|s| builder.visit_stmt(s).transpose())
@@ -697,11 +884,17 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
         })
     }
 
+    #[crunch_shared::instrument(name = "function call", skip(self, loc, call))]
     fn visit_func_call(&mut self, loc: Location, call: &FuncCall<'ctx>) -> Self::Output {
         let func = self
             .functions
             .get(&call.func)
             .ok_or_else(|| {
+                crunch_shared::error!(
+                    "the function {:?} does not exist",
+                    call.func.to_string(self.db.context().strings()),
+                );
+
                 Locatable::new(
                     TypeError::FuncNotInScope(call.func.to_string(self.db.context().strings()))
                         .into(),
@@ -711,6 +904,13 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
             .clone();
 
         if func.args.len() != call.args.len() {
+            crunch_shared::error!(
+                "the function {:?} takes {} args but {} were supplied",
+                call.func.to_string(self.db.context().strings()),
+                func.args.len(),
+                call.args.len(),
+            );
+
             let def_site = if func.args.is_empty() {
                 func.arg_span
             } else {
@@ -741,11 +941,16 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
         Ok(func.ret)
     }
 
+    #[crunch_shared::instrument(
+        name = "comparison",
+        skip(self, loc, lhs, op, rhs),
+        fields(comparison_type = ?op),
+    )]
     fn visit_comparison(
         &mut self,
         loc: Location,
         lhs: &'ctx Expr<'ctx>,
-        _op: CompOp,
+        op: CompOp,
         rhs: &'ctx Expr<'ctx>,
     ) -> Self::Output {
         // FIXME: Make sure the types are comparable
@@ -759,6 +964,7 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
         Ok(self.db.hir_type(Type::new(TypeKind::Bool, loc)))
     }
 
+    #[crunch_shared::instrument(name = "assignment", skip(self, loc, value))]
     fn visit_assign(&mut self, loc: Location, var: Var, value: &'ctx Expr<'ctx>) -> Self::Output {
         self.check.take();
         let expected = self.var_type(&var, loc)?;
@@ -773,35 +979,48 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
     }
 
     // TODO: This is sketchy and doesn't check if they're bin-op-able
+    #[crunch_shared::instrument(
+        name = "binary operation",
+        skip(self, _loc, lhs, op, rhs),
+        fields(operand_type = ?op),
+    )]
     fn visit_binop(
         &mut self,
         _loc: Location,
         lhs: &'ctx Expr<'ctx>,
-        _op: BinaryOp,
+        op: BinaryOp,
         rhs: &'ctx Expr<'ctx>,
     ) -> Self::Output {
         let check = self.check;
 
+        crunch_shared::trace!("visiting left hand side");
         let lhs = self.visit_expr(lhs)?;
+        crunch_shared::trace!("visiting right hand side");
         let rhs = self.visit_expr(rhs)?;
+
+        crunch_shared::trace!("unifying binary operation types");
         self.unify(lhs, rhs)?;
 
         if let Some(check) = check {
-            self.unify(lhs, check)?;
-            self.unify(rhs, check)?;
+            crunch_shared::trace_span!("bin_op_check").in_scope(|| {
+                self.unify(lhs, check)?;
+                self.unify(rhs, check)
+            })?;
         }
 
         Ok(lhs)
     }
 
+    #[crunch_shared::instrument(name = "type cast", skip(self, _loc, casted, ty))]
     fn visit_cast(&mut self, _loc: Location, &Cast { casted, ty }: &Cast<'ctx>) -> Self::Output {
-        crunch_shared::warn!("Type casts are not verified in any way");
+        crunch_shared::warn!("type casts are not verified in any way");
         // FIXME: Verify that the types are castable
         let _casted = self.visit_expr(casted)?;
 
         Ok(ty)
     }
 
+    #[crunch_shared::instrument(name = "reference", skip(self, loc, mutable, reference))]
     fn visit_reference(
         &mut self,
         loc: Location,
@@ -814,6 +1033,7 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
             .hir_type(Type::new(TypeKind::Reference { referee, mutable }, loc)))
     }
 
+    #[crunch_shared::instrument(name = "index", skip(self, loc, var, index))]
     fn visit_index(&mut self, loc: Location, var: Var, index: &'ctx Expr<'ctx>) -> Self::Output {
         let you_size = self.db.hir_type(Type::new(
             TypeKind::Integer {
@@ -832,12 +1052,23 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
         loop {
             match kind {
                 TypeKind::Array { element, .. } | TypeKind::Slice { element } => {
-                    return Ok(element)
+                    crunch_shared::trace!(
+                        "indexee type was a slice or array, returning the element type {:?}",
+                        element,
+                    );
+
+                    return Ok(element);
                 }
 
-                TypeKind::Variable(ty) => kind = self.db.context().get_hir_type(ty).unwrap().kind,
+                TypeKind::Variable(ty) => {
+                    crunch_shared::trace!("indexee type was a variable, iterating");
+
+                    kind = self.db.context().get_hir_type(ty).unwrap().kind
+                }
 
                 _ => {
+                    crunch_shared::error!("invalid indexee type: {:?}", kind);
+
                     return Err(Locatable::new(
                         TypeError::TypeConflict {
                             call_type: self.display_type(&arr_ty.kind),
@@ -846,7 +1077,7 @@ impl<'ctx> ExprVisitor<'ctx> for Engine<'ctx> {
                         }
                         .into(),
                         loc,
-                    ))
+                    ));
                 }
             }
         }

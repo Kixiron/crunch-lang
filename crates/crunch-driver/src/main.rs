@@ -38,14 +38,16 @@ fn main() {
             use tracing_subscriber::{layer::SubscriberExt, registry::Registry, EnvFilter};
             use tracing_tree::HierarchicalLayer;
 
-            let env_layer = EnvFilter::try_from_env("CRUNCHC_LOG")
-                .unwrap_or_else(|_| EnvFilter::new("trace,salsa=off"));
+            let env_layer = EnvFilter::try_from_env("CRUNCHC_LOG").unwrap_or_else(|_| {
+                EnvFilter::try_new("trace,salsa=off,type_unification=info").unwrap()
+            });
             let tree_layer = HierarchicalLayer::new(2)
                 .with_ansi(match options.color {
                     TermColor::Always | TermColor::Auto => true,
                     TermColor::None => false,
                 })
-                .with_wraparound(80);
+                .with_wraparound(80)
+                .with_writer(std::io::stderr);
 
             let registry = Registry::default().with(env_layer).with(tree_layer);
             tracing::subscriber::set_global_default(registry)
