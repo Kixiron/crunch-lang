@@ -5,6 +5,16 @@ edition = "2018"
 autobins = false
 build = "src/build.rs"
 
+# [workspace]
+# members = [
+#   "cmd_parser",
+#   "differential_datalog",
+#   "distributed_datalog",
+#   "ovsdb",
+#   "types",
+#   "value"
+# ]
+
 [target.'cfg(not(windows))'.build-dependencies]
 libtool = "0.1"
 

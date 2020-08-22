@@ -73,6 +73,7 @@ typedef Function = Function {
 typedef Stmt = StmtExpr { expr: ExprId }
                | StmtItem { item: Item }
                | StmtSeq { first: Intern<Stmt>, second: Intern<Stmt> }
+               | Empty
 
 typedef Item = ItemFunc { func: Function } | ItemStruct {}
 

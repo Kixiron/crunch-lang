@@ -9,7 +9,7 @@ use std::{
 
 /// A convenience type for `Result<T, `[`Error`]`>`
 ///
-/// [`Error`]: crate::llvm::Error
+/// [`Error`]: crate::utils::Error
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// An error that was encountered either from LLVM or from the program's behavior
@@ -38,7 +38,7 @@ impl Error {
     ///
     /// This method will always allocate, so [`Error::message_ref`] can often be a better option
     ///
-    /// [`Error::message_ref`]: crate::llvm::Error#message_ref
+    /// [`Error::message_ref`]: crate::utils::Error#message_ref
     #[inline]
     pub fn message(&self) -> String {
         self.message.to_string()
@@ -122,7 +122,7 @@ pub enum ErrorKind {
 /// A string that can either be a normal [`String`] or an [`LLVMString`]
 ///
 /// [`String`]: https://doc.rust-lang.org/std/string/struct.String.html
-/// [`LLVMString`]: crate::llvm::utils::LLVMString
+/// [`LLVMString`]: crate::utils::utils::LLVMString
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u8)]
 pub(crate) enum ErrorString {
@@ -132,7 +132,7 @@ pub(crate) enum ErrorString {
     String(String),
     /// A [`LLVMString`]
     ///
-    /// [`LLVMString`]: crate::llvm::utils::LLVMString
+    /// [`LLVMString`]: crate::utils::utils::LLVMString
     LLVMString(LLVMString),
 }
 

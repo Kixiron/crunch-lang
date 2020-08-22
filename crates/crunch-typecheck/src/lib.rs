@@ -42,6 +42,24 @@ pub trait TypecheckDatabase: salsa::Database + ContextDatabase + HirDatabase {
 fn typecheck(db: &dyn TypecheckDatabase, file: FileId) -> Result<(), ArcError> {
     let hir = db.lower_hir(file)?;
 
+    let ddlog_res: Result<(), String> =
+        crunch_shared::allocator::CRUNCHC_ALLOCATOR.record_region("ddlog typechecking", || {
+            use ddlog::{ddlog_callback, DDlogEngine, DDLOG_TRACK_SNAPSHOTS, DDLOG_WORKER_THREADS};
+            use differential_datalog::DDlog;
+            use typecheck_ddlog::api::HDDlog;
+
+            let (mut program, _init_state) =
+                HDDlog::run(DDLOG_WORKER_THREADS, DDLOG_TRACK_SNAPSHOTS, ddlog_callback)?;
+
+            let mut engine = DDlogEngine::new(db);
+            engine.walk(&mut program, &*hir)?;
+
+            Ok(())
+        });
+    if let Err(err) = ddlog_res {
+        crunch_shared::error!("error typechecking with ddlog: {}", err);
+    }
+
     crunch_shared::allocator::CRUNCHC_ALLOCATOR
         .record_region("typechecking", || Engine::new(db).walk(&*hir))
         .map(|mut ok| {
@@ -692,6 +710,7 @@ impl<'ctx> ItemVisitor<'ctx> for Engine<'ctx> {
 
 impl<'ctx> StmtVisitor<'ctx> for Engine<'ctx> {
     type Output = TypeResult<Option<TypeId>>;
+
     #[crunch_shared::instrument(name = "statement", skip(self, stmt))]
     fn visit_stmt(&mut self, stmt: &'ctx Stmt<'ctx>) -> <Self as StmtVisitor<'ctx>>::Output {
         match stmt {
@@ -707,6 +726,7 @@ impl<'ctx> StmtVisitor<'ctx> for Engine<'ctx> {
             Stmt::Expr(expr) => self.visit_expr(expr).map(Some),
         }
     }
+
     #[crunch_shared::instrument(
         name = "variable declaration",
         skip(self, name, value, ty, loc),

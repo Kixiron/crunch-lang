@@ -3,14 +3,13 @@
     non_camel_case_types,
     non_upper_case_globals,
     dead_code,
-    clippy::blocks_in_if_conditions,
+    clippy::block_in_if_condition_stmt,
     clippy::clone_on_copy,
     clippy::eq_op,
     clippy::cmp_owned,
     clippy::nonminimal_bool,
     clippy::toplevel_ref_arg,
-    clippy::trivially_copy_pass_by_ref,
-    clippy::all
+    clippy::trivially_copy_pass_by_ref
 )]
 
 use std::collections::btree_map::{BTreeMap, Entry};

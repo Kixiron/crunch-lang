@@ -14,6 +14,7 @@ use time::Instant;
 
 use api::{updcmd2upd, HDDlog};
 use cmd_parser::*;
+use typecheck_ddlog::*;
 use differential_datalog::ddval::*;
 use differential_datalog::program::*;
 use differential_datalog::record::*;
@@ -21,7 +22,6 @@ use differential_datalog::DDlog;
 use differential_datalog::DeltaMap;
 use num_traits::cast::ToPrimitive;
 use rustop::opts;
-use typecheck_ddlog::*;
 use types::log_set_default_callback;
 
 #[cfg(feature = "profile")]

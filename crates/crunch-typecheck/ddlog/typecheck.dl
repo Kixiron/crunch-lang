@@ -25,9 +25,12 @@ SymbolTable(path, signature), Errors(message), Functions(intern(func)) :-
     var signature = item.corrected_signature().
 
 output relation Statements(stmt: Intern<Stmt>, scope: Intern<Scope>)
-Statements(stmt, intern(ScopeFunction { func })) :- Functions(func), Function { .body = var stmt } = func.ival().
+Statements(stmt, intern(ScopeFunction { func })) :-
+    Functions(func),
+    Function { .body = var stmt } = func.ival().
 Statements(stmt1, intern(ScopeSeq1 { parent })), Statements(stmt2, intern(ScopeSeq2 { parent })) :-
-    Statements(stmt, parent), StmtSeq { var stmt1, var stmt2 } = stmt.ival().
+    Statements(stmt, parent),
+    StmtSeq { var stmt1, var stmt2 } = stmt.ival().
 
 relation PropagateExprType(id: ExprId, kind: Intern<ExprKind>, ty: Intern<TypeKind>)
 // Get the types out of literals

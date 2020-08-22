@@ -23,7 +23,6 @@ use core::fmt::Debug;
 pub struct TypeId(usize);
 
 impl TypeId {
-    #[inline]
     pub(crate) const fn new(id: usize) -> Self {
         Self(id)
     }
@@ -55,7 +54,6 @@ pub struct FuncArg {
 }
 
 impl FuncArg {
-    #[inline]
     pub const fn location(&self) -> Location {
         self.loc
     }
@@ -81,14 +79,12 @@ pub enum Stmt<'ctx> {
 }
 
 impl<'ctx> From<&'ctx Item<'ctx>> for Stmt<'ctx> {
-    #[inline]
     fn from(item: &'ctx Item<'ctx>) -> Self {
         Self::Item(item)
     }
 }
 
 impl<'ctx> From<&'ctx Expr<'ctx>> for Stmt<'ctx> {
-    #[inline]
     fn from(expr: &'ctx Expr<'ctx>) -> Self {
         Self::Expr(expr)
     }
@@ -101,7 +97,6 @@ pub struct Expr<'ctx> {
 }
 
 impl<'ctx> Expr<'ctx> {
-    #[inline]
     pub const fn location(&self) -> Location {
         self.loc
     }
@@ -134,7 +129,6 @@ pub enum Var {
 }
 
 impl Var {
-    #[inline]
     pub fn to_string(&self, interner: &StrInterner) -> String {
         match *self {
             Self::User(var) => interner.resolve(var).as_ref().to_owned(),
@@ -210,12 +204,10 @@ pub struct Block<T> {
 }
 
 impl<T> Block<T> {
-    #[inline]
     pub fn new(block: Vec<T>, loc: Location) -> Self {
         Self { block, loc }
     }
 
-    #[inline]
     pub fn empty(loc: Location) -> Self {
         Self {
             block: Vec::new(),
@@ -223,7 +215,6 @@ impl<T> Block<T> {
         }
     }
 
-    #[inline]
     pub fn with_capacity(loc: Location, capacity: usize) -> Self {
         Self {
             block: Vec::with_capacity(capacity),
@@ -231,47 +222,42 @@ impl<T> Block<T> {
         }
     }
 
-    #[inline]
     pub fn push(&mut self, item: T) {
         self.block.push(item);
     }
 
-    #[inline]
     pub fn insert(&mut self, idx: usize, item: T) {
         self.block.insert(idx, item);
     }
 
-    #[inline]
     pub fn location(&self) -> Location {
         self.loc
     }
 
-    #[inline]
     pub fn span(&self) -> Span {
         self.loc.span()
     }
 
-    #[inline]
     pub fn len(&self) -> usize {
         self.block.len()
     }
 
-    #[inline]
     pub fn is_empty(&self) -> bool {
         self.block.is_empty()
     }
 
-    #[inline]
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a T> + 'a {
+    pub fn iter<'a>(
+        &'a self,
+    ) -> impl Iterator<Item = &'a T> + ExactSizeIterator + DoubleEndedIterator + 'a {
         self.block.iter()
     }
 
-    #[inline]
-    pub fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut T> + 'a {
+    pub fn iter_mut<'a>(
+        &'a mut self,
+    ) -> impl Iterator<Item = &'a mut T> + ExactSizeIterator + DoubleEndedIterator + 'a {
         self.block.iter_mut()
     }
 
-    #[inline]
     pub fn from_iter<I: IntoIterator<Item = T>>(loc: Location, iter: I) -> Self {
         let mut block = Vec::with_capacity(10);
         for item in iter {
@@ -286,7 +272,6 @@ impl<T> Block<T>
 where
     T: Clone,
 {
-    #[inline]
     pub fn extend_from_slice<S>(&mut self, slice: S)
     where
         S: AsRef<[T]>,
@@ -296,7 +281,6 @@ where
 }
 
 impl<T> Extend<T> for Block<T> {
-    #[inline]
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         self.block.extend(iter)
     }
@@ -313,35 +297,29 @@ pub struct Type {
 
 impl Type {
     /// Creates a new `Type`
-    #[inline]
     pub const fn new(kind: TypeKind, loc: Location) -> Self {
         Self { kind, loc }
     }
 
     /// Returns the type's location
-    #[inline]
     pub const fn location(&self) -> Location {
         self.loc
     }
 
     /// Returns `true` if the type is `Unit`
-    #[inline]
     pub fn is_unit(&self) -> bool {
         self.kind.is_unit()
     }
 
     /// Returns `true` if the type is `Unknown`
-    #[inline]
     pub fn is_unknown(&self) -> bool {
         self.kind.is_unknown()
     }
 
-    #[inline]
     pub fn is_array(&self) -> bool {
         self.kind.is_array()
     }
 
-    #[inline]
     pub fn is_slice(&self) -> bool {
         self.kind.is_array()
     }
@@ -399,23 +377,19 @@ pub enum TypeKind {
 
 impl TypeKind {
     /// Returns `true` if the type is `Unit`
-    #[inline]
     pub fn is_unit(&self) -> bool {
         matches!(self, Self::Unit)
     }
 
     /// Returns `true` if the type is `Unknown`
-    #[inline]
     pub fn is_unknown(&self) -> bool {
         matches!(self, Self::Unknown)
     }
 
-    #[inline]
     pub fn is_array(&self) -> bool {
         matches!(self, Self::Array { .. })
     }
 
-    #[inline]
     pub fn is_slice(&self) -> bool {
         matches!(self, Self::Slice { .. })
     }
@@ -441,7 +415,6 @@ pub struct Literal {
 }
 
 impl Literal {
-    #[inline]
     pub const fn location(&self) -> Location {
         self.loc
     }

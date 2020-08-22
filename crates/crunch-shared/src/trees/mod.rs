@@ -27,7 +27,6 @@ pub struct Sided<T, S> {
 pub struct Ref<T>(Box<T>);
 
 impl<T> Ref<T> {
-    #[inline]
     pub fn new(val: T) -> Self {
         Self(Box::new(val))
     }
@@ -46,7 +45,6 @@ impl<T: DerefMut> Ref<T> {
 }
 
 impl<T> AsRef<T> for Ref<T> {
-    #[inline]
     fn as_ref(&self) -> &T {
         &*self.0
     }
@@ -55,28 +53,24 @@ impl<T> AsRef<T> for Ref<T> {
 impl<T> Deref for Ref<T> {
     type Target = T;
 
-    #[inline]
     fn deref(&self) -> &Self::Target {
         &*self.0
     }
 }
 
 impl<T> DerefMut for Ref<T> {
-    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut *self.0
     }
 }
 
 impl<T: Debug> Debug for Ref<T> {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         Debug::fmt(&*self.0, f)
     }
 }
 
 impl<T: Display> Display for Ref<T> {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         Display::fmt(&*self.0, f)
     }
@@ -111,12 +105,10 @@ impl FromStr for CallConv {
 pub struct ItemPath(Vec<StrT>);
 
 impl ItemPath {
-    #[inline]
     pub fn new(path: impl Into<Self>) -> Self {
         path.into()
     }
 
-    #[inline]
     pub fn join(&self, other: impl Into<Self>) -> Self {
         let mut new = self.0.clone();
         new.extend(other.into().0.drain(..));
@@ -140,17 +132,23 @@ impl ItemPath {
 
         string
     }
+
+    pub fn to_vec(&self) -> Vec<StrT> {
+        self.0.clone()
+    }
+
+    pub fn into_vec(self) -> Vec<StrT> {
+        self.0
+    }
 }
 
 impl From<StrT> for ItemPath {
-    #[inline]
     fn from(seg: StrT) -> Self {
         Self(vec![seg])
     }
 }
 
 impl From<Vec<StrT>> for ItemPath {
-    #[inline]
     fn from(segs: Vec<StrT>) -> Self {
         Self(segs)
     }
@@ -159,7 +157,6 @@ impl From<Vec<StrT>> for ItemPath {
 impl Deref for ItemPath {
     type Target = [StrT];
 
-    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -172,7 +169,6 @@ pub enum Signedness {
 }
 
 impl Display for Signedness {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let sign = match self {
             Self::Unsigned => 'u',
@@ -190,12 +186,10 @@ pub enum Sign {
 }
 
 impl Sign {
-    #[inline]
     pub fn is_negative(self) -> bool {
         self == Self::Negative
     }
 
-    #[inline]
     pub fn maybe_negate<T>(self, integer: T) -> T
     where
         T: Not<Output = T>,
@@ -209,7 +203,6 @@ impl Sign {
 }
 
 impl Display for Sign {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,

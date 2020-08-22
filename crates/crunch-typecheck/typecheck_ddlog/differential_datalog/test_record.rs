@@ -1,5 +1,4 @@
 //! Tests for functions and macros in `record.rs`
-#![allow(clippy::all)]
 
 use std::borrow;
 use std::borrow::Cow;

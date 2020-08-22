@@ -17,3 +17,11 @@ path = "typecheck_ddlog"
 
 [dependencies.differential_datalog]
 path = "typecheck_ddlog/differential_datalog"
+
+[dependencies.ddlog_types]
+path = "typecheck_ddlog/types"
+package = "types"
+
+[dependencies.ddlog_values]
+path = "typecheck_ddlog/value"
+package = "value"

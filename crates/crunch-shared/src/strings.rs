@@ -153,6 +153,11 @@ impl StrT {
     pub fn get(self) -> Spur {
         self.0
     }
+
+    #[doc(hidden)]
+    pub fn as_u32(self) -> u32 {
+        self.get().into_usize() as u32
+    }
 }
 
 impl From<Spur> for StrT {
@@ -163,7 +168,6 @@ impl From<Spur> for StrT {
 
 impl fmt::Debug for StrT {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Safety: We're just doing a debug print, the unsafety doesn't apply
-        write!(f, "{}", unsafe { self.get().into_usize() })
+        write!(f, "{}", self.get().into_usize())
     }
 }

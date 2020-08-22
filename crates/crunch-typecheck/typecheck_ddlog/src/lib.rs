@@ -10,8 +10,7 @@
     unreachable_patterns,
     unused_variables,
     clippy::unknown_clippy_lints,
-    clippy::missing_safety_doc,
-    clippy::all
+    clippy::missing_safety_doc
 )]
 
 use num::bigint::BigInt;
@@ -69,18 +68,21 @@ impl DDlogConvert for DDlogConverter {
     }
 }
 
+
 pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
     let Expr = Relation {
-        name: "Expr".to_string(),
-        input: true,
-        distinct: false,
-        caching_mode: CachingMode::Set,
-        key_func: None,
-        id: Relations::Expr as RelId,
-        rules: vec![],
-        arrangements: vec![],
-        change_cb: None,
-    };
+                   name:         "Expr".to_string(),
+                   input:        true,
+                   distinct:     false,
+                   caching_mode: CachingMode::Set,
+                   key_func:     None,
+                   id:           Relations::Expr as RelId,
+                   rules:        vec![
+                       ],
+                   arrangements: vec![
+                       ],
+                   change_cb:    None
+               };
     let PropagateExprType = Relation {
                                 name:         "PropagateExprType".to_string(),
                                 input:        false,
@@ -303,16 +305,18 @@ pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
                               change_cb:    Some(sync::Arc::new(sync::Mutex::new(__update_cb.clone())))
                           };
     let InputItems = Relation {
-        name: "InputItems".to_string(),
-        input: true,
-        distinct: false,
-        caching_mode: CachingMode::Set,
-        key_func: None,
-        id: Relations::InputItems as RelId,
-        rules: vec![],
-        arrangements: vec![],
-        change_cb: None,
-    };
+                         name:         "InputItems".to_string(),
+                         input:        true,
+                         distinct:     false,
+                         caching_mode: CachingMode::Set,
+                         key_func:     None,
+                         id:           Relations::InputItems as RelId,
+                         rules:        vec![
+                             ],
+                         arrangements: vec![
+                             ],
+                         change_cb:    None
+                     };
     let __MultiHead_0 = Relation {
                             name:         "__MultiHead_0".to_string(),
                             input:        false,
@@ -640,62 +644,45 @@ pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
                           change_cb:    Some(sync::Arc::new(sync::Mutex::new(__update_cb.clone())))
                       };
     let __Null = Relation {
-        name: "__Null".to_string(),
-        input: false,
-        distinct: false,
-        caching_mode: CachingMode::Set,
-        key_func: None,
-        id: Relations::__Null as RelId,
-        rules: vec![],
-        arrangements: vec![Arrangement::Map {
-            name: r###"_ /*join*/"###.to_string(),
-            afun: &{
-                fn __f(__v: DDValue) -> Option<(DDValue, DDValue)> {
-                    let __cloned = __v.clone();
-                    match unsafe { Value::__Tuple0__::from_ddvalue(__v) }.0 {
-                        _ => Some(Value::__Tuple0__(()).into_ddvalue()),
-                        _ => None,
-                    }
-                    .map(|x| (x, __cloned))
-                }
-                __f
-            },
-            queryable: true,
-        }],
-        change_cb: None,
-    };
+                     name:         "__Null".to_string(),
+                     input:        false,
+                     distinct:     false,
+                     caching_mode: CachingMode::Set,
+                     key_func:     None,
+                     id:           Relations::__Null as RelId,
+                     rules:        vec![
+                         ],
+                     arrangements: vec![
+                         Arrangement::Map{
+                            name: r###"_ /*join*/"###.to_string(),
+                             afun: &{fn __f(__v: DDValue) -> Option<(DDValue,DDValue)>
+                             {
+                                 let __cloned = __v.clone();
+                                 match unsafe { Value::__Tuple0__::from_ddvalue(__v) }.0 {
+                                     _ => Some(Value::__Tuple0__(()).into_ddvalue()),
+                                     _ => None
+                                 }.map(|x|(x,__cloned))
+                             }
+                             __f},
+                             queryable: true
+                         }],
+                     change_cb:    None
+                 };
     Program {
         nodes: vec![
-            ProgNode::Rel { rel: Expr },
-            ProgNode::SCC {
-                rels: vec![RecursiveRelation {
-                    rel: PropagateExprType,
-                    distinct: true,
-                }],
-            },
-            ProgNode::Rel {
-                rel: ClampUnknownInt,
-            },
-            ProgNode::Rel { rel: InputItems },
-            ProgNode::Rel { rel: __MultiHead_0 },
-            ProgNode::Rel { rel: __MultiHead_1 },
-            ProgNode::Rel { rel: Errors },
-            ProgNode::Rel { rel: Functions },
-            ProgNode::SCC {
-                rels: vec![
-                    RecursiveRelation {
-                        rel: Statements,
-                        distinct: true,
-                    },
-                    RecursiveRelation {
-                        rel: __MultiHead_3,
-                        distinct: true,
-                    },
-                ],
-            },
-            ProgNode::Rel { rel: SymbolTable },
-            ProgNode::Rel { rel: __Null },
+            ProgNode::Rel{rel: Expr},
+            ProgNode::SCC{rels: vec![RecursiveRelation{rel: PropagateExprType, distinct: true}]},
+            ProgNode::Rel{rel: ClampUnknownInt},
+            ProgNode::Rel{rel: InputItems},
+            ProgNode::Rel{rel: __MultiHead_0},
+            ProgNode::Rel{rel: __MultiHead_1},
+            ProgNode::Rel{rel: Errors},
+            ProgNode::Rel{rel: Functions},
+            ProgNode::SCC{rels: vec![RecursiveRelation{rel: Statements, distinct: true}, RecursiveRelation{rel: __MultiHead_3, distinct: true}]},
+            ProgNode::Rel{rel: SymbolTable},
+            ProgNode::Rel{rel: __Null}
         ],
-        init_data: vec![],
+        init_data: vec![
+        ]
     }
 }
