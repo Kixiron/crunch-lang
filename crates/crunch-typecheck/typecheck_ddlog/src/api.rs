@@ -168,6 +168,11 @@ impl HDDlog {
         self.prog.lock().unwrap().enable_cpu_profiling(enable);
     }
 
+    pub fn enable_timely_profiling(&self, enable: bool) {
+        self.record_enable_timely_profiling(enable);
+        self.prog.lock().unwrap().enable_timely_profiling(enable);
+    }
+
     /*
      * returns DDlog program runtime profile
      */
@@ -491,6 +496,20 @@ impl HDDlog {
                     "ddlog_cpu_profiling_enable(): failed to record invocation in replay file",
                 )
             });
+        }
+    }
+
+    fn record_enable_timely_profiling(&self, enable: bool) {
+        if let Some(ref f) = self.replay_file {
+            let _ = f
+                .lock()
+                .unwrap()
+                .record_timely_profiling(enable)
+                .map_err(|_| {
+                    self.eprintln(
+                    "ddlog_timely_profiling_enable(): failed to record invocation in replay file",
+                )
+                });
         }
     }
 
@@ -1249,6 +1268,20 @@ pub unsafe extern "C" fn ddlog_enable_cpu_profiling(
     let prog = &*prog;
 
     prog.enable_cpu_profiling(enable);
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn ddlog_enable_timely_profiling(
+    prog: *const HDDlog,
+    enable: bool,
+) -> raw::c_int {
+    if prog.is_null() {
+        return -1;
+    };
+    let prog = &*prog;
+
+    prog.enable_timely_profiling(enable);
     0
 }
 

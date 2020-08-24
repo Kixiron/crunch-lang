@@ -8,6 +8,7 @@
 mod callback;
 mod ddlog;
 mod profile;
+mod profile_statistics;
 mod replay;
 mod valmap;
 mod variable;
@@ -23,13 +24,12 @@ pub mod uint;
 #[macro_use]
 pub mod record;
 
-pub mod test_value;
-
 #[cfg(test)]
 mod test;
-
 #[cfg(test)]
 mod test_record;
+#[cfg(test)]
+pub mod test_value;
 
 pub use callback::Callback;
 pub use ddlog::DDlog;

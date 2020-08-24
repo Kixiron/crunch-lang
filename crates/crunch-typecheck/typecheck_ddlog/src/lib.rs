@@ -10,7 +10,8 @@
     unreachable_patterns,
     unused_variables,
     clippy::unknown_clippy_lints,
-    clippy::missing_safety_doc
+    clippy::missing_safety_doc,
+    clippy::toplevel_ref_arg
 )]
 
 use num::bigint::BigInt;
@@ -91,23 +92,23 @@ pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
                                 key_func:     None,
                                 id:           Relations::PropagateExprType as RelId,
                                 rules:        vec![
-                                    /* PropagateExprType[(PropagateExprType{.id=id, .kind=kind, .ty=ty}: PropagateExprType)] :- Expr[(Expr{.id=(id: bit<64>), .kind=(kind: internment::Intern<hir::ExprKind>), .ty=(_: internment::Intern<hir::TypeKind>)}: Expr)], (hir::Lit{.lit=(var lit: internment::Intern<hir::LiteralVal>)}: hir::ExprKind) = (internment::ival(kind): hir::ExprKind), (var ty: internment::Intern<hir::TypeKind>) = hir::typeof_literal(lit). */
+                                    /* PropagateExprType[(PropagateExprType{.id=id, .kind=kind, .ty=ty}: PropagateExprType)] :- Expr[(Expr{.id=(id: bit<64>), .kind=(kind: internment::Intern<hir::ExprKind>), .ty=(_: internment::Intern<hir::TypeKind>)}: Expr)], (hir::ExprLit{.lit=(var lit: internment::Intern<hir::Literal>)}: hir::ExprKind) = (internment::ival(kind): hir::ExprKind), (var ty: internment::Intern<hir::TypeKind>) = hir::typeof(lit). */
                                     Rule::CollectionRule {
-                                        description: "PropagateExprType[(PropagateExprType{.id=id, .kind=kind, .ty=ty}: PropagateExprType)] :- Expr[(Expr{.id=(id: bit<64>), .kind=(kind: internment::Intern<hir::ExprKind>), .ty=(_: internment::Intern<hir::TypeKind>)}: Expr)], (hir::Lit{.lit=(var lit: internment::Intern<hir::LiteralVal>)}: hir::ExprKind) = (internment::ival(kind): hir::ExprKind), (var ty: internment::Intern<hir::TypeKind>) = hir::typeof_literal(lit).".to_string(),
+                                        description: "PropagateExprType[(PropagateExprType{.id=id, .kind=kind, .ty=ty}: PropagateExprType)] :- Expr[(Expr{.id=(id: bit<64>), .kind=(kind: internment::Intern<hir::ExprKind>), .ty=(_: internment::Intern<hir::TypeKind>)}: Expr)], (hir::ExprLit{.lit=(var lit: internment::Intern<hir::Literal>)}: hir::ExprKind) = (internment::ival(kind): hir::ExprKind), (var ty: internment::Intern<hir::TypeKind>) = hir::typeof(lit).".to_string(),
                                         rel: Relations::Expr as RelId,
                                         xform: Some(XFormCollection::FilterMap{
-                                                        description: "head of PropagateExprType[(PropagateExprType{.id=id, .kind=kind, .ty=ty}: PropagateExprType)] :- Expr[(Expr{.id=(id: bit<64>), .kind=(kind: internment::Intern<hir::ExprKind>), .ty=(_: internment::Intern<hir::TypeKind>)}: Expr)], (hir::Lit{.lit=(var lit: internment::Intern<hir::LiteralVal>)}: hir::ExprKind) = (internment::ival(kind): hir::ExprKind), (var ty: internment::Intern<hir::TypeKind>) = hir::typeof_literal(lit)." .to_string(),
+                                                        description: "head of PropagateExprType[(PropagateExprType{.id=id, .kind=kind, .ty=ty}: PropagateExprType)] :- Expr[(Expr{.id=(id: bit<64>), .kind=(kind: internment::Intern<hir::ExprKind>), .ty=(_: internment::Intern<hir::TypeKind>)}: Expr)], (hir::ExprLit{.lit=(var lit: internment::Intern<hir::Literal>)}: hir::ExprKind) = (internment::ival(kind): hir::ExprKind), (var ty: internment::Intern<hir::TypeKind>) = hir::typeof(lit)." .to_string(),
                                                         fmfun: &{fn __f(__v: DDValue) -> Option<DDValue>
                                                         {
                                                             let (ref id, ref kind) = match unsafe {  Value::Expr::from_ddvalue_ref(&__v) }.0 {
                                                                 Expr{id: ref id, kind: ref kind, ty: _} => ((*id).clone(), (*kind).clone()),
                                                                 _ => return None
                                                             };
-                                                            let ref lit: internment_Intern<hir_LiteralVal> = match (*internment_ival(kind)).clone() {
-                                                                hir_ExprKind::hir_Lit{lit: lit} => lit,
+                                                            let ref lit: internment_Intern<hir_Literal> = match (*internment_ival(kind)).clone() {
+                                                                hir_ExprKind::hir_ExprLit{lit: lit} => lit,
                                                                 _ => return None
                                                             };
-                                                            let ref ty: internment_Intern<hir_TypeKind> = match hir_typeof_literal(lit) {
+                                                            let ref ty: internment_Intern<hir_TypeKind> = match hir_typeof(lit) {
                                                                 ty => ty,
                                                                 _ => return None
                                                             };
@@ -117,9 +118,9 @@ pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
                                                         next: Box::new(None)
                                                     })
                                     },
-                                    /* PropagateExprType[(PropagateExprType{.id=id, .kind=kind, .ty=ty}: PropagateExprType)] :- Expr[(Expr{.id=(id: bit<64>), .kind=(kind: internment::Intern<hir::ExprKind>), .ty=(_: internment::Intern<hir::TypeKind>)}: Expr)], (hir::Assign{.variable=(_: bit<64>), .expr_id=(var expr_id: bit<64>)}: hir::ExprKind) = (internment::ival(kind): hir::ExprKind), PropagateExprType[(PropagateExprType{.id=(expr_id: bit<64>), .kind=(_: internment::Intern<hir::ExprKind>), .ty=(ty: internment::Intern<hir::TypeKind>)}: PropagateExprType)]. */
+                                    /* PropagateExprType[(PropagateExprType{.id=id, .kind=kind, .ty=ty}: PropagateExprType)] :- Expr[(Expr{.id=(id: bit<64>), .kind=(kind: internment::Intern<hir::ExprKind>), .ty=(_: internment::Intern<hir::TypeKind>)}: Expr)], (hir::ExprAssign{.variable=(_: bit<64>), .expr_id=(var expr_id: bit<64>)}: hir::ExprKind) = (internment::ival(kind): hir::ExprKind), PropagateExprType[(PropagateExprType{.id=(expr_id: bit<64>), .kind=(_: internment::Intern<hir::ExprKind>), .ty=(ty: internment::Intern<hir::TypeKind>)}: PropagateExprType)]. */
                                     Rule::CollectionRule {
-                                        description: "PropagateExprType[(PropagateExprType{.id=id, .kind=kind, .ty=ty}: PropagateExprType)] :- Expr[(Expr{.id=(id: bit<64>), .kind=(kind: internment::Intern<hir::ExprKind>), .ty=(_: internment::Intern<hir::TypeKind>)}: Expr)], (hir::Assign{.variable=(_: bit<64>), .expr_id=(var expr_id: bit<64>)}: hir::ExprKind) = (internment::ival(kind): hir::ExprKind), PropagateExprType[(PropagateExprType{.id=(expr_id: bit<64>), .kind=(_: internment::Intern<hir::ExprKind>), .ty=(ty: internment::Intern<hir::TypeKind>)}: PropagateExprType)].".to_string(),
+                                        description: "PropagateExprType[(PropagateExprType{.id=id, .kind=kind, .ty=ty}: PropagateExprType)] :- Expr[(Expr{.id=(id: bit<64>), .kind=(kind: internment::Intern<hir::ExprKind>), .ty=(_: internment::Intern<hir::TypeKind>)}: Expr)], (hir::ExprAssign{.variable=(_: bit<64>), .expr_id=(var expr_id: bit<64>)}: hir::ExprKind) = (internment::ival(kind): hir::ExprKind), PropagateExprType[(PropagateExprType{.id=(expr_id: bit<64>), .kind=(_: internment::Intern<hir::ExprKind>), .ty=(ty: internment::Intern<hir::TypeKind>)}: PropagateExprType)].".to_string(),
                                         rel: Relations::Expr as RelId,
                                         xform: Some(XFormCollection::Arrange {
                                                         description: "arrange Expr[(Expr{.id=(id: bit<64>), .kind=(kind: internment::Intern<hir::ExprKind>), .ty=(_: internment::Intern<hir::TypeKind>)}: Expr)] by (expr_id)" .to_string(),
@@ -130,14 +131,14 @@ pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
                                                                 _ => return None
                                                             };
                                                             let ref expr_id: u64 = match (*internment_ival(kind)).clone() {
-                                                                hir_ExprKind::hir_Assign{variable: _, expr_id: expr_id} => expr_id,
+                                                                hir_ExprKind::hir_ExprAssign{variable: _, expr_id: expr_id} => expr_id,
                                                                 _ => return None
                                                             };
                                                             Some((Value::__Bitval64((*expr_id).clone()).into_ddvalue(), Value::__Tuple2____Bitval64_internment_Intern__hir_ExprKind(((*id).clone(), (*kind).clone())).into_ddvalue()))
                                                         }
                                                         __f},
                                                         next: Box::new(XFormArrangement::Join{
-                                                                           description: "Expr[(Expr{.id=(id: bit<64>), .kind=(kind: internment::Intern<hir::ExprKind>), .ty=(_: internment::Intern<hir::TypeKind>)}: Expr)], (hir::Assign{.variable=(_: bit<64>), .expr_id=(var expr_id: bit<64>)}: hir::ExprKind) = (internment::ival(kind): hir::ExprKind), PropagateExprType[(PropagateExprType{.id=(expr_id: bit<64>), .kind=(_: internment::Intern<hir::ExprKind>), .ty=(ty: internment::Intern<hir::TypeKind>)}: PropagateExprType)]".to_string(),
+                                                                           description: "Expr[(Expr{.id=(id: bit<64>), .kind=(kind: internment::Intern<hir::ExprKind>), .ty=(_: internment::Intern<hir::TypeKind>)}: Expr)], (hir::ExprAssign{.variable=(_: bit<64>), .expr_id=(var expr_id: bit<64>)}: hir::ExprKind) = (internment::ival(kind): hir::ExprKind), PropagateExprType[(PropagateExprType{.id=(expr_id: bit<64>), .kind=(_: internment::Intern<hir::ExprKind>), .ty=(ty: internment::Intern<hir::TypeKind>)}: PropagateExprType)]".to_string(),
                                                                            ffun: None,
                                                                            arrangement: (Relations::PropagateExprType as RelId,0),
                                                                            jfun: &{fn __f(_: &DDValue ,__v1: &DDValue,__v2: &DDValue) -> Option<DDValue>
@@ -154,9 +155,9 @@ pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
                                                                        })
                                                     })
                                     },
-                                    /* PropagateExprType[(PropagateExprType{.id=id, .kind=kind, .ty=ty}: PropagateExprType)] :- Expr[(Expr{.id=(id: bit<64>), .kind=(kind: internment::Intern<hir::ExprKind>), .ty=(_: internment::Intern<hir::TypeKind>)}: Expr)], (hir::Variable{.variable=(var expr_var: bit<64>)}: hir::ExprKind) = (internment::ival(kind): hir::ExprKind), PropagateExprType[(PropagateExprType{.id=(_: bit<64>), .kind=(prop_kind: internment::Intern<hir::ExprKind>), .ty=(ty: internment::Intern<hir::TypeKind>)}: PropagateExprType)], (hir::Assign{.variable=(var prop_var: bit<64>), .expr_id=(_: bit<64>)}: hir::ExprKind) = (internment::ival(prop_kind): hir::ExprKind), (expr_var == prop_var). */
+                                    /* PropagateExprType[(PropagateExprType{.id=id, .kind=kind, .ty=ty}: PropagateExprType)] :- Expr[(Expr{.id=(id: bit<64>), .kind=(kind: internment::Intern<hir::ExprKind>), .ty=(_: internment::Intern<hir::TypeKind>)}: Expr)], (hir::ExprVar{.variable=(var expr_var: bit<64>)}: hir::ExprKind) = (internment::ival(kind): hir::ExprKind), PropagateExprType[(PropagateExprType{.id=(_: bit<64>), .kind=(prop_kind: internment::Intern<hir::ExprKind>), .ty=(ty: internment::Intern<hir::TypeKind>)}: PropagateExprType)], (hir::ExprAssign{.variable=(var prop_var: bit<64>), .expr_id=(_: bit<64>)}: hir::ExprKind) = (internment::ival(prop_kind): hir::ExprKind), (expr_var == prop_var). */
                                     Rule::CollectionRule {
-                                        description: "PropagateExprType[(PropagateExprType{.id=id, .kind=kind, .ty=ty}: PropagateExprType)] :- Expr[(Expr{.id=(id: bit<64>), .kind=(kind: internment::Intern<hir::ExprKind>), .ty=(_: internment::Intern<hir::TypeKind>)}: Expr)], (hir::Variable{.variable=(var expr_var: bit<64>)}: hir::ExprKind) = (internment::ival(kind): hir::ExprKind), PropagateExprType[(PropagateExprType{.id=(_: bit<64>), .kind=(prop_kind: internment::Intern<hir::ExprKind>), .ty=(ty: internment::Intern<hir::TypeKind>)}: PropagateExprType)], (hir::Assign{.variable=(var prop_var: bit<64>), .expr_id=(_: bit<64>)}: hir::ExprKind) = (internment::ival(prop_kind): hir::ExprKind), (expr_var == prop_var).".to_string(),
+                                        description: "PropagateExprType[(PropagateExprType{.id=id, .kind=kind, .ty=ty}: PropagateExprType)] :- Expr[(Expr{.id=(id: bit<64>), .kind=(kind: internment::Intern<hir::ExprKind>), .ty=(_: internment::Intern<hir::TypeKind>)}: Expr)], (hir::ExprVar{.variable=(var expr_var: bit<64>)}: hir::ExprKind) = (internment::ival(kind): hir::ExprKind), PropagateExprType[(PropagateExprType{.id=(_: bit<64>), .kind=(prop_kind: internment::Intern<hir::ExprKind>), .ty=(ty: internment::Intern<hir::TypeKind>)}: PropagateExprType)], (hir::ExprAssign{.variable=(var prop_var: bit<64>), .expr_id=(_: bit<64>)}: hir::ExprKind) = (internment::ival(prop_kind): hir::ExprKind), (expr_var == prop_var).".to_string(),
                                         rel: Relations::Expr as RelId,
                                         xform: Some(XFormCollection::Arrange {
                                                         description: "arrange Expr[(Expr{.id=(id: bit<64>), .kind=(kind: internment::Intern<hir::ExprKind>), .ty=(_: internment::Intern<hir::TypeKind>)}: Expr)] by ()" .to_string(),
@@ -167,14 +168,14 @@ pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
                                                                 _ => return None
                                                             };
                                                             let ref expr_var: u64 = match (*internment_ival(kind)).clone() {
-                                                                hir_ExprKind::hir_Variable{variable: expr_var} => expr_var,
+                                                                hir_ExprKind::hir_ExprVar{variable: expr_var} => expr_var,
                                                                 _ => return None
                                                             };
                                                             Some((Value::__Tuple0__(()).into_ddvalue(), Value::__Tuple3____Bitval64_internment_Intern__hir_ExprKind___Bitval64(((*id).clone(), (*kind).clone(), (*expr_var).clone())).into_ddvalue()))
                                                         }
                                                         __f},
                                                         next: Box::new(XFormArrangement::Join{
-                                                                           description: "Expr[(Expr{.id=(id: bit<64>), .kind=(kind: internment::Intern<hir::ExprKind>), .ty=(_: internment::Intern<hir::TypeKind>)}: Expr)], (hir::Variable{.variable=(var expr_var: bit<64>)}: hir::ExprKind) = (internment::ival(kind): hir::ExprKind), PropagateExprType[(PropagateExprType{.id=(_: bit<64>), .kind=(prop_kind: internment::Intern<hir::ExprKind>), .ty=(ty: internment::Intern<hir::TypeKind>)}: PropagateExprType)]".to_string(),
+                                                                           description: "Expr[(Expr{.id=(id: bit<64>), .kind=(kind: internment::Intern<hir::ExprKind>), .ty=(_: internment::Intern<hir::TypeKind>)}: Expr)], (hir::ExprVar{.variable=(var expr_var: bit<64>)}: hir::ExprKind) = (internment::ival(kind): hir::ExprKind), PropagateExprType[(PropagateExprType{.id=(_: bit<64>), .kind=(prop_kind: internment::Intern<hir::ExprKind>), .ty=(ty: internment::Intern<hir::TypeKind>)}: PropagateExprType)]".to_string(),
                                                                            ffun: None,
                                                                            arrangement: (Relations::PropagateExprType as RelId,1),
                                                                            jfun: &{fn __f(_: &DDValue ,__v1: &DDValue,__v2: &DDValue) -> Option<DDValue>
@@ -185,7 +186,7 @@ pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
                                                                                    _ => return None
                                                                                };
                                                                                let ref prop_var: u64 = match (*internment_ival(prop_kind)).clone() {
-                                                                                   hir_ExprKind::hir_Assign{variable: prop_var, expr_id: _} => prop_var,
+                                                                                   hir_ExprKind::hir_ExprAssign{variable: prop_var, expr_id: _} => prop_var,
                                                                                    _ => return None
                                                                                };
                                                                                if !((&*expr_var) == (&*prop_var)) {return None;};
@@ -293,7 +294,7 @@ pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
                                                               PropagateExprType{id: ref id, kind: ref kind, ty: ref ty} => ((*id).clone(), (*kind).clone(), (*ty).clone()),
                                                               _ => return None
                                                           };
-                                                          if !(!hir_is_int(ty)) {return None;};
+                                                          if !(!hir_is_int_internment_Intern__hir_TypeKind_1(ty)) {return None;};
                                                           Some(Value::ClampUnknownInt((ClampUnknownInt{id: (*id).clone(), kind: (*kind).clone(), ty: (*ty).clone()})).into_ddvalue())
                                                       }
                                                       __f},

@@ -3,11 +3,16 @@ typedef Var = u64
 typedef ExprId = u64
 typedef FileId = u32
 
-// TODO: Write rust hook into `lasso` for debug printing
+// TODO: Derive types to datalog
+// FIXME: TypeId instead of Intern<TypeKind>
+// FIXME: LiteralId instead of Intern<Literal>
+// TODO: Hook into `tracing` for logs
+
+// TODO: Write rust hook into `lasso` for debug printing and actual interning
 typedef StrT = u32
-// TODO: Write rust hook into `lasso` for debug printing
 typedef ItemPath = Intern<Vec<StrT>>
 
+// TODO: Actually put spans in structs
 typedef Span = Span { start: u32, end: u32 }
 typedef Location = Location {
     span: Span,
@@ -15,9 +20,26 @@ typedef Location = Location {
 }
 
 typedef ExprKind =
-    Lit { lit: Intern<LiteralVal> }
-    | Variable { variable: Var }
-    | Assign { variable: Var, expr_id: ExprId }
+    ExprLit { lit: Intern<Literal> }
+    | ExprVar { variable: Var }
+    | ExprAssign { variable: Var, expr_id: ExprId }
+    | ExprMatch { match_: Match }
+
+typedef Match = Match {
+    bind  : Binding,
+    guard : Option<ExprId>,
+    body  : Scope,
+    ty    : Intern<TypeKind>
+}
+
+typedef Binding = Binding {
+    reference : bool,
+    mutable   : bool,
+    pattern   : Pattern,
+    ty        : Option<Intern<TypeKind>>
+}
+
+typedef Pattern = PatLit { lit: Literal }
 
 typedef TypeKind =
     Unknown
@@ -26,8 +48,8 @@ typedef TypeKind =
     | Unit
     | Absurd
     | Error
-    | Int { is_signed  : Option<bool>
-          , width      : Option<u16> }
+    | Int { is_signed : Option<bool>
+          , width     : Option<u16> }
 
 function is_unknown(kind: Intern<TypeKind>): bool {
     kind == intern(Unknown)
@@ -40,12 +62,33 @@ function is_int(ty: Intern<TypeKind>): bool {
     }
 }
 
-typedef LiteralVal =
+typedef Literal =
     String { str: string }
     | Boolean { boolean: bool }
     | Integer { int: u64 }
 
-function typeof_literal(literal: Intern<LiteralVal>): Intern<TypeKind> {
+function is_str(ty: Intern<Literal>): bool {
+    match (ty.ival()) {
+        String {} -> true,
+        _         -> false
+    }
+}
+
+function is_bool(ty: Intern<Literal>): bool {
+    match (ty.ival()) {
+        Boolean {} -> true,
+        _          -> false
+    }
+}
+
+function is_int(ty: Intern<Literal>): bool {
+    match (ty.ival()) {
+        Integer {} -> true,
+        _          -> false
+    }
+}
+
+function typeof(literal: Intern<Literal>): Intern<TypeKind> {
     var ty = match (literal.ival()) {
         String  { } -> Str,
         Boolean { } -> Bool,
@@ -63,17 +106,25 @@ typedef FuncArg = FuncArg {
 }
 
 typedef Function = Function {
-    name: ItemPath,
-    vis: Vis,
-    args: Vec<FuncArg>,
-    body: Intern<Stmt>,
-    ret: Intern<TypeKind>
+    name : ItemPath,
+    vis  : Vis,
+    args : Vec<FuncArg>,
+    body : Intern<Stmt>,
+    ret  : Intern<TypeKind>
 }
 
 typedef Stmt = StmtExpr { expr: ExprId }
                | StmtItem { item: Item }
                | StmtSeq { first: Intern<Stmt>, second: Intern<Stmt> }
+               | StmtDecl { decl: VarDecl }
                | Empty
+    
+typedef VarDecl = VarDecl {
+    name    : Var,
+    value   : ExprId,
+    mutable : bool,
+    ty      : Intern<TypeKind>
+}
 
 typedef Item = ItemFunc { func: Function } | ItemStruct {}
 

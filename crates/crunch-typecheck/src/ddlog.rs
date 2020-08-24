@@ -6,14 +6,14 @@ use crunch_shared::{
         Expr as HirExpr, ExprKind as HirExprKind, FuncArg as HirFuncArg, Function as HirFunction,
         Integer, Item as HirItem, ItemPath as HirItemPath, Literal as HirLiteral,
         LiteralVal as HirLiteralVal, Stmt as HirStmt, Type as HirType, TypeId,
-        TypeKind as HirTypeKind, Var as HirVar, Vis as HirVis,
+        TypeKind as HirTypeKind, Var as HirVar, VarDecl as HirVarDecl, Vis as HirVis,
     },
     utils::HashMap,
 };
 use ddlog_types::{
     hir_ExprId as ExprId, hir_ExprKind as ExprKind, hir_FuncArg as FuncArg,
-    hir_Function as Function, hir_Item as Item, hir_ItemPath as ItemPath,
-    hir_LiteralVal as LiteralVal, hir_Stmt as Stmt, hir_TypeKind as TypeKind, hir_Vis as Vis,
+    hir_Function as Function, hir_Item as Item, hir_ItemPath as ItemPath, hir_Literal as Literal,
+    hir_Stmt as Stmt, hir_TypeKind as TypeKind, hir_VarDecl as VarDecl, hir_Vis as Vis,
     internment_Intern as Interned, internment_intern as ddlog_intern, option2std,
     std_Vec as Vector, Expr, InputItems,
 };
@@ -268,10 +268,31 @@ impl<'ctx> Visit<HirStmt<'_>> for DDlogEngine<'ctx> {
             &HirStmt::Item(item) => Stmt::hir_StmtItem {
                 item: self.visit(item),
             },
+
             &HirStmt::Expr(expr) => Stmt::hir_StmtExpr {
                 expr: self.visit(expr),
             },
-            HirStmt::VarDecl(_var_decl) => todo!(),
+
+            HirStmt::VarDecl(var_decl) => Stmt::hir_StmtDecl {
+                decl: self.visit(var_decl),
+            },
+        }
+    }
+}
+
+impl<'ctx> Visit<HirVarDecl<'_>> for DDlogEngine<'ctx> {
+    type Output = VarDecl;
+
+    #[crunch_shared::instrument(name = "variable declaration", skip(self, var_decl))]
+    fn visit(&mut self, var_decl: &HirVarDecl<'_>) -> Self::Output {
+        VarDecl {
+            name: self.get_or_create_var(var_decl.name),
+            value: self.visit(var_decl.value),
+            mutable: var_decl.mutable,
+            ty: {
+                let ty = self.visit(&var_decl.ty);
+                self.intern(ty)
+            },
         }
     }
 }
@@ -287,14 +308,15 @@ impl<'ctx> Visit<HirExpr<'_>> for DDlogEngine<'ctx> {
             HirExprKind::Literal(literal) => {
                 let (literal, ty) = self.visit(literal);
                 (
-                    ExprKind::hir_Lit {
+                    ExprKind::hir_ExprLit {
                         lit: self.intern(literal),
                     },
                     Some(self.intern(ty)),
                 )
             }
+
             &HirExprKind::Variable(var, ty) => {
-                let expr = ExprKind::hir_Variable {
+                let expr = ExprKind::hir_ExprVar {
                     variable: self.get_or_create_var(var),
                 };
                 let ty = {
@@ -308,6 +330,7 @@ impl<'ctx> Visit<HirExpr<'_>> for DDlogEngine<'ctx> {
 
                 (expr, Some(self.intern(ty)))
             }
+
             &HirExprKind::Assign(var, rhs) => {
                 let rhs = self.visit(rhs);
                 let variable = self
@@ -316,7 +339,7 @@ impl<'ctx> Visit<HirExpr<'_>> for DDlogEngine<'ctx> {
                     .copied()
                     .expect("got a variable that doesn't exist");
 
-                let expr = ExprKind::hir_Assign {
+                let expr = ExprKind::hir_ExprAssign {
                     variable,
                     expr_id: rhs,
                 };
@@ -346,7 +369,7 @@ impl<'ctx> Visit<HirExpr<'_>> for DDlogEngine<'ctx> {
 }
 
 impl<'ctx> Visit<HirLiteral> for DDlogEngine<'ctx> {
-    type Output = (LiteralVal, TypeKind);
+    type Output = (Literal, TypeKind);
 
     #[crunch_shared::instrument(name = "literal", skip(self, lit))]
     fn visit(&mut self, lit: &HirLiteral) -> Self::Output {
@@ -362,16 +385,16 @@ impl<'ctx> Visit<HirLiteral> for DDlogEngine<'ctx> {
 }
 
 impl<'ctx> Visit<HirLiteralVal> for DDlogEngine<'ctx> {
-    type Output = LiteralVal;
+    type Output = Literal;
 
     #[crunch_shared::instrument(name = "literal value", skip(self, val))]
     fn visit(&mut self, val: &HirLiteralVal) -> Self::Output {
         match val {
             &HirLiteralVal::Integer(Integer { bits: int, .. }) => {
-                LiteralVal::hir_Integer { int: int as u64 }
+                Literal::hir_Integer { int: int as u64 }
             }
-            &HirLiteralVal::Bool(boolean) => LiteralVal::hir_Boolean { boolean },
-            HirLiteralVal::String(string) => LiteralVal::hir_String {
+            &HirLiteralVal::Bool(boolean) => Literal::hir_Boolean { boolean },
+            HirLiteralVal::String(string) => Literal::hir_String {
                 r#str: string.to_string(),
             },
             HirLiteralVal::Rune(_) => todo!(),
@@ -393,6 +416,7 @@ pub const DDLOG_WORKER_THREADS: usize = 12;
 // Used for `HDDlog::dump_table()`
 pub const DDLOG_TRACK_SNAPSHOTS: bool = false;
 
+#[cfg(test)]
 fn run_ddlog() -> Result<(), String> {
     let (mut program, init_state) =
         HDDlog::run(DDLOG_WORKER_THREADS, DDLOG_TRACK_SNAPSHOTS, ddlog_callback)?;
@@ -406,8 +430,8 @@ fn run_ddlog() -> Result<(), String> {
             relid: Relations::Expr as RelId,
             v: Value::Expr(Expr {
                 id: 0,
-                kind: ddlog_intern(&ExprKind::hir_Lit {
-                    lit: ddlog_intern(&LiteralVal::hir_Integer { int: 10 }),
+                kind: ddlog_intern(&ExprKind::hir_ExprLit {
+                    lit: ddlog_intern(&Literal::hir_Integer { int: 10 }),
                 }),
                 ty: ddlog_intern(&TypeKind::hir_Unknown),
             })
@@ -417,8 +441,8 @@ fn run_ddlog() -> Result<(), String> {
             relid: Relations::Expr as RelId,
             v: Value::Expr(Expr {
                 id: 1,
-                kind: ddlog_intern(&ExprKind::hir_Lit {
-                    lit: ddlog_intern(&LiteralVal::hir_Integer { int: 10 }),
+                kind: ddlog_intern(&ExprKind::hir_ExprLit {
+                    lit: ddlog_intern(&Literal::hir_Integer { int: 10 }),
                 }),
                 ty: ddlog_intern(&TypeKind::hir_Unknown),
             })
@@ -428,7 +452,7 @@ fn run_ddlog() -> Result<(), String> {
             relid: Relations::Expr as RelId,
             v: Value::Expr(Expr {
                 id: 2,
-                kind: ddlog_intern(&ExprKind::hir_Variable { variable: 0 }),
+                kind: ddlog_intern(&ExprKind::hir_ExprVar { variable: 0 }),
                 ty: ddlog_intern(&TypeKind::hir_Unknown),
             })
             .into_ddvalue(),

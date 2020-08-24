@@ -214,7 +214,7 @@ mod tests {
 
         assert_eq!(1000, buf.len());
         assert_eq!(buf.len(), buf.as_slice().unwrap().len());
-        assert_eq!(buf.as_slice().unwrap(), [0xFE; 1000].as_ref());
+        assert_eq!(buf.as_slice().unwrap(), &[0xFEu8; 1000][..]);
     }
 
     #[test]

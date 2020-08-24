@@ -11,7 +11,8 @@
     unreachable_patterns,
     unused_variables,
     clippy::unknown_clippy_lints,
-    clippy::missing_safety_doc
+    clippy::missing_safety_doc,
+    clippy::match_single_binding
 )]
 
 use num::bigint::BigInt;
@@ -124,6 +125,7 @@ mod __std {
     extern crate num;
     
     use differential_datalog::arcval;
+    use differential_datalog::int;
     use differential_datalog::record::*;
     
     use serde::de::Deserialize;
@@ -143,7 +145,7 @@ mod __std {
     use std::slice;
     use std::vec;
     use std::vec::Vec;
-    use twox_hash::XxHash;
+    use fnv::FnvHasher;
     
     #[cfg(feature = "flatbuf")]
     use flatbuf::{FBIter, FromFlatBuffer, ToFlatBuffer, ToFlatBufferTable, ToFlatBufferVectorElement};
@@ -235,7 +237,37 @@ mod __std {
     }
     
     // Arithmetic functions
-    pub fn std_pow32<T: num::One + ops::Mul + Clone>(base: &T, exp: &u32) -> T {
+    pub fn std_u8_pow32(base: &u8, exp: &u32) -> u8 {
+        base.wrapping_pow(*exp)
+    }
+    pub fn std_u16_pow32(base: &u16, exp: &u32) -> u16 {
+        base.wrapping_pow(*exp)
+    }
+    pub fn std_u32_pow32(base: &u32, exp: &u32) -> u32 {
+        base.wrapping_pow(*exp)
+    }
+    pub fn std_u64_pow32(base: &u64, exp: &u32) -> u64 {
+        base.wrapping_pow(*exp)
+    }
+    pub fn std_u128_pow32(base: &u128, exp: &u32) -> u128 {
+        base.wrapping_pow(*exp)
+    }
+    pub fn std_s8_pow32(base: &i8, exp: &u32) -> i8 {
+        base.wrapping_pow(*exp)
+    }
+    pub fn std_s16_pow32(base: &i16, exp: &u32) -> i16 {
+        base.wrapping_pow(*exp)
+    }
+    pub fn std_s32_pow32(base: &i32, exp: &u32) -> i32 {
+        base.wrapping_pow(*exp)
+    }
+    pub fn std_s64_pow32(base: &i64, exp: &u32) -> i64 {
+        base.wrapping_pow(*exp)
+    }
+    pub fn std_s128_pow32(base: &i128, exp: &u32) -> i128 {
+        base.wrapping_pow(*exp)
+    }
+    pub fn std_bigint_pow32(base: &int::Int, exp: &u32) -> int::Int {
         num::pow::pow(base.clone(), *exp as usize)
     }
     
@@ -1154,18 +1186,20 @@ mod __std {
     // Hashing
     
     pub fn std_hash64<T: Hash>(x: &T) -> u64 {
-        let mut hasher = XxHash::with_seed(XX_SEED1);
+        let mut hasher = FnvHasher::with_key(XX_SEED1);
         x.hash(&mut hasher);
         hasher.finish()
     }
     
     pub fn std_hash128<T: Hash>(x: &T) -> u128 {
-        let mut hasher = XxHash::with_seed(XX_SEED1);
+        let mut hasher = FnvHasher::with_key(XX_SEED1);
         x.hash(&mut hasher);
         let w1 = hasher.finish();
-        let mut hasher = XxHash::with_seed(XX_SEED2);
+    
+        let mut hasher = FnvHasher::with_key(XX_SEED2);
         x.hash(&mut hasher);
         let w2 = hasher.finish();
+    
         ((w1 as u128) << 64) | (w2 as u128)
     }
     
@@ -2304,18 +2338,85 @@ impl fmt::Debug for SymbolTable {
     }
 }
 pub type debug_DDlogOpId = (std_u32, std_u32, std_u32);
+#[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
+pub struct hir_Binding {
+    pub reference: bool,
+    pub mutable: bool,
+    pub pattern: hir_Pattern,
+    pub ty: std_Option<internment_Intern<hir_TypeKind>>
+}
+impl abomonation::Abomonation for hir_Binding{}
+impl <> record::FromRecord for hir_Binding<> {
+    fn from_record(val: &record::Record) -> result::Result<Self, String> {
+        match val {
+            record::Record::PosStruct(constr, _args) => {
+                match constr.as_ref() {
+                    "hir::Binding" if _args.len() == 4 => {
+                        Ok(hir_Binding{reference: <bool>::from_record(&_args[0])?, mutable: <bool>::from_record(&_args[1])?, pattern: <hir_Pattern>::from_record(&_args[2])?, ty: <std_Option<internment_Intern<hir_TypeKind>>>::from_record(&_args[3])?})
+                    },
+                    c => result::Result::Err(format!("unknown constructor {} of type hir_Binding in {:?}", c, *val))
+                }
+            },
+            record::Record::NamedStruct(constr, _args) => {
+                match constr.as_ref() {
+                    "hir::Binding" => {
+                        Ok(hir_Binding{reference: record::arg_extract::<bool>(_args, "reference")?, mutable: record::arg_extract::<bool>(_args, "mutable")?, pattern: record::arg_extract::<hir_Pattern>(_args, "pattern")?, ty: record::arg_extract::<std_Option<internment_Intern<hir_TypeKind>>>(_args, "ty")?})
+                    },
+                    c => result::Result::Err(format!("unknown constructor {} of type hir_Binding in {:?}", c, *val))
+                }
+            },
+            record::Record::Serialized(format, s) => {
+                if format == "json" {
+                    serde_json::from_str(&*s).map_err(|e|format!("{}", e))
+                } else {
+                    result::Result::Err(format!("unsupported serialization format '{}'", format))
+                }
+            },
+            v => {
+                result::Result::Err(format!("not a struct {:?}", *v))
+            }
+        }
+    }
+}
+decl_struct_into_record!(hir_Binding["hir::Binding"]<>, reference, mutable, pattern, ty);
+decl_record_mutator_struct!(hir_Binding, <>, reference: bool, mutable: bool, pattern: hir_Pattern, ty: std_Option<internment_Intern<hir_TypeKind>>);
+impl fmt::Display for hir_Binding {
+    fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            hir_Binding{reference,mutable,pattern,ty} => {
+                __formatter.write_str("hir::Binding{")?;
+                fmt::Debug::fmt(reference, __formatter)?;
+                __formatter.write_str(",")?;
+                fmt::Debug::fmt(mutable, __formatter)?;
+                __formatter.write_str(",")?;
+                fmt::Debug::fmt(pattern, __formatter)?;
+                __formatter.write_str(",")?;
+                fmt::Debug::fmt(ty, __formatter)?;
+                __formatter.write_str("}")
+            }
+        }
+    }
+}
+impl fmt::Debug for hir_Binding {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self, f)
+    }
+}
 pub type hir_ExprId = std_u64;
 #[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum hir_ExprKind {
-    hir_Lit {
-        lit: internment_Intern<hir_LiteralVal>
+    hir_ExprLit {
+        lit: internment_Intern<hir_Literal>
     },
-    hir_Variable {
+    hir_ExprVar {
         variable: hir_Var
     },
-    hir_Assign {
+    hir_ExprAssign {
         variable: hir_Var,
         expr_id: hir_ExprId
+    },
+    hir_ExprMatch {
+        match_: hir_Match
     }
 }
 impl abomonation::Abomonation for hir_ExprKind{}
@@ -2324,28 +2425,34 @@ impl <> record::FromRecord for hir_ExprKind<> {
         match val {
             record::Record::PosStruct(constr, _args) => {
                 match constr.as_ref() {
-                    "hir::Lit" if _args.len() == 1 => {
-                        Ok(hir_ExprKind::hir_Lit{lit: <internment_Intern<hir_LiteralVal>>::from_record(&_args[0])?})
+                    "hir::ExprLit" if _args.len() == 1 => {
+                        Ok(hir_ExprKind::hir_ExprLit{lit: <internment_Intern<hir_Literal>>::from_record(&_args[0])?})
                     },
-                    "hir::Variable" if _args.len() == 1 => {
-                        Ok(hir_ExprKind::hir_Variable{variable: <hir_Var>::from_record(&_args[0])?})
+                    "hir::ExprVar" if _args.len() == 1 => {
+                        Ok(hir_ExprKind::hir_ExprVar{variable: <hir_Var>::from_record(&_args[0])?})
                     },
-                    "hir::Assign" if _args.len() == 2 => {
-                        Ok(hir_ExprKind::hir_Assign{variable: <hir_Var>::from_record(&_args[0])?, expr_id: <hir_ExprId>::from_record(&_args[1])?})
+                    "hir::ExprAssign" if _args.len() == 2 => {
+                        Ok(hir_ExprKind::hir_ExprAssign{variable: <hir_Var>::from_record(&_args[0])?, expr_id: <hir_ExprId>::from_record(&_args[1])?})
+                    },
+                    "hir::ExprMatch" if _args.len() == 1 => {
+                        Ok(hir_ExprKind::hir_ExprMatch{match_: <hir_Match>::from_record(&_args[0])?})
                     },
                     c => result::Result::Err(format!("unknown constructor {} of type hir_ExprKind in {:?}", c, *val))
                 }
             },
             record::Record::NamedStruct(constr, _args) => {
                 match constr.as_ref() {
-                    "hir::Lit" => {
-                        Ok(hir_ExprKind::hir_Lit{lit: record::arg_extract::<internment_Intern<hir_LiteralVal>>(_args, "lit")?})
+                    "hir::ExprLit" => {
+                        Ok(hir_ExprKind::hir_ExprLit{lit: record::arg_extract::<internment_Intern<hir_Literal>>(_args, "lit")?})
                     },
-                    "hir::Variable" => {
-                        Ok(hir_ExprKind::hir_Variable{variable: record::arg_extract::<hir_Var>(_args, "variable")?})
+                    "hir::ExprVar" => {
+                        Ok(hir_ExprKind::hir_ExprVar{variable: record::arg_extract::<hir_Var>(_args, "variable")?})
                     },
-                    "hir::Assign" => {
-                        Ok(hir_ExprKind::hir_Assign{variable: record::arg_extract::<hir_Var>(_args, "variable")?, expr_id: record::arg_extract::<hir_ExprId>(_args, "expr_id")?})
+                    "hir::ExprAssign" => {
+                        Ok(hir_ExprKind::hir_ExprAssign{variable: record::arg_extract::<hir_Var>(_args, "variable")?, expr_id: record::arg_extract::<hir_ExprId>(_args, "expr_id")?})
+                    },
+                    "hir::ExprMatch" => {
+                        Ok(hir_ExprKind::hir_ExprMatch{match_: record::arg_extract::<hir_Match>(_args, "match_")?})
                     },
                     c => result::Result::Err(format!("unknown constructor {} of type hir_ExprKind in {:?}", c, *val))
                 }
@@ -2363,26 +2470,31 @@ impl <> record::FromRecord for hir_ExprKind<> {
         }
     }
 }
-decl_enum_into_record!(hir_ExprKind, <>, hir_Lit["hir::Lit"]{lit}, hir_Variable["hir::Variable"]{variable}, hir_Assign["hir::Assign"]{variable, expr_id});
-decl_record_mutator_enum!(hir_ExprKind, <>, hir_Lit{lit: internment_Intern<hir_LiteralVal>}, hir_Variable{variable: hir_Var}, hir_Assign{variable: hir_Var, expr_id: hir_ExprId});
+decl_enum_into_record!(hir_ExprKind, <>, hir_ExprLit["hir::ExprLit"]{lit}, hir_ExprVar["hir::ExprVar"]{variable}, hir_ExprAssign["hir::ExprAssign"]{variable, expr_id}, hir_ExprMatch["hir::ExprMatch"]{match_});
+decl_record_mutator_enum!(hir_ExprKind, <>, hir_ExprLit{lit: internment_Intern<hir_Literal>}, hir_ExprVar{variable: hir_Var}, hir_ExprAssign{variable: hir_Var, expr_id: hir_ExprId}, hir_ExprMatch{match_: hir_Match});
 impl fmt::Display for hir_ExprKind {
     fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            hir_ExprKind::hir_Lit{lit} => {
-                __formatter.write_str("hir::Lit{")?;
+            hir_ExprKind::hir_ExprLit{lit} => {
+                __formatter.write_str("hir::ExprLit{")?;
                 fmt::Debug::fmt(lit, __formatter)?;
                 __formatter.write_str("}")
             },
-            hir_ExprKind::hir_Variable{variable} => {
-                __formatter.write_str("hir::Variable{")?;
+            hir_ExprKind::hir_ExprVar{variable} => {
+                __formatter.write_str("hir::ExprVar{")?;
                 fmt::Debug::fmt(variable, __formatter)?;
                 __formatter.write_str("}")
             },
-            hir_ExprKind::hir_Assign{variable,expr_id} => {
-                __formatter.write_str("hir::Assign{")?;
+            hir_ExprKind::hir_ExprAssign{variable,expr_id} => {
+                __formatter.write_str("hir::ExprAssign{")?;
                 fmt::Debug::fmt(variable, __formatter)?;
                 __formatter.write_str(",")?;
                 fmt::Debug::fmt(expr_id, __formatter)?;
+                __formatter.write_str("}")
+            },
+            hir_ExprKind::hir_ExprMatch{match_} => {
+                __formatter.write_str("hir::ExprMatch{")?;
+                fmt::Debug::fmt(match_, __formatter)?;
                 __formatter.write_str("}")
             }
         }
@@ -2395,7 +2507,7 @@ impl fmt::Debug for hir_ExprKind {
 }
 impl  Default for hir_ExprKind {
     fn default() -> Self {
-        hir_ExprKind::hir_Lit{lit : Default::default()}
+        hir_ExprKind::hir_ExprLit{lit : Default::default()}
     }
 }
 pub type hir_FileId = std_u32;
@@ -2540,7 +2652,7 @@ impl <> record::FromRecord for hir_Item<> {
                     "hir::ItemFunc" if _args.len() == 1 => {
                         Ok(hir_Item::hir_ItemFunc{func: <hir_Function>::from_record(&_args[0])?})
                     },
-                    "hir::ItemStruct" if _args.len() == 0 => {
+                    "hir::ItemStruct" if _args.is_empty() => {
                         Ok(hir_Item::hir_ItemStruct{})
                     },
                     c => result::Result::Err(format!("unknown constructor {} of type hir_Item in {:?}", c, *val))
@@ -2599,7 +2711,7 @@ impl  Default for hir_Item {
 }
 pub type hir_ItemPath = internment_Intern<std_Vec<hir_StrT>>;
 #[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize)]
-pub enum hir_LiteralVal {
+pub enum hir_Literal {
     hir_String {
         str: String
     },
@@ -2610,36 +2722,36 @@ pub enum hir_LiteralVal {
         int: std_u64
     }
 }
-impl abomonation::Abomonation for hir_LiteralVal{}
-impl <> record::FromRecord for hir_LiteralVal<> {
+impl abomonation::Abomonation for hir_Literal{}
+impl <> record::FromRecord for hir_Literal<> {
     fn from_record(val: &record::Record) -> result::Result<Self, String> {
         match val {
             record::Record::PosStruct(constr, _args) => {
                 match constr.as_ref() {
                     "hir::String" if _args.len() == 1 => {
-                        Ok(hir_LiteralVal::hir_String{str: <String>::from_record(&_args[0])?})
+                        Ok(hir_Literal::hir_String{str: <String>::from_record(&_args[0])?})
                     },
                     "hir::Boolean" if _args.len() == 1 => {
-                        Ok(hir_LiteralVal::hir_Boolean{boolean: <bool>::from_record(&_args[0])?})
+                        Ok(hir_Literal::hir_Boolean{boolean: <bool>::from_record(&_args[0])?})
                     },
                     "hir::Integer" if _args.len() == 1 => {
-                        Ok(hir_LiteralVal::hir_Integer{int: <std_u64>::from_record(&_args[0])?})
+                        Ok(hir_Literal::hir_Integer{int: <std_u64>::from_record(&_args[0])?})
                     },
-                    c => result::Result::Err(format!("unknown constructor {} of type hir_LiteralVal in {:?}", c, *val))
+                    c => result::Result::Err(format!("unknown constructor {} of type hir_Literal in {:?}", c, *val))
                 }
             },
             record::Record::NamedStruct(constr, _args) => {
                 match constr.as_ref() {
                     "hir::String" => {
-                        Ok(hir_LiteralVal::hir_String{str: record::arg_extract::<String>(_args, "str")?})
+                        Ok(hir_Literal::hir_String{str: record::arg_extract::<String>(_args, "str")?})
                     },
                     "hir::Boolean" => {
-                        Ok(hir_LiteralVal::hir_Boolean{boolean: record::arg_extract::<bool>(_args, "boolean")?})
+                        Ok(hir_Literal::hir_Boolean{boolean: record::arg_extract::<bool>(_args, "boolean")?})
                     },
                     "hir::Integer" => {
-                        Ok(hir_LiteralVal::hir_Integer{int: record::arg_extract::<std_u64>(_args, "int")?})
+                        Ok(hir_Literal::hir_Integer{int: record::arg_extract::<std_u64>(_args, "int")?})
                     },
-                    c => result::Result::Err(format!("unknown constructor {} of type hir_LiteralVal in {:?}", c, *val))
+                    c => result::Result::Err(format!("unknown constructor {} of type hir_Literal in {:?}", c, *val))
                 }
             },
             record::Record::Serialized(format, s) => {
@@ -2655,22 +2767,22 @@ impl <> record::FromRecord for hir_LiteralVal<> {
         }
     }
 }
-decl_enum_into_record!(hir_LiteralVal, <>, hir_String["hir::String"]{str}, hir_Boolean["hir::Boolean"]{boolean}, hir_Integer["hir::Integer"]{int});
-decl_record_mutator_enum!(hir_LiteralVal, <>, hir_String{str: String}, hir_Boolean{boolean: bool}, hir_Integer{int: std_u64});
-impl fmt::Display for hir_LiteralVal {
+decl_enum_into_record!(hir_Literal, <>, hir_String["hir::String"]{str}, hir_Boolean["hir::Boolean"]{boolean}, hir_Integer["hir::Integer"]{int});
+decl_record_mutator_enum!(hir_Literal, <>, hir_String{str: String}, hir_Boolean{boolean: bool}, hir_Integer{int: std_u64});
+impl fmt::Display for hir_Literal {
     fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            hir_LiteralVal::hir_String{str} => {
+            hir_Literal::hir_String{str} => {
                 __formatter.write_str("hir::String{")?;
                 record::format_ddlog_str(str, __formatter)?;
                 __formatter.write_str("}")
             },
-            hir_LiteralVal::hir_Boolean{boolean} => {
+            hir_Literal::hir_Boolean{boolean} => {
                 __formatter.write_str("hir::Boolean{")?;
                 fmt::Debug::fmt(boolean, __formatter)?;
                 __formatter.write_str("}")
             },
-            hir_LiteralVal::hir_Integer{int} => {
+            hir_Literal::hir_Integer{int} => {
                 __formatter.write_str("hir::Integer{")?;
                 fmt::Debug::fmt(int, __formatter)?;
                 __formatter.write_str("}")
@@ -2678,14 +2790,14 @@ impl fmt::Display for hir_LiteralVal {
         }
     }
 }
-impl fmt::Debug for hir_LiteralVal {
+impl fmt::Debug for hir_Literal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Display::fmt(&self, f)
     }
 }
-impl  Default for hir_LiteralVal {
+impl  Default for hir_Literal {
     fn default() -> Self {
-        hir_LiteralVal::hir_String{str : Default::default()}
+        hir_Literal::hir_String{str : Default::default()}
     }
 }
 #[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
@@ -2742,6 +2854,125 @@ impl fmt::Display for hir_Location {
     }
 }
 impl fmt::Debug for hir_Location {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self, f)
+    }
+}
+#[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
+pub struct hir_Match {
+    pub bind: hir_Binding,
+    pub guard: std_Option<hir_ExprId>,
+    pub body: hir_Scope,
+    pub ty: internment_Intern<hir_TypeKind>
+}
+impl abomonation::Abomonation for hir_Match{}
+impl <> record::FromRecord for hir_Match<> {
+    fn from_record(val: &record::Record) -> result::Result<Self, String> {
+        match val {
+            record::Record::PosStruct(constr, _args) => {
+                match constr.as_ref() {
+                    "hir::Match" if _args.len() == 4 => {
+                        Ok(hir_Match{bind: <hir_Binding>::from_record(&_args[0])?, guard: <std_Option<hir_ExprId>>::from_record(&_args[1])?, body: <hir_Scope>::from_record(&_args[2])?, ty: <internment_Intern<hir_TypeKind>>::from_record(&_args[3])?})
+                    },
+                    c => result::Result::Err(format!("unknown constructor {} of type hir_Match in {:?}", c, *val))
+                }
+            },
+            record::Record::NamedStruct(constr, _args) => {
+                match constr.as_ref() {
+                    "hir::Match" => {
+                        Ok(hir_Match{bind: record::arg_extract::<hir_Binding>(_args, "bind")?, guard: record::arg_extract::<std_Option<hir_ExprId>>(_args, "guard")?, body: record::arg_extract::<hir_Scope>(_args, "body")?, ty: record::arg_extract::<internment_Intern<hir_TypeKind>>(_args, "ty")?})
+                    },
+                    c => result::Result::Err(format!("unknown constructor {} of type hir_Match in {:?}", c, *val))
+                }
+            },
+            record::Record::Serialized(format, s) => {
+                if format == "json" {
+                    serde_json::from_str(&*s).map_err(|e|format!("{}", e))
+                } else {
+                    result::Result::Err(format!("unsupported serialization format '{}'", format))
+                }
+            },
+            v => {
+                result::Result::Err(format!("not a struct {:?}", *v))
+            }
+        }
+    }
+}
+decl_struct_into_record!(hir_Match["hir::Match"]<>, bind, guard, body, ty);
+decl_record_mutator_struct!(hir_Match, <>, bind: hir_Binding, guard: std_Option<hir_ExprId>, body: hir_Scope, ty: internment_Intern<hir_TypeKind>);
+impl fmt::Display for hir_Match {
+    fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            hir_Match{bind,guard,body,ty} => {
+                __formatter.write_str("hir::Match{")?;
+                fmt::Debug::fmt(bind, __formatter)?;
+                __formatter.write_str(",")?;
+                fmt::Debug::fmt(guard, __formatter)?;
+                __formatter.write_str(",")?;
+                fmt::Debug::fmt(body, __formatter)?;
+                __formatter.write_str(",")?;
+                fmt::Debug::fmt(ty, __formatter)?;
+                __formatter.write_str("}")
+            }
+        }
+    }
+}
+impl fmt::Debug for hir_Match {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self, f)
+    }
+}
+#[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
+pub struct hir_Pattern {
+    pub lit: hir_Literal
+}
+impl abomonation::Abomonation for hir_Pattern{}
+impl <> record::FromRecord for hir_Pattern<> {
+    fn from_record(val: &record::Record) -> result::Result<Self, String> {
+        match val {
+            record::Record::PosStruct(constr, _args) => {
+                match constr.as_ref() {
+                    "hir::PatLit" if _args.len() == 1 => {
+                        Ok(hir_Pattern{lit: <hir_Literal>::from_record(&_args[0])?})
+                    },
+                    c => result::Result::Err(format!("unknown constructor {} of type hir_Pattern in {:?}", c, *val))
+                }
+            },
+            record::Record::NamedStruct(constr, _args) => {
+                match constr.as_ref() {
+                    "hir::PatLit" => {
+                        Ok(hir_Pattern{lit: record::arg_extract::<hir_Literal>(_args, "lit")?})
+                    },
+                    c => result::Result::Err(format!("unknown constructor {} of type hir_Pattern in {:?}", c, *val))
+                }
+            },
+            record::Record::Serialized(format, s) => {
+                if format == "json" {
+                    serde_json::from_str(&*s).map_err(|e|format!("{}", e))
+                } else {
+                    result::Result::Err(format!("unsupported serialization format '{}'", format))
+                }
+            },
+            v => {
+                result::Result::Err(format!("not a struct {:?}", *v))
+            }
+        }
+    }
+}
+decl_struct_into_record!(hir_Pattern["hir::Pattern"]<>, lit);
+decl_record_mutator_struct!(hir_Pattern, <>, lit: hir_Literal);
+impl fmt::Display for hir_Pattern {
+    fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            hir_Pattern{lit} => {
+                __formatter.write_str("hir::PatLit{")?;
+                fmt::Debug::fmt(lit, __formatter)?;
+                __formatter.write_str("}")
+            }
+        }
+    }
+}
+impl fmt::Debug for hir_Pattern {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Display::fmt(&self, f)
     }
@@ -2964,6 +3195,9 @@ pub enum hir_Stmt {
         first: internment_Intern<hir_Stmt>,
         second: internment_Intern<hir_Stmt>
     },
+    hir_StmtDecl {
+        decl: hir_VarDecl
+    },
     hir_Empty
 }
 impl abomonation::Abomonation for hir_Stmt{}
@@ -2981,7 +3215,10 @@ impl <> record::FromRecord for hir_Stmt<> {
                     "hir::StmtSeq" if _args.len() == 2 => {
                         Ok(hir_Stmt::hir_StmtSeq{first: <internment_Intern<hir_Stmt>>::from_record(&_args[0])?, second: <internment_Intern<hir_Stmt>>::from_record(&_args[1])?})
                     },
-                    "hir::Empty" if _args.len() == 0 => {
+                    "hir::StmtDecl" if _args.len() == 1 => {
+                        Ok(hir_Stmt::hir_StmtDecl{decl: <hir_VarDecl>::from_record(&_args[0])?})
+                    },
+                    "hir::Empty" if _args.is_empty() => {
                         Ok(hir_Stmt::hir_Empty{})
                     },
                     c => result::Result::Err(format!("unknown constructor {} of type hir_Stmt in {:?}", c, *val))
@@ -2997,6 +3234,9 @@ impl <> record::FromRecord for hir_Stmt<> {
                     },
                     "hir::StmtSeq" => {
                         Ok(hir_Stmt::hir_StmtSeq{first: record::arg_extract::<internment_Intern<hir_Stmt>>(_args, "first")?, second: record::arg_extract::<internment_Intern<hir_Stmt>>(_args, "second")?})
+                    },
+                    "hir::StmtDecl" => {
+                        Ok(hir_Stmt::hir_StmtDecl{decl: record::arg_extract::<hir_VarDecl>(_args, "decl")?})
                     },
                     "hir::Empty" => {
                         Ok(hir_Stmt::hir_Empty{})
@@ -3017,8 +3257,8 @@ impl <> record::FromRecord for hir_Stmt<> {
         }
     }
 }
-decl_enum_into_record!(hir_Stmt, <>, hir_StmtExpr["hir::StmtExpr"]{expr}, hir_StmtItem["hir::StmtItem"]{item}, hir_StmtSeq["hir::StmtSeq"]{first, second}, hir_Empty["hir::Empty"]{});
-decl_record_mutator_enum!(hir_Stmt, <>, hir_StmtExpr{expr: hir_ExprId}, hir_StmtItem{item: hir_Item}, hir_StmtSeq{first: internment_Intern<hir_Stmt>, second: internment_Intern<hir_Stmt>}, hir_Empty{});
+decl_enum_into_record!(hir_Stmt, <>, hir_StmtExpr["hir::StmtExpr"]{expr}, hir_StmtItem["hir::StmtItem"]{item}, hir_StmtSeq["hir::StmtSeq"]{first, second}, hir_StmtDecl["hir::StmtDecl"]{decl}, hir_Empty["hir::Empty"]{});
+decl_record_mutator_enum!(hir_Stmt, <>, hir_StmtExpr{expr: hir_ExprId}, hir_StmtItem{item: hir_Item}, hir_StmtSeq{first: internment_Intern<hir_Stmt>, second: internment_Intern<hir_Stmt>}, hir_StmtDecl{decl: hir_VarDecl}, hir_Empty{});
 impl fmt::Display for hir_Stmt {
     fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -3037,6 +3277,11 @@ impl fmt::Display for hir_Stmt {
                 fmt::Debug::fmt(first, __formatter)?;
                 __formatter.write_str(",")?;
                 fmt::Debug::fmt(second, __formatter)?;
+                __formatter.write_str("}")
+            },
+            hir_Stmt::hir_StmtDecl{decl} => {
+                __formatter.write_str("hir::StmtDecl{")?;
+                fmt::Debug::fmt(decl, __formatter)?;
                 __formatter.write_str("}")
             },
             hir_Stmt::hir_Empty{} => {
@@ -3076,22 +3321,22 @@ impl <> record::FromRecord for hir_TypeKind<> {
         match val {
             record::Record::PosStruct(constr, _args) => {
                 match constr.as_ref() {
-                    "hir::Unknown" if _args.len() == 0 => {
+                    "hir::Unknown" if _args.is_empty() => {
                         Ok(hir_TypeKind::hir_Unknown{})
                     },
-                    "hir::Str" if _args.len() == 0 => {
+                    "hir::Str" if _args.is_empty() => {
                         Ok(hir_TypeKind::hir_Str{})
                     },
-                    "hir::Bool" if _args.len() == 0 => {
+                    "hir::Bool" if _args.is_empty() => {
                         Ok(hir_TypeKind::hir_Bool{})
                     },
-                    "hir::Unit" if _args.len() == 0 => {
+                    "hir::Unit" if _args.is_empty() => {
                         Ok(hir_TypeKind::hir_Unit{})
                     },
-                    "hir::Absurd" if _args.len() == 0 => {
+                    "hir::Absurd" if _args.is_empty() => {
                         Ok(hir_TypeKind::hir_Absurd{})
                     },
-                    "hir::Error" if _args.len() == 0 => {
+                    "hir::Error" if _args.is_empty() => {
                         Ok(hir_TypeKind::hir_Error{})
                     },
                     "hir::Int" if _args.len() == 2 => {
@@ -3189,6 +3434,70 @@ impl  Default for hir_TypeKind {
     }
 }
 pub type hir_Var = std_u64;
+#[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
+pub struct hir_VarDecl {
+    pub name: hir_Var,
+    pub value: hir_ExprId,
+    pub mutable: bool,
+    pub ty: internment_Intern<hir_TypeKind>
+}
+impl abomonation::Abomonation for hir_VarDecl{}
+impl <> record::FromRecord for hir_VarDecl<> {
+    fn from_record(val: &record::Record) -> result::Result<Self, String> {
+        match val {
+            record::Record::PosStruct(constr, _args) => {
+                match constr.as_ref() {
+                    "hir::VarDecl" if _args.len() == 4 => {
+                        Ok(hir_VarDecl{name: <hir_Var>::from_record(&_args[0])?, value: <hir_ExprId>::from_record(&_args[1])?, mutable: <bool>::from_record(&_args[2])?, ty: <internment_Intern<hir_TypeKind>>::from_record(&_args[3])?})
+                    },
+                    c => result::Result::Err(format!("unknown constructor {} of type hir_VarDecl in {:?}", c, *val))
+                }
+            },
+            record::Record::NamedStruct(constr, _args) => {
+                match constr.as_ref() {
+                    "hir::VarDecl" => {
+                        Ok(hir_VarDecl{name: record::arg_extract::<hir_Var>(_args, "name")?, value: record::arg_extract::<hir_ExprId>(_args, "value")?, mutable: record::arg_extract::<bool>(_args, "mutable")?, ty: record::arg_extract::<internment_Intern<hir_TypeKind>>(_args, "ty")?})
+                    },
+                    c => result::Result::Err(format!("unknown constructor {} of type hir_VarDecl in {:?}", c, *val))
+                }
+            },
+            record::Record::Serialized(format, s) => {
+                if format == "json" {
+                    serde_json::from_str(&*s).map_err(|e|format!("{}", e))
+                } else {
+                    result::Result::Err(format!("unsupported serialization format '{}'", format))
+                }
+            },
+            v => {
+                result::Result::Err(format!("not a struct {:?}", *v))
+            }
+        }
+    }
+}
+decl_struct_into_record!(hir_VarDecl["hir::VarDecl"]<>, name, value, mutable, ty);
+decl_record_mutator_struct!(hir_VarDecl, <>, name: hir_Var, value: hir_ExprId, mutable: bool, ty: internment_Intern<hir_TypeKind>);
+impl fmt::Display for hir_VarDecl {
+    fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            hir_VarDecl{name,value,mutable,ty} => {
+                __formatter.write_str("hir::VarDecl{")?;
+                fmt::Debug::fmt(name, __formatter)?;
+                __formatter.write_str(",")?;
+                fmt::Debug::fmt(value, __formatter)?;
+                __formatter.write_str(",")?;
+                fmt::Debug::fmt(mutable, __formatter)?;
+                __formatter.write_str(",")?;
+                fmt::Debug::fmt(ty, __formatter)?;
+                __formatter.write_str("}")
+            }
+        }
+    }
+}
+impl fmt::Debug for hir_VarDecl {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self, f)
+    }
+}
 #[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum hir_Vis {
     hir_FileLocal,
@@ -3201,13 +3510,13 @@ impl <> record::FromRecord for hir_Vis<> {
         match val {
             record::Record::PosStruct(constr, _args) => {
                 match constr.as_ref() {
-                    "hir::FileLocal" if _args.len() == 0 => {
+                    "hir::FileLocal" if _args.is_empty() => {
                         Ok(hir_Vis::hir_FileLocal{})
                     },
-                    "hir::Package" if _args.len() == 0 => {
+                    "hir::Package" if _args.is_empty() => {
                         Ok(hir_Vis::hir_Package{})
                     },
-                    "hir::Exposed" if _args.len() == 0 => {
+                    "hir::Exposed" if _args.is_empty() => {
                         Ok(hir_Vis::hir_Exposed{})
                     },
                     c => result::Result::Err(format!("unknown constructor {} of type hir_Vis in {:?}", c, *val))
@@ -3560,6 +3869,7 @@ lazy_static!{ pub static ref __STATIC_1: std_Vec<hir_FuncArg> = std_vec_empty() 
 /* fn internment_ival<A: Val>(s: & internment_Intern<A>) -> A */
 /* fn log_log(module: & log_module_t, level: & log_log_level_t, msg: & String) -> () */
 /* fn std___builtin_2string<X: Val>(x: & X) -> String */
+/* fn std_bigint_pow32(base: & Int, exp: & u32) -> Int */
 /* fn std_deref<A: Val>(x: & std_Ref<A>) -> A */
 /* fn std_group_count<K: Val,V: Val>(g: & std_Group<K, V>) -> std_usize */
 /* fn std_group_first<K: Val,V: Val>(g: & std_Group<K, V>) -> V */
@@ -3594,10 +3904,14 @@ lazy_static!{ pub static ref __STATIC_1: std_Vec<hir_FuncArg> = std_vec_empty() 
 /* fn std_option_unwrap_or_default<A: Val>(opt: & std_Option<A>) -> A */
 /* fn std_parse_dec_i64(s: & String) -> std_Option<i64> */
 /* fn std_parse_dec_u64(s: & String) -> std_Option<u64> */
-/* fn std_pow32<A: Val>(base: & A, exp: & u32) -> A */
 /* fn std_range<A: Val>(from: & A, to: & A, step: & A) -> std_Vec<A> */
 /* fn std_ref_new<A: Val>(x: & A) -> std_Ref<A> */
 /* fn std_result_unwrap_or_default<V: Val,E: Val>(res: & std_Result<V, E>) -> V */
+/* fn std_s128_pow32(base: & std_s128, exp: & u32) -> std_s128 */
+/* fn std_s16_pow32(base: & std_s16, exp: & u32) -> std_s16 */
+/* fn std_s32_pow32(base: & std_s32, exp: & u32) -> std_s32 */
+/* fn std_s64_pow32(base: & std_s64, exp: & u32) -> std_s64 */
+/* fn std_s8_pow32(base: & std_s8, exp: & u32) -> std_s8 */
 /* fn std_set_contains<X: Val>(s: & std_Set<X>, v: & X) -> bool */
 /* fn std_set_difference<X: Val>(s1: & std_Set<X>, s2: & std_Set<X>) -> std_Set<X> */
 /* fn std_set_empty<X: Val>() -> std_Set<X> */
@@ -3625,6 +3939,11 @@ lazy_static!{ pub static ref __STATIC_1: std_Vec<hir_FuncArg> = std_vec_empty() 
 /* fn std_string_to_lowercase(s: & String) -> String */
 /* fn std_string_to_uppercase(s: & String) -> String */
 /* fn std_string_trim(s: & String) -> String */
+/* fn std_u128_pow32(base: & std_u128, exp: & u32) -> std_u128 */
+/* fn std_u16_pow32(base: & std_u16, exp: & u32) -> std_u16 */
+/* fn std_u32_pow32(base: & std_u32, exp: & u32) -> std_u32 */
+/* fn std_u64_pow32(base: & std_u64, exp: & u32) -> std_u64 */
+/* fn std_u8_pow32(base: & std_u8, exp: & u32) -> std_u8 */
 /* fn std_vec_append<X: Val>(v: &mut std_Vec<X>, other: & std_Vec<X>) -> () */
 /* fn std_vec_contains<X: Val>(v: & std_Vec<X>, x: & X) -> bool */
 /* fn std_vec_empty<A: Val>() -> std_Vec<A> */
@@ -3683,9 +4002,27 @@ pub fn hir_has_unknown_types(item: & hir_Item) -> bool
         hir_Item::hir_ItemStruct{} => false
     }
 }
-pub fn hir_is_int(ty: & internment_Intern<hir_TypeKind>) -> bool
+pub fn hir_is_bool(ty: & internment_Intern<hir_Literal>) -> bool
+{   match (*internment_ival(ty)) {
+        hir_Literal::hir_Boolean{boolean: _} => true,
+        _ => false
+    }
+}
+pub fn hir_is_int_internment_Intern__hir_TypeKind_1(ty: & internment_Intern<hir_TypeKind>) -> bool
 {   match (*internment_ival(ty)) {
         hir_TypeKind::hir_Int{is_signed: _, width: _} => true,
+        _ => false
+    }
+}
+pub fn hir_is_int_internment_Intern__hir_Literal_1(ty: & internment_Intern<hir_Literal>) -> bool
+{   match (*internment_ival(ty)) {
+        hir_Literal::hir_Integer{int: _} => true,
+        _ => false
+    }
+}
+pub fn hir_is_str(ty: & internment_Intern<hir_Literal>) -> bool
+{   match (*internment_ival(ty)) {
+        hir_Literal::hir_String{str: _} => true,
         _ => false
     }
 }
@@ -3704,11 +4041,11 @@ pub fn hir_signature(item: & hir_Item) -> hir_Signature
         hir_Item::hir_ItemStruct{} => (hir_Signature{args: (*(&*__STATIC_1)).clone(), ret: (*(&*__STATIC_2)).clone()})
     }
 }
-pub fn hir_typeof_literal(literal: & internment_Intern<hir_LiteralVal>) -> internment_Intern<hir_TypeKind>
+pub fn hir_typeof(literal: & internment_Intern<hir_Literal>) -> internment_Intern<hir_TypeKind>
 {   let ref mut ty: hir_TypeKind = match (*internment_ival(literal)) {
-                                       hir_LiteralVal::hir_String{str: _} => (hir_TypeKind::hir_Str{}),
-                                       hir_LiteralVal::hir_Boolean{boolean: _} => (hir_TypeKind::hir_Bool{}),
-                                       hir_LiteralVal::hir_Integer{int: _} => (hir_TypeKind::hir_Int{is_signed: (std_Option::std_None{}), width: (std_Option::std_None{})})
+                                       hir_Literal::hir_String{str: _} => (hir_TypeKind::hir_Str{}),
+                                       hir_Literal::hir_Boolean{boolean: _} => (hir_TypeKind::hir_Bool{}),
+                                       hir_Literal::hir_Integer{int: _} => (hir_TypeKind::hir_Int{is_signed: (std_Option::std_None{}), width: (std_Option::std_None{})})
                                    };
     internment_intern(ty)
 }
@@ -3905,6 +4242,39 @@ pub fn std_nth_std_Vec__X_2<X: Val>(v: & std_Vec<X>, n: & std_usize) -> std_Opti
 }
 pub fn std_nth_std_Set__X_2<X: Val>(s: & std_Set<X>, n: & std_usize) -> std_Option<X>
 {   std_set_nth(s, n)
+}
+pub fn std_pow32___Bitval8_2(base: & std_u8, exp: & u32) -> std_u8
+{   std_u8_pow32(base, exp)
+}
+pub fn std_pow32___Bitval16_2(base: & std_u16, exp: & u32) -> std_u16
+{   std_u16_pow32(base, exp)
+}
+pub fn std_pow32___Bitval32_2(base: & std_u32, exp: & u32) -> std_u32
+{   std_u32_pow32(base, exp)
+}
+pub fn std_pow32___Bitval64_2(base: & std_u64, exp: & u32) -> std_u64
+{   std_u64_pow32(base, exp)
+}
+pub fn std_pow32___Bitval128_2(base: & std_u128, exp: & u32) -> std_u128
+{   std_u128_pow32(base, exp)
+}
+pub fn std_pow32___Signedval8_2(base: & std_s8, exp: & u32) -> std_s8
+{   std_s8_pow32(base, exp)
+}
+pub fn std_pow32___Signedval16_2(base: & std_s16, exp: & u32) -> std_s16
+{   std_s16_pow32(base, exp)
+}
+pub fn std_pow32___Signedval32_2(base: & std_s32, exp: & u32) -> std_s32
+{   std_s32_pow32(base, exp)
+}
+pub fn std_pow32___Signedval64_2(base: & std_s64, exp: & u32) -> std_s64
+{   std_s64_pow32(base, exp)
+}
+pub fn std_pow32___Signedval128_2(base: & std_s128, exp: & u32) -> std_s128
+{   std_s128_pow32(base, exp)
+}
+pub fn std_pow32___Intval_2(base: & Int, exp: & u32) -> Int
+{   std_bigint_pow32(base, exp)
 }
 pub fn std_push<X: Val>(v: &mut std_Vec<X>, x: & X) -> ()
 {   std_vec_push(v, x)

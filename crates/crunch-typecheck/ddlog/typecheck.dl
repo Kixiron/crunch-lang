@@ -35,17 +35,17 @@ Statements(stmt1, intern(ScopeSeq1 { parent })), Statements(stmt2, intern(ScopeS
 relation PropagateExprType(id: ExprId, kind: Intern<ExprKind>, ty: Intern<TypeKind>)
 // Get the types out of literals
 PropagateExprType(id, kind, ty) :- Expr(id, kind, _),
-                                   Lit { .lit = var lit } = kind.ival(),
-                                   var ty = typeof_literal(lit).
+                                   ExprLit { .lit = var lit } = kind.ival(),
+                                   var ty = lit.typeof().
 // Get the types out of assignments
 PropagateExprType(id, kind, ty) :- Expr(id, kind, _),
-                                   Assign { .expr_id = var expr_id } = kind.ival(),
+                                   ExprAssign { .expr_id = var expr_id } = kind.ival(),
                                    PropagateExprType(expr_id, _, ty).
 // Get the types of variables by looking at their assignment
 PropagateExprType(id, kind, ty) :- Expr(id, kind, _),
-                                   Variable { .variable = var expr_var } = kind.ival(),
+                                   ExprVar { .variable = var expr_var } = kind.ival(),
                                    PropagateExprType(_, prop_kind, ty),
-                                   Assign { .variable = var prop_var } = prop_kind.ival(),
+                                   ExprAssign { .variable = var prop_var } = prop_kind.ival(),
                                    expr_var == prop_var.
 
 output relation ClampUnknownInt(id: ExprId, kind: Intern<ExprKind>, ty: Intern<TypeKind>)
