@@ -9,7 +9,7 @@ build = "src/build.rs"
 default = ["command-line"]
 flatbuf = ["differential_datalog/flatbuf", "types/flatbuf", "value/flatbuf"]
 profile = ["cpuprofiler"]
-ovsdb = ["ddlog_ovsdb_adapter", "types/ovsdb", "value/ovsdb"]
+# ovsdb = ["ddlog_ovsdb_adapter", "types/ovsdb", "value/ovsdb"]
 command-line = ["cmd_parser", "rustop"]
 
 [target.'cfg(not(windows))'.build-dependencies]
@@ -22,9 +22,9 @@ path = "./differential_datalog"
 path = "./cmd_parser"
 optional = true
 
-[dependencies.ddlog_ovsdb_adapter]
-path = "./ovsdb"
-optional = true
+# [dependencies.ddlog_ovsdb_adapter]
+# path = "./ovsdb"
+# optional = true
 
 [dependencies.types]
 path = "./types"
@@ -61,4 +61,3 @@ name = "typecheck_ddlog"
 # crate-type = ["rlib", "staticlib"]
 
 crate-type = ["rlib", "staticlib"]
-

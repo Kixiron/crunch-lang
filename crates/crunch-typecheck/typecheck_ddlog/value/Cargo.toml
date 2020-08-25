@@ -7,7 +7,7 @@ autobins = false
 [features]
 default = []
 flatbuf = ["flatbuffers", "differential_datalog/flatbuf", "types/flatbuf"]
-ovsdb = ["types/ovsdb"]
+# ovsdb = ["types/ovsdb"]
 
 [dependencies.differential_datalog]
 path = "../differential_datalog"
