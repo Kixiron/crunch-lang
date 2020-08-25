@@ -12,7 +12,7 @@ extern crate alloc;
 // TODO: Better abstraction for this
 #[doc(hidden)]
 pub extern crate codespan_reporting;
-pub extern crate crunch_proc;
+pub use crunch_proc;
 #[doc(hidden)]
 pub extern crate salsa;
 #[doc(hidden)]

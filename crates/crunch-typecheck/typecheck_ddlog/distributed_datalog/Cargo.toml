@@ -5,11 +5,9 @@ edition = "2018"
 
 [features]
 test = ["waitfor"]
-command-line = ["cmd_parser"]
 
 [dependencies.cmd_parser]
 path = "../cmd_parser"
-optional = true
 
 [dependencies.differential_datalog]
 path = "../differential_datalog"

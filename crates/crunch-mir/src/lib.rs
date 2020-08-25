@@ -437,7 +437,7 @@ impl<'db> ExprVisitor<'db> for MirBuilder<'db> {
         Ok(None)
     }
 
-    fn visit_break(&mut self, _loc: Location, _value: &Break) -> Self::Output {
+    fn visit_break(&mut self, _loc: Location, _value: &Break<'_>) -> Self::Output {
         todo!()
     }
 

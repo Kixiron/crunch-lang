@@ -55,7 +55,7 @@ impl<'ctx> Value<'ctx> {
         match val.kind() {
             ValueKind::Argument => Self::Argument(Argument::from_val(val)),
             ValueKind::BasicBlock => {
-                Self::BasicBlock(<BasicBlock as SealedAnyValue>::from_val(val))
+                Self::BasicBlock(<BasicBlock<'_> as SealedAnyValue>::from_val(val))
             }
             ValueKind::Function => Self::Function(FunctionValue::from_val(val)),
             ValueKind::BlockAddress => Self::BlockAddress(BlockAddress::from_val(val)),

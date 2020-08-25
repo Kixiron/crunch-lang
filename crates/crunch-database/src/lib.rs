@@ -1,5 +1,3 @@
-extern crate alloc;
-
 pub use crunch_codegen::CodegenDatabase;
 pub use crunch_mir::MirDatabase;
 pub use crunch_parser::database::ParseDatabase;

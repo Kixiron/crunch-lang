@@ -43,7 +43,7 @@ impl LLVMString {
     /// [`str`]: https://doc.rust-lang.org/std/primitive.str.html
     /// [`CStr::to_string_lossy`]: https://doc.rust-lang.org/std/ffi/struct.CStr.html#method.to_string_lossy
     #[inline]
-    pub fn to_string_lossy(&self) -> Cow<str> {
+    pub fn to_string_lossy(&self) -> Cow<'_, str> {
         self.as_cstr().to_string_lossy()
     }
 

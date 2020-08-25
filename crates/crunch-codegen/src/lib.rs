@@ -39,7 +39,7 @@ pub struct BundledModule {
 }
 
 impl BundledModule {
-    pub fn get(&self) -> &Module {
+    pub fn get(&self) -> &Module<'_> {
         self.module.as_ref().unwrap()
     }
 }

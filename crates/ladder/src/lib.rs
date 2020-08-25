@@ -322,7 +322,7 @@ impl<'ctx> ItemVisitor<'_> for Ladder<'ctx> {
         &mut self,
         _item: &AstItem<'_>,
         _generics: Option<Locatable<&[Locatable<&AstType<'_>>]>>,
-        _members: &[AstTypeMember],
+        _members: &[AstTypeMember<'_>],
     ) -> Self::Output {
         todo!()
     }
@@ -331,7 +331,7 @@ impl<'ctx> ItemVisitor<'_> for Ladder<'ctx> {
         &mut self,
         _item: &AstItem<'_>,
         _generics: Option<Locatable<&[Locatable<&AstType<'_>>]>>,
-        _variants: &[AstVariant],
+        _variants: &[AstVariant<'_>],
     ) -> Self::Output {
         todo!()
     }
@@ -873,7 +873,7 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
         })
     }
 
-    fn visit_for(&mut self, _expr: &AstExpr<'_>, _for: &AstFor) -> Self::Output {
+    fn visit_for(&mut self, _expr: &AstExpr<'_>, _for: &AstFor<'_>) -> Self::Output {
         todo!("Desugar `for` conditions to iterators")
     }
 

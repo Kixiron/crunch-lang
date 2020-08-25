@@ -15,7 +15,7 @@ path = "../ladder"
 [dependencies.typecheck]
 path = "typecheck_ddlog"
 default-features = false
-features = ["command-line", "ovsdb"]
+features = []
 
 [dependencies.differential_datalog]
 path = "typecheck_ddlog/differential_datalog"

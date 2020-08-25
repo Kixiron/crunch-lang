@@ -80,9 +80,9 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         }
     }
 
-    fn expr_prefix(token: Token) -> Option<PrefixParselet<'src, 'ctx>> {
+    fn expr_prefix(token: Token<'_>) -> Option<PrefixParselet<'src, 'ctx>> {
         #[rustfmt::skip]
-        let prefix: PrefixParselet = match token.ty() {
+        let prefix: PrefixParselet<'_, '_> = match token.ty() {
             TokenType::Ident if token.source() == "arr" => Self::array_or_tuple,
             TokenType::Ident if token.source() == "tup" => Self::array_or_tuple,
             TokenType::Ident     => Self::variable,
@@ -110,9 +110,9 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         Some(prefix)
     }
 
-    fn expr_postfix(token: Token) -> Option<PostfixParselet<'src, 'ctx>> {
+    fn expr_postfix(token: Token<'_>) -> Option<PostfixParselet<'src, 'ctx>> {
         #[rustfmt::skip]
-        let postfix: PostfixParselet = match token.ty() {
+        let postfix: PostfixParselet<'_, '_> = match token.ty() {
             TokenType::LeftParen   => Self::function_call,
             TokenType::Dot         => Self::dotted_call,
             TokenType::DoubleDot   => Self::ranges,
@@ -136,9 +136,9 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         Some(postfix)
     }
 
-    fn expr_infix(token: Token) -> Option<InfixParselet<'src, 'ctx>> {
+    fn expr_infix(token: Token<'_>) -> Option<InfixParselet<'src, 'ctx>> {
         #[rustfmt::skip]
-        let infix: InfixParselet = match token.ty() {
+        let infix: InfixParselet<'_, '_> = match token.ty() {
             TokenType::LeftBrace    => Self::index_array,
             TokenType::As           => Self::as_cast,
             TokenType::RightCaret

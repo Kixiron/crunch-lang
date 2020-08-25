@@ -28,7 +28,7 @@ pub mod record;
 mod test;
 #[cfg(test)]
 mod test_record;
-#[cfg(test)]
+
 pub mod test_value;
 
 pub use callback::Callback;

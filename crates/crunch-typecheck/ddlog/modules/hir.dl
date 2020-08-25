@@ -5,6 +5,9 @@ typedef FileId = u32
 
 // TODO: Derive types to datalog
 // FIXME: TypeId instead of Intern<TypeKind>
+// FIXME: StmtId instead of Intern<Stmt>
+// FIXME: FuncId instead of Intern<Function>
+// FIXME: ScopeId instead of Intern<Scope>
 // FIXME: LiteralId instead of Intern<Literal>
 // TODO: Hook into `tracing` for logs
 
@@ -24,11 +27,20 @@ typedef ExprKind =
     | ExprVar { variable: Var }
     | ExprAssign { variable: Var, expr_id: ExprId }
     | ExprMatch { match_: Match }
+    | ExprScope { block: Intern<Stmt> }
+    | ExprReturn { val: Option<ExprId> }
+    | ExprBinOp { op: BinaryOp }
 
 typedef Match = Match {
+    cond : ExprId,
+    arms : Vec<MatchArm>,
+    ty   : Intern<TypeKind>
+}
+
+typedef MatchArm = MatchArm {
     bind  : Binding,
     guard : Option<ExprId>,
-    body  : Scope,
+    body  : Intern<Stmt>,
     ty    : Intern<TypeKind>
 }
 
@@ -39,7 +51,27 @@ typedef Binding = Binding {
     ty        : Option<Intern<TypeKind>>
 }
 
-typedef Pattern = PatLit { lit: Literal }
+typedef Pattern = PatLit { lit: Literal, ty: Intern<TypeKind> }
+                  | Ident
+
+typedef BinaryOp = BinaryOp {
+    lhs : ExprId,
+    op  : BinOp,
+    rhs : ExprId
+}
+
+typedef BinOp =
+    Mult
+    | Div
+    | Add
+    | Sub
+    | Mod
+    | Pow
+    | BitAnd
+    | BitOr
+    | BitXor
+    | Shl
+    | Shr
 
 typedef TypeKind =
     Unknown

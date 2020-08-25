@@ -48,7 +48,17 @@ fn build_ddlog() -> Result<(), Box<dyn Error>> {
     }
 
     Command::new("ddlog")
-        .args(&["-i", "ddlog/typecheck.dl", "-L", "."])
+        .args(&[
+            "-i",
+            "ddlog/typecheck.dl",
+            "-L",
+            ".",
+            "--output-dir",
+            "typecheck_ddlog",
+            "--omit-profile",
+            "--omit-workspace",
+            "--run-rustfmt",
+        ])
         .spawn()?
         .wait()?;
 

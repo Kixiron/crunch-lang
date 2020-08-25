@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/*"]
+members = ["crates/*", "crates/crunch-typecheck/typecheck_ddlog"]
 exclude = ["crates/crunch-fuzzing", "crates/repl"]
 
 [profile.release]

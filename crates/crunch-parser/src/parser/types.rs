@@ -110,7 +110,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     }
 
     fn type_prefix(ty: TokenType) -> Option<PrefixParselet<'src, 'ctx>> {
-        let prefix: PrefixParselet = match ty {
+        let prefix: PrefixParselet<'_, '_> = match ty {
             // Types and builtins
             TokenType::Ident => |parser, token| {
                 let _frame = parser.add_stack_frame()?;
@@ -477,7 +477,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     }
 
     fn type_infix(ty: TokenType) -> Option<InfixParselet<'src, 'ctx>> {
-        let infix: InfixParselet = match ty {
+        let infix: InfixParselet<'_, '_> = match ty {
             TokenType::Ampersand | TokenType::Pipe => |parser, operand, lhs| {
                 let _frame = parser.add_stack_frame()?;
 

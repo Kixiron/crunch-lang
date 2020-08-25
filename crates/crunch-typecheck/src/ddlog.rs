@@ -2,19 +2,25 @@ use super::TypecheckDatabase;
 use core::hash::Hash;
 use crunch_shared::{
     tracing,
-    trees::hir::{
-        Expr as HirExpr, ExprKind as HirExprKind, FuncArg as HirFuncArg, Function as HirFunction,
-        Integer, Item as HirItem, ItemPath as HirItemPath, Literal as HirLiteral,
-        LiteralVal as HirLiteralVal, Stmt as HirStmt, Type as HirType, TypeId,
-        TypeKind as HirTypeKind, Var as HirVar, VarDecl as HirVarDecl, Vis as HirVis,
+    trees::{
+        hir::{
+            BinaryOp as HirBinaryOp, Binding as HirBinding, Block as HirBlock, Expr as HirExpr,
+            ExprKind as HirExprKind, FuncArg as HirFuncArg, Function as HirFunction, Integer,
+            Item as HirItem, ItemPath as HirItemPath, Literal as HirLiteral,
+            LiteralVal as HirLiteralVal, Match as HirMatch, MatchArm as HirMatchArm,
+            Pattern as HirPattern, Stmt as HirStmt, Type as HirType, TypeId,
+            TypeKind as HirTypeKind, Var as HirVar, VarDecl as HirVarDecl, Vis as HirVis,
+        },
+        Sided,
     },
     utils::HashMap,
 };
 use ddlog_types::{
-    hir_ExprId as ExprId, hir_ExprKind as ExprKind, hir_FuncArg as FuncArg,
-    hir_Function as Function, hir_Item as Item, hir_ItemPath as ItemPath, hir_Literal as Literal,
-    hir_Stmt as Stmt, hir_TypeKind as TypeKind, hir_VarDecl as VarDecl, hir_Vis as Vis,
-    internment_Intern as Interned, internment_intern as ddlog_intern, option2std,
+    hir_BinOp as BinOp, hir_BinaryOp as BinaryOp, hir_Binding as Binding, hir_ExprId as ExprId,
+    hir_ExprKind as ExprKind, hir_FuncArg as FuncArg, hir_Function as Function, hir_Item as Item,
+    hir_ItemPath as ItemPath, hir_Literal as Literal, hir_Match as Match, hir_MatchArm as MatchArm,
+    hir_Pattern as Pattern, hir_Stmt as Stmt, hir_TypeKind as TypeKind, hir_VarDecl as VarDecl,
+    hir_Vis as Vis, internment_Intern as Interned, internment_intern as ddlog_intern,
     std_Vec as Vector, Expr, InputItems,
 };
 use ddlog_values::{relid2name, Relations, Value};
@@ -144,36 +150,12 @@ impl<'ctx> Visit<HirFunction<'_>> for DDlogEngine<'ctx> {
         crunch_shared::trace!("visiting {} function arguments", function.args.len());
         let args = function.args.iter().map(|arg| self.visit(arg)).collect();
 
-        crunch_shared::trace!("visiting {} function body statements", function.body.len());
-        let body = function
-            .body
-            .iter()
-            .copied()
-            .rev()
-            .fold(None, |prev, next| {
-                let next = {
-                    let next = self.visit(next);
-                    self.intern(next)
-                };
-                match prev {
-                    Some(prev) => Some(self.intern(Stmt::hir_StmtSeq {
-                        first: prev,
-                        second: next,
-                    })),
-                    None => Some(next),
-                }
-            })
-            .unwrap_or_else(|| self.intern(Stmt::hir_Empty));
-
         Function {
             name: self.visit(&function.name),
             vis: self.visit(&function.vis),
             args: Vector { x: args },
-            body,
-            ret: {
-                let ret = self.visit(&function.ret);
-                self.intern(ret)
-            },
+            body: self.visit(&function.body),
+            ret: self.visit(&function.ret),
         }
     }
 }
@@ -189,16 +171,13 @@ impl<'ctx> Visit<HirFuncArg> for DDlogEngine<'ctx> {
     fn visit(&mut self, arg: &HirFuncArg) -> Self::Output {
         FuncArg {
             name: self.next_variable(),
-            kind: {
-                let kind = self.visit(&arg.kind);
-                self.intern(kind)
-            },
+            kind: self.visit(&arg.kind),
         }
     }
 }
 
 impl<'ctx> Visit<TypeId> for DDlogEngine<'ctx> {
-    type Output = TypeKind;
+    type Output = Interned<TypeKind>;
 
     #[crunch_shared::instrument(name = "type id", skip(self, id))]
     fn visit(&mut self, id: &TypeId) -> Self::Output {
@@ -213,15 +192,15 @@ impl<'ctx> Visit<TypeId> for DDlogEngine<'ctx> {
 }
 
 impl<'ctx> Visit<HirType> for DDlogEngine<'ctx> {
-    type Output = TypeKind;
+    type Output = Interned<TypeKind>;
 
     #[crunch_shared::instrument(name = "type", skip(self, ty))]
     fn visit(&mut self, ty: &HirType) -> Self::Output {
-        match ty.kind {
+        let ty = match ty.kind {
             HirTypeKind::Unknown => TypeKind::hir_Unknown,
             HirTypeKind::Integer { signed, width } => TypeKind::hir_Int {
-                is_signed: option2std(signed),
-                width: option2std(width),
+                is_signed: signed.into(),
+                width: width.into(),
             },
             HirTypeKind::Bool => TypeKind::hir_Bool,
             HirTypeKind::Unit => TypeKind::hir_Unit,
@@ -231,7 +210,9 @@ impl<'ctx> Visit<HirType> for DDlogEngine<'ctx> {
                 crunch_shared::warn!("unhandled type in ddlog: {:?}", kind);
                 TypeKind::hir_Error
             }
-        }
+        };
+
+        self.intern(ty)
     }
 }
 
@@ -240,9 +221,7 @@ impl<'ctx> Visit<HirItemPath> for DDlogEngine<'ctx> {
 
     #[crunch_shared::instrument(name = "item path", skip(self, path))]
     fn visit(&mut self, path: &HirItemPath) -> Self::Output {
-        self.intern(Vector {
-            x: path.iter().map(|s| s.as_u32()).collect(),
-        })
+        self.intern(path.iter().map(|s| s.as_u32()).collect::<Vec<_>>().into())
     }
 }
 
@@ -289,10 +268,7 @@ impl<'ctx> Visit<HirVarDecl<'_>> for DDlogEngine<'ctx> {
             name: self.get_or_create_var(var_decl.name),
             value: self.visit(var_decl.value),
             mutable: var_decl.mutable,
-            ty: {
-                let ty = self.visit(&var_decl.ty);
-                self.intern(ty)
-            },
+            ty: self.visit(&var_decl.ty),
         }
     }
 }
@@ -311,7 +287,7 @@ impl<'ctx> Visit<HirExpr<'_>> for DDlogEngine<'ctx> {
                     ExprKind::hir_ExprLit {
                         lit: self.intern(literal),
                     },
-                    Some(self.intern(ty)),
+                    Some(ty),
                 )
             }
 
@@ -319,16 +295,9 @@ impl<'ctx> Visit<HirExpr<'_>> for DDlogEngine<'ctx> {
                 let expr = ExprKind::hir_ExprVar {
                     variable: self.get_or_create_var(var),
                 };
-                let ty = {
-                    let ty = self
-                        .db
-                        .context()
-                        .get_hir_type(ty)
-                        .expect("attempted to get a type that doesn't exist");
-                    self.visit(ty)
-                };
+                let ty = self.visit(&ty);
 
-                (expr, Some(self.intern(ty)))
+                (expr, Some(ty))
             }
 
             &HirExprKind::Assign(var, rhs) => {
@@ -347,15 +316,39 @@ impl<'ctx> Visit<HirExpr<'_>> for DDlogEngine<'ctx> {
                 (expr, Some(self.intern(TypeKind::hir_Unit)))
             }
 
-            HirExprKind::Match(_) => todo!(),
-            HirExprKind::Scope(_) => todo!(),
+            HirExprKind::Match(match_) => {
+                let match_ = self.visit(match_);
+                let ty = match_.ty.clone();
+
+                (ExprKind::hir_ExprMatch { match_ }, Some(ty))
+            }
+
+            HirExprKind::Scope(block) => (
+                ExprKind::hir_ExprScope {
+                    block: self.visit(block),
+                },
+                None,
+            ),
+
+            HirExprKind::Return(ret) => (
+                ExprKind::hir_ExprReturn {
+                    val: self.visit(&ret.val).into(),
+                },
+                Some(self.intern(TypeKind::hir_Absurd)),
+            ),
+
+            HirExprKind::BinOp(binary_op) => (
+                ExprKind::hir_ExprBinOp {
+                    op: self.visit(binary_op),
+                },
+                None,
+            ),
+
             HirExprKind::Loop(_) => todo!(),
-            HirExprKind::Return(_) => todo!(),
             HirExprKind::Continue => todo!(),
             HirExprKind::Break(_) => todo!(),
             HirExprKind::FnCall(_) => todo!(),
             HirExprKind::Comparison(_) => todo!(),
-            HirExprKind::BinOp(_) => todo!(),
             HirExprKind::Cast(_) => todo!(),
             HirExprKind::Reference(_) => todo!(),
             HirExprKind::Index { var: _, index: _ } => todo!(),
@@ -369,7 +362,7 @@ impl<'ctx> Visit<HirExpr<'_>> for DDlogEngine<'ctx> {
 }
 
 impl<'ctx> Visit<HirLiteral> for DDlogEngine<'ctx> {
-    type Output = (Literal, TypeKind);
+    type Output = (Literal, Interned<TypeKind>);
 
     #[crunch_shared::instrument(name = "literal", skip(self, lit))]
     fn visit(&mut self, lit: &HirLiteral) -> Self::Output {
@@ -399,8 +392,164 @@ impl<'ctx> Visit<HirLiteralVal> for DDlogEngine<'ctx> {
             },
             HirLiteralVal::Rune(_) => todo!(),
             HirLiteralVal::Float(_) => todo!(),
-            HirLiteralVal::Array { elements } => todo!(),
+            HirLiteralVal::Array { elements: _ } => todo!(),
         }
+    }
+}
+
+impl<'ctx> Visit<HirMatch<'_>> for DDlogEngine<'ctx> {
+    type Output = Match;
+
+    #[crunch_shared::instrument(name = "match", skip(self, match_))]
+    fn visit(&mut self, match_: &HirMatch<'_>) -> Self::Output {
+        let arms = match_
+            .arms
+            .iter()
+            .map(|arm| self.visit(arm))
+            .collect::<Vec<_>>()
+            .into();
+
+        Match {
+            cond: self.visit(match_.cond),
+            arms,
+            ty: self.visit(&match_.ty),
+        }
+    }
+}
+
+impl<'ctx> Visit<HirMatchArm<'_>> for DDlogEngine<'ctx> {
+    type Output = MatchArm;
+
+    #[crunch_shared::instrument(name = "match", skip(self, arm))]
+    fn visit(&mut self, arm: &HirMatchArm<'_>) -> Self::Output {
+        MatchArm {
+            bind: self.visit(&arm.bind),
+            guard: self.visit(&arm.guard).into(),
+            body: self.visit(&arm.body),
+            ty: self.visit(&arm.ty),
+        }
+    }
+}
+
+impl<'ctx> Visit<HirBlock<&HirStmt<'_>>> for DDlogEngine<'ctx> {
+    type Output = Interned<Stmt>;
+
+    #[crunch_shared::instrument(name = "statement block", skip(self, block))]
+    fn visit(&mut self, block: &HirBlock<&HirStmt<'_>>) -> Self::Output {
+        crunch_shared::trace!("visiting {} block statements", block.len());
+
+        block
+            .iter()
+            .copied()
+            .rev()
+            .fold(None, |prev, next| {
+                let next = {
+                    let next = self.visit(next);
+                    self.intern(next)
+                };
+                match prev {
+                    Some(prev) => Some(self.intern(Stmt::hir_StmtSeq {
+                        first: prev,
+                        second: next,
+                    })),
+                    None => Some(next),
+                }
+            })
+            .unwrap_or_else(|| self.intern(Stmt::hir_Empty))
+    }
+}
+
+impl<'ctx> Visit<HirBinding> for DDlogEngine<'ctx> {
+    type Output = Binding;
+
+    #[crunch_shared::instrument(name = "binding", skip(self, binding))]
+    fn visit(&mut self, binding: &HirBinding) -> Self::Output {
+        let &HirBinding {
+            reference,
+            mutable,
+            ref pattern,
+            ref ty,
+        } = binding;
+
+        Binding {
+            reference,
+            mutable,
+            pattern: self.visit(pattern),
+            ty: self.visit(ty).into(),
+        }
+    }
+}
+
+impl<'ctx> Visit<HirPattern> for DDlogEngine<'ctx> {
+    type Output = Pattern;
+
+    #[crunch_shared::instrument(name = "pattern", skip(self, pattern))]
+    fn visit(&mut self, pattern: &HirPattern) -> Self::Output {
+        match pattern {
+            HirPattern::Literal(literal) => {
+                let (lit, ty) = self.visit(literal);
+                Pattern::hir_PatLit { lit, ty }
+            }
+            HirPattern::Ident(_) | HirPattern::ItemPath(_) | HirPattern::Wildcard => todo!(),
+        }
+    }
+}
+
+impl<'ctx> Visit<Sided<HirBinaryOp, &HirExpr<'_>>> for DDlogEngine<'ctx> {
+    type Output = BinaryOp;
+
+    #[crunch_shared::instrument(name = "binary operation", skip(self, binary_op))]
+    fn visit(&mut self, binary_op: &Sided<HirBinaryOp, &HirExpr<'_>>) -> Self::Output {
+        BinaryOp {
+            lhs: self.visit(binary_op.lhs),
+            op: self.visit(&binary_op.op),
+            rhs: self.visit(binary_op.rhs),
+        }
+    }
+}
+
+impl<'ctx> Visit<HirBinaryOp> for DDlogEngine<'ctx> {
+    type Output = BinOp;
+
+    #[crunch_shared::instrument(name = "binary operand", skip(self, op))]
+    fn visit(&mut self, op: &HirBinaryOp) -> Self::Output {
+        match op {
+            HirBinaryOp::Mult => BinOp::hir_Mult,
+            HirBinaryOp::Div => BinOp::hir_Div,
+            HirBinaryOp::Add => BinOp::hir_Add,
+            HirBinaryOp::Sub => BinOp::hir_Sub,
+            HirBinaryOp::Mod => BinOp::hir_Mod,
+            HirBinaryOp::Pow => BinOp::hir_Pow,
+            HirBinaryOp::BitAnd => BinOp::hir_BitAnd,
+            HirBinaryOp::BitOr => BinOp::hir_BitOr,
+            HirBinaryOp::BitXor => BinOp::hir_BitXor,
+            HirBinaryOp::Shl => BinOp::hir_Shl,
+            HirBinaryOp::Shr => BinOp::hir_Shr,
+        }
+    }
+}
+
+impl<'ctx, T> Visit<&'_ T> for DDlogEngine<'ctx>
+where
+    DDlogEngine<'ctx>: Visit<T>,
+{
+    type Output = <DDlogEngine<'ctx> as Visit<T>>::Output;
+
+    #[crunch_shared::instrument(name = "reference", skip(self, reference))]
+    fn visit(&mut self, reference: &&'_ T) -> Self::Output {
+        self.visit(*reference)
+    }
+}
+
+impl<'ctx, T> Visit<Option<T>> for DDlogEngine<'ctx>
+where
+    DDlogEngine<'ctx>: Visit<T>,
+{
+    type Output = Option<<DDlogEngine<'ctx> as Visit<T>>::Output>;
+
+    #[crunch_shared::instrument(name = "option", skip(self, option))]
+    fn visit(&mut self, option: &Option<T>) -> Self::Output {
+        option.as_ref().map(|val| self.visit(val))
     }
 }
 
