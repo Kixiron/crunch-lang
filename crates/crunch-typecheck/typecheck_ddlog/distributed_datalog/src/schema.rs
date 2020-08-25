@@ -60,7 +60,7 @@ use differential_datalog::program::RelId;
 pub type Node = Uuid;
 
 /// An address of an actual member in the system.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize, Hash)]
 pub enum Addr {
     /// A (ip-addr:port) pair describing how a member can be reached.
     Ip(SocketAddr),
@@ -136,10 +136,12 @@ pub enum Source {
 }
 
 /// All the output sinks we support.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Deserialize, Serialize, Hash)]
 pub enum Sink {
     /// Output is emitted into a file.
     File(PathBuf),
+    /// Output is emitted to a TcpSender.
+    TcpSender(Addr),
 }
 
 /// A description of inputs and outputs of a relation.

@@ -24,7 +24,7 @@ SymbolTable(path, signature), Errors(message), Functions(intern(func)) :-
     var path = item.path(),
     var signature = item.corrected_signature().
 
-output relation Statements(id: StmtId, stmt: Intern<Stmt>, scope: Intern<Scope>)
+output relation Statements(stmt: Intern<Stmt>, scope: Intern<Scope>)
 Statements(stmt, intern(ScopeFunction { func })) :-
     Functions(func),
     Function { .body = var stmt } = func.ival().
