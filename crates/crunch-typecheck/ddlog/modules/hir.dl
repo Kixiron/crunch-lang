@@ -1,12 +1,13 @@
 typedef Var = u64
 
+typedef ItemId = u64
+typedef FuncId = u64
+typedef StmtId = u64
 typedef ExprId = u64
 typedef FileId = u32
 
 // TODO: Derive types to datalog
 // FIXME: TypeId instead of Intern<TypeKind>
-// FIXME: StmtId instead of Intern<Stmt>
-// FIXME: FuncId instead of Intern<Function>
 // FIXME: ScopeId instead of Intern<Scope>
 // FIXME: LiteralId instead of Intern<Literal>
 // TODO: Hook into `tracing` for logs
@@ -27,7 +28,7 @@ typedef ExprKind =
     | ExprVar { variable: Var }
     | ExprAssign { variable: Var, expr_id: ExprId }
     | ExprMatch { match_: Match }
-    | ExprScope { block: Intern<Stmt> }
+    | ExprScope { block: StmtId }
     | ExprReturn { val: Option<ExprId> }
     | ExprBinOp { op: BinaryOp }
 
@@ -40,7 +41,7 @@ typedef Match = Match {
 typedef MatchArm = MatchArm {
     bind  : Binding,
     guard : Option<ExprId>,
-    body  : Intern<Stmt>,
+    body  : StmtId,
     ty    : Intern<TypeKind>
 }
 
@@ -141,13 +142,80 @@ typedef Function = Function {
     name : ItemPath,
     vis  : Vis,
     args : Vec<FuncArg>,
-    body : Intern<Stmt>,
+    body : StmtId,
     ret  : Intern<TypeKind>
 }
 
+function corrected_signature(func: Intern<Function>): Signature {
+    // FIXME: Module scoping for the path
+    Function { .args = var old_args, .ret = var ret } = func.ival();
+
+    var ret = if (ret.is_unknown()) {
+        intern(Error)
+    } else {
+        ret
+    };
+
+    var args = vec_with_capacity(old_args.len());
+    for (arg in old_args) {
+        var arg = if (arg.kind.is_unknown()) {
+            FuncArg { arg.name, intern(Error) }
+        } else {
+            arg
+        };
+
+        args.push(arg)
+    };
+
+    FuncSig { args, ret }
+}
+
+function has_unknown_types(func: Intern<Function>): bool {
+    Function { .args = var args, .ret = var ret } = func.ival();
+
+    if (ret.is_unknown()) { return true };
+
+    for (arg in args) {
+        if (arg.kind.is_unknown()) {
+            return true
+        }
+    };
+
+    false
+}
+
+function path(func: Intern<Function>): ItemPath {
+    // FIXME: Module scoping for the path
+    Function { .name = var path } = func.ival();
+    path
+}
+
+function signature(func: Intern<Function>): Signature {
+    // FIXME: Module scoping for the path
+    Function { .args = var args, .ret = var ret } = func.ival();
+    FuncSig { args, ret }
+}
+
+function unknown_type_errors(func: Intern<Function>): Vec<string> {
+    var func = func.ival();
+
+    var errors = vec_empty();
+    for (arg in func.args) {
+        if (arg.kind.is_unknown()) {
+            errors.push("Function arguments cannot be unknown")
+        }
+    };
+
+    if (func.ret.is_unknown()) {
+        errors.push("Function return types cannot be unknown")
+    };
+
+    errors
+}
+
 typedef Stmt = StmtExpr { expr: ExprId }
-               | StmtItem { item: Item }
-               | StmtSeq { first: Intern<Stmt>, second: Intern<Stmt> }
+               | StmtItem { item: ItemId }
+               | StmtSeq { first: StmtId, second: StmtId }
                | StmtDecl { decl: VarDecl }
                | Empty
     
@@ -158,104 +226,13 @@ typedef VarDecl = VarDecl {
     ty      : Intern<TypeKind>
 }
 
-typedef Item = ItemFunc { func: Function } | ItemStruct {}
+typedef Item = ItemFunc { func: FuncId } | ItemStruct {}
 
 typedef Signature = FuncSig { args: Vec<FuncArg>, ret: Intern<TypeKind> }
 
-function signature(item: Item): Signature {
-    // FIXME: Module scoping for the path
-    // TODO: Structs & stuff
-    // TODO: Trait impls on stuff
-    match (item) {
-        ItemFunc { Function { .args = args, .ret = ret }} -> FuncSig { args, ret },
-        // FIXME: Do this
-        ItemStruct { } -> FuncSig { vec_empty(), intern(Unknown) }
-    }
-}
-
-function corrected_signature(item: Item): Signature {
-    // FIXME: Module scoping for the path
-    // TODO: Structs & stuff
-    // TODO: Trait impls on stuff
-    match (item) {
-        ItemFunc { Function { .args = old_args, .ret = ret }} -> {
-            var ret = if (ret.is_unknown()) {
-                intern(Error)
-            } else {
-                ret
-            };
-
-            var args = vec_with_capacity(old_args.len());
-            for (arg in old_args) {
-                var arg = if (arg.kind.is_unknown()) {
-                    FuncArg { arg.name, intern(Error) }
-                } else {
-                    arg
-                };
-
-                args.push(arg)
-            };
-
-            FuncSig { args, ret }
-        },
-        // FIXME: Do this
-        ItemStruct { } -> FuncSig { vec_empty(), intern(Unknown) }
-    }
-}
-
-function path(item: Item): ItemPath {
-    // FIXME: Module scoping for the path
-    // TODO: Structs & stuff
-    // TODO: Trait impls on stuff
-    match (item) {
-        ItemFunc { Function { .name = path }} -> path,
-        // FIXME: Do this
-        ItemStruct { } -> intern(vec_empty())
-    }
-}
-
-function has_unknown_types(item: Item): bool {
-    match (item) {
-        ItemFunc { Function { .args = args, .ret = ret }} -> {
-            if (ret.is_unknown()) { return true };
-
-            for (arg in args) {
-                if (arg.kind.is_unknown()) {
-                    return true
-                }
-            };
-
-            false
-        },
-
-        // FIXME: Do this
-        ItemStruct { } -> false
-    }
-}
-
-function unknown_type_errors(item: Item): Vec<string> {
-    match (item) {
-        ItemFunc { func } -> {
-            var errors = vec_empty();
-            for (arg in func.args) {
-                if (arg.kind.is_unknown()) {
-                    errors.push("Function arguments cannot be unknown")
-                }
-            };
-
-            if (func.ret.is_unknown()) {
-                errors.push("Function return types cannot be unknown")
-            };
-
-            errors
-        },
-
-        // FIXME: Do this
-        ItemStruct {} -> vec_empty()
-    }
-}
-
-typedef Scope = ScopeFunction { func: Intern<Function> }
+typedef Scope = ScopeFunction { func: FuncId }
                 | ScopeSeq1 { parent: Intern<Scope> } 
                 | ScopeSeq2 { parent: Intern<Scope> }
+                // FIXME: Don't really know how to generate scopes on the rust side
+                | ScopeToDo
 

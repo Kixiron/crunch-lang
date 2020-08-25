@@ -2012,73 +2012,8 @@ impl fmt::Debug for Errors {
     }
 }
 #[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
-pub struct Expr {
-    pub id: hir_ExprId,
-    pub kind: internment_Intern<hir_ExprKind>,
-    pub ty: internment_Intern<hir_TypeKind>,
-}
-impl abomonation::Abomonation for Expr {}
-impl record::FromRecord for Expr {
-    fn from_record(val: &record::Record) -> result::Result<Self, String> {
-        match val {
-            record::Record::PosStruct(constr, _args) => match constr.as_ref() {
-                "Expr" if _args.len() == 3 => Ok(Expr {
-                    id: <hir_ExprId>::from_record(&_args[0])?,
-                    kind: <internment_Intern<hir_ExprKind>>::from_record(&_args[1])?,
-                    ty: <internment_Intern<hir_TypeKind>>::from_record(&_args[2])?,
-                }),
-                c => result::Result::Err(format!(
-                    "unknown constructor {} of type Expr in {:?}",
-                    c, *val
-                )),
-            },
-            record::Record::NamedStruct(constr, _args) => match constr.as_ref() {
-                "Expr" => Ok(Expr {
-                    id: record::arg_extract::<hir_ExprId>(_args, "id")?,
-                    kind: record::arg_extract::<internment_Intern<hir_ExprKind>>(_args, "kind")?,
-                    ty: record::arg_extract::<internment_Intern<hir_TypeKind>>(_args, "ty")?,
-                }),
-                c => result::Result::Err(format!(
-                    "unknown constructor {} of type Expr in {:?}",
-                    c, *val
-                )),
-            },
-            record::Record::Serialized(format, s) => {
-                if format == "json" {
-                    serde_json::from_str(&*s).map_err(|e| format!("{}", e))
-                } else {
-                    result::Result::Err(format!("unsupported serialization format '{}'", format))
-                }
-            }
-            v => result::Result::Err(format!("not a struct {:?}", *v)),
-        }
-    }
-}
-decl_struct_into_record!(Expr["Expr"]<>, id, kind, ty);
-decl_record_mutator_struct!(Expr, <>, id: hir_ExprId, kind: internment_Intern<hir_ExprKind>, ty: internment_Intern<hir_TypeKind>);
-impl fmt::Display for Expr {
-    fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Expr { id, kind, ty } => {
-                __formatter.write_str("Expr{")?;
-                fmt::Debug::fmt(id, __formatter)?;
-                __formatter.write_str(",")?;
-                fmt::Debug::fmt(kind, __formatter)?;
-                __formatter.write_str(",")?;
-                fmt::Debug::fmt(ty, __formatter)?;
-                __formatter.write_str("}")
-            }
-        }
-    }
-}
-impl fmt::Debug for Expr {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Display::fmt(&self, f)
-    }
-}
-#[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
 pub struct Functions {
-    pub func: internment_Intern<hir_Function>,
+    pub func: hir_FuncId,
 }
 impl abomonation::Abomonation for Functions {}
 impl record::FromRecord for Functions {
@@ -2086,7 +2021,7 @@ impl record::FromRecord for Functions {
         match val {
             record::Record::PosStruct(constr, _args) => match constr.as_ref() {
                 "Functions" if _args.len() == 1 => Ok(Functions {
-                    func: <internment_Intern<hir_Function>>::from_record(&_args[0])?,
+                    func: <hir_FuncId>::from_record(&_args[0])?,
                 }),
                 c => result::Result::Err(format!(
                     "unknown constructor {} of type Functions in {:?}",
@@ -2095,7 +2030,7 @@ impl record::FromRecord for Functions {
             },
             record::Record::NamedStruct(constr, _args) => match constr.as_ref() {
                 "Functions" => Ok(Functions {
-                    func: record::arg_extract::<internment_Intern<hir_Function>>(_args, "func")?,
+                    func: record::arg_extract::<hir_FuncId>(_args, "func")?,
                 }),
                 c => result::Result::Err(format!(
                     "unknown constructor {} of type Functions in {:?}",
@@ -2114,7 +2049,7 @@ impl record::FromRecord for Functions {
     }
 }
 decl_struct_into_record!(Functions["Functions"]<>, func);
-decl_record_mutator_struct!(Functions, <>, func: internment_Intern<hir_Function>);
+decl_record_mutator_struct!(Functions, <>, func: hir_FuncId);
 impl fmt::Display for Functions {
     fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -2132,7 +2067,133 @@ impl fmt::Debug for Functions {
     }
 }
 #[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
+pub struct InputExpressions {
+    pub id: hir_ExprId,
+    pub kind: internment_Intern<hir_ExprKind>,
+    pub ty: internment_Intern<hir_TypeKind>,
+}
+impl abomonation::Abomonation for InputExpressions {}
+impl record::FromRecord for InputExpressions {
+    fn from_record(val: &record::Record) -> result::Result<Self, String> {
+        match val {
+            record::Record::PosStruct(constr, _args) => match constr.as_ref() {
+                "InputExpressions" if _args.len() == 3 => Ok(InputExpressions {
+                    id: <hir_ExprId>::from_record(&_args[0])?,
+                    kind: <internment_Intern<hir_ExprKind>>::from_record(&_args[1])?,
+                    ty: <internment_Intern<hir_TypeKind>>::from_record(&_args[2])?,
+                }),
+                c => result::Result::Err(format!(
+                    "unknown constructor {} of type InputExpressions in {:?}",
+                    c, *val
+                )),
+            },
+            record::Record::NamedStruct(constr, _args) => match constr.as_ref() {
+                "InputExpressions" => Ok(InputExpressions {
+                    id: record::arg_extract::<hir_ExprId>(_args, "id")?,
+                    kind: record::arg_extract::<internment_Intern<hir_ExprKind>>(_args, "kind")?,
+                    ty: record::arg_extract::<internment_Intern<hir_TypeKind>>(_args, "ty")?,
+                }),
+                c => result::Result::Err(format!(
+                    "unknown constructor {} of type InputExpressions in {:?}",
+                    c, *val
+                )),
+            },
+            record::Record::Serialized(format, s) => {
+                if format == "json" {
+                    serde_json::from_str(&*s).map_err(|e| format!("{}", e))
+                } else {
+                    result::Result::Err(format!("unsupported serialization format '{}'", format))
+                }
+            }
+            v => result::Result::Err(format!("not a struct {:?}", *v)),
+        }
+    }
+}
+decl_struct_into_record!(InputExpressions["InputExpressions"]<>, id, kind, ty);
+decl_record_mutator_struct!(InputExpressions, <>, id: hir_ExprId, kind: internment_Intern<hir_ExprKind>, ty: internment_Intern<hir_TypeKind>);
+impl fmt::Display for InputExpressions {
+    fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            InputExpressions { id, kind, ty } => {
+                __formatter.write_str("InputExpressions{")?;
+                fmt::Debug::fmt(id, __formatter)?;
+                __formatter.write_str(",")?;
+                fmt::Debug::fmt(kind, __formatter)?;
+                __formatter.write_str(",")?;
+                fmt::Debug::fmt(ty, __formatter)?;
+                __formatter.write_str("}")
+            }
+        }
+    }
+}
+impl fmt::Debug for InputExpressions {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self, f)
+    }
+}
+#[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
+pub struct InputFunctions {
+    pub id: hir_FuncId,
+    pub func: internment_Intern<hir_Function>,
+}
+impl abomonation::Abomonation for InputFunctions {}
+impl record::FromRecord for InputFunctions {
+    fn from_record(val: &record::Record) -> result::Result<Self, String> {
+        match val {
+            record::Record::PosStruct(constr, _args) => match constr.as_ref() {
+                "InputFunctions" if _args.len() == 2 => Ok(InputFunctions {
+                    id: <hir_FuncId>::from_record(&_args[0])?,
+                    func: <internment_Intern<hir_Function>>::from_record(&_args[1])?,
+                }),
+                c => result::Result::Err(format!(
+                    "unknown constructor {} of type InputFunctions in {:?}",
+                    c, *val
+                )),
+            },
+            record::Record::NamedStruct(constr, _args) => match constr.as_ref() {
+                "InputFunctions" => Ok(InputFunctions {
+                    id: record::arg_extract::<hir_FuncId>(_args, "id")?,
+                    func: record::arg_extract::<internment_Intern<hir_Function>>(_args, "func")?,
+                }),
+                c => result::Result::Err(format!(
+                    "unknown constructor {} of type InputFunctions in {:?}",
+                    c, *val
+                )),
+            },
+            record::Record::Serialized(format, s) => {
+                if format == "json" {
+                    serde_json::from_str(&*s).map_err(|e| format!("{}", e))
+                } else {
+                    result::Result::Err(format!("unsupported serialization format '{}'", format))
+                }
+            }
+            v => result::Result::Err(format!("not a struct {:?}", *v)),
+        }
+    }
+}
+decl_struct_into_record!(InputFunctions["InputFunctions"]<>, id, func);
+decl_record_mutator_struct!(InputFunctions, <>, id: hir_FuncId, func: internment_Intern<hir_Function>);
+impl fmt::Display for InputFunctions {
+    fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            InputFunctions { id, func } => {
+                __formatter.write_str("InputFunctions{")?;
+                fmt::Debug::fmt(id, __formatter)?;
+                __formatter.write_str(",")?;
+                fmt::Debug::fmt(func, __formatter)?;
+                __formatter.write_str("}")
+            }
+        }
+    }
+}
+impl fmt::Debug for InputFunctions {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self, f)
+    }
+}
+#[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
 pub struct InputItems {
+    pub id: hir_ItemId,
     pub item: hir_Item,
 }
 impl abomonation::Abomonation for InputItems {}
@@ -2140,8 +2201,9 @@ impl record::FromRecord for InputItems {
     fn from_record(val: &record::Record) -> result::Result<Self, String> {
         match val {
             record::Record::PosStruct(constr, _args) => match constr.as_ref() {
-                "InputItems" if _args.len() == 1 => Ok(InputItems {
-                    item: <hir_Item>::from_record(&_args[0])?,
+                "InputItems" if _args.len() == 2 => Ok(InputItems {
+                    id: <hir_ItemId>::from_record(&_args[0])?,
+                    item: <hir_Item>::from_record(&_args[1])?,
                 }),
                 c => result::Result::Err(format!(
                     "unknown constructor {} of type InputItems in {:?}",
@@ -2150,6 +2212,7 @@ impl record::FromRecord for InputItems {
             },
             record::Record::NamedStruct(constr, _args) => match constr.as_ref() {
                 "InputItems" => Ok(InputItems {
+                    id: record::arg_extract::<hir_ItemId>(_args, "id")?,
                     item: record::arg_extract::<hir_Item>(_args, "item")?,
                 }),
                 c => result::Result::Err(format!(
@@ -2168,13 +2231,15 @@ impl record::FromRecord for InputItems {
         }
     }
 }
-decl_struct_into_record!(InputItems["InputItems"]<>, item);
-decl_record_mutator_struct!(InputItems, <>, item: hir_Item);
+decl_struct_into_record!(InputItems["InputItems"]<>, id, item);
+decl_record_mutator_struct!(InputItems, <>, id: hir_ItemId, item: hir_Item);
 impl fmt::Display for InputItems {
     fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            InputItems { item } => {
+            InputItems { id, item } => {
                 __formatter.write_str("InputItems{")?;
+                fmt::Debug::fmt(id, __formatter)?;
+                __formatter.write_str(",")?;
                 fmt::Debug::fmt(item, __formatter)?;
                 __formatter.write_str("}")
             }
@@ -2182,6 +2247,261 @@ impl fmt::Display for InputItems {
     }
 }
 impl fmt::Debug for InputItems {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self, f)
+    }
+}
+#[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
+pub struct InputStatements {
+    pub id: hir_StmtId,
+    pub stmt: internment_Intern<hir_Stmt>,
+    pub scope: internment_Intern<hir_Scope>,
+}
+impl abomonation::Abomonation for InputStatements {}
+impl record::FromRecord for InputStatements {
+    fn from_record(val: &record::Record) -> result::Result<Self, String> {
+        match val {
+            record::Record::PosStruct(constr, _args) => match constr.as_ref() {
+                "InputStatements" if _args.len() == 3 => Ok(InputStatements {
+                    id: <hir_StmtId>::from_record(&_args[0])?,
+                    stmt: <internment_Intern<hir_Stmt>>::from_record(&_args[1])?,
+                    scope: <internment_Intern<hir_Scope>>::from_record(&_args[2])?,
+                }),
+                c => result::Result::Err(format!(
+                    "unknown constructor {} of type InputStatements in {:?}",
+                    c, *val
+                )),
+            },
+            record::Record::NamedStruct(constr, _args) => match constr.as_ref() {
+                "InputStatements" => Ok(InputStatements {
+                    id: record::arg_extract::<hir_StmtId>(_args, "id")?,
+                    stmt: record::arg_extract::<internment_Intern<hir_Stmt>>(_args, "stmt")?,
+                    scope: record::arg_extract::<internment_Intern<hir_Scope>>(_args, "scope")?,
+                }),
+                c => result::Result::Err(format!(
+                    "unknown constructor {} of type InputStatements in {:?}",
+                    c, *val
+                )),
+            },
+            record::Record::Serialized(format, s) => {
+                if format == "json" {
+                    serde_json::from_str(&*s).map_err(|e| format!("{}", e))
+                } else {
+                    result::Result::Err(format!("unsupported serialization format '{}'", format))
+                }
+            }
+            v => result::Result::Err(format!("not a struct {:?}", *v)),
+        }
+    }
+}
+decl_struct_into_record!(InputStatements["InputStatements"]<>, id, stmt, scope);
+decl_record_mutator_struct!(InputStatements, <>, id: hir_StmtId, stmt: internment_Intern<hir_Stmt>, scope: internment_Intern<hir_Scope>);
+impl fmt::Display for InputStatements {
+    fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            InputStatements { id, stmt, scope } => {
+                __formatter.write_str("InputStatements{")?;
+                fmt::Debug::fmt(id, __formatter)?;
+                __formatter.write_str(",")?;
+                fmt::Debug::fmt(stmt, __formatter)?;
+                __formatter.write_str(",")?;
+                fmt::Debug::fmt(scope, __formatter)?;
+                __formatter.write_str("}")
+            }
+        }
+    }
+}
+impl fmt::Debug for InputStatements {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self, f)
+    }
+}
+#[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
+pub struct OutputExpressions {
+    pub id: hir_ExprId,
+    pub kind: internment_Intern<hir_ExprKind>,
+    pub ty: internment_Intern<hir_TypeKind>,
+}
+impl abomonation::Abomonation for OutputExpressions {}
+impl record::FromRecord for OutputExpressions {
+    fn from_record(val: &record::Record) -> result::Result<Self, String> {
+        match val {
+            record::Record::PosStruct(constr, _args) => match constr.as_ref() {
+                "OutputExpressions" if _args.len() == 3 => Ok(OutputExpressions {
+                    id: <hir_ExprId>::from_record(&_args[0])?,
+                    kind: <internment_Intern<hir_ExprKind>>::from_record(&_args[1])?,
+                    ty: <internment_Intern<hir_TypeKind>>::from_record(&_args[2])?,
+                }),
+                c => result::Result::Err(format!(
+                    "unknown constructor {} of type OutputExpressions in {:?}",
+                    c, *val
+                )),
+            },
+            record::Record::NamedStruct(constr, _args) => match constr.as_ref() {
+                "OutputExpressions" => Ok(OutputExpressions {
+                    id: record::arg_extract::<hir_ExprId>(_args, "id")?,
+                    kind: record::arg_extract::<internment_Intern<hir_ExprKind>>(_args, "kind")?,
+                    ty: record::arg_extract::<internment_Intern<hir_TypeKind>>(_args, "ty")?,
+                }),
+                c => result::Result::Err(format!(
+                    "unknown constructor {} of type OutputExpressions in {:?}",
+                    c, *val
+                )),
+            },
+            record::Record::Serialized(format, s) => {
+                if format == "json" {
+                    serde_json::from_str(&*s).map_err(|e| format!("{}", e))
+                } else {
+                    result::Result::Err(format!("unsupported serialization format '{}'", format))
+                }
+            }
+            v => result::Result::Err(format!("not a struct {:?}", *v)),
+        }
+    }
+}
+decl_struct_into_record!(OutputExpressions["OutputExpressions"]<>, id, kind, ty);
+decl_record_mutator_struct!(OutputExpressions, <>, id: hir_ExprId, kind: internment_Intern<hir_ExprKind>, ty: internment_Intern<hir_TypeKind>);
+impl fmt::Display for OutputExpressions {
+    fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            OutputExpressions { id, kind, ty } => {
+                __formatter.write_str("OutputExpressions{")?;
+                fmt::Debug::fmt(id, __formatter)?;
+                __formatter.write_str(",")?;
+                fmt::Debug::fmt(kind, __formatter)?;
+                __formatter.write_str(",")?;
+                fmt::Debug::fmt(ty, __formatter)?;
+                __formatter.write_str("}")
+            }
+        }
+    }
+}
+impl fmt::Debug for OutputExpressions {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self, f)
+    }
+}
+#[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
+pub struct OutputFunctions {
+    pub id: hir_FuncId,
+    pub func: internment_Intern<hir_Function>,
+}
+impl abomonation::Abomonation for OutputFunctions {}
+impl record::FromRecord for OutputFunctions {
+    fn from_record(val: &record::Record) -> result::Result<Self, String> {
+        match val {
+            record::Record::PosStruct(constr, _args) => match constr.as_ref() {
+                "OutputFunctions" if _args.len() == 2 => Ok(OutputFunctions {
+                    id: <hir_FuncId>::from_record(&_args[0])?,
+                    func: <internment_Intern<hir_Function>>::from_record(&_args[1])?,
+                }),
+                c => result::Result::Err(format!(
+                    "unknown constructor {} of type OutputFunctions in {:?}",
+                    c, *val
+                )),
+            },
+            record::Record::NamedStruct(constr, _args) => match constr.as_ref() {
+                "OutputFunctions" => Ok(OutputFunctions {
+                    id: record::arg_extract::<hir_FuncId>(_args, "id")?,
+                    func: record::arg_extract::<internment_Intern<hir_Function>>(_args, "func")?,
+                }),
+                c => result::Result::Err(format!(
+                    "unknown constructor {} of type OutputFunctions in {:?}",
+                    c, *val
+                )),
+            },
+            record::Record::Serialized(format, s) => {
+                if format == "json" {
+                    serde_json::from_str(&*s).map_err(|e| format!("{}", e))
+                } else {
+                    result::Result::Err(format!("unsupported serialization format '{}'", format))
+                }
+            }
+            v => result::Result::Err(format!("not a struct {:?}", *v)),
+        }
+    }
+}
+decl_struct_into_record!(OutputFunctions["OutputFunctions"]<>, id, func);
+decl_record_mutator_struct!(OutputFunctions, <>, id: hir_FuncId, func: internment_Intern<hir_Function>);
+impl fmt::Display for OutputFunctions {
+    fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            OutputFunctions { id, func } => {
+                __formatter.write_str("OutputFunctions{")?;
+                fmt::Debug::fmt(id, __formatter)?;
+                __formatter.write_str(",")?;
+                fmt::Debug::fmt(func, __formatter)?;
+                __formatter.write_str("}")
+            }
+        }
+    }
+}
+impl fmt::Debug for OutputFunctions {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self, f)
+    }
+}
+#[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
+pub struct OutputStatements {
+    pub id: hir_StmtId,
+    pub stmt: internment_Intern<hir_Stmt>,
+    pub scope: internment_Intern<hir_Scope>,
+}
+impl abomonation::Abomonation for OutputStatements {}
+impl record::FromRecord for OutputStatements {
+    fn from_record(val: &record::Record) -> result::Result<Self, String> {
+        match val {
+            record::Record::PosStruct(constr, _args) => match constr.as_ref() {
+                "OutputStatements" if _args.len() == 3 => Ok(OutputStatements {
+                    id: <hir_StmtId>::from_record(&_args[0])?,
+                    stmt: <internment_Intern<hir_Stmt>>::from_record(&_args[1])?,
+                    scope: <internment_Intern<hir_Scope>>::from_record(&_args[2])?,
+                }),
+                c => result::Result::Err(format!(
+                    "unknown constructor {} of type OutputStatements in {:?}",
+                    c, *val
+                )),
+            },
+            record::Record::NamedStruct(constr, _args) => match constr.as_ref() {
+                "OutputStatements" => Ok(OutputStatements {
+                    id: record::arg_extract::<hir_StmtId>(_args, "id")?,
+                    stmt: record::arg_extract::<internment_Intern<hir_Stmt>>(_args, "stmt")?,
+                    scope: record::arg_extract::<internment_Intern<hir_Scope>>(_args, "scope")?,
+                }),
+                c => result::Result::Err(format!(
+                    "unknown constructor {} of type OutputStatements in {:?}",
+                    c, *val
+                )),
+            },
+            record::Record::Serialized(format, s) => {
+                if format == "json" {
+                    serde_json::from_str(&*s).map_err(|e| format!("{}", e))
+                } else {
+                    result::Result::Err(format!("unsupported serialization format '{}'", format))
+                }
+            }
+            v => result::Result::Err(format!("not a struct {:?}", *v)),
+        }
+    }
+}
+decl_struct_into_record!(OutputStatements["OutputStatements"]<>, id, stmt, scope);
+decl_record_mutator_struct!(OutputStatements, <>, id: hir_StmtId, stmt: internment_Intern<hir_Stmt>, scope: internment_Intern<hir_Scope>);
+impl fmt::Display for OutputStatements {
+    fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            OutputStatements { id, stmt, scope } => {
+                __formatter.write_str("OutputStatements{")?;
+                fmt::Debug::fmt(id, __formatter)?;
+                __formatter.write_str(",")?;
+                fmt::Debug::fmt(stmt, __formatter)?;
+                __formatter.write_str(",")?;
+                fmt::Debug::fmt(scope, __formatter)?;
+                __formatter.write_str("}")
+            }
+        }
+    }
+}
+impl fmt::Debug for OutputStatements {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Display::fmt(&self, f)
     }
@@ -2656,7 +2976,7 @@ pub enum hir_ExprKind {
         match_: hir_Match,
     },
     hir_ExprScope {
-        block: internment_Intern<hir_Stmt>,
+        block: hir_StmtId,
     },
     hir_ExprReturn {
         val: std_Option<hir_ExprId>,
@@ -2684,7 +3004,7 @@ impl record::FromRecord for hir_ExprKind {
                     match_: <hir_Match>::from_record(&_args[0])?,
                 }),
                 "hir::ExprScope" if _args.len() == 1 => Ok(hir_ExprKind::hir_ExprScope {
-                    block: <internment_Intern<hir_Stmt>>::from_record(&_args[0])?,
+                    block: <hir_StmtId>::from_record(&_args[0])?,
                 }),
                 "hir::ExprReturn" if _args.len() == 1 => Ok(hir_ExprKind::hir_ExprReturn {
                     val: <std_Option<hir_ExprId>>::from_record(&_args[0])?,
@@ -2712,7 +3032,7 @@ impl record::FromRecord for hir_ExprKind {
                     match_: record::arg_extract::<hir_Match>(_args, "match_")?,
                 }),
                 "hir::ExprScope" => Ok(hir_ExprKind::hir_ExprScope {
-                    block: record::arg_extract::<internment_Intern<hir_Stmt>>(_args, "block")?,
+                    block: record::arg_extract::<hir_StmtId>(_args, "block")?,
                 }),
                 "hir::ExprReturn" => Ok(hir_ExprKind::hir_ExprReturn {
                     val: record::arg_extract::<std_Option<hir_ExprId>>(_args, "val")?,
@@ -2737,7 +3057,7 @@ impl record::FromRecord for hir_ExprKind {
     }
 }
 decl_enum_into_record!(hir_ExprKind, <>, hir_ExprLit["hir::ExprLit"]{lit}, hir_ExprVar["hir::ExprVar"]{variable}, hir_ExprAssign["hir::ExprAssign"]{variable, expr_id}, hir_ExprMatch["hir::ExprMatch"]{match_}, hir_ExprScope["hir::ExprScope"]{block}, hir_ExprReturn["hir::ExprReturn"]{val}, hir_ExprBinOp["hir::ExprBinOp"]{op});
-decl_record_mutator_enum!(hir_ExprKind, <>, hir_ExprLit{lit: internment_Intern<hir_Literal>}, hir_ExprVar{variable: hir_Var}, hir_ExprAssign{variable: hir_Var, expr_id: hir_ExprId}, hir_ExprMatch{match_: hir_Match}, hir_ExprScope{block: internment_Intern<hir_Stmt>}, hir_ExprReturn{val: std_Option<hir_ExprId>}, hir_ExprBinOp{op: hir_BinaryOp});
+decl_record_mutator_enum!(hir_ExprKind, <>, hir_ExprLit{lit: internment_Intern<hir_Literal>}, hir_ExprVar{variable: hir_Var}, hir_ExprAssign{variable: hir_Var, expr_id: hir_ExprId}, hir_ExprMatch{match_: hir_Match}, hir_ExprScope{block: hir_StmtId}, hir_ExprReturn{val: std_Option<hir_ExprId>}, hir_ExprBinOp{op: hir_BinaryOp});
 impl fmt::Display for hir_ExprKind {
     fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -2854,12 +3174,13 @@ impl fmt::Debug for hir_FuncArg {
         fmt::Display::fmt(&self, f)
     }
 }
+pub type hir_FuncId = std_u64;
 #[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
 pub struct hir_Function {
     pub name: hir_ItemPath,
     pub vis: hir_Vis,
     pub args: std_Vec<hir_FuncArg>,
-    pub body: internment_Intern<hir_Stmt>,
+    pub body: hir_StmtId,
     pub ret: internment_Intern<hir_TypeKind>,
 }
 impl abomonation::Abomonation for hir_Function {}
@@ -2871,7 +3192,7 @@ impl record::FromRecord for hir_Function {
                     name: <hir_ItemPath>::from_record(&_args[0])?,
                     vis: <hir_Vis>::from_record(&_args[1])?,
                     args: <std_Vec<hir_FuncArg>>::from_record(&_args[2])?,
-                    body: <internment_Intern<hir_Stmt>>::from_record(&_args[3])?,
+                    body: <hir_StmtId>::from_record(&_args[3])?,
                     ret: <internment_Intern<hir_TypeKind>>::from_record(&_args[4])?,
                 }),
                 c => result::Result::Err(format!(
@@ -2884,7 +3205,7 @@ impl record::FromRecord for hir_Function {
                     name: record::arg_extract::<hir_ItemPath>(_args, "name")?,
                     vis: record::arg_extract::<hir_Vis>(_args, "vis")?,
                     args: record::arg_extract::<std_Vec<hir_FuncArg>>(_args, "args")?,
-                    body: record::arg_extract::<internment_Intern<hir_Stmt>>(_args, "body")?,
+                    body: record::arg_extract::<hir_StmtId>(_args, "body")?,
                     ret: record::arg_extract::<internment_Intern<hir_TypeKind>>(_args, "ret")?,
                 }),
                 c => result::Result::Err(format!(
@@ -2904,7 +3225,7 @@ impl record::FromRecord for hir_Function {
     }
 }
 decl_struct_into_record!(hir_Function["hir::Function"]<>, name, vis, args, body, ret);
-decl_record_mutator_struct!(hir_Function, <>, name: hir_ItemPath, vis: hir_Vis, args: std_Vec<hir_FuncArg>, body: internment_Intern<hir_Stmt>, ret: internment_Intern<hir_TypeKind>);
+decl_record_mutator_struct!(hir_Function, <>, name: hir_ItemPath, vis: hir_Vis, args: std_Vec<hir_FuncArg>, body: hir_StmtId, ret: internment_Intern<hir_TypeKind>);
 impl fmt::Display for hir_Function {
     fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -2937,7 +3258,7 @@ impl fmt::Debug for hir_Function {
 }
 #[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum hir_Item {
-    hir_ItemFunc { func: hir_Function },
+    hir_ItemFunc { func: hir_FuncId },
     hir_ItemStruct,
 }
 impl abomonation::Abomonation for hir_Item {}
@@ -2946,7 +3267,7 @@ impl record::FromRecord for hir_Item {
         match val {
             record::Record::PosStruct(constr, _args) => match constr.as_ref() {
                 "hir::ItemFunc" if _args.len() == 1 => Ok(hir_Item::hir_ItemFunc {
-                    func: <hir_Function>::from_record(&_args[0])?,
+                    func: <hir_FuncId>::from_record(&_args[0])?,
                 }),
                 "hir::ItemStruct" if _args.is_empty() => Ok(hir_Item::hir_ItemStruct {}),
                 c => result::Result::Err(format!(
@@ -2956,7 +3277,7 @@ impl record::FromRecord for hir_Item {
             },
             record::Record::NamedStruct(constr, _args) => match constr.as_ref() {
                 "hir::ItemFunc" => Ok(hir_Item::hir_ItemFunc {
-                    func: record::arg_extract::<hir_Function>(_args, "func")?,
+                    func: record::arg_extract::<hir_FuncId>(_args, "func")?,
                 }),
                 "hir::ItemStruct" => Ok(hir_Item::hir_ItemStruct {}),
                 c => result::Result::Err(format!(
@@ -2976,7 +3297,7 @@ impl record::FromRecord for hir_Item {
     }
 }
 decl_enum_into_record!(hir_Item, <>, hir_ItemFunc["hir::ItemFunc"]{func}, hir_ItemStruct["hir::ItemStruct"]{});
-decl_record_mutator_enum!(hir_Item, <>, hir_ItemFunc{func: hir_Function}, hir_ItemStruct{});
+decl_record_mutator_enum!(hir_Item, <>, hir_ItemFunc{func: hir_FuncId}, hir_ItemStruct{});
 impl fmt::Display for hir_Item {
     fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -3004,6 +3325,7 @@ impl Default for hir_Item {
         }
     }
 }
+pub type hir_ItemId = std_u64;
 pub type hir_ItemPath = internment_Intern<std_Vec<hir_StrT>>;
 #[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum hir_Literal {
@@ -3220,7 +3542,7 @@ impl fmt::Debug for hir_Match {
 pub struct hir_MatchArm {
     pub bind: hir_Binding,
     pub guard: std_Option<hir_ExprId>,
-    pub body: internment_Intern<hir_Stmt>,
+    pub body: hir_StmtId,
     pub ty: internment_Intern<hir_TypeKind>,
 }
 impl abomonation::Abomonation for hir_MatchArm {}
@@ -3231,7 +3553,7 @@ impl record::FromRecord for hir_MatchArm {
                 "hir::MatchArm" if _args.len() == 4 => Ok(hir_MatchArm {
                     bind: <hir_Binding>::from_record(&_args[0])?,
                     guard: <std_Option<hir_ExprId>>::from_record(&_args[1])?,
-                    body: <internment_Intern<hir_Stmt>>::from_record(&_args[2])?,
+                    body: <hir_StmtId>::from_record(&_args[2])?,
                     ty: <internment_Intern<hir_TypeKind>>::from_record(&_args[3])?,
                 }),
                 c => result::Result::Err(format!(
@@ -3243,7 +3565,7 @@ impl record::FromRecord for hir_MatchArm {
                 "hir::MatchArm" => Ok(hir_MatchArm {
                     bind: record::arg_extract::<hir_Binding>(_args, "bind")?,
                     guard: record::arg_extract::<std_Option<hir_ExprId>>(_args, "guard")?,
-                    body: record::arg_extract::<internment_Intern<hir_Stmt>>(_args, "body")?,
+                    body: record::arg_extract::<hir_StmtId>(_args, "body")?,
                     ty: record::arg_extract::<internment_Intern<hir_TypeKind>>(_args, "ty")?,
                 }),
                 c => result::Result::Err(format!(
@@ -3263,7 +3585,7 @@ impl record::FromRecord for hir_MatchArm {
     }
 }
 decl_struct_into_record!(hir_MatchArm["hir::MatchArm"]<>, bind, guard, body, ty);
-decl_record_mutator_struct!(hir_MatchArm, <>, bind: hir_Binding, guard: std_Option<hir_ExprId>, body: internment_Intern<hir_Stmt>, ty: internment_Intern<hir_TypeKind>);
+decl_record_mutator_struct!(hir_MatchArm, <>, bind: hir_Binding, guard: std_Option<hir_ExprId>, body: hir_StmtId, ty: internment_Intern<hir_TypeKind>);
 impl fmt::Display for hir_MatchArm {
     fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -3371,7 +3693,7 @@ impl Default for hir_Pattern {
 #[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum hir_Scope {
     hir_ScopeFunction {
-        func: internment_Intern<hir_Function>,
+        func: hir_FuncId,
     },
     hir_ScopeSeq1 {
         parent: internment_Intern<hir_Scope>,
@@ -3379,6 +3701,7 @@ pub enum hir_Scope {
     hir_ScopeSeq2 {
         parent: internment_Intern<hir_Scope>,
     },
+    hir_ScopeToDo,
 }
 impl abomonation::Abomonation for hir_Scope {}
 impl record::FromRecord for hir_Scope {
@@ -3386,7 +3709,7 @@ impl record::FromRecord for hir_Scope {
         match val {
             record::Record::PosStruct(constr, _args) => match constr.as_ref() {
                 "hir::ScopeFunction" if _args.len() == 1 => Ok(hir_Scope::hir_ScopeFunction {
-                    func: <internment_Intern<hir_Function>>::from_record(&_args[0])?,
+                    func: <hir_FuncId>::from_record(&_args[0])?,
                 }),
                 "hir::ScopeSeq1" if _args.len() == 1 => Ok(hir_Scope::hir_ScopeSeq1 {
                     parent: <internment_Intern<hir_Scope>>::from_record(&_args[0])?,
@@ -3394,6 +3717,7 @@ impl record::FromRecord for hir_Scope {
                 "hir::ScopeSeq2" if _args.len() == 1 => Ok(hir_Scope::hir_ScopeSeq2 {
                     parent: <internment_Intern<hir_Scope>>::from_record(&_args[0])?,
                 }),
+                "hir::ScopeToDo" if _args.is_empty() => Ok(hir_Scope::hir_ScopeToDo {}),
                 c => result::Result::Err(format!(
                     "unknown constructor {} of type hir_Scope in {:?}",
                     c, *val
@@ -3401,7 +3725,7 @@ impl record::FromRecord for hir_Scope {
             },
             record::Record::NamedStruct(constr, _args) => match constr.as_ref() {
                 "hir::ScopeFunction" => Ok(hir_Scope::hir_ScopeFunction {
-                    func: record::arg_extract::<internment_Intern<hir_Function>>(_args, "func")?,
+                    func: record::arg_extract::<hir_FuncId>(_args, "func")?,
                 }),
                 "hir::ScopeSeq1" => Ok(hir_Scope::hir_ScopeSeq1 {
                     parent: record::arg_extract::<internment_Intern<hir_Scope>>(_args, "parent")?,
@@ -3409,6 +3733,7 @@ impl record::FromRecord for hir_Scope {
                 "hir::ScopeSeq2" => Ok(hir_Scope::hir_ScopeSeq2 {
                     parent: record::arg_extract::<internment_Intern<hir_Scope>>(_args, "parent")?,
                 }),
+                "hir::ScopeToDo" => Ok(hir_Scope::hir_ScopeToDo {}),
                 c => result::Result::Err(format!(
                     "unknown constructor {} of type hir_Scope in {:?}",
                     c, *val
@@ -3425,8 +3750,8 @@ impl record::FromRecord for hir_Scope {
         }
     }
 }
-decl_enum_into_record!(hir_Scope, <>, hir_ScopeFunction["hir::ScopeFunction"]{func}, hir_ScopeSeq1["hir::ScopeSeq1"]{parent}, hir_ScopeSeq2["hir::ScopeSeq2"]{parent});
-decl_record_mutator_enum!(hir_Scope, <>, hir_ScopeFunction{func: internment_Intern<hir_Function>}, hir_ScopeSeq1{parent: internment_Intern<hir_Scope>}, hir_ScopeSeq2{parent: internment_Intern<hir_Scope>});
+decl_enum_into_record!(hir_Scope, <>, hir_ScopeFunction["hir::ScopeFunction"]{func}, hir_ScopeSeq1["hir::ScopeSeq1"]{parent}, hir_ScopeSeq2["hir::ScopeSeq2"]{parent}, hir_ScopeToDo["hir::ScopeToDo"]{});
+decl_record_mutator_enum!(hir_Scope, <>, hir_ScopeFunction{func: hir_FuncId}, hir_ScopeSeq1{parent: internment_Intern<hir_Scope>}, hir_ScopeSeq2{parent: internment_Intern<hir_Scope>}, hir_ScopeToDo{});
 impl fmt::Display for hir_Scope {
     fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -3443,6 +3768,10 @@ impl fmt::Display for hir_Scope {
             hir_Scope::hir_ScopeSeq2 { parent } => {
                 __formatter.write_str("hir::ScopeSeq2{")?;
                 fmt::Debug::fmt(parent, __formatter)?;
+                __formatter.write_str("}")
+            }
+            hir_Scope::hir_ScopeToDo {} => {
+                __formatter.write_str("hir::ScopeToDo{")?;
                 __formatter.write_str("}")
             }
         }
@@ -3586,11 +3915,11 @@ pub enum hir_Stmt {
         expr: hir_ExprId,
     },
     hir_StmtItem {
-        item: hir_Item,
+        item: hir_ItemId,
     },
     hir_StmtSeq {
-        first: internment_Intern<hir_Stmt>,
-        second: internment_Intern<hir_Stmt>,
+        first: hir_StmtId,
+        second: hir_StmtId,
     },
     hir_StmtDecl {
         decl: hir_VarDecl,
@@ -3606,11 +3935,11 @@ impl record::FromRecord for hir_Stmt {
                     expr: <hir_ExprId>::from_record(&_args[0])?,
                 }),
                 "hir::StmtItem" if _args.len() == 1 => Ok(hir_Stmt::hir_StmtItem {
-                    item: <hir_Item>::from_record(&_args[0])?,
+                    item: <hir_ItemId>::from_record(&_args[0])?,
                 }),
                 "hir::StmtSeq" if _args.len() == 2 => Ok(hir_Stmt::hir_StmtSeq {
-                    first: <internment_Intern<hir_Stmt>>::from_record(&_args[0])?,
-                    second: <internment_Intern<hir_Stmt>>::from_record(&_args[1])?,
+                    first: <hir_StmtId>::from_record(&_args[0])?,
+                    second: <hir_StmtId>::from_record(&_args[1])?,
                 }),
                 "hir::StmtDecl" if _args.len() == 1 => Ok(hir_Stmt::hir_StmtDecl {
                     decl: <hir_VarDecl>::from_record(&_args[0])?,
@@ -3626,11 +3955,11 @@ impl record::FromRecord for hir_Stmt {
                     expr: record::arg_extract::<hir_ExprId>(_args, "expr")?,
                 }),
                 "hir::StmtItem" => Ok(hir_Stmt::hir_StmtItem {
-                    item: record::arg_extract::<hir_Item>(_args, "item")?,
+                    item: record::arg_extract::<hir_ItemId>(_args, "item")?,
                 }),
                 "hir::StmtSeq" => Ok(hir_Stmt::hir_StmtSeq {
-                    first: record::arg_extract::<internment_Intern<hir_Stmt>>(_args, "first")?,
-                    second: record::arg_extract::<internment_Intern<hir_Stmt>>(_args, "second")?,
+                    first: record::arg_extract::<hir_StmtId>(_args, "first")?,
+                    second: record::arg_extract::<hir_StmtId>(_args, "second")?,
                 }),
                 "hir::StmtDecl" => Ok(hir_Stmt::hir_StmtDecl {
                     decl: record::arg_extract::<hir_VarDecl>(_args, "decl")?,
@@ -3653,7 +3982,7 @@ impl record::FromRecord for hir_Stmt {
     }
 }
 decl_enum_into_record!(hir_Stmt, <>, hir_StmtExpr["hir::StmtExpr"]{expr}, hir_StmtItem["hir::StmtItem"]{item}, hir_StmtSeq["hir::StmtSeq"]{first, second}, hir_StmtDecl["hir::StmtDecl"]{decl}, hir_Empty["hir::Empty"]{});
-decl_record_mutator_enum!(hir_Stmt, <>, hir_StmtExpr{expr: hir_ExprId}, hir_StmtItem{item: hir_Item}, hir_StmtSeq{first: internment_Intern<hir_Stmt>, second: internment_Intern<hir_Stmt>}, hir_StmtDecl{decl: hir_VarDecl}, hir_Empty{});
+decl_record_mutator_enum!(hir_Stmt, <>, hir_StmtExpr{expr: hir_ExprId}, hir_StmtItem{item: hir_ItemId}, hir_StmtSeq{first: hir_StmtId, second: hir_StmtId}, hir_StmtDecl{decl: hir_VarDecl}, hir_Empty{});
 impl fmt::Display for hir_Stmt {
     fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -3698,6 +4027,7 @@ impl Default for hir_Stmt {
         }
     }
 }
+pub type hir_StmtId = std_u64;
 pub type hir_StrT = std_u32;
 #[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum hir_TypeKind {
@@ -4225,14 +4555,11 @@ pub type std_u64 = u64;
 pub type std_u8 = u8;
 pub type std_usize = std_u64;
 lazy_static! {
-    pub static ref __STATIC_4: internment_Intern<std_Vec<u32>> = internment_intern((&*__STATIC_3));
-}
-lazy_static! {
     pub static ref __STATIC_0: internment_Intern<hir_TypeKind> =
         internment_intern((&(hir_TypeKind::hir_Error {})));
 }
 lazy_static! {
-    pub static ref __STATIC_6: internment_Intern<hir_TypeKind> = internment_intern(
+    pub static ref __STATIC_3: internment_Intern<hir_TypeKind> = internment_intern(
         (&(hir_TypeKind::hir_Int {
             is_signed: (std_Option::std_Some { x: true }),
             width: (std_Option::std_Some { x: (32 as u16) })
@@ -4240,17 +4567,11 @@ lazy_static! {
     );
 }
 lazy_static! {
-    pub static ref __STATIC_2: internment_Intern<hir_TypeKind> =
+    pub static ref __STATIC_1: internment_Intern<hir_TypeKind> =
         internment_intern((&(hir_TypeKind::hir_Unknown {})));
 }
 lazy_static! {
-    pub static ref __STATIC_5: std_Vec<String> = std_vec_empty();
-}
-lazy_static! {
-    pub static ref __STATIC_3: std_Vec<u32> = std_vec_empty();
-}
-lazy_static! {
-    pub static ref __STATIC_1: std_Vec<hir_FuncArg> = std_vec_empty();
+    pub static ref __STATIC_2: std_Vec<String> = std_vec_empty();
 }
 /* fn debug_debug_event<T1: Val,A1: Val,A2: Val>(operator_id: & debug_DDlogOpId, w: & std_DDWeight, ts: & T1, operator_type: & String, input1: & A1, out: & A2) -> () */
 /* fn debug_debug_event_join<T1: Val,A1: Val,A2: Val,A3: Val>(operator_id: & debug_DDlogOpId, w: & std_DDWeight, ts: & T1, input1: & A1, input2: & A2, out: & A3) -> () */
@@ -4361,79 +4682,60 @@ lazy_static! {
 /* fn std_vec_to_set<A: Val>(s: & std_Vec<A>) -> std_Set<A> */
 /* fn std_vec_with_capacity<A: Val>(len: & std_usize) -> std_Vec<A> */
 /* fn std_vec_with_length<A: Val>(len: & std_usize, x: & A) -> std_Vec<A> */
-pub fn hir_corrected_signature(item: &hir_Item) -> hir_Signature {
-    match (*item) {
-        hir_Item::hir_ItemFunc {
-            func:
-                hir_Function {
-                    name: _,
-                    vis: _,
-                    args: ref old_args,
-                    body: _,
-                    ret: ref ret,
-                },
-        } => {
-            let ref mut ret: internment_Intern<hir_TypeKind> = if hir_is_unknown(ret) {
-                (*(&*__STATIC_0)).clone()
+pub fn hir_corrected_signature(func: &internment_Intern<hir_Function>) -> hir_Signature {
+    let hir_Function {
+        name: _,
+        vis: _,
+        args: ref mut old_args,
+        body: _,
+        ret: ref mut ret,
+    }: hir_Function = (*internment_ival(func)).clone();
+    let ref mut ret: internment_Intern<hir_TypeKind> = if hir_is_unknown(ret) {
+        (*(&*__STATIC_0)).clone()
+    } else {
+        (*ret).clone()
+    };
+    let ref mut args: std_Vec<hir_FuncArg> =
+        std_vec_with_capacity((&std_len_std_Vec__X_1(old_args)));
+    for arg in old_args.iter() {
+        {
+            let ref mut arg: hir_FuncArg = if hir_is_unknown((&arg.kind)) {
+                (hir_FuncArg {
+                    name: arg.name.clone(),
+                    kind: (*(&*__STATIC_0)).clone(),
+                })
             } else {
-                (*ret).clone()
+                (*arg).clone()
             };
-            let ref mut args: std_Vec<hir_FuncArg> =
-                std_vec_with_capacity((&std_len_std_Vec__X_1(old_args)));
-            for arg in old_args.iter() {
-                {
-                    let ref mut arg: hir_FuncArg = if hir_is_unknown((&arg.kind)) {
-                        (hir_FuncArg {
-                            name: arg.name.clone(),
-                            kind: (*(&*__STATIC_0)).clone(),
-                        })
-                    } else {
-                        (*arg).clone()
-                    };
-                    std_push(args, arg)
-                }
-            }
-            (hir_Signature {
-                args: (*args).clone(),
-                ret: (*ret).clone(),
-            })
-        }
-        hir_Item::hir_ItemStruct {} => {
-            (hir_Signature {
-                args: (*(&*__STATIC_1)).clone(),
-                ret: (*(&*__STATIC_2)).clone(),
-            })
+            std_push(args, arg)
         }
     }
+    (hir_Signature {
+        args: (*args).clone(),
+        ret: (*ret).clone(),
+    })
 }
-pub fn hir_has_unknown_types(item: &hir_Item) -> bool {
-    match (*item) {
-        hir_Item::hir_ItemFunc {
-            func:
-                hir_Function {
-                    name: _,
-                    vis: _,
-                    args: ref args,
-                    body: _,
-                    ret: ref ret,
-                },
-        } => {
-            if hir_is_unknown(ret) {
-                return true;
-            } else {
-                ()
-            };
-            for arg in args.iter() {
-                if hir_is_unknown((&arg.kind)) {
-                    return true;
-                } else {
-                    ()
-                }
-            }
-            false
+pub fn hir_has_unknown_types(func: &internment_Intern<hir_Function>) -> bool {
+    let hir_Function {
+        name: _,
+        vis: _,
+        args: ref mut args,
+        body: _,
+        ret: ref mut ret,
+    }: hir_Function = (*internment_ival(func)).clone();
+    if hir_is_unknown(ret) {
+        return true;
+    } else {
+        ()
+    };
+    for arg in args.iter() {
+        if hir_is_unknown((&arg.kind)) {
+            return true;
+        } else {
+            ()
         }
-        hir_Item::hir_ItemStruct {} => false,
     }
+    false
 }
 pub fn hir_is_bool(ty: &internment_Intern<hir_Literal>) -> bool {
     match (*internment_ival(ty)) {
@@ -4463,47 +4765,30 @@ pub fn hir_is_str(ty: &internment_Intern<hir_Literal>) -> bool {
     }
 }
 pub fn hir_is_unknown(kind: &internment_Intern<hir_TypeKind>) -> bool {
-    ((&*kind) == (&*(&*__STATIC_2)))
+    ((&*kind) == (&*(&*__STATIC_1)))
 }
-pub fn hir_path(item: &hir_Item) -> hir_ItemPath {
-    match (*item) {
-        hir_Item::hir_ItemFunc {
-            func:
-                hir_Function {
-                    name: ref path,
-                    vis: _,
-                    args: _,
-                    body: _,
-                    ret: _,
-                },
-        } => (*path).clone(),
-        hir_Item::hir_ItemStruct {} => (*(&*__STATIC_4)).clone(),
-    }
+pub fn hir_path(func: &internment_Intern<hir_Function>) -> hir_ItemPath {
+    let hir_Function {
+        name: ref mut path,
+        vis: _,
+        args: _,
+        body: _,
+        ret: _,
+    }: hir_Function = (*internment_ival(func)).clone();
+    (*path).clone()
 }
-pub fn hir_signature(item: &hir_Item) -> hir_Signature {
-    match (*item) {
-        hir_Item::hir_ItemFunc {
-            func:
-                hir_Function {
-                    name: _,
-                    vis: _,
-                    args: ref args,
-                    body: _,
-                    ret: ref ret,
-                },
-        } => {
-            (hir_Signature {
-                args: (*args).clone(),
-                ret: (*ret).clone(),
-            })
-        }
-        hir_Item::hir_ItemStruct {} => {
-            (hir_Signature {
-                args: (*(&*__STATIC_1)).clone(),
-                ret: (*(&*__STATIC_2)).clone(),
-            })
-        }
-    }
+pub fn hir_signature(func: &internment_Intern<hir_Function>) -> hir_Signature {
+    let hir_Function {
+        name: _,
+        vis: _,
+        args: ref mut args,
+        body: _,
+        ret: ref mut ret,
+    }: hir_Function = (*internment_ival(func)).clone();
+    (hir_Signature {
+        args: (*args).clone(),
+        ret: (*ret).clone(),
+    })
 }
 pub fn hir_typeof(literal: &internment_Intern<hir_Literal>) -> internment_Intern<hir_TypeKind> {
     let ref mut ty: hir_TypeKind = match (*internment_ival(literal)) {
@@ -4518,32 +4803,28 @@ pub fn hir_typeof(literal: &internment_Intern<hir_Literal>) -> internment_Intern
     };
     internment_intern(ty)
 }
-pub fn hir_unknown_type_errors(item: &hir_Item) -> std_Vec<String> {
-    match (*item) {
-        hir_Item::hir_ItemFunc { func: ref func } => {
-            let ref mut errors: std_Vec<String> = (*(&*__STATIC_5)).clone();
-            for arg in func.args.iter() {
-                if hir_is_unknown((&arg.kind)) {
-                    std_push(
-                        errors,
-                        (&String::from(r###"Function arguments cannot be unknown"###)),
-                    )
-                } else {
-                    ()
-                }
-            }
-            if hir_is_unknown((&func.ret)) {
-                std_push(
-                    errors,
-                    (&String::from(r###"Function return types cannot be unknown"###)),
-                )
-            } else {
-                ()
-            };
-            (*errors).clone()
+pub fn hir_unknown_type_errors(func: &internment_Intern<hir_Function>) -> std_Vec<String> {
+    let ref mut func: hir_Function = (*internment_ival(func)).clone();
+    let ref mut errors: std_Vec<String> = (*(&*__STATIC_2)).clone();
+    for arg in func.args.iter() {
+        if hir_is_unknown((&arg.kind)) {
+            std_push(
+                errors,
+                (&String::from(r###"Function arguments cannot be unknown"###)),
+            )
+        } else {
+            ()
         }
-        hir_Item::hir_ItemStruct {} => (*(&*__STATIC_5)).clone(),
     }
+    if hir_is_unknown((&func.ret)) {
+        std_push(
+            errors,
+            (&String::from(r###"Function return types cannot be unknown"###)),
+        )
+    } else {
+        ()
+    };
+    (*errors).clone()
 }
 pub fn internment_contains(s1: &internment_istring, s2: &String) -> bool {
     internment_istring_contains(s1, s2)

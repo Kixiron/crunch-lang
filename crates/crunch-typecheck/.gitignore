@@ -2,3 +2,5 @@ typecheck_ddlog/ddlog.h
 typecheck_ddlog/ddlog_ovsdb_test.c
 typecheck_ddlog/.cargo
 typecheck_ddlog/typecheck.dot
+typecheck_ddlog/distributed_datalog
+typecheck_ddlog/ovsdb

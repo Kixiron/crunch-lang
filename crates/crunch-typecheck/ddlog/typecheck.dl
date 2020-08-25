@@ -1,48 +1,57 @@
 import hir
 
-input relation InputItems(item: Item)
-input relation Expr(id: ExprId, kind: Intern<ExprKind>, ty: Intern<TypeKind>)
+// TODO: Scoping & intern items
+input relation InputItems(id: ItemId, item: Item)
+// TODO: Scoping
+input relation InputFunctions(id: FuncId, func: Intern<Function>)
+input relation InputStatements(id: StmtId, stmt: Intern<Stmt>, scope: Intern<Scope>)
+input relation InputExpressions(id: ExprId, kind: Intern<ExprKind>, ty: Intern<TypeKind>)
 
 // FIXME: Error locations and structured errors, maybe hook into codespan
 output relation Errors(message: string)
 output relation SymbolTable(path: ItemPath, signature: Signature)
 
-output relation Functions(func: Intern<Function>)
+output relation Functions(func: FuncId)
 // Insert types with valid signatures into the symbol table
-SymbolTable(path, signature), Functions(intern(func)) :-
-    InputItems(item @ ItemFunc { func }),
-    not item.has_unknown_types(),
-    var path = item.path(),
-    var signature = item.signature().
+SymbolTable(path, signature), Functions(func_id) :-
+    InputItems(_, ItemFunc { .func = func_id }),
+    InputFunctions(func_id, func),
+    not func.has_unknown_types(),
+    var path = func.path(),
+    var signature = func.signature().
 // TODO: Use FlatMap to get inner items
 
 // Emit errors for unknown types in signatures and replace the unknown types with error types
-SymbolTable(path, signature), Errors(message), Functions(intern(func)) :-
-    InputItems(item @ ItemFunc { func }),
-    item.has_unknown_types(),
-    var message = FlatMap(item.unknown_type_errors()),
-    var path = item.path(),
-    var signature = item.corrected_signature().
+SymbolTable(path, signature), Errors(message), Functions(func_id) :-
+    InputItems(_, ItemFunc { .func = func_id }),
+    InputFunctions(func_id, func),
+    func.has_unknown_types(),
+    var message = FlatMap(func.unknown_type_errors()),
+    var path = func.path(),
+    var signature = func.corrected_signature().
 
 output relation Statements(stmt: Intern<Stmt>, scope: Intern<Scope>)
-Statements(stmt, intern(ScopeFunction { func })) :-
-    Functions(func),
-    Function { .body = var stmt } = func.ival().
+Statements(stmt, intern(ScopeFunction { func_id })) :-
+    InputFunctions(func_id, func),
+    Function { .body = var stmt_id } = func.ival(),
+    InputStatements(stmt_id, stmt, _).
 Statements(stmt1, intern(ScopeSeq1 { parent })), Statements(stmt2, intern(ScopeSeq2 { parent })) :-
     Statements(stmt, parent),
-    StmtSeq { var stmt1, var stmt2 } = stmt.ival().
+    StmtSeq { var stmt1_id, var stmt2_id } = stmt.ival(),
+    InputStatements(stmt1_id, stmt1, _),
+    InputStatements(stmt2_id, stmt2, _).
 
 relation PropagateExprType(id: ExprId, kind: Intern<ExprKind>, ty: Intern<TypeKind>)
 // Get the types out of literals
-PropagateExprType(id, kind, ty) :- Expr(id, kind, _),
+PropagateExprType(id, kind, ty) :- InputExpressions(id, kind, _),
                                    ExprLit { .lit = var lit } = kind.ival(),
                                    var ty = lit.typeof().
 // Get the types out of assignments
-PropagateExprType(id, kind, ty) :- Expr(id, kind, _),
+PropagateExprType(id, kind, ty) :- InputExpressions(id, kind, _),
                                    ExprAssign { .expr_id = var expr_id } = kind.ival(),
                                    PropagateExprType(expr_id, _, ty).
 // Get the types of variables by looking at their assignment
-PropagateExprType(id, kind, ty) :- Expr(id, kind, _),
+PropagateExprType(id, kind, ty) :- InputExpressions(id, kind, _),
                                    ExprVar { .variable = var expr_var } = kind.ival(),
                                    PropagateExprType(_, prop_kind, ty),
                                    ExprAssign { .variable = var prop_var } = prop_kind.ival(),

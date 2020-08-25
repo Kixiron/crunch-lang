@@ -102,30 +102,32 @@ pub mod Value {
     #[derive(
         Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
     )]
-    pub struct __Tuple3____Stringval_hir_Item_hir_Function(
-        pub (String, super::hir_Item, super::hir_Function),
+    pub struct __Tuple3____Stringval___Bitval64_internment_Intern__hir_Function(
+        pub (String, u64, super::internment_Intern<super::hir_Function>),
     );
-    impl abomonation::Abomonation for __Tuple3____Stringval_hir_Item_hir_Function {}
-    impl fmt::Display for __Tuple3____Stringval_hir_Item_hir_Function {
+    impl abomonation::Abomonation for __Tuple3____Stringval___Bitval64_internment_Intern__hir_Function {}
+    impl fmt::Display for __Tuple3____Stringval___Bitval64_internment_Intern__hir_Function {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             self.clone().into_record().fmt(f)
         }
     }
-    impl record::IntoRecord for __Tuple3____Stringval_hir_Item_hir_Function {
+    impl record::IntoRecord for __Tuple3____Stringval___Bitval64_internment_Intern__hir_Function {
         fn into_record(self) -> record::Record {
             self.0.into_record()
         }
     }
-    impl record::Mutator<__Tuple3____Stringval_hir_Item_hir_Function> for record::Record {
+    impl record::Mutator<__Tuple3____Stringval___Bitval64_internment_Intern__hir_Function>
+        for record::Record
+    {
         fn mutate(
             &self,
-            v: &mut __Tuple3____Stringval_hir_Item_hir_Function,
+            v: &mut __Tuple3____Stringval___Bitval64_internment_Intern__hir_Function,
         ) -> result::Result<(), std::string::String> {
             self.mutate(&mut v.0)
         }
     }
     //#[typetag::serde]
-    decl_ddval_convert! {__Tuple3____Stringval_hir_Item_hir_Function}
+    decl_ddval_convert! {__Tuple3____Stringval___Bitval64_internment_Intern__hir_Function}
     #[derive(
         Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
     )]
@@ -185,6 +187,137 @@ pub mod Value {
     #[derive(
         Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
     )]
+    pub struct __Tuple2____Bitval64_internment_Intern__hir_Function(
+        pub (u64, super::internment_Intern<super::hir_Function>),
+    );
+    impl abomonation::Abomonation for __Tuple2____Bitval64_internment_Intern__hir_Function {}
+    impl fmt::Display for __Tuple2____Bitval64_internment_Intern__hir_Function {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.clone().into_record().fmt(f)
+        }
+    }
+    impl record::IntoRecord for __Tuple2____Bitval64_internment_Intern__hir_Function {
+        fn into_record(self) -> record::Record {
+            self.0.into_record()
+        }
+    }
+    impl record::Mutator<__Tuple2____Bitval64_internment_Intern__hir_Function> for record::Record {
+        fn mutate(
+            &self,
+            v: &mut __Tuple2____Bitval64_internment_Intern__hir_Function,
+        ) -> result::Result<(), std::string::String> {
+            self.mutate(&mut v.0)
+        }
+    }
+    //#[typetag::serde]
+    decl_ddval_convert! {__Tuple2____Bitval64_internment_Intern__hir_Function}
+    #[derive(
+        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
+    )]
+    pub struct __Tuple2__internment_Intern__hir_Scope___Bitval64(
+        pub (super::internment_Intern<super::hir_Scope>, u64),
+    );
+    impl abomonation::Abomonation for __Tuple2__internment_Intern__hir_Scope___Bitval64 {}
+    impl fmt::Display for __Tuple2__internment_Intern__hir_Scope___Bitval64 {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.clone().into_record().fmt(f)
+        }
+    }
+    impl record::IntoRecord for __Tuple2__internment_Intern__hir_Scope___Bitval64 {
+        fn into_record(self) -> record::Record {
+            self.0.into_record()
+        }
+    }
+    impl record::Mutator<__Tuple2__internment_Intern__hir_Scope___Bitval64> for record::Record {
+        fn mutate(
+            &self,
+            v: &mut __Tuple2__internment_Intern__hir_Scope___Bitval64,
+        ) -> result::Result<(), std::string::String> {
+            self.mutate(&mut v.0)
+        }
+    }
+    //#[typetag::serde]
+    decl_ddval_convert! {__Tuple2__internment_Intern__hir_Scope___Bitval64}
+    #[derive(
+        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
+    )]
+    pub struct __Tuple3__internment_Intern__hir_Scope___Bitval64_internment_Intern__hir_Stmt(
+        pub  (
+            super::internment_Intern<super::hir_Scope>,
+            u64,
+            super::internment_Intern<super::hir_Stmt>,
+        ),
+    );
+    impl abomonation::Abomonation
+        for __Tuple3__internment_Intern__hir_Scope___Bitval64_internment_Intern__hir_Stmt
+    {
+    }
+    impl fmt::Display
+        for __Tuple3__internment_Intern__hir_Scope___Bitval64_internment_Intern__hir_Stmt
+    {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.clone().into_record().fmt(f)
+        }
+    }
+    impl record::IntoRecord
+        for __Tuple3__internment_Intern__hir_Scope___Bitval64_internment_Intern__hir_Stmt
+    {
+        fn into_record(self) -> record::Record {
+            self.0.into_record()
+        }
+    }
+    impl
+        record::Mutator<
+            __Tuple3__internment_Intern__hir_Scope___Bitval64_internment_Intern__hir_Stmt,
+        > for record::Record
+    {
+        fn mutate(
+            &self,
+            v: &mut __Tuple3__internment_Intern__hir_Scope___Bitval64_internment_Intern__hir_Stmt,
+        ) -> result::Result<(), std::string::String> {
+            self.mutate(&mut v.0)
+        }
+    }
+    //#[typetag::serde]
+    decl_ddval_convert! {__Tuple3__internment_Intern__hir_Scope___Bitval64_internment_Intern__hir_Stmt}
+    #[derive(
+        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
+    )]
+    pub struct __Tuple2__internment_Intern__hir_Scope_internment_Intern__hir_Stmt(
+        pub  (
+            super::internment_Intern<super::hir_Scope>,
+            super::internment_Intern<super::hir_Stmt>,
+        ),
+    );
+    impl abomonation::Abomonation
+        for __Tuple2__internment_Intern__hir_Scope_internment_Intern__hir_Stmt
+    {
+    }
+    impl fmt::Display for __Tuple2__internment_Intern__hir_Scope_internment_Intern__hir_Stmt {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.clone().into_record().fmt(f)
+        }
+    }
+    impl record::IntoRecord for __Tuple2__internment_Intern__hir_Scope_internment_Intern__hir_Stmt {
+        fn into_record(self) -> record::Record {
+            self.0.into_record()
+        }
+    }
+    impl record::Mutator<__Tuple2__internment_Intern__hir_Scope_internment_Intern__hir_Stmt>
+        for record::Record
+    {
+        fn mutate(
+            &self,
+            v: &mut __Tuple2__internment_Intern__hir_Scope_internment_Intern__hir_Stmt,
+        ) -> result::Result<(), std::string::String> {
+            self.mutate(&mut v.0)
+        }
+    }
+    //#[typetag::serde]
+    decl_ddval_convert! {__Tuple2__internment_Intern__hir_Scope_internment_Intern__hir_Stmt}
+    #[derive(
+        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
+    )]
     pub struct __Tuple3__internment_Intern__hir_Scope_internment_Intern__hir_Stmt_internment_Intern__hir_Stmt(
         pub  (
             super::internment_Intern<super::hir_Scope>,
@@ -213,27 +346,27 @@ pub mod Value {
     #[derive(
         Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
     )]
-    pub struct __Tuple4__internment_Intern__std_Vec____Bitval32_hir_Signature___Stringval_hir_Function(
+    pub struct __Tuple4__internment_Intern__std_Vec____Bitval32_hir_Signature___Stringval___Bitval64(
         pub  (
             super::internment_Intern<super::std_Vec<u32>>,
             super::hir_Signature,
             String,
-            super::hir_Function,
+            u64,
         ),
     );
     impl abomonation::Abomonation
-        for __Tuple4__internment_Intern__std_Vec____Bitval32_hir_Signature___Stringval_hir_Function
+        for __Tuple4__internment_Intern__std_Vec____Bitval32_hir_Signature___Stringval___Bitval64
     {
     }
     impl fmt::Display
-        for __Tuple4__internment_Intern__std_Vec____Bitval32_hir_Signature___Stringval_hir_Function
+        for __Tuple4__internment_Intern__std_Vec____Bitval32_hir_Signature___Stringval___Bitval64
     {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             self.clone().into_record().fmt(f)
         }
     }
     impl record::IntoRecord
-        for __Tuple4__internment_Intern__std_Vec____Bitval32_hir_Signature___Stringval_hir_Function
+        for __Tuple4__internment_Intern__std_Vec____Bitval32_hir_Signature___Stringval___Bitval64
     {
         fn into_record(self) -> record::Record {
             self.0.into_record()
@@ -241,57 +374,56 @@ pub mod Value {
     }
     impl
         record::Mutator<
-            __Tuple4__internment_Intern__std_Vec____Bitval32_hir_Signature___Stringval_hir_Function,
+            __Tuple4__internment_Intern__std_Vec____Bitval32_hir_Signature___Stringval___Bitval64,
         > for record::Record
     {
         fn mutate(
             &self,
-            v: &mut __Tuple4__internment_Intern__std_Vec____Bitval32_hir_Signature___Stringval_hir_Function,
+            v: &mut __Tuple4__internment_Intern__std_Vec____Bitval32_hir_Signature___Stringval___Bitval64,
         ) -> result::Result<(), std::string::String> {
             self.mutate(&mut v.0)
         }
     }
     //#[typetag::serde]
-    decl_ddval_convert! {__Tuple4__internment_Intern__std_Vec____Bitval32_hir_Signature___Stringval_hir_Function}
+    decl_ddval_convert! {__Tuple4__internment_Intern__std_Vec____Bitval32_hir_Signature___Stringval___Bitval64}
     #[derive(
         Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
     )]
-    pub struct __Tuple3__internment_Intern__std_Vec____Bitval32_hir_Signature_hir_Function(
+    pub struct __Tuple3__internment_Intern__std_Vec____Bitval32_hir_Signature___Bitval64(
         pub  (
             super::internment_Intern<super::std_Vec<u32>>,
             super::hir_Signature,
-            super::hir_Function,
+            u64,
         ),
     );
     impl abomonation::Abomonation
-        for __Tuple3__internment_Intern__std_Vec____Bitval32_hir_Signature_hir_Function
+        for __Tuple3__internment_Intern__std_Vec____Bitval32_hir_Signature___Bitval64
     {
     }
-    impl fmt::Display for __Tuple3__internment_Intern__std_Vec____Bitval32_hir_Signature_hir_Function {
+    impl fmt::Display for __Tuple3__internment_Intern__std_Vec____Bitval32_hir_Signature___Bitval64 {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             self.clone().into_record().fmt(f)
         }
     }
     impl record::IntoRecord
-        for __Tuple3__internment_Intern__std_Vec____Bitval32_hir_Signature_hir_Function
+        for __Tuple3__internment_Intern__std_Vec____Bitval32_hir_Signature___Bitval64
     {
         fn into_record(self) -> record::Record {
             self.0.into_record()
         }
     }
-    impl
-        record::Mutator<__Tuple3__internment_Intern__std_Vec____Bitval32_hir_Signature_hir_Function>
+    impl record::Mutator<__Tuple3__internment_Intern__std_Vec____Bitval32_hir_Signature___Bitval64>
         for record::Record
     {
         fn mutate(
             &self,
-            v: &mut __Tuple3__internment_Intern__std_Vec____Bitval32_hir_Signature_hir_Function,
+            v: &mut __Tuple3__internment_Intern__std_Vec____Bitval32_hir_Signature___Bitval64,
         ) -> result::Result<(), std::string::String> {
             self.mutate(&mut v.0)
         }
     }
     //#[typetag::serde]
-    decl_ddval_convert! {__Tuple3__internment_Intern__std_Vec____Bitval32_hir_Signature_hir_Function}
+    decl_ddval_convert! {__Tuple3__internment_Intern__std_Vec____Bitval32_hir_Signature___Bitval64}
     #[derive(
         Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
     )]
@@ -339,28 +471,6 @@ pub mod Value {
     #[derive(
         Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
     )]
-    pub struct Expr(pub super::Expr);
-    impl abomonation::Abomonation for Expr {}
-    impl fmt::Display for Expr {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            self.clone().into_record().fmt(f)
-        }
-    }
-    impl record::IntoRecord for Expr {
-        fn into_record(self) -> record::Record {
-            self.0.into_record()
-        }
-    }
-    impl record::Mutator<Expr> for record::Record {
-        fn mutate(&self, v: &mut Expr) -> result::Result<(), std::string::String> {
-            self.mutate(&mut v.0)
-        }
-    }
-    //#[typetag::serde]
-    decl_ddval_convert! {Expr}
-    #[derive(
-        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
-    )]
     pub struct Functions(pub super::Functions);
     impl abomonation::Abomonation for Functions {}
     impl fmt::Display for Functions {
@@ -383,6 +493,50 @@ pub mod Value {
     #[derive(
         Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
     )]
+    pub struct InputExpressions(pub super::InputExpressions);
+    impl abomonation::Abomonation for InputExpressions {}
+    impl fmt::Display for InputExpressions {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.clone().into_record().fmt(f)
+        }
+    }
+    impl record::IntoRecord for InputExpressions {
+        fn into_record(self) -> record::Record {
+            self.0.into_record()
+        }
+    }
+    impl record::Mutator<InputExpressions> for record::Record {
+        fn mutate(&self, v: &mut InputExpressions) -> result::Result<(), std::string::String> {
+            self.mutate(&mut v.0)
+        }
+    }
+    //#[typetag::serde]
+    decl_ddval_convert! {InputExpressions}
+    #[derive(
+        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
+    )]
+    pub struct InputFunctions(pub super::InputFunctions);
+    impl abomonation::Abomonation for InputFunctions {}
+    impl fmt::Display for InputFunctions {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.clone().into_record().fmt(f)
+        }
+    }
+    impl record::IntoRecord for InputFunctions {
+        fn into_record(self) -> record::Record {
+            self.0.into_record()
+        }
+    }
+    impl record::Mutator<InputFunctions> for record::Record {
+        fn mutate(&self, v: &mut InputFunctions) -> result::Result<(), std::string::String> {
+            self.mutate(&mut v.0)
+        }
+    }
+    //#[typetag::serde]
+    decl_ddval_convert! {InputFunctions}
+    #[derive(
+        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
+    )]
     pub struct InputItems(pub super::InputItems);
     impl abomonation::Abomonation for InputItems {}
     impl fmt::Display for InputItems {
@@ -402,6 +556,94 @@ pub mod Value {
     }
     //#[typetag::serde]
     decl_ddval_convert! {InputItems}
+    #[derive(
+        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
+    )]
+    pub struct InputStatements(pub super::InputStatements);
+    impl abomonation::Abomonation for InputStatements {}
+    impl fmt::Display for InputStatements {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.clone().into_record().fmt(f)
+        }
+    }
+    impl record::IntoRecord for InputStatements {
+        fn into_record(self) -> record::Record {
+            self.0.into_record()
+        }
+    }
+    impl record::Mutator<InputStatements> for record::Record {
+        fn mutate(&self, v: &mut InputStatements) -> result::Result<(), std::string::String> {
+            self.mutate(&mut v.0)
+        }
+    }
+    //#[typetag::serde]
+    decl_ddval_convert! {InputStatements}
+    #[derive(
+        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
+    )]
+    pub struct OutputExpressions(pub super::OutputExpressions);
+    impl abomonation::Abomonation for OutputExpressions {}
+    impl fmt::Display for OutputExpressions {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.clone().into_record().fmt(f)
+        }
+    }
+    impl record::IntoRecord for OutputExpressions {
+        fn into_record(self) -> record::Record {
+            self.0.into_record()
+        }
+    }
+    impl record::Mutator<OutputExpressions> for record::Record {
+        fn mutate(&self, v: &mut OutputExpressions) -> result::Result<(), std::string::String> {
+            self.mutate(&mut v.0)
+        }
+    }
+    //#[typetag::serde]
+    decl_ddval_convert! {OutputExpressions}
+    #[derive(
+        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
+    )]
+    pub struct OutputFunctions(pub super::OutputFunctions);
+    impl abomonation::Abomonation for OutputFunctions {}
+    impl fmt::Display for OutputFunctions {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.clone().into_record().fmt(f)
+        }
+    }
+    impl record::IntoRecord for OutputFunctions {
+        fn into_record(self) -> record::Record {
+            self.0.into_record()
+        }
+    }
+    impl record::Mutator<OutputFunctions> for record::Record {
+        fn mutate(&self, v: &mut OutputFunctions) -> result::Result<(), std::string::String> {
+            self.mutate(&mut v.0)
+        }
+    }
+    //#[typetag::serde]
+    decl_ddval_convert! {OutputFunctions}
+    #[derive(
+        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
+    )]
+    pub struct OutputStatements(pub super::OutputStatements);
+    impl abomonation::Abomonation for OutputStatements {}
+    impl fmt::Display for OutputStatements {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.clone().into_record().fmt(f)
+        }
+    }
+    impl record::IntoRecord for OutputStatements {
+        fn into_record(self) -> record::Record {
+            self.0.into_record()
+        }
+    }
+    impl record::Mutator<OutputStatements> for record::Record {
+        fn mutate(&self, v: &mut OutputStatements) -> result::Result<(), std::string::String> {
+            self.mutate(&mut v.0)
+        }
+    }
+    //#[typetag::serde]
+    decl_ddval_convert! {OutputStatements}
     #[derive(
         Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
     )]
@@ -475,15 +717,20 @@ impl TryFrom<&str> for Relations {
         match rname {
             "ClampUnknownInt" => Ok(Relations::ClampUnknownInt),
             "Errors" => Ok(Relations::Errors),
-            "Expr" => Ok(Relations::Expr),
             "Functions" => Ok(Relations::Functions),
+            "InputExpressions" => Ok(Relations::InputExpressions),
+            "InputFunctions" => Ok(Relations::InputFunctions),
             "InputItems" => Ok(Relations::InputItems),
+            "InputStatements" => Ok(Relations::InputStatements),
+            "OutputExpressions" => Ok(Relations::OutputExpressions),
+            "OutputFunctions" => Ok(Relations::OutputFunctions),
+            "OutputStatements" => Ok(Relations::OutputStatements),
             "PropagateExprType" => Ok(Relations::PropagateExprType),
             "Statements" => Ok(Relations::Statements),
             "SymbolTable" => Ok(Relations::SymbolTable),
-            "__MultiHead_0" => Ok(Relations::__MultiHead_0),
-            "__MultiHead_1" => Ok(Relations::__MultiHead_1),
             "__MultiHead_3" => Ok(Relations::__MultiHead_3),
+            "__MultiHead_4" => Ok(Relations::__MultiHead_4),
+            "__MultiHead_6" => Ok(Relations::__MultiHead_6),
             "__Null" => Ok(Relations::__Null),
             _ => Err(()),
         }
@@ -495,6 +742,9 @@ impl Relations {
             Relations::ClampUnknownInt => true,
             Relations::Errors => true,
             Relations::Functions => true,
+            Relations::OutputExpressions => true,
+            Relations::OutputFunctions => true,
+            Relations::OutputStatements => true,
             Relations::Statements => true,
             Relations::SymbolTable => true,
             _ => false,
@@ -504,8 +754,10 @@ impl Relations {
 impl Relations {
     pub fn is_input(&self) -> bool {
         match self {
-            Relations::Expr => true,
+            Relations::InputExpressions => true,
+            Relations::InputFunctions => true,
             Relations::InputItems => true,
+            Relations::InputStatements => true,
             _ => false,
         }
     }
@@ -516,16 +768,21 @@ impl TryFrom<RelId> for Relations {
         match rid {
             0 => Ok(Relations::ClampUnknownInt),
             1 => Ok(Relations::Errors),
-            2 => Ok(Relations::Expr),
-            3 => Ok(Relations::Functions),
-            4 => Ok(Relations::InputItems),
-            5 => Ok(Relations::PropagateExprType),
-            6 => Ok(Relations::Statements),
-            7 => Ok(Relations::SymbolTable),
-            8 => Ok(Relations::__MultiHead_0),
-            9 => Ok(Relations::__MultiHead_1),
-            10 => Ok(Relations::__MultiHead_3),
-            11 => Ok(Relations::__Null),
+            2 => Ok(Relations::Functions),
+            3 => Ok(Relations::InputExpressions),
+            4 => Ok(Relations::InputFunctions),
+            5 => Ok(Relations::InputItems),
+            6 => Ok(Relations::InputStatements),
+            7 => Ok(Relations::OutputExpressions),
+            8 => Ok(Relations::OutputFunctions),
+            9 => Ok(Relations::OutputStatements),
+            10 => Ok(Relations::PropagateExprType),
+            11 => Ok(Relations::Statements),
+            12 => Ok(Relations::SymbolTable),
+            13 => Ok(Relations::__MultiHead_3),
+            14 => Ok(Relations::__MultiHead_4),
+            15 => Ok(Relations::__MultiHead_6),
+            16 => Ok(Relations::__Null),
             _ => Err(()),
         }
     }
@@ -534,16 +791,21 @@ pub fn relid2name(rid: RelId) -> Option<&'static str> {
     match rid {
         0 => Some(&"ClampUnknownInt"),
         1 => Some(&"Errors"),
-        2 => Some(&"Expr"),
-        3 => Some(&"Functions"),
-        4 => Some(&"InputItems"),
-        5 => Some(&"PropagateExprType"),
-        6 => Some(&"Statements"),
-        7 => Some(&"SymbolTable"),
-        8 => Some(&"__MultiHead_0"),
-        9 => Some(&"__MultiHead_1"),
-        10 => Some(&"__MultiHead_3"),
-        11 => Some(&"__Null"),
+        2 => Some(&"Functions"),
+        3 => Some(&"InputExpressions"),
+        4 => Some(&"InputFunctions"),
+        5 => Some(&"InputItems"),
+        6 => Some(&"InputStatements"),
+        7 => Some(&"OutputExpressions"),
+        8 => Some(&"OutputFunctions"),
+        9 => Some(&"OutputStatements"),
+        10 => Some(&"PropagateExprType"),
+        11 => Some(&"Statements"),
+        12 => Some(&"SymbolTable"),
+        13 => Some(&"__MultiHead_3"),
+        14 => Some(&"__MultiHead_4"),
+        15 => Some(&"__MultiHead_6"),
+        16 => Some(&"__Null"),
         _ => None,
     }
 }
@@ -557,15 +819,20 @@ lazy_static! {
         let mut m = FnvHashMap::default();
         m.insert(Relations::ClampUnknownInt, "ClampUnknownInt");
         m.insert(Relations::Errors, "Errors");
-        m.insert(Relations::Expr, "Expr");
         m.insert(Relations::Functions, "Functions");
+        m.insert(Relations::InputExpressions, "InputExpressions");
+        m.insert(Relations::InputFunctions, "InputFunctions");
         m.insert(Relations::InputItems, "InputItems");
+        m.insert(Relations::InputStatements, "InputStatements");
+        m.insert(Relations::OutputExpressions, "OutputExpressions");
+        m.insert(Relations::OutputFunctions, "OutputFunctions");
+        m.insert(Relations::OutputStatements, "OutputStatements");
         m.insert(Relations::PropagateExprType, "PropagateExprType");
         m.insert(Relations::Statements, "Statements");
         m.insert(Relations::SymbolTable, "SymbolTable");
-        m.insert(Relations::__MultiHead_0, "__MultiHead_0");
-        m.insert(Relations::__MultiHead_1, "__MultiHead_1");
         m.insert(Relations::__MultiHead_3, "__MultiHead_3");
+        m.insert(Relations::__MultiHead_4, "__MultiHead_4");
+        m.insert(Relations::__MultiHead_6, "__MultiHead_6");
         m.insert(Relations::__Null, "__Null");
         m
     };
@@ -587,60 +854,90 @@ lazy_static! {
         );
         m.insert(
             2,
-            ffi::CString::new("Expr").unwrap_or_else(|_| {
-                ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
-            }),
-        );
-        m.insert(
-            3,
             ffi::CString::new("Functions").unwrap_or_else(|_| {
                 ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
             }),
         );
         m.insert(
+            3,
+            ffi::CString::new("InputExpressions").unwrap_or_else(|_| {
+                ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
+            }),
+        );
+        m.insert(
             4,
-            ffi::CString::new("InputItems").unwrap_or_else(|_| {
+            ffi::CString::new("InputFunctions").unwrap_or_else(|_| {
                 ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
             }),
         );
         m.insert(
             5,
-            ffi::CString::new("PropagateExprType").unwrap_or_else(|_| {
+            ffi::CString::new("InputItems").unwrap_or_else(|_| {
                 ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
             }),
         );
         m.insert(
             6,
-            ffi::CString::new("Statements").unwrap_or_else(|_| {
+            ffi::CString::new("InputStatements").unwrap_or_else(|_| {
                 ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
             }),
         );
         m.insert(
             7,
-            ffi::CString::new("SymbolTable").unwrap_or_else(|_| {
+            ffi::CString::new("OutputExpressions").unwrap_or_else(|_| {
                 ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
             }),
         );
         m.insert(
             8,
-            ffi::CString::new("__MultiHead_0").unwrap_or_else(|_| {
+            ffi::CString::new("OutputFunctions").unwrap_or_else(|_| {
                 ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
             }),
         );
         m.insert(
             9,
-            ffi::CString::new("__MultiHead_1").unwrap_or_else(|_| {
+            ffi::CString::new("OutputStatements").unwrap_or_else(|_| {
                 ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
             }),
         );
         m.insert(
             10,
-            ffi::CString::new("__MultiHead_3").unwrap_or_else(|_| {
+            ffi::CString::new("PropagateExprType").unwrap_or_else(|_| {
                 ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
             }),
         );
         m.insert(
             11,
+            ffi::CString::new("Statements").unwrap_or_else(|_| {
+                ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
+            }),
+        );
+        m.insert(
+            12,
+            ffi::CString::new("SymbolTable").unwrap_or_else(|_| {
+                ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
+            }),
+        );
+        m.insert(
+            13,
+            ffi::CString::new("__MultiHead_3").unwrap_or_else(|_| {
+                ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
+            }),
+        );
+        m.insert(
+            14,
+            ffi::CString::new("__MultiHead_4").unwrap_or_else(|_| {
+                ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
+            }),
+        );
+        m.insert(
+            15,
+            ffi::CString::new("__MultiHead_6").unwrap_or_else(|_| {
+                ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
+            }),
+        );
+        m.insert(
+            16,
             ffi::CString::new("__Null").unwrap_or_else(|_| {
                 ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
             }),
@@ -651,8 +948,10 @@ lazy_static! {
 lazy_static! {
     pub static ref INPUT_RELIDMAP: FnvHashMap<Relations, &'static str> = {
         let mut m = FnvHashMap::default();
-        m.insert(Relations::Expr, "Expr");
+        m.insert(Relations::InputExpressions, "InputExpressions");
+        m.insert(Relations::InputFunctions, "InputFunctions");
         m.insert(Relations::InputItems, "InputItems");
+        m.insert(Relations::InputStatements, "InputStatements");
         m
     };
 }
@@ -662,6 +961,9 @@ lazy_static! {
         m.insert(Relations::ClampUnknownInt, "ClampUnknownInt");
         m.insert(Relations::Errors, "Errors");
         m.insert(Relations::Functions, "Functions");
+        m.insert(Relations::OutputExpressions, "OutputExpressions");
+        m.insert(Relations::OutputFunctions, "OutputFunctions");
+        m.insert(Relations::OutputStatements, "OutputStatements");
         m.insert(Relations::Statements, "Statements");
         m.insert(Relations::SymbolTable, "SymbolTable");
         m
@@ -726,14 +1028,29 @@ pub fn relval_from_record(
         Relations::Errors => {
             Ok(Value::Errors(<Errors>::from_record(_rec)?).into_ddvalue())
         },
-        Relations::Expr => {
-            Ok(Value::Expr(<Expr>::from_record(_rec)?).into_ddvalue())
-        },
         Relations::Functions => {
             Ok(Value::Functions(<Functions>::from_record(_rec)?).into_ddvalue())
         },
+        Relations::InputExpressions => {
+            Ok(Value::InputExpressions(<InputExpressions>::from_record(_rec)?).into_ddvalue())
+        },
+        Relations::InputFunctions => {
+            Ok(Value::InputFunctions(<InputFunctions>::from_record(_rec)?).into_ddvalue())
+        },
         Relations::InputItems => {
             Ok(Value::InputItems(<InputItems>::from_record(_rec)?).into_ddvalue())
+        },
+        Relations::InputStatements => {
+            Ok(Value::InputStatements(<InputStatements>::from_record(_rec)?).into_ddvalue())
+        },
+        Relations::OutputExpressions => {
+            Ok(Value::OutputExpressions(<OutputExpressions>::from_record(_rec)?).into_ddvalue())
+        },
+        Relations::OutputFunctions => {
+            Ok(Value::OutputFunctions(<OutputFunctions>::from_record(_rec)?).into_ddvalue())
+        },
+        Relations::OutputStatements => {
+            Ok(Value::OutputStatements(<OutputStatements>::from_record(_rec)?).into_ddvalue())
         },
         Relations::PropagateExprType => {
             Ok(Value::PropagateExprType(<PropagateExprType>::from_record(_rec)?).into_ddvalue())
@@ -744,13 +1061,13 @@ pub fn relval_from_record(
         Relations::SymbolTable => {
             Ok(Value::SymbolTable(<SymbolTable>::from_record(_rec)?).into_ddvalue())
         },
-        Relations::__MultiHead_0 => {
-            Ok(Value::__Tuple3__internment_Intern__std_Vec____Bitval32_hir_Signature_hir_Function(<(internment_Intern<std_Vec<u32>>, hir_Signature, hir_Function)>::from_record(_rec)?).into_ddvalue())
-        },
-        Relations::__MultiHead_1 => {
-            Ok(Value::__Tuple4__internment_Intern__std_Vec____Bitval32_hir_Signature___Stringval_hir_Function(<(internment_Intern<std_Vec<u32>>, hir_Signature, String, hir_Function)>::from_record(_rec)?).into_ddvalue())
-        },
         Relations::__MultiHead_3 => {
+            Ok(Value::__Tuple3__internment_Intern__std_Vec____Bitval32_hir_Signature___Bitval64(<(internment_Intern<std_Vec<u32>>, hir_Signature, u64)>::from_record(_rec)?).into_ddvalue())
+        },
+        Relations::__MultiHead_4 => {
+            Ok(Value::__Tuple4__internment_Intern__std_Vec____Bitval32_hir_Signature___Stringval___Bitval64(<(internment_Intern<std_Vec<u32>>, hir_Signature, String, u64)>::from_record(_rec)?).into_ddvalue())
+        },
+        Relations::__MultiHead_6 => {
             Ok(Value::__Tuple3__internment_Intern__hir_Scope_internment_Intern__hir_Stmt_internment_Intern__hir_Stmt(<(internment_Intern<hir_Scope>, internment_Intern<hir_Stmt>, internment_Intern<hir_Stmt>)>::from_record(_rec)?).into_ddvalue())
         },
         Relations::__Null => {
@@ -773,23 +1090,28 @@ pub fn idxkey_from_record(idx: Indexes, _rec: &record::Record) -> result::Result
 }
 pub fn indexes2arrid(idx: Indexes) -> ArrId {
     match idx {
-        Indexes::__Null_by_none => (11, 0),
+        Indexes::__Null_by_none => (16, 0),
     }
 }
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Relations {
     ClampUnknownInt = 0,
     Errors = 1,
-    Expr = 2,
-    Functions = 3,
-    InputItems = 4,
-    PropagateExprType = 5,
-    Statements = 6,
-    SymbolTable = 7,
-    __MultiHead_0 = 8,
-    __MultiHead_1 = 9,
-    __MultiHead_3 = 10,
-    __Null = 11,
+    Functions = 2,
+    InputExpressions = 3,
+    InputFunctions = 4,
+    InputItems = 5,
+    InputStatements = 6,
+    OutputExpressions = 7,
+    OutputFunctions = 8,
+    OutputStatements = 9,
+    PropagateExprType = 10,
+    Statements = 11,
+    SymbolTable = 12,
+    __MultiHead_3 = 13,
+    __MultiHead_4 = 14,
+    __MultiHead_6 = 15,
+    __Null = 16,
 }
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Indexes {
