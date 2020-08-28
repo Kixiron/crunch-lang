@@ -1,13 +1,13 @@
-typedef Var = u64
-
+typedef FileId = u32
+typedef TypeId = u64
 typedef ItemId = u64
 typedef FuncId = u64
+typedef ScopeId = u32
 typedef StmtId = u64
 typedef ExprId = u64
-typedef FileId = u32
+typedef VarId = u64
 
 // TODO: Derive types to datalog
-// FIXME: TypeId instead of Intern<TypeKind>
 // FIXME: ScopeId instead of Intern<Scope>
 // FIXME: LiteralId instead of Intern<Literal>
 // TODO: Hook into `tracing` for logs
@@ -23,10 +23,15 @@ typedef Location = Location {
     file: FileId
 }
 
+typedef Expr = Expr {
+    kind: ExprKind
+    // TODO: Source location
+}
+
 typedef ExprKind =
     ExprLit { lit: Intern<Literal> }
-    | ExprVar { variable: Var }
-    | ExprAssign { variable: Var, expr_id: ExprId }
+    | ExprVar { variable: VarId }
+    | ExprAssign { variable: VarId, expr_id: ExprId }
     | ExprMatch { match_: Match }
     | ExprScope { block: StmtId }
     | ExprReturn { val: Option<ExprId> }
@@ -35,24 +40,24 @@ typedef ExprKind =
 typedef Match = Match {
     cond : ExprId,
     arms : Vec<MatchArm>,
-    ty   : Intern<TypeKind>
+    ty   : TypeId
 }
 
 typedef MatchArm = MatchArm {
     bind  : Binding,
     guard : Option<ExprId>,
     body  : StmtId,
-    ty    : Intern<TypeKind>
+    ty    : TypeId
 }
 
 typedef Binding = Binding {
     reference : bool,
     mutable   : bool,
     pattern   : Pattern,
-    ty        : Option<Intern<TypeKind>>
+    ty        : Option<TypeId>
 }
 
-typedef Pattern = PatLit { lit: Literal, ty: Intern<TypeKind> }
+typedef Pattern = PatLit { lit: Literal, ty: TypeId }
                   | Ident
 
 typedef BinaryOp = BinaryOp {
@@ -74,6 +79,11 @@ typedef BinOp =
     | Shl
     | Shr
 
+typedef Type = Type {
+    kind: TypeKind
+    // TODO: Location data
+}
+
 typedef TypeKind =
     Unknown
     | Str
@@ -84,12 +94,12 @@ typedef TypeKind =
     | Int { is_signed : Option<bool>
           , width     : Option<u16> }
 
-function is_unknown(kind: Intern<TypeKind>): bool {
-    kind == intern(Unknown)
+function is_unknown(ty: Type): bool {
+    ty.kind == Unknown
 }
 
-function is_int(ty: Intern<TypeKind>): bool {
-    match (ty.ival()) {
+function is_int(ty: Type): bool {
+    match (ty.kind) {
         Int {} -> true,
         _      -> false
     }
@@ -121,114 +131,113 @@ function is_int(ty: Intern<Literal>): bool {
     }
 }
 
-function typeof(literal: Intern<Literal>): Intern<TypeKind> {
+function typeof(literal: Intern<Literal>): Type {
     var ty = match (literal.ival()) {
         String  { } -> Str,
         Boolean { } -> Bool,
         Integer { } -> Int { None, None }
     };
 
-    intern(ty)
+    Type { ty }
 }
 
 typedef Vis = FileLocal | Package | Exposed
 
-typedef FuncArg = FuncArg {
-    name: Var,
-    kind: Intern<TypeKind>
-}
+// typedef FuncArg = FuncArg {
+//     name: VarId,
+//     kind: TypeId
+// }
 
-typedef Function = Function {
-    name : ItemPath,
-    vis  : Vis,
-    args : Vec<FuncArg>,
-    body : StmtId,
-    ret  : Intern<TypeKind>
-}
+// typedef Function = Function {
+//     name : ItemPath,
+//     vis  : Vis,
+//     args : Vec<FuncArg>,
+//     body : StmtId,
+//     ret  : TypeId
+// }
 
-function corrected_signature(func: Intern<Function>): Signature {
-    // FIXME: Module scoping for the path
-    Function { .args = var old_args, .ret = var ret } = func.ival();
-
-    var ret = if (ret.is_unknown()) {
-        intern(Error)
-    } else {
-        ret
-    };
-
-    var args = vec_with_capacity(old_args.len());
-    for (arg in old_args) {
-        var arg = if (arg.kind.is_unknown()) {
-            FuncArg { arg.name, intern(Error) }
-        } else {
-            arg
-        };
-
-        args.push(arg)
-    };
-
-    FuncSig { args, ret }
-}
-
-function has_unknown_types(func: Intern<Function>): bool {
-    Function { .args = var args, .ret = var ret } = func.ival();
-
-    if (ret.is_unknown()) { return true };
-
-    for (arg in args) {
-        if (arg.kind.is_unknown()) {
-            return true
-        }
-    };
-
-    false
-}
-
-function path(func: Intern<Function>): ItemPath {
-    // FIXME: Module scoping for the path
-    Function { .name = var path } = func.ival();
-    path
-}
-
-function signature(func: Intern<Function>): Signature {
-    // FIXME: Module scoping for the path
-    Function { .args = var args, .ret = var ret } = func.ival();
-    FuncSig { args, ret }
-}
-
-function unknown_type_errors(func: Intern<Function>): Vec<string> {
-    var func = func.ival();
-
-    var errors = vec_empty();
-    for (arg in func.args) {
-        if (arg.kind.is_unknown()) {
-            errors.push("Function arguments cannot be unknown")
-        }
-    };
-
-    if (func.ret.is_unknown()) {
-        errors.push("Function return types cannot be unknown")
-    };
-
-    errors
-}
+// function corrected_signature(func: Intern<Function>): Signature {
+//     // FIXME: Module scoping for the path
+//     Function { .args = var old_args, .ret = var ret } = func.ival();
+// 
+//     var ret = if (ret.is_unknown()) {
+//         intern(Error)
+//     } else {
+//         ret
+//     };
+// 
+//     var args = vec_with_capacity(old_args.len());
+//     for (arg in old_args) {
+//         var arg = if (arg.kind.is_unknown()) {
+//             FuncArg { arg.name, intern(Error) }
+//         } else {
+//             arg
+//         };
+// 
+//         args.push(arg)
+//     };
+// 
+//     FuncSig { args, ret }
+// }
+// 
+// function has_unknown_types(func: Intern<Function>): bool {
+//     Function { .args = var args, .ret = var ret } = func.ival();
+// 
+//     if (ret.is_unknown()) { return true };
+// 
+//     for (arg in args) {
+//         if (arg.kind.is_unknown()) {
+//             return true
+//         }
+//     };
+// 
+//     false
+// }
+// 
+// function path(func: Intern<Function>): ItemPath {
+//     // FIXME: Module scoping for the path
+//     Function { .name = var path } = func.ival();
+//     path
+// }
+// 
+// function signature(func: Intern<Function>): Signature {
+//     // FIXME: Module scoping for the path
+//     Function { .args = var args, .ret = var ret } = func.ival();
+//     FuncSig { args, ret }
+// }
+// 
+// function unknown_type_errors(func: Intern<Function>): Vec<string> {
+//     var func = func.ival();
+// 
+//     var errors = vec_empty();
+//     for (arg in func.args) {
+//         if (arg.kind.is_unknown()) {
+//             errors.push("Function arguments cannot be unknown")
+//         }
+//     };
+// 
+//     if (func.ret.is_unknown()) {
+//         errors.push("Function return types cannot be unknown")
+//     };
+// 
+//     errors
+// }
 
 typedef Stmt = StmtExpr { expr: ExprId }
                | StmtItem { item: ItemId }
-               | StmtSeq { first: StmtId, second: StmtId }
-               | StmtDecl { decl: VarDecl }
-               | Empty
-    
+               | StmtVarDecl { decl: VarDecl }
+               | StmtScope { scope: Vec<StmtId> }
+
 typedef VarDecl = VarDecl {
-    name    : Var,
+    name    : VarId,
     value   : ExprId,
     mutable : bool,
-    ty      : Intern<TypeKind>
+    ty      : TypeId
 }
 
 typedef Item = ItemFunc { func: FuncId } | ItemStruct {}
 
-typedef Signature = FuncSig { args: Vec<FuncArg>, ret: Intern<TypeKind> }
+// typedef Signature = FuncSig { args: Vec<FuncArg>, ret: TypeId }
 
 typedef Scope = ScopeFunction { func: FuncId }
                 | ScopeSeq1 { parent: Intern<Scope> } 
@@ -236,3 +245,26 @@ typedef Scope = ScopeFunction { func: FuncId }
                 // FIXME: Don't really know how to generate scopes on the rust side
                 | ScopeToDo
 
+typedef Variable = Variable {
+    var_name: StrT,
+    var_type: TypeId,
+    value: ExprId,
+    scope: ScopeId
+    // TODO: Source locations
+}
+
+typedef Function = Function {
+    name: ItemPath,
+    vis: Vis,
+    args: Vec<FuncArg>,
+    body: StmtId,
+    ret: TypeId,
+    decl_scope: ScopeId
+    // TODO: Source locations
+}
+
+typedef FuncArg = FuncArg {
+    name: VarId,
+    kind: TypeId
+    // TODO: Source locations
+}

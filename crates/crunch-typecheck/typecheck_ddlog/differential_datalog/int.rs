@@ -250,6 +250,7 @@ fn test_fromrecord() {
 impl Shr<u32> for Int {
     type Output = Int;
 
+    #[inline]
     fn shr(self, rhs: u32) -> Int {
         Int {
             x: self.x.shr(rhs as usize),
@@ -260,6 +261,7 @@ impl Shr<u32> for Int {
 impl Shl<u32> for Int {
     type Output = Int;
 
+    #[inline]
     fn shl(self, rhs: u32) -> Int {
         Int {
             x: self.x.shl(rhs as usize),
@@ -270,6 +272,7 @@ impl Shl<u32> for Int {
 impl Neg for Int {
     type Output = Int;
 
+    #[inline]
     fn neg(self) -> Self::Output {
         Int { x: self.x.neg() }
     }
@@ -280,6 +283,7 @@ macro_rules! forward_binop {
         impl $imp<$res> for $res {
             type Output = $res;
 
+            #[inline]
             fn $method(self, other: $res) -> $res {
                 // forward to val-ref
                 Int {

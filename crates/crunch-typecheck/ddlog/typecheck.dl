@@ -1,69 +1,71 @@
 import hir
 
-// TODO: Scoping & intern items
-input relation InputItems(id: ItemId, item: Item)
-// TODO: Scoping
-input relation InputFunctions(id: FuncId, func: Intern<Function>)
-input relation InputStatements(id: StmtId, stmt: Intern<Stmt>, scope: Intern<Scope>)
-input relation InputExpressions(id: ExprId, kind: Intern<ExprKind>, ty: Intern<TypeKind>)
+input relation Items(id: ItemId, item: Item)
+input relation Functions(func_id: FuncId, func: Function)
+input relation Statements(stmt_id: StmtId, stmt: Stmt)
+input relation Expressions(expr_id: ExprId, expr: Expr)
+input relation Variables(var_id: VarId, variable: Variable)
+// Variable scoping relations (includes function pointers)
+input relation VariableScopes(parent: ScopeId, child: ScopeId)
+input relation Types(type_id: TypeId, ty: Type)
 
-// FIXME: Error locations and structured errors, maybe hook into codespan
+// TODO: Typed errors
 output relation Errors(message: string)
-output relation SymbolTable(path: ItemPath, signature: Signature)
 
-output relation Functions(func: FuncId)
-// Insert types with valid signatures into the symbol table
-SymbolTable(path, signature), Functions(func_id) :-
-    InputItems(_, ItemFunc { .func = func_id }),
-    InputFunctions(func_id, func),
-    not func.has_unknown_types(),
-    var path = func.path(),
-    var signature = func.signature().
-// TODO: Use FlatMap to get inner items
+// Get the type of all literals within the program
+relation Literals(lit: Intern<Literal>, lit_type: TypeId)
+Literals(lit, lit_type) :- Expressions(_, Expr { ExprLit { lit } }),
+                           var ty = lit.typeof(),
+                           Types(lit_type, ty).
 
-// Emit errors for unknown types in signatures and replace the unknown types with error types
-SymbolTable(path, signature), Errors(message), Functions(func_id) :-
-    InputItems(_, ItemFunc { .func = func_id }),
-    InputFunctions(func_id, func),
-    func.has_unknown_types(),
-    var message = FlatMap(func.unknown_type_errors()),
-    var path = func.path(),
-    var signature = func.corrected_signature().
+relation VariablesInScope(scope: ScopeId, var_id: VarId, decl_scope: ScopeId)
+VariablesInScope(scope, var_id, scope) :- Variables(var_id, Variable { .scope = scope }).
+VariablesInScope(child, var_id, decl_scope) :- VariablesInScope(parent, var_id, decl_scope),
+                                               VariableScopes(parent, child).
 
-output relation Statements(stmt: Intern<Stmt>, scope: Intern<Scope>)
-Statements(stmt, intern(ScopeFunction { func_id })) :-
-    InputFunctions(func_id, func),
-    Function { .body = var stmt_id } = func.ival(),
-    InputStatements(stmt_id, stmt, _).
-Statements(stmt1, intern(ScopeSeq1 { parent })), Statements(stmt2, intern(ScopeSeq2 { parent })) :-
-    Statements(stmt, parent),
-    StmtSeq { var stmt1_id, var stmt2_id } = stmt.ival(),
-    InputStatements(stmt1_id, stmt1, _),
-    InputStatements(stmt2_id, stmt2, _).
+relation TypedExpressions(expr_id: ExprId, type_id: TypeId)
+// Literals
+TypedExpressions(expr_id, type_id) :- Expressions(expr_id, Expr { ExprLit { lit } }),
+                                      Literals(lit, type_id).
+// Variables
+TypedExpressions(expr_id, type_id) :- Expressions(expr_id, Expr { ExprVar { var_id } }),
+                                      Variables(var_id, Variable { .var_type = type_id }).
 
-relation PropagateExprType(id: ExprId, kind: Intern<ExprKind>, ty: Intern<TypeKind>)
-// Get the types out of literals
-PropagateExprType(id, kind, ty) :- InputExpressions(id, kind, _),
-                                   ExprLit { .lit = var lit } = kind.ival(),
-                                   var ty = lit.typeof().
-// Get the types out of assignments
-PropagateExprType(id, kind, ty) :- InputExpressions(id, kind, _),
-                                   ExprAssign { .expr_id = var expr_id } = kind.ival(),
-                                   PropagateExprType(expr_id, _, ty).
-// Get the types of variables by looking at their assignment
-PropagateExprType(id, kind, ty) :- InputExpressions(id, kind, _),
-                                   ExprVar { .variable = var expr_var } = kind.ival(),
-                                   PropagateExprType(_, prop_kind, ty),
-                                   ExprAssign { .variable = var prop_var } = prop_kind.ival(),
-                                   expr_var == prop_var.
+// Assignments with equal types (valid)
+TypedExpressions(expr_id, type_id) :- Expressions(expr_id, Expr { ExprAssign { var_id, rhs_id } }),
+                                      Variables(var_id, Variable { .var_type = type_id }),
+                                      TypedExpressions(rhs_id, rhs_ty),
+                                      rhs_ty == type_id.
+// Assignments with unequal types (invalid)
+Errors(message) :- Expressions(expr_id, Expr { ExprAssign { var_id, rhs_id } }),
+                   Variables(var_id, Variable { .var_type = type_id }),
+                   TypedExpressions(rhs_id, rhs_ty),
+                   rhs_ty != type_id,
+                   var message = "The expressions ${expr_id} and ${rhs_id} \
+                   \have unequal types: ${type_id} != ${rhs_ty}".                                  
 
-output relation ClampUnknownInt(id: ExprId, kind: Intern<ExprKind>, ty: Intern<TypeKind>)
-// Clamp totally unknown integers to i32
-ClampUnknownInt(id, kind, ty) :- PropagateExprType(id, kind, ty),
-                                 Int { None, None } = ty.ival(),
-                                 var ty = intern(Int { Some{true}, Some{32} }).
-
-// Allow other types to pass through unaffected
-ClampUnknownInt(id, kind, ty) :- PropagateExprType(id, kind, ty),
-                                 Int { Some{}, Some{} } = ty.ival().
-ClampUnknownInt(id, kind, ty) :- PropagateExprType(id, kind, ty), not ty.is_int().
+// // Get the types out of literals
+// PropagateExprType(id, kind, ty) :- InputExpressions(id, kind, _),
+//                                    ExprLit { .lit = var lit } = kind.ival(),
+//                                    var ty = lit.typeof().
+// // Get the types out of assignments
+// PropagateExprType(id, kind, ty) :- InputExpressions(id, kind, _),
+//                                    ExprAssign { .expr_id = var expr_id } = kind.ival(),
+//                                    PropagateExprType(expr_id, _, ty).
+// // Get the types of variables by looking at their assignment
+// PropagateExprType(id, kind, ty) :- InputExpressions(id, kind, _),
+//                                    ExprVar { .variable = var expr_var } = kind.ival(),
+//                                    PropagateExprType(_, prop_kind, ty),
+//                                    ExprAssign { .variable = var prop_var } = prop_kind.ival(),
+//                                    expr_var == prop_var.
+// 
+// output relation ClampUnknownInt(id: ExprId, kind: Intern<ExprKind>, ty: Intern<TypeKind>)
+// // Clamp totally unknown integers to i32
+// ClampUnknownInt(id, kind, ty) :- PropagateExprType(id, kind, ty),
+//                                  Int { None, None } = ty.ival(),
+//                                  var ty = intern(Int { Some{true}, Some{32} }).
+// 
+// // Allow other types to pass through unaffected
+// ClampUnknownInt(id, kind, ty) :- PropagateExprType(id, kind, ty),
+//                                  Int { Some{}, Some{} } = ty.ival().
+// ClampUnknownInt(id, kind, ty) :- PropagateExprType(id, kind, ty), not ty.is_int().

@@ -203,6 +203,7 @@ fn test_fromrecord() {
 
 /*
 impl Uint {
+    #[inline]
     pub fn parse_bytes(buf: &[u8], radix: u32) -> Uint {
         Uint{x: BigUint::parse_bytes(buf, radix).unwrap()}
     }
@@ -213,6 +214,7 @@ impl Uint {
 impl Shr<u32> for Uint {
     type Output = Uint;
 
+    #[inline]
     fn shr(self, rhs: u32) -> Uint {
         Uint {
             x: self.x.shr(rhs as usize),
@@ -223,6 +225,7 @@ impl Shr<u32> for Uint {
 impl Shl<u32> for Uint {
     type Output = Uint;
 
+    #[inline]
     fn shl(self, rhs: u32) -> Uint {
         Uint {
             x: self.x.shl(rhs as usize),
@@ -235,6 +238,7 @@ macro_rules! forward_binop {
         impl $imp<$res> for $res {
             type Output = $res;
 
+            #[inline]
             fn $method(self, other: $res) -> $res {
                 // forward to val-ref
                 Uint {

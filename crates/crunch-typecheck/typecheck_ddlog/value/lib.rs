@@ -58,6 +58,28 @@ pub mod Value {
     #[derive(
         Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
     )]
+    pub struct __Bitval32(pub u32);
+    impl abomonation::Abomonation for __Bitval32 {}
+    impl fmt::Display for __Bitval32 {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.clone().into_record().fmt(f)
+        }
+    }
+    impl record::IntoRecord for __Bitval32 {
+        fn into_record(self) -> record::Record {
+            self.0.into_record()
+        }
+    }
+    impl record::Mutator<__Bitval32> for record::Record {
+        fn mutate(&self, v: &mut __Bitval32) -> result::Result<(), std::string::String> {
+            self.mutate(&mut v.0)
+        }
+    }
+    //#[typetag::serde]
+    decl_ddval_convert! {__Bitval32}
+    #[derive(
+        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
+    )]
     pub struct __Bitval64(pub u64);
     impl abomonation::Abomonation for __Bitval64 {}
     impl fmt::Display for __Bitval64 {
@@ -102,350 +124,28 @@ pub mod Value {
     #[derive(
         Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
     )]
-    pub struct __Tuple3____Stringval___Bitval64_internment_Intern__hir_Function(
-        pub (String, u64, super::internment_Intern<super::hir_Function>),
-    );
-    impl abomonation::Abomonation for __Tuple3____Stringval___Bitval64_internment_Intern__hir_Function {}
-    impl fmt::Display for __Tuple3____Stringval___Bitval64_internment_Intern__hir_Function {
+    pub struct __Tuple4____Bitval64___Bitval64___Bitval64___Bitval64(pub (u64, u64, u64, u64));
+    impl abomonation::Abomonation for __Tuple4____Bitval64___Bitval64___Bitval64___Bitval64 {}
+    impl fmt::Display for __Tuple4____Bitval64___Bitval64___Bitval64___Bitval64 {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             self.clone().into_record().fmt(f)
         }
     }
-    impl record::IntoRecord for __Tuple3____Stringval___Bitval64_internment_Intern__hir_Function {
+    impl record::IntoRecord for __Tuple4____Bitval64___Bitval64___Bitval64___Bitval64 {
         fn into_record(self) -> record::Record {
             self.0.into_record()
         }
     }
-    impl record::Mutator<__Tuple3____Stringval___Bitval64_internment_Intern__hir_Function>
-        for record::Record
-    {
+    impl record::Mutator<__Tuple4____Bitval64___Bitval64___Bitval64___Bitval64> for record::Record {
         fn mutate(
             &self,
-            v: &mut __Tuple3____Stringval___Bitval64_internment_Intern__hir_Function,
+            v: &mut __Tuple4____Bitval64___Bitval64___Bitval64___Bitval64,
         ) -> result::Result<(), std::string::String> {
             self.mutate(&mut v.0)
         }
     }
     //#[typetag::serde]
-    decl_ddval_convert! {__Tuple3____Stringval___Bitval64_internment_Intern__hir_Function}
-    #[derive(
-        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
-    )]
-    pub struct __Tuple2____Bitval64_internment_Intern__hir_ExprKind(
-        pub (u64, super::internment_Intern<super::hir_ExprKind>),
-    );
-    impl abomonation::Abomonation for __Tuple2____Bitval64_internment_Intern__hir_ExprKind {}
-    impl fmt::Display for __Tuple2____Bitval64_internment_Intern__hir_ExprKind {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            self.clone().into_record().fmt(f)
-        }
-    }
-    impl record::IntoRecord for __Tuple2____Bitval64_internment_Intern__hir_ExprKind {
-        fn into_record(self) -> record::Record {
-            self.0.into_record()
-        }
-    }
-    impl record::Mutator<__Tuple2____Bitval64_internment_Intern__hir_ExprKind> for record::Record {
-        fn mutate(
-            &self,
-            v: &mut __Tuple2____Bitval64_internment_Intern__hir_ExprKind,
-        ) -> result::Result<(), std::string::String> {
-            self.mutate(&mut v.0)
-        }
-    }
-    //#[typetag::serde]
-    decl_ddval_convert! {__Tuple2____Bitval64_internment_Intern__hir_ExprKind}
-    #[derive(
-        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
-    )]
-    pub struct __Tuple3____Bitval64_internment_Intern__hir_ExprKind___Bitval64(
-        pub (u64, super::internment_Intern<super::hir_ExprKind>, u64),
-    );
-    impl abomonation::Abomonation for __Tuple3____Bitval64_internment_Intern__hir_ExprKind___Bitval64 {}
-    impl fmt::Display for __Tuple3____Bitval64_internment_Intern__hir_ExprKind___Bitval64 {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            self.clone().into_record().fmt(f)
-        }
-    }
-    impl record::IntoRecord for __Tuple3____Bitval64_internment_Intern__hir_ExprKind___Bitval64 {
-        fn into_record(self) -> record::Record {
-            self.0.into_record()
-        }
-    }
-    impl record::Mutator<__Tuple3____Bitval64_internment_Intern__hir_ExprKind___Bitval64>
-        for record::Record
-    {
-        fn mutate(
-            &self,
-            v: &mut __Tuple3____Bitval64_internment_Intern__hir_ExprKind___Bitval64,
-        ) -> result::Result<(), std::string::String> {
-            self.mutate(&mut v.0)
-        }
-    }
-    //#[typetag::serde]
-    decl_ddval_convert! {__Tuple3____Bitval64_internment_Intern__hir_ExprKind___Bitval64}
-    #[derive(
-        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
-    )]
-    pub struct __Tuple2____Bitval64_internment_Intern__hir_Function(
-        pub (u64, super::internment_Intern<super::hir_Function>),
-    );
-    impl abomonation::Abomonation for __Tuple2____Bitval64_internment_Intern__hir_Function {}
-    impl fmt::Display for __Tuple2____Bitval64_internment_Intern__hir_Function {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            self.clone().into_record().fmt(f)
-        }
-    }
-    impl record::IntoRecord for __Tuple2____Bitval64_internment_Intern__hir_Function {
-        fn into_record(self) -> record::Record {
-            self.0.into_record()
-        }
-    }
-    impl record::Mutator<__Tuple2____Bitval64_internment_Intern__hir_Function> for record::Record {
-        fn mutate(
-            &self,
-            v: &mut __Tuple2____Bitval64_internment_Intern__hir_Function,
-        ) -> result::Result<(), std::string::String> {
-            self.mutate(&mut v.0)
-        }
-    }
-    //#[typetag::serde]
-    decl_ddval_convert! {__Tuple2____Bitval64_internment_Intern__hir_Function}
-    #[derive(
-        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
-    )]
-    pub struct __Tuple2__internment_Intern__hir_Scope___Bitval64(
-        pub (super::internment_Intern<super::hir_Scope>, u64),
-    );
-    impl abomonation::Abomonation for __Tuple2__internment_Intern__hir_Scope___Bitval64 {}
-    impl fmt::Display for __Tuple2__internment_Intern__hir_Scope___Bitval64 {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            self.clone().into_record().fmt(f)
-        }
-    }
-    impl record::IntoRecord for __Tuple2__internment_Intern__hir_Scope___Bitval64 {
-        fn into_record(self) -> record::Record {
-            self.0.into_record()
-        }
-    }
-    impl record::Mutator<__Tuple2__internment_Intern__hir_Scope___Bitval64> for record::Record {
-        fn mutate(
-            &self,
-            v: &mut __Tuple2__internment_Intern__hir_Scope___Bitval64,
-        ) -> result::Result<(), std::string::String> {
-            self.mutate(&mut v.0)
-        }
-    }
-    //#[typetag::serde]
-    decl_ddval_convert! {__Tuple2__internment_Intern__hir_Scope___Bitval64}
-    #[derive(
-        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
-    )]
-    pub struct __Tuple3__internment_Intern__hir_Scope___Bitval64_internment_Intern__hir_Stmt(
-        pub  (
-            super::internment_Intern<super::hir_Scope>,
-            u64,
-            super::internment_Intern<super::hir_Stmt>,
-        ),
-    );
-    impl abomonation::Abomonation
-        for __Tuple3__internment_Intern__hir_Scope___Bitval64_internment_Intern__hir_Stmt
-    {
-    }
-    impl fmt::Display
-        for __Tuple3__internment_Intern__hir_Scope___Bitval64_internment_Intern__hir_Stmt
-    {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            self.clone().into_record().fmt(f)
-        }
-    }
-    impl record::IntoRecord
-        for __Tuple3__internment_Intern__hir_Scope___Bitval64_internment_Intern__hir_Stmt
-    {
-        fn into_record(self) -> record::Record {
-            self.0.into_record()
-        }
-    }
-    impl
-        record::Mutator<
-            __Tuple3__internment_Intern__hir_Scope___Bitval64_internment_Intern__hir_Stmt,
-        > for record::Record
-    {
-        fn mutate(
-            &self,
-            v: &mut __Tuple3__internment_Intern__hir_Scope___Bitval64_internment_Intern__hir_Stmt,
-        ) -> result::Result<(), std::string::String> {
-            self.mutate(&mut v.0)
-        }
-    }
-    //#[typetag::serde]
-    decl_ddval_convert! {__Tuple3__internment_Intern__hir_Scope___Bitval64_internment_Intern__hir_Stmt}
-    #[derive(
-        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
-    )]
-    pub struct __Tuple2__internment_Intern__hir_Scope_internment_Intern__hir_Stmt(
-        pub  (
-            super::internment_Intern<super::hir_Scope>,
-            super::internment_Intern<super::hir_Stmt>,
-        ),
-    );
-    impl abomonation::Abomonation
-        for __Tuple2__internment_Intern__hir_Scope_internment_Intern__hir_Stmt
-    {
-    }
-    impl fmt::Display for __Tuple2__internment_Intern__hir_Scope_internment_Intern__hir_Stmt {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            self.clone().into_record().fmt(f)
-        }
-    }
-    impl record::IntoRecord for __Tuple2__internment_Intern__hir_Scope_internment_Intern__hir_Stmt {
-        fn into_record(self) -> record::Record {
-            self.0.into_record()
-        }
-    }
-    impl record::Mutator<__Tuple2__internment_Intern__hir_Scope_internment_Intern__hir_Stmt>
-        for record::Record
-    {
-        fn mutate(
-            &self,
-            v: &mut __Tuple2__internment_Intern__hir_Scope_internment_Intern__hir_Stmt,
-        ) -> result::Result<(), std::string::String> {
-            self.mutate(&mut v.0)
-        }
-    }
-    //#[typetag::serde]
-    decl_ddval_convert! {__Tuple2__internment_Intern__hir_Scope_internment_Intern__hir_Stmt}
-    #[derive(
-        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
-    )]
-    pub struct __Tuple3__internment_Intern__hir_Scope_internment_Intern__hir_Stmt_internment_Intern__hir_Stmt(
-        pub  (
-            super::internment_Intern<super::hir_Scope>,
-            super::internment_Intern<super::hir_Stmt>,
-            super::internment_Intern<super::hir_Stmt>,
-        ),
-    );
-    impl abomonation::Abomonation for __Tuple3__internment_Intern__hir_Scope_internment_Intern__hir_Stmt_internment_Intern__hir_Stmt {}
-    impl fmt::Display for __Tuple3__internment_Intern__hir_Scope_internment_Intern__hir_Stmt_internment_Intern__hir_Stmt {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            self.clone().into_record().fmt(f)
-        }
-    }
-    impl record::IntoRecord for __Tuple3__internment_Intern__hir_Scope_internment_Intern__hir_Stmt_internment_Intern__hir_Stmt {
-        fn into_record(self) -> record::Record {
-            self.0.into_record()
-        }
-    }
-    impl record::Mutator<__Tuple3__internment_Intern__hir_Scope_internment_Intern__hir_Stmt_internment_Intern__hir_Stmt> for record::Record {
-        fn mutate(&self, v: &mut __Tuple3__internment_Intern__hir_Scope_internment_Intern__hir_Stmt_internment_Intern__hir_Stmt ) -> result::Result<(), std::string::String> {
-            self.mutate(&mut v.0)
-        }
-    }
-    //#[typetag::serde]
-    decl_ddval_convert! {__Tuple3__internment_Intern__hir_Scope_internment_Intern__hir_Stmt_internment_Intern__hir_Stmt}
-    #[derive(
-        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
-    )]
-    pub struct __Tuple4__internment_Intern__std_Vec____Bitval32_hir_Signature___Stringval___Bitval64(
-        pub  (
-            super::internment_Intern<super::std_Vec<u32>>,
-            super::hir_Signature,
-            String,
-            u64,
-        ),
-    );
-    impl abomonation::Abomonation
-        for __Tuple4__internment_Intern__std_Vec____Bitval32_hir_Signature___Stringval___Bitval64
-    {
-    }
-    impl fmt::Display
-        for __Tuple4__internment_Intern__std_Vec____Bitval32_hir_Signature___Stringval___Bitval64
-    {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            self.clone().into_record().fmt(f)
-        }
-    }
-    impl record::IntoRecord
-        for __Tuple4__internment_Intern__std_Vec____Bitval32_hir_Signature___Stringval___Bitval64
-    {
-        fn into_record(self) -> record::Record {
-            self.0.into_record()
-        }
-    }
-    impl
-        record::Mutator<
-            __Tuple4__internment_Intern__std_Vec____Bitval32_hir_Signature___Stringval___Bitval64,
-        > for record::Record
-    {
-        fn mutate(
-            &self,
-            v: &mut __Tuple4__internment_Intern__std_Vec____Bitval32_hir_Signature___Stringval___Bitval64,
-        ) -> result::Result<(), std::string::String> {
-            self.mutate(&mut v.0)
-        }
-    }
-    //#[typetag::serde]
-    decl_ddval_convert! {__Tuple4__internment_Intern__std_Vec____Bitval32_hir_Signature___Stringval___Bitval64}
-    #[derive(
-        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
-    )]
-    pub struct __Tuple3__internment_Intern__std_Vec____Bitval32_hir_Signature___Bitval64(
-        pub  (
-            super::internment_Intern<super::std_Vec<u32>>,
-            super::hir_Signature,
-            u64,
-        ),
-    );
-    impl abomonation::Abomonation
-        for __Tuple3__internment_Intern__std_Vec____Bitval32_hir_Signature___Bitval64
-    {
-    }
-    impl fmt::Display for __Tuple3__internment_Intern__std_Vec____Bitval32_hir_Signature___Bitval64 {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            self.clone().into_record().fmt(f)
-        }
-    }
-    impl record::IntoRecord
-        for __Tuple3__internment_Intern__std_Vec____Bitval32_hir_Signature___Bitval64
-    {
-        fn into_record(self) -> record::Record {
-            self.0.into_record()
-        }
-    }
-    impl record::Mutator<__Tuple3__internment_Intern__std_Vec____Bitval32_hir_Signature___Bitval64>
-        for record::Record
-    {
-        fn mutate(
-            &self,
-            v: &mut __Tuple3__internment_Intern__std_Vec____Bitval32_hir_Signature___Bitval64,
-        ) -> result::Result<(), std::string::String> {
-            self.mutate(&mut v.0)
-        }
-    }
-    //#[typetag::serde]
-    decl_ddval_convert! {__Tuple3__internment_Intern__std_Vec____Bitval32_hir_Signature___Bitval64}
-    #[derive(
-        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
-    )]
-    pub struct ClampUnknownInt(pub super::ClampUnknownInt);
-    impl abomonation::Abomonation for ClampUnknownInt {}
-    impl fmt::Display for ClampUnknownInt {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            self.clone().into_record().fmt(f)
-        }
-    }
-    impl record::IntoRecord for ClampUnknownInt {
-        fn into_record(self) -> record::Record {
-            self.0.into_record()
-        }
-    }
-    impl record::Mutator<ClampUnknownInt> for record::Record {
-        fn mutate(&self, v: &mut ClampUnknownInt) -> result::Result<(), std::string::String> {
-            self.mutate(&mut v.0)
-        }
-    }
-    //#[typetag::serde]
-    decl_ddval_convert! {ClampUnknownInt}
+    decl_ddval_convert! {__Tuple4____Bitval64___Bitval64___Bitval64___Bitval64}
     #[derive(
         Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
     )]
@@ -471,6 +171,28 @@ pub mod Value {
     #[derive(
         Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
     )]
+    pub struct Expressions(pub super::Expressions);
+    impl abomonation::Abomonation for Expressions {}
+    impl fmt::Display for Expressions {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.clone().into_record().fmt(f)
+        }
+    }
+    impl record::IntoRecord for Expressions {
+        fn into_record(self) -> record::Record {
+            self.0.into_record()
+        }
+    }
+    impl record::Mutator<Expressions> for record::Record {
+        fn mutate(&self, v: &mut Expressions) -> result::Result<(), std::string::String> {
+            self.mutate(&mut v.0)
+        }
+    }
+    //#[typetag::serde]
+    decl_ddval_convert! {Expressions}
+    #[derive(
+        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
+    )]
     pub struct Functions(pub super::Functions);
     impl abomonation::Abomonation for Functions {}
     impl fmt::Display for Functions {
@@ -493,113 +215,47 @@ pub mod Value {
     #[derive(
         Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
     )]
-    pub struct InputExpressions(pub super::InputExpressions);
-    impl abomonation::Abomonation for InputExpressions {}
-    impl fmt::Display for InputExpressions {
+    pub struct Items(pub super::Items);
+    impl abomonation::Abomonation for Items {}
+    impl fmt::Display for Items {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             self.clone().into_record().fmt(f)
         }
     }
-    impl record::IntoRecord for InputExpressions {
+    impl record::IntoRecord for Items {
         fn into_record(self) -> record::Record {
             self.0.into_record()
         }
     }
-    impl record::Mutator<InputExpressions> for record::Record {
-        fn mutate(&self, v: &mut InputExpressions) -> result::Result<(), std::string::String> {
+    impl record::Mutator<Items> for record::Record {
+        fn mutate(&self, v: &mut Items) -> result::Result<(), std::string::String> {
             self.mutate(&mut v.0)
         }
     }
     //#[typetag::serde]
-    decl_ddval_convert! {InputExpressions}
+    decl_ddval_convert! {Items}
     #[derive(
         Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
     )]
-    pub struct InputFunctions(pub super::InputFunctions);
-    impl abomonation::Abomonation for InputFunctions {}
-    impl fmt::Display for InputFunctions {
+    pub struct Literals(pub super::Literals);
+    impl abomonation::Abomonation for Literals {}
+    impl fmt::Display for Literals {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             self.clone().into_record().fmt(f)
         }
     }
-    impl record::IntoRecord for InputFunctions {
+    impl record::IntoRecord for Literals {
         fn into_record(self) -> record::Record {
             self.0.into_record()
         }
     }
-    impl record::Mutator<InputFunctions> for record::Record {
-        fn mutate(&self, v: &mut InputFunctions) -> result::Result<(), std::string::String> {
+    impl record::Mutator<Literals> for record::Record {
+        fn mutate(&self, v: &mut Literals) -> result::Result<(), std::string::String> {
             self.mutate(&mut v.0)
         }
     }
     //#[typetag::serde]
-    decl_ddval_convert! {InputFunctions}
-    #[derive(
-        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
-    )]
-    pub struct InputItems(pub super::InputItems);
-    impl abomonation::Abomonation for InputItems {}
-    impl fmt::Display for InputItems {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            self.clone().into_record().fmt(f)
-        }
-    }
-    impl record::IntoRecord for InputItems {
-        fn into_record(self) -> record::Record {
-            self.0.into_record()
-        }
-    }
-    impl record::Mutator<InputItems> for record::Record {
-        fn mutate(&self, v: &mut InputItems) -> result::Result<(), std::string::String> {
-            self.mutate(&mut v.0)
-        }
-    }
-    //#[typetag::serde]
-    decl_ddval_convert! {InputItems}
-    #[derive(
-        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
-    )]
-    pub struct InputStatements(pub super::InputStatements);
-    impl abomonation::Abomonation for InputStatements {}
-    impl fmt::Display for InputStatements {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            self.clone().into_record().fmt(f)
-        }
-    }
-    impl record::IntoRecord for InputStatements {
-        fn into_record(self) -> record::Record {
-            self.0.into_record()
-        }
-    }
-    impl record::Mutator<InputStatements> for record::Record {
-        fn mutate(&self, v: &mut InputStatements) -> result::Result<(), std::string::String> {
-            self.mutate(&mut v.0)
-        }
-    }
-    //#[typetag::serde]
-    decl_ddval_convert! {InputStatements}
-    #[derive(
-        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
-    )]
-    pub struct PropagateExprType(pub super::PropagateExprType);
-    impl abomonation::Abomonation for PropagateExprType {}
-    impl fmt::Display for PropagateExprType {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            self.clone().into_record().fmt(f)
-        }
-    }
-    impl record::IntoRecord for PropagateExprType {
-        fn into_record(self) -> record::Record {
-            self.0.into_record()
-        }
-    }
-    impl record::Mutator<PropagateExprType> for record::Record {
-        fn mutate(&self, v: &mut PropagateExprType) -> result::Result<(), std::string::String> {
-            self.mutate(&mut v.0)
-        }
-    }
-    //#[typetag::serde]
-    decl_ddval_convert! {PropagateExprType}
+    decl_ddval_convert! {Literals}
     #[derive(
         Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
     )]
@@ -625,44 +281,178 @@ pub mod Value {
     #[derive(
         Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
     )]
-    pub struct SymbolTable(pub super::SymbolTable);
-    impl abomonation::Abomonation for SymbolTable {}
-    impl fmt::Display for SymbolTable {
+    pub struct TypedExpressions(pub super::TypedExpressions);
+    impl abomonation::Abomonation for TypedExpressions {}
+    impl fmt::Display for TypedExpressions {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             self.clone().into_record().fmt(f)
         }
     }
-    impl record::IntoRecord for SymbolTable {
+    impl record::IntoRecord for TypedExpressions {
         fn into_record(self) -> record::Record {
             self.0.into_record()
         }
     }
-    impl record::Mutator<SymbolTable> for record::Record {
-        fn mutate(&self, v: &mut SymbolTable) -> result::Result<(), std::string::String> {
+    impl record::Mutator<TypedExpressions> for record::Record {
+        fn mutate(&self, v: &mut TypedExpressions) -> result::Result<(), std::string::String> {
             self.mutate(&mut v.0)
         }
     }
     //#[typetag::serde]
-    decl_ddval_convert! {SymbolTable}
+    decl_ddval_convert! {TypedExpressions}
+    #[derive(
+        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
+    )]
+    pub struct Types(pub super::Types);
+    impl abomonation::Abomonation for Types {}
+    impl fmt::Display for Types {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.clone().into_record().fmt(f)
+        }
+    }
+    impl record::IntoRecord for Types {
+        fn into_record(self) -> record::Record {
+            self.0.into_record()
+        }
+    }
+    impl record::Mutator<Types> for record::Record {
+        fn mutate(&self, v: &mut Types) -> result::Result<(), std::string::String> {
+            self.mutate(&mut v.0)
+        }
+    }
+    //#[typetag::serde]
+    decl_ddval_convert! {Types}
+    #[derive(
+        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
+    )]
+    pub struct VariableScopes(pub super::VariableScopes);
+    impl abomonation::Abomonation for VariableScopes {}
+    impl fmt::Display for VariableScopes {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.clone().into_record().fmt(f)
+        }
+    }
+    impl record::IntoRecord for VariableScopes {
+        fn into_record(self) -> record::Record {
+            self.0.into_record()
+        }
+    }
+    impl record::Mutator<VariableScopes> for record::Record {
+        fn mutate(&self, v: &mut VariableScopes) -> result::Result<(), std::string::String> {
+            self.mutate(&mut v.0)
+        }
+    }
+    //#[typetag::serde]
+    decl_ddval_convert! {VariableScopes}
+    #[derive(
+        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
+    )]
+    pub struct Variables(pub super::Variables);
+    impl abomonation::Abomonation for Variables {}
+    impl fmt::Display for Variables {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.clone().into_record().fmt(f)
+        }
+    }
+    impl record::IntoRecord for Variables {
+        fn into_record(self) -> record::Record {
+            self.0.into_record()
+        }
+    }
+    impl record::Mutator<Variables> for record::Record {
+        fn mutate(&self, v: &mut Variables) -> result::Result<(), std::string::String> {
+            self.mutate(&mut v.0)
+        }
+    }
+    //#[typetag::serde]
+    decl_ddval_convert! {Variables}
+    #[derive(
+        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
+    )]
+    pub struct VariablesInScope(pub super::VariablesInScope);
+    impl abomonation::Abomonation for VariablesInScope {}
+    impl fmt::Display for VariablesInScope {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.clone().into_record().fmt(f)
+        }
+    }
+    impl record::IntoRecord for VariablesInScope {
+        fn into_record(self) -> record::Record {
+            self.0.into_record()
+        }
+    }
+    impl record::Mutator<VariablesInScope> for record::Record {
+        fn mutate(&self, v: &mut VariablesInScope) -> result::Result<(), std::string::String> {
+            self.mutate(&mut v.0)
+        }
+    }
+    //#[typetag::serde]
+    decl_ddval_convert! {VariablesInScope}
+    #[derive(
+        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
+    )]
+    pub struct hir_Type(pub super::hir_Type);
+    impl abomonation::Abomonation for hir_Type {}
+    impl fmt::Display for hir_Type {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.clone().into_record().fmt(f)
+        }
+    }
+    impl record::IntoRecord for hir_Type {
+        fn into_record(self) -> record::Record {
+            self.0.into_record()
+        }
+    }
+    impl record::Mutator<hir_Type> for record::Record {
+        fn mutate(&self, v: &mut hir_Type) -> result::Result<(), std::string::String> {
+            self.mutate(&mut v.0)
+        }
+    }
+    //#[typetag::serde]
+    decl_ddval_convert! {hir_Type}
+    #[derive(
+        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
+    )]
+    pub struct internment_Intern__hir_Literal(pub super::internment_Intern<super::hir_Literal>);
+    impl abomonation::Abomonation for internment_Intern__hir_Literal {}
+    impl fmt::Display for internment_Intern__hir_Literal {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.clone().into_record().fmt(f)
+        }
+    }
+    impl record::IntoRecord for internment_Intern__hir_Literal {
+        fn into_record(self) -> record::Record {
+            self.0.into_record()
+        }
+    }
+    impl record::Mutator<internment_Intern__hir_Literal> for record::Record {
+        fn mutate(
+            &self,
+            v: &mut internment_Intern__hir_Literal,
+        ) -> result::Result<(), std::string::String> {
+            self.mutate(&mut v.0)
+        }
+    }
+    //#[typetag::serde]
+    decl_ddval_convert! {internment_Intern__hir_Literal}
 }
 impl TryFrom<&str> for Relations {
     type Error = ();
     fn try_from(rname: &str) -> result::Result<Self, Self::Error> {
         match rname {
-            "ClampUnknownInt" => Ok(Relations::ClampUnknownInt),
             "Errors" => Ok(Relations::Errors),
+            "Expressions" => Ok(Relations::Expressions),
             "Functions" => Ok(Relations::Functions),
-            "InputExpressions" => Ok(Relations::InputExpressions),
-            "InputFunctions" => Ok(Relations::InputFunctions),
-            "InputItems" => Ok(Relations::InputItems),
-            "InputStatements" => Ok(Relations::InputStatements),
-            "PropagateExprType" => Ok(Relations::PropagateExprType),
+            "Items" => Ok(Relations::Items),
+            "Literals" => Ok(Relations::Literals),
             "Statements" => Ok(Relations::Statements),
-            "SymbolTable" => Ok(Relations::SymbolTable),
-            "__MultiHead_0" => Ok(Relations::__MultiHead_0),
-            "__MultiHead_1" => Ok(Relations::__MultiHead_1),
-            "__MultiHead_3" => Ok(Relations::__MultiHead_3),
+            "TypedExpressions" => Ok(Relations::TypedExpressions),
+            "Types" => Ok(Relations::Types),
+            "VariableScopes" => Ok(Relations::VariableScopes),
+            "Variables" => Ok(Relations::Variables),
+            "VariablesInScope" => Ok(Relations::VariablesInScope),
             "__Null" => Ok(Relations::__Null),
+            "__Prefix_0" => Ok(Relations::__Prefix_0),
             _ => Err(()),
         }
     }
@@ -670,11 +460,10 @@ impl TryFrom<&str> for Relations {
 impl Relations {
     pub fn is_output(&self) -> bool {
         match self {
-            Relations::ClampUnknownInt => true,
             Relations::Errors => true,
-            Relations::Functions => true,
-            Relations::Statements => true,
-            Relations::SymbolTable => true,
+            Relations::Literals => true,
+            Relations::TypedExpressions => true,
+            Relations::VariablesInScope => true,
             _ => false,
         }
     }
@@ -682,10 +471,13 @@ impl Relations {
 impl Relations {
     pub fn is_input(&self) -> bool {
         match self {
-            Relations::InputExpressions => true,
-            Relations::InputFunctions => true,
-            Relations::InputItems => true,
-            Relations::InputStatements => true,
+            Relations::Expressions => true,
+            Relations::Functions => true,
+            Relations::Items => true,
+            Relations::Statements => true,
+            Relations::Types => true,
+            Relations::VariableScopes => true,
+            Relations::Variables => true,
             _ => false,
         }
     }
@@ -694,40 +486,38 @@ impl TryFrom<RelId> for Relations {
     type Error = ();
     fn try_from(rid: RelId) -> result::Result<Self, Self::Error> {
         match rid {
-            0 => Ok(Relations::ClampUnknownInt),
-            1 => Ok(Relations::Errors),
+            0 => Ok(Relations::Errors),
+            1 => Ok(Relations::Expressions),
             2 => Ok(Relations::Functions),
-            3 => Ok(Relations::InputExpressions),
-            4 => Ok(Relations::InputFunctions),
-            5 => Ok(Relations::InputItems),
-            6 => Ok(Relations::InputStatements),
-            7 => Ok(Relations::PropagateExprType),
-            8 => Ok(Relations::Statements),
-            9 => Ok(Relations::SymbolTable),
-            10 => Ok(Relations::__MultiHead_0),
-            11 => Ok(Relations::__MultiHead_1),
-            12 => Ok(Relations::__MultiHead_3),
-            13 => Ok(Relations::__Null),
+            3 => Ok(Relations::Items),
+            4 => Ok(Relations::Literals),
+            5 => Ok(Relations::Statements),
+            6 => Ok(Relations::TypedExpressions),
+            7 => Ok(Relations::Types),
+            8 => Ok(Relations::VariableScopes),
+            9 => Ok(Relations::Variables),
+            10 => Ok(Relations::VariablesInScope),
+            11 => Ok(Relations::__Null),
+            12 => Ok(Relations::__Prefix_0),
             _ => Err(()),
         }
     }
 }
 pub fn relid2name(rid: RelId) -> Option<&'static str> {
     match rid {
-        0 => Some(&"ClampUnknownInt"),
-        1 => Some(&"Errors"),
+        0 => Some(&"Errors"),
+        1 => Some(&"Expressions"),
         2 => Some(&"Functions"),
-        3 => Some(&"InputExpressions"),
-        4 => Some(&"InputFunctions"),
-        5 => Some(&"InputItems"),
-        6 => Some(&"InputStatements"),
-        7 => Some(&"PropagateExprType"),
-        8 => Some(&"Statements"),
-        9 => Some(&"SymbolTable"),
-        10 => Some(&"__MultiHead_0"),
-        11 => Some(&"__MultiHead_1"),
-        12 => Some(&"__MultiHead_3"),
-        13 => Some(&"__Null"),
+        3 => Some(&"Items"),
+        4 => Some(&"Literals"),
+        5 => Some(&"Statements"),
+        6 => Some(&"TypedExpressions"),
+        7 => Some(&"Types"),
+        8 => Some(&"VariableScopes"),
+        9 => Some(&"Variables"),
+        10 => Some(&"VariablesInScope"),
+        11 => Some(&"__Null"),
+        12 => Some(&"__Prefix_0"),
         _ => None,
     }
 }
@@ -738,36 +528,35 @@ pub fn relid2cname(rid: RelId) -> Option<&'static ::std::ffi::CStr> {
 pub static RELIDMAP: ::once_cell::sync::Lazy<::fnv::FnvHashMap<Relations, &'static str>> =
     ::once_cell::sync::Lazy::new(|| {
         let mut map =
-            ::fnv::FnvHashMap::with_capacity_and_hasher(14, ::fnv::FnvBuildHasher::default());
-        map.insert(Relations::ClampUnknownInt, "ClampUnknownInt");
+            ::fnv::FnvHashMap::with_capacity_and_hasher(13, ::fnv::FnvBuildHasher::default());
         map.insert(Relations::Errors, "Errors");
+        map.insert(Relations::Expressions, "Expressions");
         map.insert(Relations::Functions, "Functions");
-        map.insert(Relations::InputExpressions, "InputExpressions");
-        map.insert(Relations::InputFunctions, "InputFunctions");
-        map.insert(Relations::InputItems, "InputItems");
-        map.insert(Relations::InputStatements, "InputStatements");
-        map.insert(Relations::PropagateExprType, "PropagateExprType");
+        map.insert(Relations::Items, "Items");
+        map.insert(Relations::Literals, "Literals");
         map.insert(Relations::Statements, "Statements");
-        map.insert(Relations::SymbolTable, "SymbolTable");
-        map.insert(Relations::__MultiHead_0, "__MultiHead_0");
-        map.insert(Relations::__MultiHead_1, "__MultiHead_1");
-        map.insert(Relations::__MultiHead_3, "__MultiHead_3");
+        map.insert(Relations::TypedExpressions, "TypedExpressions");
+        map.insert(Relations::Types, "Types");
+        map.insert(Relations::VariableScopes, "VariableScopes");
+        map.insert(Relations::Variables, "Variables");
+        map.insert(Relations::VariablesInScope, "VariablesInScope");
         map.insert(Relations::__Null, "__Null");
+        map.insert(Relations::__Prefix_0, "__Prefix_0");
         map
     });
 /// A map of `RelId`s to their name as an `&'static CStr`
 pub static RELIDMAPC: ::once_cell::sync::Lazy<::fnv::FnvHashMap<RelId, &'static ::std::ffi::CStr>> =
     ::once_cell::sync::Lazy::new(|| {
         let mut map =
-            ::fnv::FnvHashMap::with_capacity_and_hasher(14, ::fnv::FnvBuildHasher::default());
+            ::fnv::FnvHashMap::with_capacity_and_hasher(13, ::fnv::FnvBuildHasher::default());
         map.insert(
             0,
-            ::std::ffi::CStr::from_bytes_with_nul(b"ClampUnknownInt\0")
+            ::std::ffi::CStr::from_bytes_with_nul(b"Errors\0")
                 .expect("Unreachable: A null byte was specifically inserted"),
         );
         map.insert(
             1,
-            ::std::ffi::CStr::from_bytes_with_nul(b"Errors\0")
+            ::std::ffi::CStr::from_bytes_with_nul(b"Expressions\0")
                 .expect("Unreachable: A null byte was specifically inserted"),
         );
         map.insert(
@@ -777,57 +566,52 @@ pub static RELIDMAPC: ::once_cell::sync::Lazy<::fnv::FnvHashMap<RelId, &'static 
         );
         map.insert(
             3,
-            ::std::ffi::CStr::from_bytes_with_nul(b"InputExpressions\0")
+            ::std::ffi::CStr::from_bytes_with_nul(b"Items\0")
                 .expect("Unreachable: A null byte was specifically inserted"),
         );
         map.insert(
             4,
-            ::std::ffi::CStr::from_bytes_with_nul(b"InputFunctions\0")
+            ::std::ffi::CStr::from_bytes_with_nul(b"Literals\0")
                 .expect("Unreachable: A null byte was specifically inserted"),
         );
         map.insert(
             5,
-            ::std::ffi::CStr::from_bytes_with_nul(b"InputItems\0")
-                .expect("Unreachable: A null byte was specifically inserted"),
-        );
-        map.insert(
-            6,
-            ::std::ffi::CStr::from_bytes_with_nul(b"InputStatements\0")
-                .expect("Unreachable: A null byte was specifically inserted"),
-        );
-        map.insert(
-            7,
-            ::std::ffi::CStr::from_bytes_with_nul(b"PropagateExprType\0")
-                .expect("Unreachable: A null byte was specifically inserted"),
-        );
-        map.insert(
-            8,
             ::std::ffi::CStr::from_bytes_with_nul(b"Statements\0")
                 .expect("Unreachable: A null byte was specifically inserted"),
         );
         map.insert(
+            6,
+            ::std::ffi::CStr::from_bytes_with_nul(b"TypedExpressions\0")
+                .expect("Unreachable: A null byte was specifically inserted"),
+        );
+        map.insert(
+            7,
+            ::std::ffi::CStr::from_bytes_with_nul(b"Types\0")
+                .expect("Unreachable: A null byte was specifically inserted"),
+        );
+        map.insert(
+            8,
+            ::std::ffi::CStr::from_bytes_with_nul(b"VariableScopes\0")
+                .expect("Unreachable: A null byte was specifically inserted"),
+        );
+        map.insert(
             9,
-            ::std::ffi::CStr::from_bytes_with_nul(b"SymbolTable\0")
+            ::std::ffi::CStr::from_bytes_with_nul(b"Variables\0")
                 .expect("Unreachable: A null byte was specifically inserted"),
         );
         map.insert(
             10,
-            ::std::ffi::CStr::from_bytes_with_nul(b"__MultiHead_0\0")
+            ::std::ffi::CStr::from_bytes_with_nul(b"VariablesInScope\0")
                 .expect("Unreachable: A null byte was specifically inserted"),
         );
         map.insert(
             11,
-            ::std::ffi::CStr::from_bytes_with_nul(b"__MultiHead_1\0")
+            ::std::ffi::CStr::from_bytes_with_nul(b"__Null\0")
                 .expect("Unreachable: A null byte was specifically inserted"),
         );
         map.insert(
             12,
-            ::std::ffi::CStr::from_bytes_with_nul(b"__MultiHead_3\0")
-                .expect("Unreachable: A null byte was specifically inserted"),
-        );
-        map.insert(
-            13,
-            ::std::ffi::CStr::from_bytes_with_nul(b"__Null\0")
+            ::std::ffi::CStr::from_bytes_with_nul(b"__Prefix_0\0")
                 .expect("Unreachable: A null byte was specifically inserted"),
         );
         map
@@ -836,23 +620,25 @@ pub static RELIDMAPC: ::once_cell::sync::Lazy<::fnv::FnvHashMap<RelId, &'static 
 pub static INPUT_RELIDMAP: ::once_cell::sync::Lazy<::fnv::FnvHashMap<Relations, &'static str>> =
     ::once_cell::sync::Lazy::new(|| {
         let mut map =
-            ::fnv::FnvHashMap::with_capacity_and_hasher(4, ::fnv::FnvBuildHasher::default());
-        map.insert(Relations::InputExpressions, "InputExpressions");
-        map.insert(Relations::InputFunctions, "InputFunctions");
-        map.insert(Relations::InputItems, "InputItems");
-        map.insert(Relations::InputStatements, "InputStatements");
+            ::fnv::FnvHashMap::with_capacity_and_hasher(7, ::fnv::FnvBuildHasher::default());
+        map.insert(Relations::Expressions, "Expressions");
+        map.insert(Relations::Functions, "Functions");
+        map.insert(Relations::Items, "Items");
+        map.insert(Relations::Statements, "Statements");
+        map.insert(Relations::Types, "Types");
+        map.insert(Relations::VariableScopes, "VariableScopes");
+        map.insert(Relations::Variables, "Variables");
         map
     });
 /// A map of output `Relations`s to their name as an `&'static str`
 pub static OUTPUT_RELIDMAP: ::once_cell::sync::Lazy<::fnv::FnvHashMap<Relations, &'static str>> =
     ::once_cell::sync::Lazy::new(|| {
         let mut map =
-            ::fnv::FnvHashMap::with_capacity_and_hasher(5, ::fnv::FnvBuildHasher::default());
-        map.insert(Relations::ClampUnknownInt, "ClampUnknownInt");
+            ::fnv::FnvHashMap::with_capacity_and_hasher(4, ::fnv::FnvBuildHasher::default());
         map.insert(Relations::Errors, "Errors");
-        map.insert(Relations::Functions, "Functions");
-        map.insert(Relations::Statements, "Statements");
-        map.insert(Relations::SymbolTable, "SymbolTable");
+        map.insert(Relations::Literals, "Literals");
+        map.insert(Relations::TypedExpressions, "TypedExpressions");
+        map.insert(Relations::VariablesInScope, "VariablesInScope");
         map
     });
 impl TryFrom<&str> for Indexes {
@@ -907,48 +693,38 @@ pub fn relval_from_record(
     _rec: &record::Record,
 ) -> result::Result<DDValue, String> {
     match rel {
-        Relations::ClampUnknownInt => {
-            Ok(Value::ClampUnknownInt(<ClampUnknownInt>::from_record(_rec)?).into_ddvalue())
-        },
-        Relations::Errors => {
-            Ok(Value::Errors(<Errors>::from_record(_rec)?).into_ddvalue())
-        },
+        Relations::Errors => Ok(Value::Errors(<Errors>::from_record(_rec)?).into_ddvalue()),
+        Relations::Expressions => {
+            Ok(Value::Expressions(<Expressions>::from_record(_rec)?).into_ddvalue())
+        }
         Relations::Functions => {
             Ok(Value::Functions(<Functions>::from_record(_rec)?).into_ddvalue())
-        },
-        Relations::InputExpressions => {
-            Ok(Value::InputExpressions(<InputExpressions>::from_record(_rec)?).into_ddvalue())
-        },
-        Relations::InputFunctions => {
-            Ok(Value::InputFunctions(<InputFunctions>::from_record(_rec)?).into_ddvalue())
-        },
-        Relations::InputItems => {
-            Ok(Value::InputItems(<InputItems>::from_record(_rec)?).into_ddvalue())
-        },
-        Relations::InputStatements => {
-            Ok(Value::InputStatements(<InputStatements>::from_record(_rec)?).into_ddvalue())
-        },
-        Relations::PropagateExprType => {
-            Ok(Value::PropagateExprType(<PropagateExprType>::from_record(_rec)?).into_ddvalue())
-        },
+        }
+        Relations::Items => Ok(Value::Items(<Items>::from_record(_rec)?).into_ddvalue()),
+        Relations::Literals => Ok(Value::Literals(<Literals>::from_record(_rec)?).into_ddvalue()),
         Relations::Statements => {
             Ok(Value::Statements(<Statements>::from_record(_rec)?).into_ddvalue())
-        },
-        Relations::SymbolTable => {
-            Ok(Value::SymbolTable(<SymbolTable>::from_record(_rec)?).into_ddvalue())
-        },
-        Relations::__MultiHead_0 => {
-            Ok(Value::__Tuple3__internment_Intern__std_Vec____Bitval32_hir_Signature___Bitval64(<(internment_Intern<std_Vec<u32>>, hir_Signature, u64)>::from_record(_rec)?).into_ddvalue())
-        },
-        Relations::__MultiHead_1 => {
-            Ok(Value::__Tuple4__internment_Intern__std_Vec____Bitval32_hir_Signature___Stringval___Bitval64(<(internment_Intern<std_Vec<u32>>, hir_Signature, String, u64)>::from_record(_rec)?).into_ddvalue())
-        },
-        Relations::__MultiHead_3 => {
-            Ok(Value::__Tuple3__internment_Intern__hir_Scope_internment_Intern__hir_Stmt_internment_Intern__hir_Stmt(<(internment_Intern<hir_Scope>, internment_Intern<hir_Stmt>, internment_Intern<hir_Stmt>)>::from_record(_rec)?).into_ddvalue())
-        },
-        Relations::__Null => {
-            Ok(Value::__Tuple0__(<()>::from_record(_rec)?).into_ddvalue())
         }
+        Relations::TypedExpressions => {
+            Ok(Value::TypedExpressions(<TypedExpressions>::from_record(_rec)?).into_ddvalue())
+        }
+        Relations::Types => Ok(Value::Types(<Types>::from_record(_rec)?).into_ddvalue()),
+        Relations::VariableScopes => {
+            Ok(Value::VariableScopes(<VariableScopes>::from_record(_rec)?).into_ddvalue())
+        }
+        Relations::Variables => {
+            Ok(Value::Variables(<Variables>::from_record(_rec)?).into_ddvalue())
+        }
+        Relations::VariablesInScope => {
+            Ok(Value::VariablesInScope(<VariablesInScope>::from_record(_rec)?).into_ddvalue())
+        }
+        Relations::__Null => Ok(Value::__Tuple0__(<()>::from_record(_rec)?).into_ddvalue()),
+        Relations::__Prefix_0 => Ok(
+            Value::__Tuple4____Bitval64___Bitval64___Bitval64___Bitval64(
+                <(u64, u64, u64, u64)>::from_record(_rec)?,
+            )
+            .into_ddvalue(),
+        ),
     }
 }
 pub fn relkey_from_record(
@@ -966,25 +742,24 @@ pub fn idxkey_from_record(idx: Indexes, _rec: &record::Record) -> result::Result
 }
 pub fn indexes2arrid(idx: Indexes) -> ArrId {
     match idx {
-        Indexes::__Null_by_none => (13, 0),
+        Indexes::__Null_by_none => (11, 0),
     }
 }
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Relations {
-    ClampUnknownInt = 0,
-    Errors = 1,
+    Errors = 0,
+    Expressions = 1,
     Functions = 2,
-    InputExpressions = 3,
-    InputFunctions = 4,
-    InputItems = 5,
-    InputStatements = 6,
-    PropagateExprType = 7,
-    Statements = 8,
-    SymbolTable = 9,
-    __MultiHead_0 = 10,
-    __MultiHead_1 = 11,
-    __MultiHead_3 = 12,
-    __Null = 13,
+    Items = 3,
+    Literals = 4,
+    Statements = 5,
+    TypedExpressions = 6,
+    Types = 7,
+    VariableScopes = 8,
+    Variables = 9,
+    VariablesInScope = 10,
+    __Null = 11,
+    __Prefix_0 = 12,
 }
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Indexes {

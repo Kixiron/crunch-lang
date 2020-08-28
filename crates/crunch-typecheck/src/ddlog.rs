@@ -9,7 +9,7 @@ use crunch_shared::{
             ExprKind as HirExprKind, FuncArg as HirFuncArg, Function as HirFunction, Integer,
             Item as HirItem, ItemPath as HirItemPath, Literal as HirLiteral,
             LiteralVal as HirLiteralVal, Match as HirMatch, MatchArm as HirMatchArm,
-            Pattern as HirPattern, Stmt as HirStmt, Type as HirType, TypeId,
+            Pattern as HirPattern, Stmt as HirStmt, Type as HirType, TypeId as HirTypeId,
             TypeKind as HirTypeKind, Var as HirVar, VarDecl as HirVarDecl, Vis as HirVis,
         },
         Sided,
@@ -17,14 +17,14 @@ use crunch_shared::{
     utils::HashMap,
 };
 use ddlog_types::{
-    hir_BinOp as BinOp, hir_BinaryOp as BinaryOp, hir_Binding as Binding, hir_ExprId as ExprId,
-    hir_ExprKind as ExprKind, hir_FuncArg as FuncArg, hir_FuncId as FuncId,
+    hir_BinOp as BinOp, hir_BinaryOp as BinaryOp, hir_Binding as Binding, hir_Expr as Expr,
+    hir_ExprId as ExprId, hir_ExprKind as ExprKind, hir_FuncArg as FuncArg, hir_FuncId as FuncId,
     hir_Function as Function, hir_Item as Item, hir_ItemId as ItemId, hir_ItemPath as ItemPath,
     hir_Literal as Literal, hir_Match as Match, hir_MatchArm as MatchArm, hir_Pattern as Pattern,
-    hir_Scope as Scope, hir_Stmt as Stmt, hir_StmtId as StmtId, hir_TypeKind as TypeKind,
-    hir_VarDecl as VarDecl, hir_Vis as Vis, internment_Intern as Interned,
-    internment_intern as ddlog_intern, std_Vec as Vector, InputExpressions, InputFunctions,
-    InputItems, InputStatements,
+    hir_Scope as Scope, hir_Stmt as Stmt, hir_StmtId as StmtId, hir_Type as Type,
+    hir_TypeId as TypeId, hir_TypeKind as TypeKind, hir_VarDecl as VarDecl, hir_Vis as Vis,
+    internment_Intern as Interned, internment_intern as ddlog_intern, std_Vec as Vector,
+    Expressions, Functions, Items, Statements, Types, VariableScopes, Variables,
 };
 use ddlog_values::{relid2name, Relations, Value};
 use differential_datalog::{
@@ -79,10 +79,13 @@ impl<T, Id> DDlogTable<T, Id> {
 pub struct DDlogEngine<'ctx> {
     variable_id: u64,
     variables: HashMap<HirVar, u64>,
-    items: DDlogTable<InputItems>,
-    functions: DDlogTable<InputFunctions>,
-    statements: DDlogTable<InputStatements>,
-    expressions: DDlogTable<InputExpressions>,
+    items: DDlogTable<Items>,
+    functions: DDlogTable<Functions>,
+    statements: DDlogTable<Statements>,
+    expressions: DDlogTable<Expressions>,
+    variable_table: DDlogTable<Variables>,
+    variable_scopes: DDlogTable<VariableScopes>,
+    types: DDlogTable<Types>,
     db: &'ctx dyn TypecheckDatabase,
 }
 
@@ -97,6 +100,9 @@ impl<'ctx> DDlogEngine<'ctx> {
             functions: DDlogTable::new(),
             statements: DDlogTable::new(),
             expressions: DDlogTable::new(),
+            variable_table: DDlogTable::new(),
+            variable_scopes: DDlogTable::new(),
+            types: DDlogTable::new(),
             db,
         }
     }
@@ -113,26 +119,44 @@ impl<'ctx> DDlogEngine<'ctx> {
 
         crunch_shared::trace!("updating items");
         program.apply_valupdates(self.items.drain().map(|item| Update::Insert {
-            relid: Relations::InputItems as RelId,
-            v: Value::InputItems(item).into_ddvalue(),
+            relid: Relations::Items as RelId,
+            v: Value::Items(item).into_ddvalue(),
         }))?;
 
         crunch_shared::trace!("updating functions");
         program.apply_valupdates(self.functions.drain().map(|func| Update::Insert {
-            relid: Relations::InputFunctions as RelId,
-            v: Value::InputFunctions(func).into_ddvalue(),
+            relid: Relations::Functions as RelId,
+            v: Value::Functions(func).into_ddvalue(),
         }))?;
 
         crunch_shared::trace!("updating statements");
         program.apply_valupdates(self.statements.drain().map(|stmt| Update::Insert {
-            relid: Relations::InputStatements as RelId,
-            v: Value::InputStatements(stmt).into_ddvalue(),
+            relid: Relations::Statements as RelId,
+            v: Value::Statements(stmt).into_ddvalue(),
         }))?;
 
         crunch_shared::trace!("updating expressions");
         program.apply_valupdates(self.expressions.drain().map(|expr| Update::Insert {
-            relid: Relations::InputExpressions as RelId,
-            v: Value::InputExpressions(expr).into_ddvalue(),
+            relid: Relations::Expressions as RelId,
+            v: Value::Expressions(expr).into_ddvalue(),
+        }))?;
+
+        crunch_shared::trace!("updating variables");
+        program.apply_valupdates(self.variable_table.drain().map(|var| Update::Insert {
+            relid: Relations::Variables as RelId,
+            v: Value::Variables(var).into_ddvalue(),
+        }))?;
+
+        crunch_shared::trace!("updating variable scopes");
+        program.apply_valupdates(self.variable_scopes.drain().map(|scope| Update::Insert {
+            relid: Relations::VariableScopes as RelId,
+            v: Value::VariableScopes(scope).into_ddvalue(),
+        }))?;
+
+        crunch_shared::trace!("updating types");
+        program.apply_valupdates(self.types.drain().map(|ty| Update::Insert {
+            relid: Relations::Types as RelId,
+            v: Value::Types(ty).into_ddvalue(),
         }))?;
 
         crunch_shared::trace!("committing transaction");
@@ -191,7 +215,7 @@ impl<'ctx> Visit<HirItem<'_>> for DDlogEngine<'ctx> {
             }
         };
 
-        self.items.push(InputItems { id, item });
+        self.items.push(Items { id, item });
 
         id
     }
@@ -218,10 +242,10 @@ impl<'ctx> Visit<HirFunction<'_>> for DDlogEngine<'ctx> {
             args: Vector { x: args },
             body: self.visit(&function.body),
             ret: self.visit(&function.ret),
+            decl_scope: 0,
         };
 
-        let func = self.intern(func);
-        self.functions.push(InputFunctions { id, func });
+        self.functions.push(Functions { func_id: id, func });
 
         id
     }
@@ -243,11 +267,11 @@ impl<'ctx> Visit<HirFuncArg> for DDlogEngine<'ctx> {
     }
 }
 
-impl<'ctx> Visit<TypeId> for DDlogEngine<'ctx> {
-    type Output = Interned<TypeKind>;
+impl<'ctx> Visit<HirTypeId> for DDlogEngine<'ctx> {
+    type Output = TypeId;
 
     #[crunch_shared::instrument(name = "type id", skip(self, id))]
-    fn visit(&mut self, id: &TypeId) -> Self::Output {
+    fn visit(&mut self, id: &HirTypeId) -> Self::Output {
         let ty = self
             .db
             .context()
@@ -259,13 +283,31 @@ impl<'ctx> Visit<TypeId> for DDlogEngine<'ctx> {
 }
 
 impl<'ctx> Visit<HirType> for DDlogEngine<'ctx> {
-    type Output = Interned<TypeKind>;
+    type Output = TypeId;
 
     #[crunch_shared::instrument(name = "type", skip(self, ty))]
     fn visit(&mut self, ty: &HirType) -> Self::Output {
-        let ty = match ty.kind {
+        let id = self.types.next_id();
+        crunch_shared::trace!("created the id {} for a type", id);
+
+        let kind = self.visit(&ty.kind);
+        self.types.push(Types {
+            type_id: id,
+            ty: Type { kind },
+        });
+
+        id
+    }
+}
+
+impl<'ctx> Visit<HirTypeKind> for DDlogEngine<'ctx> {
+    type Output = TypeKind;
+
+    #[crunch_shared::instrument(name = "type kind", skip(self, kind))]
+    fn visit(&mut self, kind: &HirTypeKind) -> Self::Output {
+        match kind {
             HirTypeKind::Unknown => TypeKind::hir_Unknown,
-            HirTypeKind::Integer { signed, width } => TypeKind::hir_Int {
+            &HirTypeKind::Integer { signed, width } => TypeKind::hir_Int {
                 is_signed: signed.into(),
                 width: width.into(),
             },
@@ -277,9 +319,7 @@ impl<'ctx> Visit<HirType> for DDlogEngine<'ctx> {
                 crunch_shared::warn!("unhandled type in ddlog: {:?}", kind);
                 TypeKind::hir_Error
             }
-        };
-
-        self.intern(ty)
+        }
     }
 }
 
@@ -322,14 +362,12 @@ impl<'ctx> Visit<HirStmt<'_>> for DDlogEngine<'ctx> {
                 expr: self.visit(expr),
             },
 
-            HirStmt::VarDecl(var_decl) => Stmt::hir_StmtDecl {
+            HirStmt::VarDecl(var_decl) => Stmt::hir_StmtVarDecl {
                 decl: self.visit(var_decl),
             },
         };
 
-        let stmt = self.intern(stmt);
-        let scope = self.intern(Scope::hir_ScopeToDo);
-        self.statements.push(InputStatements { id, stmt, scope });
+        self.statements.push(Statements { stmt_id: id, stmt });
 
         id
     }
@@ -358,14 +396,29 @@ impl<'ctx> Visit<HirExpr<'_>> for DDlogEngine<'ctx> {
         let id = self.expressions.next_id();
         crunch_shared::trace!("created the id {} for an expression", id);
 
-        let (kind, ty) = match &expr.kind {
+        let (kind, _ty) = self.visit(&expr.kind);
+
+        self.expressions.push(Expressions {
+            expr_id: id,
+            expr: Expr { kind },
+        });
+        id
+    }
+}
+
+impl<'ctx> Visit<HirExprKind<'_>> for DDlogEngine<'ctx> {
+    type Output = (ExprKind, Either<Option<TypeKind>, TypeId>);
+
+    #[crunch_shared::instrument(name = "expression kind", skip(self, kind))]
+    fn visit(&mut self, kind: &HirExprKind) -> Self::Output {
+        match kind {
             HirExprKind::Literal(literal) => {
                 let (literal, ty) = self.visit(literal);
                 (
                     ExprKind::hir_ExprLit {
                         lit: self.intern(literal),
                     },
-                    Some(ty),
+                    Either::Right(ty),
                 )
             }
 
@@ -375,7 +428,7 @@ impl<'ctx> Visit<HirExpr<'_>> for DDlogEngine<'ctx> {
                 };
                 let ty = self.visit(&ty);
 
-                (expr, Some(ty))
+                (expr, Either::Right(ty))
             }
 
             &HirExprKind::Assign(var, rhs) => {
@@ -391,35 +444,35 @@ impl<'ctx> Visit<HirExpr<'_>> for DDlogEngine<'ctx> {
                     expr_id: rhs,
                 };
 
-                (expr, Some(self.intern(TypeKind::hir_Unit)))
+                (expr, Either::Left(Some(TypeKind::hir_Unit)))
             }
 
             HirExprKind::Match(match_) => {
                 let match_ = self.visit(match_);
                 let ty = match_.ty.clone();
 
-                (ExprKind::hir_ExprMatch { match_ }, Some(ty))
+                (ExprKind::hir_ExprMatch { match_ }, Either::Right(ty))
             }
 
             HirExprKind::Scope(block) => (
                 ExprKind::hir_ExprScope {
                     block: self.visit(block),
                 },
-                None,
+                Either::Left(None),
             ),
 
             HirExprKind::Return(ret) => (
                 ExprKind::hir_ExprReturn {
                     val: self.visit(&ret.val).into(),
                 },
-                Some(self.intern(TypeKind::hir_Absurd)),
+                Either::Left(Some(TypeKind::hir_Absurd)),
             ),
 
             HirExprKind::BinOp(binary_op) => (
                 ExprKind::hir_ExprBinOp {
                     op: self.visit(binary_op),
                 },
-                None,
+                Either::Left(None),
             ),
 
             HirExprKind::Loop(_) => todo!(),
@@ -430,17 +483,12 @@ impl<'ctx> Visit<HirExpr<'_>> for DDlogEngine<'ctx> {
             HirExprKind::Cast(_) => todo!(),
             HirExprKind::Reference(_) => todo!(),
             HirExprKind::Index { var: _, index: _ } => todo!(),
-        };
-        let kind = self.intern(kind);
-        let ty = ty.unwrap_or_else(|| self.intern(TypeKind::hir_Unknown));
-
-        self.expressions.push(InputExpressions { id, kind, ty });
-        id
+        }
     }
 }
 
 impl<'ctx> Visit<HirLiteral> for DDlogEngine<'ctx> {
-    type Output = (Literal, Interned<TypeKind>);
+    type Output = (Literal, TypeId);
 
     #[crunch_shared::instrument(name = "literal", skip(self, lit))]
     fn visit(&mut self, lit: &HirLiteral) -> Self::Output {
@@ -514,46 +562,21 @@ impl<'ctx> Visit<HirBlock<&HirStmt<'_>>> for DDlogEngine<'ctx> {
 
     #[crunch_shared::instrument(name = "statement block", skip(self, block))]
     fn visit(&mut self, block: &HirBlock<&HirStmt<'_>>) -> Self::Output {
-        crunch_shared::trace!("visiting {} block statements", block.len());
+        let id = self.statements.next_id();
+        crunch_shared::trace!("created the id {} for a statement block", id,);
 
-        block
+        crunch_shared::trace!("visiting {} block statements", block.len());
+        let scope = block
             .iter()
             .copied()
-            .rev()
-            .fold(None, |prev, next| {
-                let next = self.visit(next);
+            .map(|stmt| self.visit(stmt))
+            .collect::<Vec<_>>()
+            .into();
 
-                match prev {
-                    Some(prev) => {
-                        let id = self.statements.next_id();
-                        crunch_shared::trace!(
-                            "created the id {} for a block scope's statement",
-                            id,
-                        );
+        let stmt = Stmt::hir_StmtScope { scope };
+        self.statements.push(Statements { stmt_id: id, stmt });
 
-                        let stmt = self.intern(Stmt::hir_StmtSeq {
-                            first: prev,
-                            second: next,
-                        });
-
-                        let scope = self.intern(Scope::hir_ScopeToDo);
-                        self.statements.push(InputStatements { id, stmt, scope });
-
-                        Some(id)
-                    }
-                    None => Some(next),
-                }
-            })
-            .unwrap_or_else(|| {
-                let id = self.statements.next_id();
-                crunch_shared::trace!("created the id {} for an statement block", id);
-
-                let stmt = self.intern(Stmt::hir_Empty);
-                let scope = self.intern(Scope::hir_ScopeToDo);
-                self.statements.push(InputStatements { id, stmt, scope });
-
-                id
-            })
+        id
     }
 }
 
@@ -649,6 +672,11 @@ where
     fn visit(&mut self, option: &Option<T>) -> Self::Output {
         option.as_ref().map(|val| self.visit(val))
     }
+}
+
+enum Either<L, R> {
+    Left(L),
+    Right(R),
 }
 
 pub fn ddlog_callback(_rel: usize, _rec: &Record, _w: isize) {
