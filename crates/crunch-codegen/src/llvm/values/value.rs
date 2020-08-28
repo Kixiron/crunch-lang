@@ -33,7 +33,6 @@ pub struct Val<'ctx> {
 }
 
 impl<'ctx> Val<'ctx> {
-    #[inline]
     pub(crate) unsafe fn from_raw(raw: *mut LLVMValue) -> Result<Self> {
         let block = to_non_nul(
             raw,

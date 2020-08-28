@@ -30,7 +30,7 @@ use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde::Serialize;
 
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 
 use differential_datalog::ddval::*;
 use differential_datalog::decl_enum_into_record;
@@ -157,6 +157,10 @@ mod __std {
 
     const XX_SEED1: u64 = 0x23b691a751d0e108;
     const XX_SEED2: u64 = 0x20b09801dce5ff84;
+
+    pub fn std_default<T: Default>() -> T {
+        T::default()
+    }
 
     // Result
 
@@ -2317,196 +2321,6 @@ impl fmt::Debug for InputStatements {
     }
 }
 #[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
-pub struct OutputExpressions {
-    pub id: hir_ExprId,
-    pub kind: internment_Intern<hir_ExprKind>,
-    pub ty: internment_Intern<hir_TypeKind>,
-}
-impl abomonation::Abomonation for OutputExpressions {}
-impl record::FromRecord for OutputExpressions {
-    fn from_record(val: &record::Record) -> result::Result<Self, String> {
-        match val {
-            record::Record::PosStruct(constr, _args) => match constr.as_ref() {
-                "OutputExpressions" if _args.len() == 3 => Ok(OutputExpressions {
-                    id: <hir_ExprId>::from_record(&_args[0])?,
-                    kind: <internment_Intern<hir_ExprKind>>::from_record(&_args[1])?,
-                    ty: <internment_Intern<hir_TypeKind>>::from_record(&_args[2])?,
-                }),
-                c => result::Result::Err(format!(
-                    "unknown constructor {} of type OutputExpressions in {:?}",
-                    c, *val
-                )),
-            },
-            record::Record::NamedStruct(constr, _args) => match constr.as_ref() {
-                "OutputExpressions" => Ok(OutputExpressions {
-                    id: record::arg_extract::<hir_ExprId>(_args, "id")?,
-                    kind: record::arg_extract::<internment_Intern<hir_ExprKind>>(_args, "kind")?,
-                    ty: record::arg_extract::<internment_Intern<hir_TypeKind>>(_args, "ty")?,
-                }),
-                c => result::Result::Err(format!(
-                    "unknown constructor {} of type OutputExpressions in {:?}",
-                    c, *val
-                )),
-            },
-            record::Record::Serialized(format, s) => {
-                if format == "json" {
-                    serde_json::from_str(&*s).map_err(|e| format!("{}", e))
-                } else {
-                    result::Result::Err(format!("unsupported serialization format '{}'", format))
-                }
-            }
-            v => result::Result::Err(format!("not a struct {:?}", *v)),
-        }
-    }
-}
-decl_struct_into_record!(OutputExpressions["OutputExpressions"]<>, id, kind, ty);
-decl_record_mutator_struct!(OutputExpressions, <>, id: hir_ExprId, kind: internment_Intern<hir_ExprKind>, ty: internment_Intern<hir_TypeKind>);
-impl fmt::Display for OutputExpressions {
-    fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            OutputExpressions { id, kind, ty } => {
-                __formatter.write_str("OutputExpressions{")?;
-                fmt::Debug::fmt(id, __formatter)?;
-                __formatter.write_str(",")?;
-                fmt::Debug::fmt(kind, __formatter)?;
-                __formatter.write_str(",")?;
-                fmt::Debug::fmt(ty, __formatter)?;
-                __formatter.write_str("}")
-            }
-        }
-    }
-}
-impl fmt::Debug for OutputExpressions {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Display::fmt(&self, f)
-    }
-}
-#[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
-pub struct OutputFunctions {
-    pub id: hir_FuncId,
-    pub func: internment_Intern<hir_Function>,
-}
-impl abomonation::Abomonation for OutputFunctions {}
-impl record::FromRecord for OutputFunctions {
-    fn from_record(val: &record::Record) -> result::Result<Self, String> {
-        match val {
-            record::Record::PosStruct(constr, _args) => match constr.as_ref() {
-                "OutputFunctions" if _args.len() == 2 => Ok(OutputFunctions {
-                    id: <hir_FuncId>::from_record(&_args[0])?,
-                    func: <internment_Intern<hir_Function>>::from_record(&_args[1])?,
-                }),
-                c => result::Result::Err(format!(
-                    "unknown constructor {} of type OutputFunctions in {:?}",
-                    c, *val
-                )),
-            },
-            record::Record::NamedStruct(constr, _args) => match constr.as_ref() {
-                "OutputFunctions" => Ok(OutputFunctions {
-                    id: record::arg_extract::<hir_FuncId>(_args, "id")?,
-                    func: record::arg_extract::<internment_Intern<hir_Function>>(_args, "func")?,
-                }),
-                c => result::Result::Err(format!(
-                    "unknown constructor {} of type OutputFunctions in {:?}",
-                    c, *val
-                )),
-            },
-            record::Record::Serialized(format, s) => {
-                if format == "json" {
-                    serde_json::from_str(&*s).map_err(|e| format!("{}", e))
-                } else {
-                    result::Result::Err(format!("unsupported serialization format '{}'", format))
-                }
-            }
-            v => result::Result::Err(format!("not a struct {:?}", *v)),
-        }
-    }
-}
-decl_struct_into_record!(OutputFunctions["OutputFunctions"]<>, id, func);
-decl_record_mutator_struct!(OutputFunctions, <>, id: hir_FuncId, func: internment_Intern<hir_Function>);
-impl fmt::Display for OutputFunctions {
-    fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            OutputFunctions { id, func } => {
-                __formatter.write_str("OutputFunctions{")?;
-                fmt::Debug::fmt(id, __formatter)?;
-                __formatter.write_str(",")?;
-                fmt::Debug::fmt(func, __formatter)?;
-                __formatter.write_str("}")
-            }
-        }
-    }
-}
-impl fmt::Debug for OutputFunctions {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Display::fmt(&self, f)
-    }
-}
-#[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
-pub struct OutputStatements {
-    pub id: hir_StmtId,
-    pub stmt: internment_Intern<hir_Stmt>,
-    pub scope: internment_Intern<hir_Scope>,
-}
-impl abomonation::Abomonation for OutputStatements {}
-impl record::FromRecord for OutputStatements {
-    fn from_record(val: &record::Record) -> result::Result<Self, String> {
-        match val {
-            record::Record::PosStruct(constr, _args) => match constr.as_ref() {
-                "OutputStatements" if _args.len() == 3 => Ok(OutputStatements {
-                    id: <hir_StmtId>::from_record(&_args[0])?,
-                    stmt: <internment_Intern<hir_Stmt>>::from_record(&_args[1])?,
-                    scope: <internment_Intern<hir_Scope>>::from_record(&_args[2])?,
-                }),
-                c => result::Result::Err(format!(
-                    "unknown constructor {} of type OutputStatements in {:?}",
-                    c, *val
-                )),
-            },
-            record::Record::NamedStruct(constr, _args) => match constr.as_ref() {
-                "OutputStatements" => Ok(OutputStatements {
-                    id: record::arg_extract::<hir_StmtId>(_args, "id")?,
-                    stmt: record::arg_extract::<internment_Intern<hir_Stmt>>(_args, "stmt")?,
-                    scope: record::arg_extract::<internment_Intern<hir_Scope>>(_args, "scope")?,
-                }),
-                c => result::Result::Err(format!(
-                    "unknown constructor {} of type OutputStatements in {:?}",
-                    c, *val
-                )),
-            },
-            record::Record::Serialized(format, s) => {
-                if format == "json" {
-                    serde_json::from_str(&*s).map_err(|e| format!("{}", e))
-                } else {
-                    result::Result::Err(format!("unsupported serialization format '{}'", format))
-                }
-            }
-            v => result::Result::Err(format!("not a struct {:?}", *v)),
-        }
-    }
-}
-decl_struct_into_record!(OutputStatements["OutputStatements"]<>, id, stmt, scope);
-decl_record_mutator_struct!(OutputStatements, <>, id: hir_StmtId, stmt: internment_Intern<hir_Stmt>, scope: internment_Intern<hir_Scope>);
-impl fmt::Display for OutputStatements {
-    fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            OutputStatements { id, stmt, scope } => {
-                __formatter.write_str("OutputStatements{")?;
-                fmt::Debug::fmt(id, __formatter)?;
-                __formatter.write_str(",")?;
-                fmt::Debug::fmt(stmt, __formatter)?;
-                __formatter.write_str(",")?;
-                fmt::Debug::fmt(scope, __formatter)?;
-                __formatter.write_str("}")
-            }
-        }
-    }
-}
-impl fmt::Debug for OutputStatements {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Display::fmt(&self, f)
-    }
-}
-#[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
 pub struct PropagateExprType {
     pub id: hir_ExprId,
     pub kind: internment_Intern<hir_ExprKind>,
@@ -4554,25 +4368,21 @@ pub type std_u32 = u32;
 pub type std_u64 = u64;
 pub type std_u8 = u8;
 pub type std_usize = std_u64;
-lazy_static! {
-    pub static ref __STATIC_0: internment_Intern<hir_TypeKind> =
-        internment_intern((&(hir_TypeKind::hir_Error {})));
-}
-lazy_static! {
-    pub static ref __STATIC_3: internment_Intern<hir_TypeKind> = internment_intern(
-        (&(hir_TypeKind::hir_Int {
-            is_signed: (std_Option::std_Some { x: true }),
-            width: (std_Option::std_Some { x: (32 as u16) })
-        }))
-    );
-}
-lazy_static! {
-    pub static ref __STATIC_1: internment_Intern<hir_TypeKind> =
-        internment_intern((&(hir_TypeKind::hir_Unknown {})));
-}
-lazy_static! {
-    pub static ref __STATIC_2: std_Vec<String> = std_vec_empty();
-}
+pub static __STATIC_0: ::once_cell::sync::Lazy<internment_Intern<hir_TypeKind>> =
+    ::once_cell::sync::Lazy::new(|| internment_intern((&(hir_TypeKind::hir_Error {}))));
+pub static __STATIC_3: ::once_cell::sync::Lazy<internment_Intern<hir_TypeKind>> =
+    ::once_cell::sync::Lazy::new(|| {
+        internment_intern(
+            (&(hir_TypeKind::hir_Int {
+                is_signed: (std_Option::std_Some { x: true }),
+                width: (std_Option::std_Some { x: (32 as u16) }),
+            })),
+        )
+    });
+pub static __STATIC_1: ::once_cell::sync::Lazy<internment_Intern<hir_TypeKind>> =
+    ::once_cell::sync::Lazy::new(|| internment_intern((&(hir_TypeKind::hir_Unknown {}))));
+pub static __STATIC_2: ::once_cell::sync::Lazy<std_Vec<String>> =
+    ::once_cell::sync::Lazy::new(|| std_vec_empty());
 /* fn debug_debug_event<T1: Val,A1: Val,A2: Val>(operator_id: & debug_DDlogOpId, w: & std_DDWeight, ts: & T1, operator_type: & String, input1: & A1, out: & A2) -> () */
 /* fn debug_debug_event_join<T1: Val,A1: Val,A2: Val,A3: Val>(operator_id: & debug_DDlogOpId, w: & std_DDWeight, ts: & T1, input1: & A1, input2: & A2, out: & A3) -> () */
 /* fn debug_debug_split_group<K: Val,I: Val,V: Val>(g: & std_Group<K, (I, V)>) -> (std_Vec<I>, std_Group<K, V>) */
@@ -4594,6 +4404,7 @@ lazy_static! {
 /* fn log_log(module: & log_module_t, level: & log_log_level_t, msg: & String) -> () */
 /* fn std___builtin_2string<X: Val>(x: & X) -> String */
 /* fn std_bigint_pow32(base: & Int, exp: & u32) -> Int */
+/* fn std_default<T: Val>() -> T */
 /* fn std_deref<A: Val>(x: & std_Ref<A>) -> A */
 /* fn std_group_count<K: Val,V: Val>(g: & std_Group<K, V>) -> std_usize */
 /* fn std_group_first<K: Val,V: Val>(g: & std_Group<K, V>) -> V */

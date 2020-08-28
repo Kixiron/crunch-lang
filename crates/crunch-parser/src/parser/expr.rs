@@ -29,7 +29,6 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         self.parse_expr(0)
     }
 
-    #[inline(always)]
     fn expr_precedence(&self) -> usize {
         self.peek
             .map(|p| {

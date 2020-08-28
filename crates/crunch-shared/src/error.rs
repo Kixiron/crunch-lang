@@ -31,7 +31,6 @@ pub struct Location {
 }
 
 impl Location {
-    #[inline]
     pub fn new<S, F>(span: S, file: F) -> Self
     where
         S: Into<Span>,
@@ -43,7 +42,6 @@ impl Location {
         }
     }
 
-    #[inline]
     pub fn merge(self, other: Self) -> Self {
         debug_assert_eq!(self.file(), other.file());
 
@@ -53,22 +51,18 @@ impl Location {
         }
     }
 
-    #[inline]
     pub const fn span(&self) -> Span {
         self.span
     }
 
-    #[inline]
     pub const fn file(&self) -> FileId {
         self.file
     }
 
-    #[inline]
     pub const fn range(&self) -> Range<usize> {
         self.span().range()
     }
 
-    #[inline]
     pub fn map_span<F>(self, map: F) -> Self
     where
         F: FnOnce(Span) -> Span,
@@ -87,12 +81,10 @@ pub struct Span {
 }
 
 impl Span {
-    #[inline]
     pub const fn new(start: usize, end: usize) -> Self {
         Self { start, end }
     }
 
-    #[inline]
     pub const fn double(span: usize) -> Self {
         Self {
             start: span,
@@ -100,41 +92,34 @@ impl Span {
         }
     }
 
-    #[inline]
     pub const fn start(&self) -> usize {
         self.start
     }
 
-    #[inline]
     pub const fn end(&self) -> usize {
         self.end
     }
 
-    #[inline]
     pub const fn range(&self) -> Range<usize> {
         self.start..self.end
     }
 
-    #[inline]
     pub const fn merge(start: Self, end: Self) -> Span {
         Self::new(start.start, end.end)
     }
 
-    #[inline]
     pub const fn width(&self) -> usize {
         self.end - self.start
     }
 }
 
 impl fmt::Debug for Span {
-    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}..{}", self.start, self.end)
     }
 }
 
 impl From<Range<usize>> for Span {
-    #[inline]
     fn from(range: Range<usize>) -> Self {
         Self {
             start: range.start,
@@ -144,14 +129,12 @@ impl From<Range<usize>> for Span {
 }
 
 impl Into<Range<usize>> for Span {
-    #[inline]
     fn into(self) -> Range<usize> {
         self.start..self.end
     }
 }
 
 impl From<(usize, usize)> for Span {
-    #[inline]
     fn from(range: (usize, usize)) -> Self {
         Self {
             start: range.0,
@@ -161,14 +144,12 @@ impl From<(usize, usize)> for Span {
 }
 
 impl Into<(usize, usize)> for Span {
-    #[inline]
     fn into(self) -> (usize, usize) {
         (self.start, self.end)
     }
 }
 
 impl From<[usize; 2]> for Span {
-    #[inline]
     fn from(range: [usize; 2]) -> Self {
         Self {
             start: range[0],
@@ -178,7 +159,6 @@ impl From<[usize; 2]> for Span {
 }
 
 impl Into<[usize; 2]> for Span {
-    #[inline]
     fn into(self) -> [usize; 2] {
         [self.start, self.end]
     }
@@ -191,7 +171,6 @@ pub struct Locatable<T> {
 }
 
 impl<T> Locatable<T> {
-    #[inline]
     pub fn new(data: T, loc: Location) -> Self {
         Self {
             data,
@@ -199,42 +178,34 @@ impl<T> Locatable<T> {
         }
     }
 
-    #[inline]
     pub fn none(data: T) -> Self {
         Self { data, loc: None }
     }
 
-    #[inline]
     pub fn data(&self) -> &T {
         &self.data
     }
 
-    #[inline]
     pub fn into_data(self) -> T {
         self.data
     }
 
-    #[inline]
     pub fn location(&self) -> Location {
         self.loc.unwrap()
     }
 
-    #[inline]
     pub fn span(&self) -> Span {
         self.loc.unwrap().span()
     }
 
-    #[inline]
     pub fn file(&self) -> FileId {
         self.loc.unwrap().file()
     }
 
-    #[inline]
     pub fn range(&self) -> Range<usize> {
         self.span().into()
     }
 
-    #[inline]
     pub fn map<F, U>(self, map: F) -> Locatable<U>
     where
         F: FnOnce(T) -> U,
@@ -245,7 +216,6 @@ impl<T> Locatable<T> {
         }
     }
 
-    #[inline]
     pub fn as_ref(&self) -> Locatable<&T> {
         Locatable {
             data: &self.data,
@@ -253,7 +223,6 @@ impl<T> Locatable<T> {
         }
     }
 
-    #[inline]
     pub fn as_mut(&mut self) -> Locatable<&mut T> {
         Locatable {
             data: &mut self.data,
@@ -263,14 +232,12 @@ impl<T> Locatable<T> {
 }
 
 impl<T: Deref> Locatable<T> {
-    #[inline]
     pub fn as_deref(&self) -> Locatable<&T::Target> {
         self.as_ref().map(|t| t.deref())
     }
 }
 
 impl<T: DerefMut> Locatable<T> {
-    #[inline]
     pub fn as_deref_mut(&mut self) -> Locatable<&mut T::Target> {
         self.as_mut().map(|t| t.deref_mut())
     }
@@ -279,14 +246,12 @@ impl<T: DerefMut> Locatable<T> {
 impl<T> Deref for Locatable<T> {
     type Target = T;
 
-    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.data
     }
 }
 
 impl<T> DerefMut for Locatable<T> {
-    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.data
     }
@@ -300,7 +265,6 @@ pub struct ErrorHandler {
 }
 
 impl ErrorHandler {
-    #[inline]
     pub fn new() -> Self {
         Self {
             errors: VecDeque::new(),
@@ -309,34 +273,28 @@ impl ErrorHandler {
         }
     }
 
-    #[inline]
     pub fn push_err(&mut self, err: Locatable<Error>) {
         self.fatal = true;
         self.errors.push_back(err);
     }
 
-    #[inline]
     pub fn push_warning(&mut self, warn: Locatable<Warning>) {
         self.warnings.push_back(warn);
     }
 
-    #[inline]
     pub fn is_fatal(&self) -> bool {
         self.fatal
     }
 
-    #[inline]
     pub fn err_len(&self) -> usize {
         self.errors.len()
     }
 
-    #[inline]
     pub fn warn_len(&self) -> usize {
         self.warnings.len()
     }
 
     /// Drain all errors and warnings from the current handler, emitting them
-    #[inline]
     pub fn emit<'a, F>(&mut self, files: &'a F, writer: &StandardStream, config: &Config)
     where
         F: CodeFiles<'a, FileId = FileId>,
@@ -360,14 +318,12 @@ impl ErrorHandler {
         }
     }
 
-    #[inline]
     pub fn extend(&mut self, other: Self) {
         self.fatal = self.fatal || other.fatal;
         self.errors.extend(other.errors);
         self.warnings.extend(other.warnings);
     }
 
-    #[inline]
     pub fn take(&mut self) -> Self {
         let taken = Self {
             fatal: self.fatal,
@@ -381,7 +337,6 @@ impl ErrorHandler {
 }
 
 impl From<Locatable<Error>> for ErrorHandler {
-    #[inline]
     fn from(err: Locatable<Error>) -> Self {
         let mut handler = ErrorHandler::new();
         handler.push_err(err);
@@ -498,7 +453,6 @@ pub enum SyntaxError {
 }
 
 impl SyntaxError {
-    #[inline]
     fn emit<'a, F>(
         &self,
         _files: &'a F,
@@ -564,7 +518,6 @@ pub enum SemanticError {
 }
 
 impl SemanticError {
-    #[inline]
     fn emit<'a, F>(
         &self,
         _files: &'a F,
@@ -657,7 +610,6 @@ pub enum TypeError {
 }
 
 impl TypeError {
-    #[inline]
     fn emit(&self, file: FileId, span: Span, diag: &mut Vec<Diagnostic<FileId>>) {
         match self {
             Self::TypeConflict {
@@ -731,7 +683,6 @@ pub enum MirError {
 }
 
 impl MirError {
-    #[inline]
     fn emit(&self, file: FileId, span: Span, diag: &mut Vec<Diagnostic<FileId>>) {
         diag.push(
             Diagnostic::error()
@@ -757,7 +708,6 @@ pub enum Warning {
 }
 
 impl Warning {
-    #[inline]
     fn emit(&self, file: FileId, span: Span, diag: &mut Vec<Diagnostic<FileId>>) {
         diag.push(
             Diagnostic::warning()

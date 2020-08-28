@@ -12,7 +12,6 @@ pub struct Builder<'ctx> {
 }
 
 impl<'ctx> Builder<'ctx> {
-    #[inline]
     pub(crate) fn new(ctx: &'ctx Context) -> Result<Self> {
         // Safety: The new builder is checked for null
         let builder = to_non_nul(
@@ -26,7 +25,6 @@ impl<'ctx> Builder<'ctx> {
         })
     }
 
-    // #[inline]
     // pub(crate) fn move_to(&self, block: &BasicBlock<'ctx>, instruction: InstructionValue<'ctx>) {
     //     unsafe {
     //         LLVMPositionBuilder(
@@ -37,24 +35,20 @@ impl<'ctx> Builder<'ctx> {
     //     };
     // }
 
-    #[inline]
     pub(crate) fn move_to_end(&self, block: &BasicBlock<'ctx>) {
         unsafe { LLVMPositionBuilderAtEnd(self.as_mut_ptr(), BasicBlock::as_mut_ptr(*block)) };
     }
 
-    // #[inline]
     // pub(crate) fn move_before(&self, instruction: InstructionValue<'ctx>) {
     //     unsafe { LLVMPositionBuilderBefore(self.as_mut_ptr(), instruction.as_mut_ptr()) };
     // }
 
-    #[inline]
     pub(crate) const fn as_mut_ptr(&self) -> *mut LLVMBuilder {
         self.builder.as_ptr() as *mut LLVMBuilder
     }
 }
 
 impl<'ctx> Drop for Builder<'ctx> {
-    #[inline]
     fn drop(&mut self) {
         // Safety: Builder instances are unique and the parent LLVMContext must not be dropped
         unsafe { LLVMDisposeBuilder(self.as_mut_ptr()) }

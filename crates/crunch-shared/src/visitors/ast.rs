@@ -14,7 +14,6 @@ use crate::{
 pub trait ItemVisitor<'ctx> {
     type Output;
 
-    #[inline]
     fn visit_item(&mut self, item: &'ctx Item<'ctx>) -> Self::Output {
         match &item.kind {
             ItemKind::Func {
@@ -250,7 +249,6 @@ pub trait ExprVisitor<'ctx> {
 pub trait ItemVisitorMut<'ctx> {
     type Output;
 
-    #[inline]
     fn visit_item(
         &mut self,
         items: &mut Vec<&'ctx Item<'ctx>>,

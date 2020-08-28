@@ -14,14 +14,12 @@ pub struct FileHasher {
 }
 
 impl FileHasher {
-    #[inline]
     pub fn new() -> Self {
         Self {
             hasher: BuildHasherDefault::default(),
         }
     }
 
-    #[inline]
     pub fn hash_file<P: AsRef<Path>>(&self, path: P) -> Result<u64> {
         let path = path.as_ref();
         let meta = FileMeta::new(path)?;
@@ -59,7 +57,6 @@ struct FileMeta<'a> {
 }
 
 impl<'a> FileMeta<'a> {
-    #[inline]
     fn new(path: &'a Path) -> Result<Self> {
         let metadata = File::open(path)?.metadata()?;
 
@@ -80,14 +77,12 @@ impl<'a> FileMeta<'a> {
 struct OsFileMeta(Metadata);
 
 impl OsFileMeta {
-    #[inline]
     pub const fn new(metadata: Metadata) -> Self {
         Self(metadata)
     }
 }
 
 impl Hash for OsFileMeta {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         let Self(meta) = self;
 

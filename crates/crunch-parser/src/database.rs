@@ -22,7 +22,6 @@ pub trait ParseDatabase:
     fn parse(&self, file: FileId) -> Result<Arc<Vec<&'static Item<'static>>>, ArcError>;
 }
 
-#[inline]
 fn parse(
     db: &dyn ParseDatabase,
     file: FileId,

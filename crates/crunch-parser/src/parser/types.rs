@@ -56,7 +56,6 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         self.ascribed_type_internal(0)
     }
 
-    #[inline(always)]
     fn type_precedence(&self) -> usize {
         self.peek
             .map(|p| {

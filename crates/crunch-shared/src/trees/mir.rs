@@ -1210,7 +1210,6 @@ pub enum Var {
 }
 
 impl From<HirVar> for Var {
-    #[inline]
     fn from(var: HirVar) -> Self {
         match var {
             HirVar::User(user) => Self::User(user),
@@ -1220,7 +1219,6 @@ impl From<HirVar> for Var {
 }
 
 impl From<&HirVar> for Var {
-    #[inline]
     fn from(var: &HirVar) -> Self {
         Self::from(*var)
     }

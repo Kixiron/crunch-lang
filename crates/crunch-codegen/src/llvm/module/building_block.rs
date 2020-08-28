@@ -41,7 +41,6 @@ pub struct BuildingBlock<'ctx> {
 
 // Public interface
 impl<'ctx> BuildingBlock<'ctx> {
-    #[inline]
     pub const fn basic_block(&self) -> BasicBlock<'ctx> {
         self.block
     }
@@ -373,7 +372,6 @@ impl<'ctx> BuildingBlock<'ctx> {
         }
     }
 
-    #[inline]
     pub fn float_div(
         &self,
         lhs: impl Into<Value<'ctx>>,
@@ -399,7 +397,6 @@ impl<'ctx> BuildingBlock<'ctx> {
     /// [Docs](https://llvm.org/docs/LangRef.html#ret-instruction)
     // TODO: Take in a returnable value
     // TODO: Verify return type is correct for the current function
-    #[inline]
     pub fn ret(&self, value: Option<Value<'ctx>>) -> Result<InstructionValue<'ctx>> {
         let ret = unsafe {
             let ret = if let Some(value) = value {
@@ -414,7 +411,6 @@ impl<'ctx> BuildingBlock<'ctx> {
         Ok(ret)
     }
 
-    #[inline]
     pub fn branch(&self, block: impl AsRef<BasicBlock<'ctx>>) -> Result<InstructionValue<'ctx>> {
         let branch = unsafe {
             InstructionValue::from_raw(LLVMBuildBr(
@@ -428,7 +424,6 @@ impl<'ctx> BuildingBlock<'ctx> {
         Ok(branch)
     }
 
-    #[inline]
     pub fn conditional_branch(
         &self,
         condition: Value<'ctx>,
@@ -447,7 +442,6 @@ impl<'ctx> BuildingBlock<'ctx> {
         Ok(cond_branch)
     }
 
-    #[inline]
     pub fn unreachable(&self) -> Result<InstructionValue<'ctx>> {
         let unreachable =
             unsafe { InstructionValue::from_raw(LLVMBuildUnreachable(self.builder.as_mut_ptr()))? };
@@ -457,7 +451,6 @@ impl<'ctx> BuildingBlock<'ctx> {
         Ok(unreachable)
     }
 
-    #[inline]
     pub fn bitcast(&self, value: Value<'ctx>, dest_ty: Type<'ctx>) -> Result<Value<'ctx>> {
         unsafe {
             Value::from_raw(LLVMBuildBitCast(
@@ -469,7 +462,6 @@ impl<'ctx> BuildingBlock<'ctx> {
         }
     }
 
-    #[inline]
     pub fn switch<J>(
         &self,
         condition: Value<'ctx>,
@@ -501,7 +493,6 @@ impl<'ctx> BuildingBlock<'ctx> {
         Ok(switch)
     }
 
-    #[inline]
     pub fn call<F, A>(&self, function: F, args: A) -> Result<CallSiteValue<'ctx>>
     where
         F: Into<FunctionOrPointer<'ctx>>,
@@ -543,7 +534,6 @@ impl<'ctx> BuildingBlock<'ctx> {
         }
     }
 
-    #[inline]
     pub fn create_global_string_ptr(
         &self,
         value: &str,
@@ -563,7 +553,6 @@ impl<'ctx> BuildingBlock<'ctx> {
         }
     }
 
-    #[inline]
     pub fn create_global_string(&self, value: &str, name: &str) -> Result<ArrayValue<'ctx>> {
         let c_string_value = CString::new(value)?;
         let c_string_name = CString::new(name)?;
@@ -579,7 +568,6 @@ impl<'ctx> BuildingBlock<'ctx> {
         }
     }
 
-    #[inline]
     pub fn ptr_cast(&self, value: Value<'ctx>, cast_ty: Type<'ctx>) -> Result<Value<'ctx>> {
         unsafe {
             let value = LLVMBuildPointerCast(
@@ -623,17 +611,14 @@ impl<'ctx> BuildingBlock<'ctx> {
 
 // Private interface
 impl<'ctx> BuildingBlock<'ctx> {
-    #[inline]
     pub(crate) const fn new(block: BasicBlock<'ctx>, builder: Builder<'ctx>) -> Self {
         Self { block, builder }
     }
 
-    #[inline]
     pub(crate) const fn builder(&self) -> &Builder<'ctx> {
         &self.builder
     }
 
-    #[inline]
     pub(crate) fn cast_call_args<V>(
         &self,
         values: V,
@@ -661,14 +646,12 @@ impl<'ctx> BuildingBlock<'ctx> {
 }
 
 impl Debug for BuildingBlock<'_> {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         Debug::fmt(&self.block, f)
     }
 }
 
 impl<'ctx> PartialEq for BuildingBlock<'ctx> {
-    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.block.eq(&other.block)
     }
@@ -677,28 +660,24 @@ impl<'ctx> PartialEq for BuildingBlock<'ctx> {
 impl<'ctx> Eq for BuildingBlock<'ctx> {}
 
 impl<'ctx> PartialOrd for BuildingBlock<'ctx> {
-    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.block.partial_cmp(&other.block)
     }
 }
 
 impl<'ctx> Ord for BuildingBlock<'ctx> {
-    #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
         self.block.cmp(&other.block)
     }
 }
 
 impl<'ctx> Hash for BuildingBlock<'ctx> {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.block.hash(state)
     }
 }
 
 impl<'ctx> AsRef<BasicBlock<'ctx>> for BuildingBlock<'ctx> {
-    #[inline]
     fn as_ref(&self) -> &BasicBlock<'ctx> {
         &self.block
     }
@@ -707,7 +686,6 @@ impl<'ctx> AsRef<BasicBlock<'ctx>> for BuildingBlock<'ctx> {
 impl<'ctx> Deref for BuildingBlock<'ctx> {
     type Target = BasicBlock<'ctx>;
 
-    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.block
     }

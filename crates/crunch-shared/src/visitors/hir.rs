@@ -13,7 +13,6 @@ use crate::{
 pub trait ItemVisitor<'ctx> {
     type Output;
 
-    #[inline]
     fn visit_item(&mut self, item: &Item<'ctx>) -> Self::Output {
         match item {
             Item::Function(func) => self.visit_func(func),
@@ -35,7 +34,6 @@ pub trait StmtVisitor<'ctx>: ItemVisitor<'ctx> + ExprVisitor<'ctx> {
 pub trait ExprVisitor<'ctx> {
     type Output;
 
-    #[inline]
     fn visit_expr(&mut self, expr: &'ctx Expr<'ctx>) -> Self::Output {
         let loc = expr.loc;
 

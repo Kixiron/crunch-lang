@@ -42,7 +42,6 @@ impl<'ctx> Type<'ctx> {
         unsafe { ArrayType::from_raw(LLVMArrayType(self.as_mut_ptr(), len)) }
     }
 
-    #[inline]
     pub(crate) unsafe fn from_raw(raw: *mut LLVMType) -> Result<Self> {
         let ty = to_non_nul(
             raw,

@@ -40,7 +40,6 @@ pub struct Module<'ctx> {
 
 // Public interface
 impl<'ctx> Module<'ctx> {
-    #[inline]
     pub fn build_function<N>(
         &'ctx self,
         name: N,
@@ -62,7 +61,6 @@ impl<'ctx> Module<'ctx> {
         FunctionBuilder::new(function, self, &signature)
     }
 
-    #[inline]
     pub fn create_function<N>(
         &'ctx self,
         name: N,
@@ -101,7 +99,6 @@ impl<'ctx> Module<'ctx> {
         }
     }
 
-    #[inline]
     pub fn verify(&self) -> Result<()> {
         let mut err_message = MaybeUninit::zeroed();
 
@@ -130,7 +127,6 @@ impl<'ctx> Module<'ctx> {
         }
     }
 
-    #[inline]
     pub fn function_ty(
         &self,
         // TODO: Make these both require concrete values
@@ -163,7 +159,6 @@ impl<'ctx> Module<'ctx> {
     }
 
     /// Gets a function by its name
-    #[inline]
     pub fn get_function<N>(&self, name: N) -> Result<FunctionValue<'ctx>>
     where
         N: AsRef<str>,
@@ -174,7 +169,6 @@ impl<'ctx> Module<'ctx> {
 
     /// Gets a function by its name or creates a new one if it doesn't exist
     // TODO: Return the signature somehow?
-    #[inline]
     pub fn get_or_create_function<N, F>(&self, name: N, create: F) -> Result<FunctionValue<'ctx>>
     where
         N: AsRef<str>,
@@ -228,7 +222,6 @@ impl<'ctx> Module<'ctx> {
         }
     }
 
-    #[inline]
     pub const fn context(&self) -> &'ctx Context {
         self.ctx
     }
@@ -282,7 +275,6 @@ impl<'ctx> Module<'ctx> {
     /// The new `module` must have unique ownership over the given `LLVMModule`, otherwise UB
     /// will occur since `LLVMDisposeModule` will be called twice via the `Drop` implementation
     ///
-    #[inline]
     pub(crate) unsafe fn from_raw(ctx: &'ctx Context, raw: *mut LLVMModule) -> Result<Self> {
         let module = to_non_nul(raw, "Failed to create Module")?;
 
@@ -290,7 +282,6 @@ impl<'ctx> Module<'ctx> {
     }
 
     /// Fetches a raw pointer to the underlying `LLVMModule`
-    #[inline]
     pub(crate) const fn as_mut_ptr(&self) -> *mut LLVMModule {
         self.module.as_ptr()
     }
@@ -298,7 +289,6 @@ impl<'ctx> Module<'ctx> {
 
 /// Clones a `Module`, panicking if an error occurs
 impl<'ctx> Clone for Module<'ctx> {
-    #[inline]
     fn clone(&self) -> Self {
         // Safety: The newly created module has unique ownership over the underlying module
         unsafe {
@@ -310,7 +300,6 @@ impl<'ctx> Clone for Module<'ctx> {
 }
 
 impl Debug for Module<'_> {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let string = unsafe {
             CStr::from_ptr(
@@ -329,7 +318,6 @@ impl Debug for Module<'_> {
 }
 
 impl<'ctx> Drop for Module<'ctx> {
-    #[inline]
     fn drop(&mut self) {
         // Safety: The current module is uniquely owned, and therefore will only be disposed once
         unsafe { LLVMDisposeModule(self.as_mut_ptr()) };

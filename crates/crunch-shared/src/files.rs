@@ -13,7 +13,6 @@ use serde::{Deserialize, Serialize};
 pub struct FileId(pub u32);
 
 impl FileId {
-    #[inline]
     pub fn new(id: u32) -> Self {
         Self(id)
     }

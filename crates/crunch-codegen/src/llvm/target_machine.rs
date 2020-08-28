@@ -30,7 +30,6 @@ pub struct Target {
 }
 
 impl Target {
-    #[inline]
     pub fn from_triple(triple: &str) -> Result<Self> {
         let mut target = MaybeUninit::zeroed();
         let mut err_message = MaybeUninit::zeroed();
@@ -58,7 +57,6 @@ impl Target {
         }
     }
 
-    #[inline]
     pub fn init_native(conf: TargetConf) -> Result<()> {
         use llvm_sys::target::{
             LLVM_InitializeNativeAsmParser, LLVM_InitializeNativeAsmPrinter,
@@ -109,7 +107,6 @@ impl Target {
         Ok(())
     }
 
-    #[inline]
     pub fn init_x86(conf: TargetConf) {
         use llvm_sys::target::{
             LLVMInitializeX86AsmParser, LLVMInitializeX86AsmPrinter, LLVMInitializeX86Disassembler,
@@ -145,14 +142,12 @@ impl Target {
 }
 
 impl Target {
-    #[inline]
     pub(crate) unsafe fn from_raw(raw: *mut LLVMTarget) -> Result<Self> {
         let target = to_non_nul(raw, "Failed to create Target")?;
 
         Ok(Self { target })
     }
 
-    #[inline]
     pub(crate) const fn as_mut_ptr(&self) -> *mut LLVMTarget {
         self.target.as_ptr()
     }
@@ -187,7 +182,6 @@ pub struct TargetMachine {
 }
 
 impl TargetMachine {
-    #[inline]
     pub fn new(
         target: &Target,
         triple: &str,
@@ -228,7 +222,6 @@ impl TargetMachine {
         }
     }
 
-    #[inline]
     pub fn emit_to_file(
         &self,
         module: &Module<'_>,
@@ -258,12 +251,10 @@ impl TargetMachine {
         }
     }
 
-    #[inline]
     pub fn target(&self) -> Result<Target> {
         unsafe { Target::from_raw(LLVMGetTargetMachineTarget(self.as_mut_ptr())) }
     }
 
-    #[inline]
     pub fn target_triple<'a>(&'a self) -> Result<&'a CStr> {
         unsafe {
             to_non_nul(
@@ -274,7 +265,6 @@ impl TargetMachine {
         }
     }
 
-    #[inline]
     pub fn target_cpu<'a>(&'a self) -> Result<&'a CStr> {
         unsafe {
             to_non_nul(
@@ -285,7 +275,6 @@ impl TargetMachine {
         }
     }
 
-    #[inline]
     pub fn target_features<'a>(&'a self) -> Result<&'a CStr> {
         unsafe {
             to_non_nul(
@@ -296,26 +285,22 @@ impl TargetMachine {
         }
     }
 
-    #[inline]
     pub fn host_cpu() -> Result<LLVMString> {
         unsafe { LLVMString::from_raw(LLVMGetHostCPUName()) }
     }
 
-    #[inline]
     pub fn host_cpu_features() -> Result<LLVMString> {
         unsafe { LLVMString::from_raw(LLVMGetHostCPUFeatures()) }
     }
 }
 
 impl TargetMachine {
-    #[inline]
     pub(crate) unsafe fn from_raw(raw: *mut LLVMOpaqueTargetMachine) -> Result<Self> {
         let machine = to_non_nul(raw, "Failed to create TargetMachine")?;
 
         Ok(Self { machine })
     }
 
-    #[inline]
     pub(crate) const fn as_mut_ptr(&self) -> *mut LLVMOpaqueTargetMachine {
         self.machine.as_ptr()
     }
@@ -347,7 +332,6 @@ impl Default for TargetMachine {
 }
 
 impl Drop for TargetMachine {
-    #[inline]
     fn drop(&mut self) {
         unsafe { LLVMDisposeTargetMachine(self.as_mut_ptr()) };
     }
@@ -362,7 +346,6 @@ pub enum CodegenFileKind {
 
 #[rustfmt::skip]
 impl From<LLVMCodeGenFileType> for CodegenFileKind {
-    #[inline]
     fn from(codegen: LLVMCodeGenFileType) -> Self {
         match codegen {
             LLVMCodeGenFileType::LLVMAssemblyFile => Self::Assembly,
@@ -373,7 +356,6 @@ impl From<LLVMCodeGenFileType> for CodegenFileKind {
 
 #[rustfmt::skip]
 impl Into<LLVMCodeGenFileType> for CodegenFileKind {
-    #[inline]
     fn into(self) -> LLVMCodeGenFileType {
         match self {
             Self::Assembly => LLVMCodeGenFileType::LLVMAssemblyFile,
@@ -393,7 +375,6 @@ pub enum OptLevel {
 
 #[rustfmt::skip]
 impl From<LLVMCodeGenOptLevel> for OptLevel {
-    #[inline]
     fn from(opt_level: LLVMCodeGenOptLevel) -> Self {
         match opt_level {
             LLVMCodeGenOptLevel::LLVMCodeGenLevelNone       => Self::None,
@@ -406,7 +387,6 @@ impl From<LLVMCodeGenOptLevel> for OptLevel {
 
 #[rustfmt::skip]
 impl Into<LLVMCodeGenOptLevel> for OptLevel {
-    #[inline]
     fn into(self) -> LLVMCodeGenOptLevel {
         match self {
             Self::None       => LLVMCodeGenOptLevel::LLVMCodeGenLevelNone,
@@ -418,7 +398,6 @@ impl Into<LLVMCodeGenOptLevel> for OptLevel {
 }
 
 impl Default for OptLevel {
-    #[inline]
     fn default() -> Self {
         Self::Default
     }
@@ -439,7 +418,6 @@ pub enum RelocMode {
 
 #[rustfmt::skip]
 impl From<LLVMRelocMode> for RelocMode {
-    #[inline]
     fn from(mode: LLVMRelocMode) -> Self {
         match mode {
             LLVMRelocMode::LLVMRelocDefault      => Self::Default,
@@ -455,7 +433,6 @@ impl From<LLVMRelocMode> for RelocMode {
 
 #[rustfmt::skip]
 impl Into<LLVMRelocMode> for RelocMode {
-    #[inline]
     fn into(self) ->LLVMRelocMode {
         match self {
             Self::Default      => LLVMRelocMode::LLVMRelocDefault,
@@ -470,7 +447,6 @@ impl Into<LLVMRelocMode> for RelocMode {
 }
 
 impl Default for RelocMode {
-    #[inline]
     fn default() -> Self {
         Self::Default
     }
@@ -490,7 +466,6 @@ pub enum CodeModel {
 
 #[rustfmt::skip]
 impl From<LLVMCodeModel> for CodeModel {
-    #[inline]
     fn from(model: LLVMCodeModel) -> Self {
         match model {
             LLVMCodeModel::LLVMCodeModelDefault    => Self::Default,
@@ -506,7 +481,6 @@ impl From<LLVMCodeModel> for CodeModel {
 
 #[rustfmt::skip]
 impl Into<LLVMCodeModel> for CodeModel {
-    #[inline]
     fn into(self) -> LLVMCodeModel {
         match self {
             Self::Default    => LLVMCodeModel::LLVMCodeModelDefault,
@@ -521,7 +495,6 @@ impl Into<LLVMCodeModel> for CodeModel {
 }
 
 impl Default for CodeModel {
-    #[inline]
     fn default() -> Self {
         Self::Default
     }

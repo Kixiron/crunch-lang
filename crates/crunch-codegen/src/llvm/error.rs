@@ -23,7 +23,6 @@ pub struct Error {
 
 impl Error {
     /// Create a new `Error`
-    #[inline]
     pub(crate) fn new<M>(message: M, kind: ErrorKind) -> Self
     where
         M: Into<ErrorString>,
@@ -39,7 +38,6 @@ impl Error {
     /// This method will always allocate, so [`Error::message_ref`] can often be a better option
     ///
     /// [`Error::message_ref`]: crate::utils::Error#message_ref
-    #[inline]
     pub fn message(&self) -> String {
         self.message.to_string()
     }
@@ -47,7 +45,6 @@ impl Error {
     /// Fetches the error message as a [`Cow`]
     ///
     /// [`Cow`]: https://doc.rust-lang.org/std/borrow/enum.Cow.html
-    #[inline]
     pub fn message_ref(&self) -> Cow<'_, str> {
         match self.message {
             ErrorString::String(ref string) => Cow::Borrowed(string),
@@ -56,7 +53,6 @@ impl Error {
     }
 
     /// Fetches the type of error that occurred
-    #[inline]
     pub const fn kind(&self) -> ErrorKind {
         self.kind
     }

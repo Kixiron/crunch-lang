@@ -25,7 +25,6 @@ pub struct Value<'a>(NonNull<LLVMValue>, PhantomData<&'a Context>);
 
 // Public interface
 impl<'a> Value<'a> {
-    #[inline]
     pub fn get_type(self) -> Result<Type<'a>> {
         let ty = null!(
             unsafe { LLVMTypeOf(self.as_mut_ptr()) },
@@ -35,7 +34,6 @@ impl<'a> Value<'a> {
         Ok(Type::from_raw(ty))
     }
 
-    #[inline]
     pub fn const_int_val(self) -> Option<i64> {
         if self.is_const_int() {
             Some(unsafe { LLVMConstIntGetSExtValue(self.as_mut_ptr()) })
@@ -44,14 +42,12 @@ impl<'a> Value<'a> {
         }
     }
 
-    #[inline]
     pub fn set_name(self, name: &str) {
         let cname = CString::new(name).expect("Rust strings cannot have null bytes");
 
         unsafe { LLVMSetValueName2(self.as_mut_ptr(), cname.as_ptr(), name.len()) };
     }
 
-    #[inline]
     pub fn with_name(self, name: &str) -> Self {
         self.set_name(name);
         self
@@ -60,7 +56,6 @@ impl<'a> Value<'a> {
 
 // Private interface
 impl<'a> Value<'a> {
-    #[inline]
     pub(crate) fn from_raw(raw: *mut LLVMValue) -> Result<Self> {
         let block = to_non_nul(
             raw,
@@ -70,12 +65,10 @@ impl<'a> Value<'a> {
         Ok(Self::from_non_nul(block))
     }
 
-    #[inline]
     pub(crate) const fn from_non_nul(value: NonNull<LLVMValue>) -> Self {
         Self(value, PhantomData)
     }
 
-    #[inline]
     pub(crate) const fn as_mut_ptr(self) -> *mut LLVMValue {
         self.0.as_ptr() as *mut LLVMValue
     }

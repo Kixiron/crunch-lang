@@ -48,7 +48,6 @@ use crunch_shared::{
 //       the backends
 // TODO: Have this process inlined variables & formatting
 /// Turns all escape sequences in a string into their actual representation
-#[inline]
 pub(super) fn unescape_string<I: Iterator<Item = char>>(
     queue: I,
 ) -> Result<Text, (Error, Range<usize>)> {
@@ -91,7 +90,6 @@ pub(super) fn unescape_string<I: Iterator<Item = char>>(
     Ok(Text::new(s))
 }
 
-#[inline]
 pub(super) fn unescape_rune<I: Iterator<Item = char>>(
     queue: I,
 ) -> Result<Rune, (Error, Range<usize>)> {
@@ -132,7 +130,6 @@ macro_rules! missing_braces {
     };
 }
 
-#[inline]
 fn unicode_16<I: Iterator<Item = char>>(
     queue: &mut CharStream<I>,
     start: usize,
@@ -177,7 +174,6 @@ fn unicode_16<I: Iterator<Item = char>>(
     ))
 }
 
-#[inline]
 fn unicode_32<I: Iterator<Item = char>>(
     queue: &mut CharStream<I>,
     start: usize,
@@ -222,7 +218,6 @@ fn unicode_32<I: Iterator<Item = char>>(
     ))
 }
 
-#[inline]
 fn byte<I: Iterator<Item = char>>(
     queue: &mut CharStream<I>,
     index: &mut usize,
@@ -260,7 +255,6 @@ fn byte<I: Iterator<Item = char>>(
     Ok(Rune::from_u32(number as u32).unwrap())
 }
 
-#[inline]
 fn octal<I: Iterator<Item = char>>(
     queue: &mut CharStream<I>,
     start: usize,
@@ -299,7 +293,6 @@ fn octal<I: Iterator<Item = char>>(
     ))
 }
 
-#[inline]
 fn binary<I: Iterator<Item = char>>(
     queue: &mut CharStream<I>,
     index: &mut usize,

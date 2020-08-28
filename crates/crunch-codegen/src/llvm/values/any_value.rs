@@ -17,7 +17,6 @@ use std::{borrow::Cow, convert::TryFrom, ptr::NonNull};
 macro_rules! value_is {
     ($($name:ident => $func:path),* $(,)?) => {
         $(
-            #[inline]
             fn $name(&self) -> bool {
                 unsafe { $func(self.as_mut_ptr()) as usize != 0 }
             }

@@ -120,7 +120,6 @@ impl<'ctx> FunctionBuilder<'ctx> {
         })
     }
 
-    #[inline]
     pub fn finish(mut self) -> Result<FunctionValue<'ctx>> {
         self.finish_inner()
     }
@@ -208,12 +207,10 @@ pub struct FunctionArg<'ctx> {
 }
 
 impl<'ctx> FunctionArg<'ctx> {
-    #[inline]
     pub const fn value(&self) -> Value<'ctx> {
         self.value
     }
 
-    #[inline]
     pub const fn ty(&self) -> Type<'ctx> {
         self.ty
     }

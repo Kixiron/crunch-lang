@@ -67,4 +67,3 @@ ClampUnknownInt(id, kind, ty) :- PropagateExprType(id, kind, ty),
 ClampUnknownInt(id, kind, ty) :- PropagateExprType(id, kind, ty),
                                  Int { Some{}, Some{} } = ty.ival().
 ClampUnknownInt(id, kind, ty) :- PropagateExprType(id, kind, ty), not ty.is_int().
-

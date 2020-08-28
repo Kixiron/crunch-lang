@@ -24,12 +24,10 @@ pub struct Item<'ctx> {
 }
 
 impl<'ctx> Item<'ctx> {
-    #[inline]
     pub const fn location(&self) -> Location {
         self.loc
     }
 
-    #[inline]
     pub fn span(&self) -> Span {
         self.loc.span()
     }
@@ -80,37 +78,30 @@ pub enum ItemKind<'ctx> {
 }
 
 impl<'ctx> ItemKind<'ctx> {
-    #[inline]
     pub fn is_func(&self) -> bool {
         matches!(self, Self::Func { .. })
     }
 
-    #[inline]
     pub fn is_type(&self) -> bool {
         matches!(self, Self::Type { .. })
     }
 
-    #[inline]
     pub fn is_enum(&self) -> bool {
         matches!(self, Self::Enum { .. })
     }
 
-    #[inline]
     pub fn is_trait(&self) -> bool {
         matches!(self, Self::Trait { .. })
     }
 
-    #[inline]
     pub fn is_import(&self) -> bool {
         matches!(self, Self::Import { .. })
     }
 
-    #[inline]
     pub fn is_extend_block(&self) -> bool {
         matches!(self, Self::ExtendBlock { .. })
     }
 
-    #[inline]
     pub fn is_alias(&self) -> bool {
         matches!(self, Self::Alias { .. })
     }
@@ -194,7 +185,6 @@ pub enum Attribute {
 }
 
 impl Display for Attribute {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let pretty = match self {
             Self::Const => "const",
@@ -214,7 +204,6 @@ pub enum Vis {
 }
 
 impl Default for Vis {
-    #[inline]
     fn default() -> Self {
         Self::FileLocal
     }
@@ -228,12 +217,10 @@ pub struct FuncArg<'ctx> {
 }
 
 impl<'ctx> FuncArg<'ctx> {
-    #[inline]
     pub const fn location(&self) -> Location {
         self.loc
     }
 
-    #[inline]
     pub fn span(&self) -> Span {
         self.loc.span()
     }
@@ -246,12 +233,10 @@ pub struct Stmt<'ctx> {
 }
 
 impl<'ctx> Stmt<'ctx> {
-    #[inline]
     pub const fn location(&self) -> Location {
         self.loc
     }
 
-    #[inline]
     pub fn span(&self) -> Span {
         self.loc.span()
     }
@@ -282,12 +267,10 @@ pub struct Expr<'ctx> {
 }
 
 impl<'ctx> Expr<'ctx> {
-    #[inline]
     pub fn location(&self) -> Location {
         self.loc
     }
 
-    #[inline]
     pub fn span(&self) -> Span {
         self.loc.span()
     }
@@ -417,7 +400,6 @@ pub enum LiteralVal<'ctx> {
 }
 
 impl<'ctx> LiteralVal<'ctx> {
-    #[inline]
     pub fn into_integer(self) -> Option<Integer> {
         if let Self::Integer(int) = self {
             Some(int)
@@ -426,7 +408,6 @@ impl<'ctx> LiteralVal<'ctx> {
         }
     }
 
-    #[inline]
     pub fn as_string(&self) -> Option<&Text> {
         if let Self::String(ref text) = self {
             Some(text)
@@ -437,7 +418,6 @@ impl<'ctx> LiteralVal<'ctx> {
 }
 
 impl Display for LiteralVal<'_> {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Self::Integer(int) => write!(f, "{}", int),
@@ -462,33 +442,28 @@ impl Display for LiteralVal<'_> {
 pub struct Text(String);
 
 impl Text {
-    #[inline]
     pub fn new(text: String) -> Self {
         Self(text)
     }
 
-    #[inline]
     pub fn to_bytes(&self) -> Vec<u8> {
         self.0.clone().into_bytes()
     }
 }
 
 impl Debug for Text {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         f.write_str(&self.0)
     }
 }
 
 impl Display for Text {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         f.write_str(&self.0)
     }
 }
 
 impl From<&str> for Text {
-    #[inline]
     fn from(string: &str) -> Self {
         Self(string.to_owned())
     }
@@ -499,57 +474,48 @@ impl From<&str> for Text {
 pub struct Rune(u32);
 
 impl Rune {
-    #[inline]
     pub const fn as_u32(self) -> u32 {
         self.0
     }
 
-    #[inline]
     pub fn from_u32(i: u32) -> Option<Self> {
         core::char::from_u32(i).map(|i| Self(i as u32))
     }
 
-    #[inline]
     pub fn as_char(self) -> char {
         core::char::from_u32(self.0).unwrap()
     }
 
-    #[inline]
     pub const fn from_char(i: char) -> Self {
         Self(i as u32)
     }
 }
 
 impl PartialEq<char> for Rune {
-    #[inline]
     fn eq(&self, other: &char) -> bool {
         self.as_u32() == *other as u32
     }
 }
 
 impl From<char> for Rune {
-    #[inline]
     fn from(c: char) -> Self {
         Self(c as u32)
     }
 }
 
 impl From<u32> for Rune {
-    #[inline]
     fn from(i: u32) -> Self {
         Self(i)
     }
 }
 
 impl Debug for Rune {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}", &self.as_char())
     }
 }
 
 impl Display for Rune {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}", &self.as_char())
     }
@@ -561,7 +527,6 @@ pub struct Integer {
 }
 
 impl Display for Integer {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}{}", &self.sign, &self.bits)
     }
@@ -572,7 +537,6 @@ impl Display for Integer {
 pub struct Float(pub u64);
 
 impl Display for Float {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}", f64::from_bits(self.0))
     }
@@ -632,7 +596,6 @@ pub enum Type<'ctx> {
 }
 
 impl<'ctx> Type<'ctx> {
-    #[inline]
     pub fn internal_types(&self) -> Vec<ItemPath> {
         let mut buf = Vec::with_capacity(1);
         self.internal_types_inner(&mut buf);
@@ -640,7 +603,6 @@ impl<'ctx> Type<'ctx> {
         buf
     }
 
-    #[inline]
     fn internal_types_inner(&self, buf: &mut Vec<ItemPath>) {
         match self {
             Self::Operand(Sided { rhs, op: _, lhs }) => {
@@ -679,7 +641,6 @@ impl<'ctx> Type<'ctx> {
     }
 
     // TODO: Optimize by writing into a buffer
-    #[inline]
     pub fn to_string(&self, intern: &StrInterner) -> String {
         match self {
             Self::Unknown => "{{unknown}}".to_string(),
@@ -752,7 +713,6 @@ impl<'ctx> Type<'ctx> {
 }
 
 impl<'ctx> Default for Type<'ctx> {
-    #[inline]
     fn default() -> Self {
         Self::Unit
     }
@@ -765,7 +725,6 @@ pub enum TypeOp {
 }
 
 impl Display for TypeOp {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let op = match self {
             Self::And => '&',
@@ -800,27 +759,22 @@ pub struct Block<'ctx> {
 }
 
 impl<'ctx> Block<'ctx> {
-    #[inline]
     pub const fn location(&self) -> Location {
         self.loc
     }
 
-    #[inline]
     pub fn span(&self) -> Span {
         self.loc.span()
     }
 
-    #[inline]
     pub fn len(&self) -> usize {
         self.stmts.len()
     }
 
-    #[inline]
     pub fn is_empty(&self) -> bool {
         self.stmts.is_empty()
     }
 
-    #[inline]
     pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'ctx Stmt<'ctx>> + 'a {
         self.stmts.iter().copied()
     }
@@ -837,7 +791,6 @@ pub enum CompOp {
 }
 
 impl Display for CompOp {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let pretty = match self {
             Self::Greater => ">",
@@ -859,7 +812,6 @@ pub enum AssignKind {
 }
 
 impl Display for AssignKind {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Self::Normal => f.write_str(":="),
@@ -884,7 +836,6 @@ pub enum BinaryOp {
 }
 
 impl Display for BinaryOp {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let pretty = match self {
             Self::Add => "+",
@@ -912,7 +863,6 @@ pub enum UnaryOp {
 }
 
 impl Display for UnaryOp {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let pretty = match self {
             Self::Positive => '+',

@@ -30,7 +30,6 @@ impl LLVMString {
     /// [`&str`]: https://doc.rust-lang.org/std/primitive.str.html
     /// [`CStr::to_str`]: https://doc.rust-lang.org/std/ffi/struct.CStr.html#method.to_str
     /// [`Error`]: crate::llvm::Error
-    #[inline]
     pub fn to_str(&self) -> Result<&str> {
         Ok(self.as_cstr().to_str()?)
     }
@@ -42,19 +41,16 @@ impl LLVMString {
     /// [`Cow`]: https://doc.rust-lang.org/std/borrow/enum.Cow.html
     /// [`str`]: https://doc.rust-lang.org/std/primitive.str.html
     /// [`CStr::to_string_lossy`]: https://doc.rust-lang.org/std/ffi/struct.CStr.html#method.to_string_lossy
-    #[inline]
     pub fn to_string_lossy(&self) -> Cow<'_, str> {
         self.as_cstr().to_string_lossy()
     }
 
     /// Returns the contents of the string as bytes, not including the null byte
-    #[inline]
     pub fn as_bytes(&self) -> &[u8] {
         self.as_cstr().to_bytes()
     }
 
     /// Returns the contents of the string as bytes, including the null byte
-    #[inline]
     pub fn as_bytes_with_nul(&self) -> &[u8] {
         self.as_cstr().to_bytes_with_nul()
     }
@@ -62,20 +58,17 @@ impl LLVMString {
     /// Converts the `LLVMString` into an [`&CStr`]
     ///
     /// [`&CStr`]: https://doc.rust-lang.org/std/ffi/struct.CStr.html
-    #[inline]
     pub fn as_cstr(&self) -> &CStr {
         // Safety: The pointer is non-null and LLVM gives out valid c-strings
         unsafe { CStr::from_ptr(self.string.as_ptr()) }
     }
 
     /// Returns the length of the string in bytes
-    #[inline]
     pub fn len(&self) -> usize {
         self.as_cstr().to_bytes().len()
     }
 
     /// Returns `true` if the string has a length of zero
-    #[inline]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -84,7 +77,6 @@ impl LLVMString {
 // Private interface
 impl LLVMString {
     /// Creates a new `LLVMString` using `LLVMCreateMessage`
-    #[inline]
     pub(crate) fn new(string: &CStr) -> Result<Self> {
         let string = to_non_nul(
             unsafe { LLVMCreateMessage(string.as_ptr() as *mut _) },
@@ -106,7 +98,6 @@ impl LLVMString {
     /// underlying pointer also *must* have been either allocated by LLVM itself or created
     /// using `LLVMCreateMessage`
     ///
-    #[inline]
     pub(crate) unsafe fn from_raw(string: *mut i8) -> Result<Self> {
         let string = to_non_nul(string, "Received a null string from LLVM")?;
 
@@ -118,7 +109,6 @@ impl fmt::Display for LLVMString {
     /// Uses [`LLVMString::to_string_lossy`] for the underlying formatting
     ///
     /// [`LLVMString::to_string_lossy`]: crate::llvm::utils::LLVMString::to_string_lossy
-    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&self.to_string_lossy(), f)
     }
@@ -128,7 +118,6 @@ impl fmt::Debug for LLVMString {
     /// Uses [`LLVMString::to_string_lossy`] for the underlying formatting
     ///
     /// [`LLVMString::to_string_lossy`]: crate::llvm::utils::LLVMString::to_string_lossy
-    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(&self.to_string_lossy(), f)
     }
@@ -138,7 +127,6 @@ impl PartialEq for LLVMString {
     /// Compares two `LLVMString`s using [`LLVMString::to_string_lossy`]
     ///
     /// [`LLVMString::to_string_lossy`]: crate::llvm::utils::LLVMString::to_string_lossy
-    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.to_string_lossy() == other.to_string_lossy()
     }
@@ -150,7 +138,6 @@ impl PartialOrd for LLVMString {
     /// Orders two `LLVMString`s using [`LLVMString::to_string_lossy`]
     ///
     /// [`LLVMString::to_string_lossy`]: crate::llvm::utils::LLVMString::to_string_lossy
-    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.to_string_lossy().cmp(&other.to_string_lossy()))
     }
@@ -160,7 +147,6 @@ impl Ord for LLVMString {
     /// Orders two `LLVMString`s using [`LLVMString::to_string_lossy`]
     ///
     /// [`LLVMString::to_string_lossy`]: crate::llvm::utils::LLVMString::to_string_lossy
-    #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
         self.to_string_lossy().cmp(&other.to_string_lossy())
     }
@@ -168,7 +154,6 @@ impl Ord for LLVMString {
 
 impl Clone for LLVMString {
     /// Uses LLVM to allocate a new `LLVMString`
-    #[inline]
     fn clone(&self) -> Self {
         Self::new(self.as_cstr()).expect("Failed to clone LLVMString")
     }
@@ -178,7 +163,6 @@ impl Hash for LLVMString {
     /// Uses [`LLVMString::to_string_lossy`] for hashing
     ///
     /// [`LLVMString::to_string_lossy`]: crate::llvm::utils::LLVMString::to_string_lossy
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.to_string_lossy().hash(state)
     }
@@ -187,7 +171,6 @@ impl Hash for LLVMString {
 impl Drop for LLVMString {
     /// Disposes of the `LLVMString` using LLVM's `DisposeMessage` function
     // TODO: Link for the correct function
-    #[inline]
     fn drop(&mut self) {
         // Safety: This is the only instance of the message, since cloning creates an entirely new one.
         //         Additionally, the pointer is non-null and was allocated by LLVM either internally or

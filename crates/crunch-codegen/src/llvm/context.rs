@@ -36,7 +36,6 @@ impl Context {
     /// Creates a new `Context` using [`LLVMContextCreate`]
     ///
     /// [`LLVMContextCreate`]: https://llvm.org/docs/doxygen/group__LLVMCCoreContext.html#gaac4f39a2d0b9735e64ac7681ab543b4c
-    #[inline]
     pub fn new() -> Result<Self> {
         // Safety: The new context is checked for null and LLVM provides valid pointers
         let ctx = to_non_nul(
@@ -61,7 +60,6 @@ impl Context {
     }
 
     // FIXME: `LLVMParseIRInContext` takes ownership of the buffer, but there's not really a better way to express that other than with the `ManuallyDrop`
-    #[inline]
     pub fn module_from_ir<'ctx>(&'ctx self, memory_buf: MemoryBuffer) -> Result<Module<'ctx>> {
         let (mut module, mut err_message) = (MaybeUninit::zeroed(), MaybeUninit::zeroed());
         let memory_buf = ManuallyDrop::new(memory_buf);
@@ -102,7 +100,6 @@ impl Context {
 // Private interface
 impl Context {
     /// Retrieves a raw pointer to the underlying `LLVMContext`
-    #[inline]
     pub(crate) const fn as_mut_ptr(&self) -> *mut LLVMContext {
         self.ctx.as_ptr() as *mut LLVMContext
     }
@@ -110,7 +107,6 @@ impl Context {
 
 /// Creates a default `Context`, panicking if an error occurs
 impl Default for Context {
-    #[inline]
     fn default() -> Self {
         Self::new().expect("Failed to create context")
     }
@@ -120,7 +116,6 @@ impl Default for Context {
 ///
 /// [`LLVMContextDispose`]: https://llvm.org/docs/doxygen/group__LLVMCCoreContext.html#ga9cf8b0fb4a546d4cdb6f64b8055f5f57
 impl Drop for Context {
-    #[inline]
     fn drop(&mut self) {
         // Safety: Context instances are unique and all produced items have been dropped
         unsafe { LLVMContextDispose(self.as_mut_ptr()) }

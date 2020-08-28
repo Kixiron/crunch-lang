@@ -109,7 +109,6 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         (token_stream, next, peek)
     }
 
-    #[inline(always)]
     pub fn error_handler_mut(&mut self) -> &mut ErrorHandler {
         &mut self.error_handler
     }
@@ -117,7 +116,6 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
 /// Utility functions
 impl<'src, 'ctx> Parser<'src, 'ctx> {
-    #[inline(always)]
     fn next(&mut self) -> ParseResult<Token<'src>> {
         let mut next = self.token_stream.next();
         mem::swap(&mut next, &mut self.peek);
@@ -126,14 +124,12 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         next.ok_or_else(|| Locatable::new(Error::EndOfFile, self.current_file.eof()))
     }
 
-    #[inline(always)]
     fn peek(&self) -> ParseResult<Token<'src>> {
         self.peek
             .ok_or_else(|| Locatable::new(Error::EndOfFile, self.current_file.eof()))
     }
 
     /// Eats one of the `expected` token, ignoring (and consuming) any tokens included in `ignoring`
-    #[inline(always)]
     fn eat<T>(&mut self, expected: TokenType, ignoring: T) -> ParseResult<Token<'src>>
     where
         T: AsRef<[TokenType]>,
@@ -165,7 +161,6 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
     }
 
     /// Eats one of the `expected` tokens, ignoring (and consuming) any tokens included in `ignoring`
-    #[inline(always)]
     fn eat_of<T, E>(&mut self, expected: T, ignoring: E) -> ParseResult<Token<'src>>
     where
         T: AsRef<[TokenType]>,
@@ -209,7 +204,6 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         }
     }
 
-    #[inline(always)]
     fn stress_eat(&mut self) -> ParseResult<()> {
         const TOP_TOKENS: &[TokenType] = &[
             TokenType::Function,
@@ -229,7 +223,6 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         Ok(())
     }
 
-    #[inline(always)]
     fn add_stack_frame(&self) -> ParseResult<StackGuard> {
         // TODO: Find out what this number should be
         #[cfg(debug_assertions)]

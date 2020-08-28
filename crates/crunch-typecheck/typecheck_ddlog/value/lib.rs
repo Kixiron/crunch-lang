@@ -33,7 +33,7 @@ use differential_datalog::record::RelIdentifier;
 use differential_datalog::uint::*;
 
 use fnv::FnvHashMap;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use ordered_float::OrderedFloat;
 
 use types::*;
@@ -581,72 +581,6 @@ pub mod Value {
     #[derive(
         Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
     )]
-    pub struct OutputExpressions(pub super::OutputExpressions);
-    impl abomonation::Abomonation for OutputExpressions {}
-    impl fmt::Display for OutputExpressions {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            self.clone().into_record().fmt(f)
-        }
-    }
-    impl record::IntoRecord for OutputExpressions {
-        fn into_record(self) -> record::Record {
-            self.0.into_record()
-        }
-    }
-    impl record::Mutator<OutputExpressions> for record::Record {
-        fn mutate(&self, v: &mut OutputExpressions) -> result::Result<(), std::string::String> {
-            self.mutate(&mut v.0)
-        }
-    }
-    //#[typetag::serde]
-    decl_ddval_convert! {OutputExpressions}
-    #[derive(
-        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
-    )]
-    pub struct OutputFunctions(pub super::OutputFunctions);
-    impl abomonation::Abomonation for OutputFunctions {}
-    impl fmt::Display for OutputFunctions {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            self.clone().into_record().fmt(f)
-        }
-    }
-    impl record::IntoRecord for OutputFunctions {
-        fn into_record(self) -> record::Record {
-            self.0.into_record()
-        }
-    }
-    impl record::Mutator<OutputFunctions> for record::Record {
-        fn mutate(&self, v: &mut OutputFunctions) -> result::Result<(), std::string::String> {
-            self.mutate(&mut v.0)
-        }
-    }
-    //#[typetag::serde]
-    decl_ddval_convert! {OutputFunctions}
-    #[derive(
-        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
-    )]
-    pub struct OutputStatements(pub super::OutputStatements);
-    impl abomonation::Abomonation for OutputStatements {}
-    impl fmt::Display for OutputStatements {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            self.clone().into_record().fmt(f)
-        }
-    }
-    impl record::IntoRecord for OutputStatements {
-        fn into_record(self) -> record::Record {
-            self.0.into_record()
-        }
-    }
-    impl record::Mutator<OutputStatements> for record::Record {
-        fn mutate(&self, v: &mut OutputStatements) -> result::Result<(), std::string::String> {
-            self.mutate(&mut v.0)
-        }
-    }
-    //#[typetag::serde]
-    decl_ddval_convert! {OutputStatements}
-    #[derive(
-        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
-    )]
     pub struct PropagateExprType(pub super::PropagateExprType);
     impl abomonation::Abomonation for PropagateExprType {}
     impl fmt::Display for PropagateExprType {
@@ -722,15 +656,12 @@ impl TryFrom<&str> for Relations {
             "InputFunctions" => Ok(Relations::InputFunctions),
             "InputItems" => Ok(Relations::InputItems),
             "InputStatements" => Ok(Relations::InputStatements),
-            "OutputExpressions" => Ok(Relations::OutputExpressions),
-            "OutputFunctions" => Ok(Relations::OutputFunctions),
-            "OutputStatements" => Ok(Relations::OutputStatements),
             "PropagateExprType" => Ok(Relations::PropagateExprType),
             "Statements" => Ok(Relations::Statements),
             "SymbolTable" => Ok(Relations::SymbolTable),
+            "__MultiHead_0" => Ok(Relations::__MultiHead_0),
+            "__MultiHead_1" => Ok(Relations::__MultiHead_1),
             "__MultiHead_3" => Ok(Relations::__MultiHead_3),
-            "__MultiHead_4" => Ok(Relations::__MultiHead_4),
-            "__MultiHead_6" => Ok(Relations::__MultiHead_6),
             "__Null" => Ok(Relations::__Null),
             _ => Err(()),
         }
@@ -742,9 +673,6 @@ impl Relations {
             Relations::ClampUnknownInt => true,
             Relations::Errors => true,
             Relations::Functions => true,
-            Relations::OutputExpressions => true,
-            Relations::OutputFunctions => true,
-            Relations::OutputStatements => true,
             Relations::Statements => true,
             Relations::SymbolTable => true,
             _ => false,
@@ -773,16 +701,13 @@ impl TryFrom<RelId> for Relations {
             4 => Ok(Relations::InputFunctions),
             5 => Ok(Relations::InputItems),
             6 => Ok(Relations::InputStatements),
-            7 => Ok(Relations::OutputExpressions),
-            8 => Ok(Relations::OutputFunctions),
-            9 => Ok(Relations::OutputStatements),
-            10 => Ok(Relations::PropagateExprType),
-            11 => Ok(Relations::Statements),
-            12 => Ok(Relations::SymbolTable),
-            13 => Ok(Relations::__MultiHead_3),
-            14 => Ok(Relations::__MultiHead_4),
-            15 => Ok(Relations::__MultiHead_6),
-            16 => Ok(Relations::__Null),
+            7 => Ok(Relations::PropagateExprType),
+            8 => Ok(Relations::Statements),
+            9 => Ok(Relations::SymbolTable),
+            10 => Ok(Relations::__MultiHead_0),
+            11 => Ok(Relations::__MultiHead_1),
+            12 => Ok(Relations::__MultiHead_3),
+            13 => Ok(Relations::__Null),
             _ => Err(()),
         }
     }
@@ -796,179 +721,140 @@ pub fn relid2name(rid: RelId) -> Option<&'static str> {
         4 => Some(&"InputFunctions"),
         5 => Some(&"InputItems"),
         6 => Some(&"InputStatements"),
-        7 => Some(&"OutputExpressions"),
-        8 => Some(&"OutputFunctions"),
-        9 => Some(&"OutputStatements"),
-        10 => Some(&"PropagateExprType"),
-        11 => Some(&"Statements"),
-        12 => Some(&"SymbolTable"),
-        13 => Some(&"__MultiHead_3"),
-        14 => Some(&"__MultiHead_4"),
-        15 => Some(&"__MultiHead_6"),
-        16 => Some(&"__Null"),
+        7 => Some(&"PropagateExprType"),
+        8 => Some(&"Statements"),
+        9 => Some(&"SymbolTable"),
+        10 => Some(&"__MultiHead_0"),
+        11 => Some(&"__MultiHead_1"),
+        12 => Some(&"__MultiHead_3"),
+        13 => Some(&"__Null"),
         _ => None,
     }
 }
-pub fn relid2cname(rid: RelId) -> Option<&'static ffi::CStr> {
-    RELIDMAPC
-        .get(&rid)
-        .map(|c: &'static ffi::CString| c.as_ref())
+pub fn relid2cname(rid: RelId) -> Option<&'static ::std::ffi::CStr> {
+    RELIDMAPC.get(&rid).copied()
 }
-lazy_static! {
-    pub static ref RELIDMAP: FnvHashMap<Relations, &'static str> = {
-        let mut m = FnvHashMap::default();
-        m.insert(Relations::ClampUnknownInt, "ClampUnknownInt");
-        m.insert(Relations::Errors, "Errors");
-        m.insert(Relations::Functions, "Functions");
-        m.insert(Relations::InputExpressions, "InputExpressions");
-        m.insert(Relations::InputFunctions, "InputFunctions");
-        m.insert(Relations::InputItems, "InputItems");
-        m.insert(Relations::InputStatements, "InputStatements");
-        m.insert(Relations::OutputExpressions, "OutputExpressions");
-        m.insert(Relations::OutputFunctions, "OutputFunctions");
-        m.insert(Relations::OutputStatements, "OutputStatements");
-        m.insert(Relations::PropagateExprType, "PropagateExprType");
-        m.insert(Relations::Statements, "Statements");
-        m.insert(Relations::SymbolTable, "SymbolTable");
-        m.insert(Relations::__MultiHead_3, "__MultiHead_3");
-        m.insert(Relations::__MultiHead_4, "__MultiHead_4");
-        m.insert(Relations::__MultiHead_6, "__MultiHead_6");
-        m.insert(Relations::__Null, "__Null");
-        m
-    };
-}
-lazy_static! {
-    pub static ref RELIDMAPC: FnvHashMap<RelId, ffi::CString> = {
-        let mut m = FnvHashMap::default();
-        m.insert(
+/// A map of `RelId`s to their name as an `&'static str`
+pub static RELIDMAP: ::once_cell::sync::Lazy<::fnv::FnvHashMap<Relations, &'static str>> =
+    ::once_cell::sync::Lazy::new(|| {
+        let mut map =
+            ::fnv::FnvHashMap::with_capacity_and_hasher(14, ::fnv::FnvBuildHasher::default());
+        map.insert(Relations::ClampUnknownInt, "ClampUnknownInt");
+        map.insert(Relations::Errors, "Errors");
+        map.insert(Relations::Functions, "Functions");
+        map.insert(Relations::InputExpressions, "InputExpressions");
+        map.insert(Relations::InputFunctions, "InputFunctions");
+        map.insert(Relations::InputItems, "InputItems");
+        map.insert(Relations::InputStatements, "InputStatements");
+        map.insert(Relations::PropagateExprType, "PropagateExprType");
+        map.insert(Relations::Statements, "Statements");
+        map.insert(Relations::SymbolTable, "SymbolTable");
+        map.insert(Relations::__MultiHead_0, "__MultiHead_0");
+        map.insert(Relations::__MultiHead_1, "__MultiHead_1");
+        map.insert(Relations::__MultiHead_3, "__MultiHead_3");
+        map.insert(Relations::__Null, "__Null");
+        map
+    });
+/// A map of `RelId`s to their name as an `&'static CStr`
+pub static RELIDMAPC: ::once_cell::sync::Lazy<::fnv::FnvHashMap<RelId, &'static ::std::ffi::CStr>> =
+    ::once_cell::sync::Lazy::new(|| {
+        let mut map =
+            ::fnv::FnvHashMap::with_capacity_and_hasher(14, ::fnv::FnvBuildHasher::default());
+        map.insert(
             0,
-            ffi::CString::new("ClampUnknownInt").unwrap_or_else(|_| {
-                ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
-            }),
+            ::std::ffi::CStr::from_bytes_with_nul(b"ClampUnknownInt\0")
+                .expect("Unreachable: A null byte was specifically inserted"),
         );
-        m.insert(
+        map.insert(
             1,
-            ffi::CString::new("Errors").unwrap_or_else(|_| {
-                ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
-            }),
+            ::std::ffi::CStr::from_bytes_with_nul(b"Errors\0")
+                .expect("Unreachable: A null byte was specifically inserted"),
         );
-        m.insert(
+        map.insert(
             2,
-            ffi::CString::new("Functions").unwrap_or_else(|_| {
-                ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
-            }),
+            ::std::ffi::CStr::from_bytes_with_nul(b"Functions\0")
+                .expect("Unreachable: A null byte was specifically inserted"),
         );
-        m.insert(
+        map.insert(
             3,
-            ffi::CString::new("InputExpressions").unwrap_or_else(|_| {
-                ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
-            }),
+            ::std::ffi::CStr::from_bytes_with_nul(b"InputExpressions\0")
+                .expect("Unreachable: A null byte was specifically inserted"),
         );
-        m.insert(
+        map.insert(
             4,
-            ffi::CString::new("InputFunctions").unwrap_or_else(|_| {
-                ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
-            }),
+            ::std::ffi::CStr::from_bytes_with_nul(b"InputFunctions\0")
+                .expect("Unreachable: A null byte was specifically inserted"),
         );
-        m.insert(
+        map.insert(
             5,
-            ffi::CString::new("InputItems").unwrap_or_else(|_| {
-                ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
-            }),
+            ::std::ffi::CStr::from_bytes_with_nul(b"InputItems\0")
+                .expect("Unreachable: A null byte was specifically inserted"),
         );
-        m.insert(
+        map.insert(
             6,
-            ffi::CString::new("InputStatements").unwrap_or_else(|_| {
-                ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
-            }),
+            ::std::ffi::CStr::from_bytes_with_nul(b"InputStatements\0")
+                .expect("Unreachable: A null byte was specifically inserted"),
         );
-        m.insert(
+        map.insert(
             7,
-            ffi::CString::new("OutputExpressions").unwrap_or_else(|_| {
-                ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
-            }),
+            ::std::ffi::CStr::from_bytes_with_nul(b"PropagateExprType\0")
+                .expect("Unreachable: A null byte was specifically inserted"),
         );
-        m.insert(
+        map.insert(
             8,
-            ffi::CString::new("OutputFunctions").unwrap_or_else(|_| {
-                ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
-            }),
+            ::std::ffi::CStr::from_bytes_with_nul(b"Statements\0")
+                .expect("Unreachable: A null byte was specifically inserted"),
         );
-        m.insert(
+        map.insert(
             9,
-            ffi::CString::new("OutputStatements").unwrap_or_else(|_| {
-                ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
-            }),
+            ::std::ffi::CStr::from_bytes_with_nul(b"SymbolTable\0")
+                .expect("Unreachable: A null byte was specifically inserted"),
         );
-        m.insert(
+        map.insert(
             10,
-            ffi::CString::new("PropagateExprType").unwrap_or_else(|_| {
-                ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
-            }),
+            ::std::ffi::CStr::from_bytes_with_nul(b"__MultiHead_0\0")
+                .expect("Unreachable: A null byte was specifically inserted"),
         );
-        m.insert(
+        map.insert(
             11,
-            ffi::CString::new("Statements").unwrap_or_else(|_| {
-                ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
-            }),
+            ::std::ffi::CStr::from_bytes_with_nul(b"__MultiHead_1\0")
+                .expect("Unreachable: A null byte was specifically inserted"),
         );
-        m.insert(
+        map.insert(
             12,
-            ffi::CString::new("SymbolTable").unwrap_or_else(|_| {
-                ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
-            }),
+            ::std::ffi::CStr::from_bytes_with_nul(b"__MultiHead_3\0")
+                .expect("Unreachable: A null byte was specifically inserted"),
         );
-        m.insert(
+        map.insert(
             13,
-            ffi::CString::new("__MultiHead_3").unwrap_or_else(|_| {
-                ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
-            }),
+            ::std::ffi::CStr::from_bytes_with_nul(b"__Null\0")
+                .expect("Unreachable: A null byte was specifically inserted"),
         );
-        m.insert(
-            14,
-            ffi::CString::new("__MultiHead_4").unwrap_or_else(|_| {
-                ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
-            }),
-        );
-        m.insert(
-            15,
-            ffi::CString::new("__MultiHead_6").unwrap_or_else(|_| {
-                ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
-            }),
-        );
-        m.insert(
-            16,
-            ffi::CString::new("__Null").unwrap_or_else(|_| {
-                ffi::CString::new(r"Cannot convert relation name to C string").unwrap()
-            }),
-        );
-        m
-    };
-}
-lazy_static! {
-    pub static ref INPUT_RELIDMAP: FnvHashMap<Relations, &'static str> = {
-        let mut m = FnvHashMap::default();
-        m.insert(Relations::InputExpressions, "InputExpressions");
-        m.insert(Relations::InputFunctions, "InputFunctions");
-        m.insert(Relations::InputItems, "InputItems");
-        m.insert(Relations::InputStatements, "InputStatements");
-        m
-    };
-}
-lazy_static! {
-    pub static ref OUTPUT_RELIDMAP: FnvHashMap<Relations, &'static str> = {
-        let mut m = FnvHashMap::default();
-        m.insert(Relations::ClampUnknownInt, "ClampUnknownInt");
-        m.insert(Relations::Errors, "Errors");
-        m.insert(Relations::Functions, "Functions");
-        m.insert(Relations::OutputExpressions, "OutputExpressions");
-        m.insert(Relations::OutputFunctions, "OutputFunctions");
-        m.insert(Relations::OutputStatements, "OutputStatements");
-        m.insert(Relations::Statements, "Statements");
-        m.insert(Relations::SymbolTable, "SymbolTable");
-        m
-    };
-}
+        map
+    });
+/// A map of input `Relations`s to their name as an `&'static str`
+pub static INPUT_RELIDMAP: ::once_cell::sync::Lazy<::fnv::FnvHashMap<Relations, &'static str>> =
+    ::once_cell::sync::Lazy::new(|| {
+        let mut map =
+            ::fnv::FnvHashMap::with_capacity_and_hasher(4, ::fnv::FnvBuildHasher::default());
+        map.insert(Relations::InputExpressions, "InputExpressions");
+        map.insert(Relations::InputFunctions, "InputFunctions");
+        map.insert(Relations::InputItems, "InputItems");
+        map.insert(Relations::InputStatements, "InputStatements");
+        map
+    });
+/// A map of output `Relations`s to their name as an `&'static str`
+pub static OUTPUT_RELIDMAP: ::once_cell::sync::Lazy<::fnv::FnvHashMap<Relations, &'static str>> =
+    ::once_cell::sync::Lazy::new(|| {
+        let mut map =
+            ::fnv::FnvHashMap::with_capacity_and_hasher(5, ::fnv::FnvBuildHasher::default());
+        map.insert(Relations::ClampUnknownInt, "ClampUnknownInt");
+        map.insert(Relations::Errors, "Errors");
+        map.insert(Relations::Functions, "Functions");
+        map.insert(Relations::Statements, "Statements");
+        map.insert(Relations::SymbolTable, "SymbolTable");
+        map
+    });
 impl TryFrom<&str> for Indexes {
     type Error = ();
     fn try_from(iname: &str) -> result::Result<Self, Self::Error> {
@@ -980,7 +866,7 @@ impl TryFrom<&str> for Indexes {
 }
 impl TryFrom<IdxId> for Indexes {
     type Error = ();
-    fn try_from(iid: IdxId) -> result::Result<Self, Self::Error> {
+    fn try_from(iid: IdxId) -> ::core::result::Result<Self, Self::Error> {
         match iid {
             0 => Ok(Indexes::__Null_by_none),
             _ => Err(()),
@@ -993,30 +879,29 @@ pub fn indexid2name(iid: IdxId) -> Option<&'static str> {
         _ => None,
     }
 }
-pub fn indexid2cname(iid: IdxId) -> Option<&'static ffi::CStr> {
-    IDXIDMAPC
-        .get(&iid)
-        .map(|c: &'static ffi::CString| c.as_ref())
+pub fn indexid2cname(iid: IdxId) -> Option<&'static ::std::ffi::CStr> {
+    IDXIDMAPC.get(&iid).copied()
 }
-lazy_static! {
-    pub static ref IDXIDMAP: FnvHashMap<Indexes, &'static str> = {
-        let mut m = FnvHashMap::default();
-        m.insert(Indexes::__Null_by_none, "__Null_by_none");
-        m
-    };
-}
-lazy_static! {
-    pub static ref IDXIDMAPC: FnvHashMap<IdxId, ffi::CString> = {
-        let mut m = FnvHashMap::default();
-        m.insert(
+/// A map of `Indexes` to their name as an `&'static str`
+pub static IDXIDMAP: ::once_cell::sync::Lazy<::fnv::FnvHashMap<Indexes, &'static str>> =
+    ::once_cell::sync::Lazy::new(|| {
+        let mut map =
+            ::fnv::FnvHashMap::with_capacity_and_hasher(1, ::fnv::FnvBuildHasher::default());
+        map.insert(Indexes::__Null_by_none, "__Null_by_none");
+        map
+    });
+/// A map of `IdxId`s to their name as an `&'static CStr`
+pub static IDXIDMAPC: ::once_cell::sync::Lazy<::fnv::FnvHashMap<IdxId, &'static ::std::ffi::CStr>> =
+    ::once_cell::sync::Lazy::new(|| {
+        let mut map =
+            ::fnv::FnvHashMap::with_capacity_and_hasher(1, ::fnv::FnvBuildHasher::default());
+        map.insert(
             0,
-            ffi::CString::new("__Null_by_none").unwrap_or_else(|_| {
-                ffi::CString::new(r"Cannot convert index name to C string").unwrap()
-            }),
+            ::std::ffi::CStr::from_bytes_with_nul(b"__Null_by_none\0")
+                .expect("Unreachable: A null byte was specifically inserted"),
         );
-        m
-    };
-}
+        map
+    });
 pub fn relval_from_record(
     rel: Relations,
     _rec: &record::Record,
@@ -1043,15 +928,6 @@ pub fn relval_from_record(
         Relations::InputStatements => {
             Ok(Value::InputStatements(<InputStatements>::from_record(_rec)?).into_ddvalue())
         },
-        Relations::OutputExpressions => {
-            Ok(Value::OutputExpressions(<OutputExpressions>::from_record(_rec)?).into_ddvalue())
-        },
-        Relations::OutputFunctions => {
-            Ok(Value::OutputFunctions(<OutputFunctions>::from_record(_rec)?).into_ddvalue())
-        },
-        Relations::OutputStatements => {
-            Ok(Value::OutputStatements(<OutputStatements>::from_record(_rec)?).into_ddvalue())
-        },
         Relations::PropagateExprType => {
             Ok(Value::PropagateExprType(<PropagateExprType>::from_record(_rec)?).into_ddvalue())
         },
@@ -1061,13 +937,13 @@ pub fn relval_from_record(
         Relations::SymbolTable => {
             Ok(Value::SymbolTable(<SymbolTable>::from_record(_rec)?).into_ddvalue())
         },
-        Relations::__MultiHead_3 => {
+        Relations::__MultiHead_0 => {
             Ok(Value::__Tuple3__internment_Intern__std_Vec____Bitval32_hir_Signature___Bitval64(<(internment_Intern<std_Vec<u32>>, hir_Signature, u64)>::from_record(_rec)?).into_ddvalue())
         },
-        Relations::__MultiHead_4 => {
+        Relations::__MultiHead_1 => {
             Ok(Value::__Tuple4__internment_Intern__std_Vec____Bitval32_hir_Signature___Stringval___Bitval64(<(internment_Intern<std_Vec<u32>>, hir_Signature, String, u64)>::from_record(_rec)?).into_ddvalue())
         },
-        Relations::__MultiHead_6 => {
+        Relations::__MultiHead_3 => {
             Ok(Value::__Tuple3__internment_Intern__hir_Scope_internment_Intern__hir_Stmt_internment_Intern__hir_Stmt(<(internment_Intern<hir_Scope>, internment_Intern<hir_Stmt>, internment_Intern<hir_Stmt>)>::from_record(_rec)?).into_ddvalue())
         },
         Relations::__Null => {
@@ -1090,7 +966,7 @@ pub fn idxkey_from_record(idx: Indexes, _rec: &record::Record) -> result::Result
 }
 pub fn indexes2arrid(idx: Indexes) -> ArrId {
     match idx {
-        Indexes::__Null_by_none => (16, 0),
+        Indexes::__Null_by_none => (13, 0),
     }
 }
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -1102,16 +978,13 @@ pub enum Relations {
     InputFunctions = 4,
     InputItems = 5,
     InputStatements = 6,
-    OutputExpressions = 7,
-    OutputFunctions = 8,
-    OutputStatements = 9,
-    PropagateExprType = 10,
-    Statements = 11,
-    SymbolTable = 12,
-    __MultiHead_3 = 13,
-    __MultiHead_4 = 14,
-    __MultiHead_6 = 15,
-    __Null = 16,
+    PropagateExprType = 7,
+    Statements = 8,
+    SymbolTable = 9,
+    __MultiHead_0 = 10,
+    __MultiHead_1 = 11,
+    __MultiHead_3 = 12,
+    __Null = 13,
 }
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Indexes {

@@ -24,7 +24,6 @@ pub struct BasicBlock<'ctx> {
 }
 
 impl<'ctx> BasicBlock<'ctx> {
-    #[inline]
     pub fn name(&self) -> Option<Cow<'_, str>> {
         unsafe {
             let name = NonNull::new(LLVMGetBasicBlockName((*self).as_mut_ptr()) as *mut i8);

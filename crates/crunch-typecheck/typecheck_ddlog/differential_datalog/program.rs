@@ -117,29 +117,27 @@ impl TS16 {
 }
 
 impl PartialOrder for TS16 {
-    #[inline(always)]
     fn less_equal(&self, other: &Self) -> bool {
         self.x.less_equal(&other.x)
     }
-    #[inline(always)]
+
     fn less_than(&self, other: &Self) -> bool {
         self.x.less_than(&other.x)
     }
 }
 impl Lattice for TS16 {
-    #[inline(always)]
     fn minimum() -> Self {
         TS16 {
             x: u16::min_value(),
         }
     }
-    #[inline(always)]
+
     fn join(&self, other: &Self) -> Self {
         TS16 {
             x: ::std::cmp::max(self.x, other.x),
         }
     }
-    #[inline(always)]
+
     fn meet(&self, other: &Self) -> Self {
         TS16 {
             x: ::std::cmp::min(self.x, other.x),
@@ -151,14 +149,12 @@ impl Timestamp for TS16 {
     type Summary = TS16;
 }
 impl PathSummary<TS16> for TS16 {
-    #[inline]
     fn results_in(&self, src: &TS16) -> Option<TS16> {
         match self.x.checked_add(src.x) {
             None => None,
             Some(y) => Some(TS16 { x: y }),
         }
     }
-    #[inline]
     fn followed_by(&self, other: &TS16) -> Option<TS16> {
         match self.x.checked_add(other.x) {
             None => None,
