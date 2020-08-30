@@ -106,13 +106,8 @@ impl<'ctx> Ladder<'ctx> {
         var
     }
 
-    // FIXME: I hate this
     fn context(&self) -> &'ctx Context<'ctx> {
-        unsafe {
-            core::mem::transmute::<&'static Context<'static>, &'ctx Context<'ctx>>(
-                self.db.context(),
-            )
-        }
+        self.db.context()
     }
 
     fn block_statement(
