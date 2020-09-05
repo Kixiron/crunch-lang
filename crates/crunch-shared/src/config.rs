@@ -1,4 +1,7 @@
-use crate::utils::DbgWrap;
+use crate::{
+    distance::{self, WordMode},
+    utils::{DbgWrap, HashSet},
+};
 use alloc::sync::Arc;
 use codespan_reporting::term::{
     termcolor::{ColorChoice, StandardStream},
@@ -87,6 +90,16 @@ pub struct BuildOptions {
     /// Set the maximum number of errors the compiler will collect before halting
     #[structopt(default_value = "50")]
     pub max_errors: usize,
+
+    /// Experimental (unstable) flags to the compiler
+    #[structopt(
+        name = "flags",
+        short = "Z",
+        default_value = "",
+        multiple = true,
+        parse(try_from_str = parse_experimental_flag),
+    )]
+    pub experimental_flags: HashSet<&'static str>,
 }
 
 impl BuildOptions {
@@ -101,11 +114,65 @@ impl BuildOptions {
             quiet: false,
             color: TermColor::Auto,
             max_errors: 50,
+            experimental_flags: HashSet::default(),
         }
     }
 
     pub fn is_verbose(&self) -> bool {
         self.verbose != 0
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct ExperimentalFlag {
+    pub flag: &'static str,
+    pub description: Option<&'static str>,
+}
+
+impl ExperimentalFlag {
+    pub fn new<D: Into<Option<&'static str>>>(flag: &'static str, description: D) -> Self {
+        Self {
+            flag,
+            description: description.into(),
+        }
+    }
+}
+
+inventory::collect!(ExperimentalFlag);
+
+fn parse_experimental_flag(user_flag: &str) -> Result<HashSet<&'static str>, String> {
+    // Weird hack so that we can provide a default for `BuildOptions.experimental_flags` and
+    // therefore not require the `-Z` flag to always be passed
+    if user_flag.is_empty() {
+        return Ok(HashSet::default());
+    }
+
+    for &ExperimentalFlag { flag, .. } in inventory::iter() {
+        if flag == user_flag {
+            let mut flags = HashSet::with_capacity_and_hasher(1, Default::default());
+            flags.insert(flag);
+
+            return Ok(flags);
+        }
+    }
+
+    let suggestion = distance::find_best_match(
+        user_flag,
+        inventory::iter::<ExperimentalFlag>().map(|flag| flag.flag),
+        None,
+        WordMode::KebabCase,
+    );
+
+    if let Some(suggestion) = suggestion {
+        Err(format!(
+            "an experimental flag by the name '{}' does not exist, maybe you meant '-Z {}'?",
+            user_flag, suggestion,
+        ))
+    } else {
+        Err(format!(
+            "an experimental flag by the name '{}' does not exist",
+            user_flag,
+        ))
     }
 }
 

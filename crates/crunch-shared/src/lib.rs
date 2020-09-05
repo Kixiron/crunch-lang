@@ -13,6 +13,7 @@ extern crate alloc;
 #[doc(hidden)]
 pub extern crate codespan_reporting;
 pub use crunch_proc;
+pub extern crate inventory;
 #[doc(hidden)]
 pub extern crate salsa;
 #[doc(hidden)]
@@ -27,6 +28,7 @@ pub mod allocator;
 pub mod config;
 pub mod context;
 pub mod databases;
+pub mod distance;
 pub mod error;
 pub mod file_hash;
 pub mod files;

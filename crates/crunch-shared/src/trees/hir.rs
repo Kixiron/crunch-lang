@@ -1,9 +1,9 @@
 pub use crate::trees::{
     ast::{
         BinaryOp, CompOp, Float, Integer, Literal as AstLiteral, LiteralVal as AstLiteralVal, Rune,
-        Text, Type as AstType, Vis,
+        Text, Type as AstType,
     },
-    ItemPath, Signedness,
+    Attribute, ItemPath, Signedness, Vis,
 };
 use crate::{
     error::{Locatable, Location, Span},
@@ -32,6 +32,7 @@ impl TypeId {
 pub enum Item<'ctx> {
     Function(Function<'ctx>),
     ExternFunc(ExternFunc),
+    Type(TypeDecl),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -67,6 +68,20 @@ pub struct ExternFunc {
     pub args: Locatable<Vec<FuncArg>>,
     pub ret: TypeId,
     pub callconv: CallConv,
+    pub loc: Location,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TypeDecl {
+    pub generics: Option<Vec<TypeId>>,
+    pub members: Vec<TypeMember>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TypeMember {
+    pub name: StrT,
+    pub ty: TypeId,
+    pub attrs: Vec<Attribute>,
     pub loc: Location,
 }
 
@@ -111,7 +126,7 @@ pub enum ExprKind<'ctx> {
     Continue,
     Break(Break<'ctx>),
     FnCall(FuncCall<'ctx>),
-    Literal(Literal),
+    Literal(Literal<'ctx>),
     Comparison(Sided<CompOp, &'ctx Expr<'ctx>>),
     Variable(Var, TypeId),
     Assign(Var, &'ctx Expr<'ctx>),
@@ -163,25 +178,25 @@ pub struct Match<'ctx> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MatchArm<'ctx> {
     // TODO: Arena & dedup bindings
-    pub bind: Binding,
+    pub bind: Binding<'ctx>,
     pub guard: Option<&'ctx Expr<'ctx>>,
     pub body: Block<&'ctx Stmt<'ctx>>,
     pub ty: TypeId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Binding {
+pub struct Binding<'ctx> {
     // TODO: Enum for mutability/referential status?
     pub reference: bool,
     pub mutable: bool,
-    pub pattern: Pattern,
+    pub pattern: Pattern<'ctx>,
     pub ty: Option<TypeId>,
 }
 
 // TODO: Arena & dedup patterns
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Pattern {
-    Literal(Literal),
+pub enum Pattern<'ctx> {
+    Literal(Literal<'ctx>),
     Ident(StrT),
     ItemPath(ItemPath),
     Wildcard,
@@ -408,13 +423,13 @@ pub struct Reference<'ctx> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Literal {
-    pub val: LiteralVal,
+pub struct Literal<'ctx> {
+    pub val: LiteralVal<'ctx>,
     pub ty: TypeId,
     pub loc: Location,
 }
 
-impl Literal {
+impl<'ctx> Literal<'ctx> {
     pub const fn location(&self) -> Location {
         self.loc
     }
@@ -422,12 +437,26 @@ impl Literal {
 
 // TODO: Arena & dedup literals
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum LiteralVal {
+pub enum LiteralVal<'ctx> {
     Integer(Integer),
     Bool(bool),
     String(Text),
     Rune(Rune),
     Float(Float),
-    Array { elements: Vec<Literal> },
+    Array { elements: Vec<Literal<'ctx>> },
+    Struct(StructLiteral<'ctx>),
     // TODO: Tuples, slices, records, others?
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct StructLiteral<'ctx> {
+    pub name: StrT,
+    pub fields: Vec<StructField<'ctx>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct StructField<'ctx> {
+    pub name: StrT,
+    pub value: &'ctx Expr<'ctx>,
+    pub loc: Location,
 }

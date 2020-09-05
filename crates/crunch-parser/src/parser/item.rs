@@ -10,10 +10,10 @@ use crunch_shared::{
     tracing,
     trees::{
         ast::{
-            Attribute, Decorator, Dest, Exposure, ExtendBlock, ExternBlock, ExternFunc, FuncArg,
-            Item, ItemKind, Type, TypeMember, Variant, Vis,
+            Decorator, Dest, Exposure, ExtendBlock, ExternBlock, ExternFunc, FuncArg, Item,
+            ItemKind, Type, TypeDecl, TypeMember, Variant,
         },
-        CallConv,
+        Attribute, CallConv, Vis,
     },
 };
 
@@ -63,7 +63,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                 Ok(None)
             }
 
-            TokenType::Const => {
+            TokenType::Const | TokenType::Unsafe => {
                 let token = self.next()?;
                 let attr = self.attr(&token, self.current_file)?;
 
@@ -570,11 +570,13 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                         )
                     };
 
+                    let loc = Location::new(Span::merge(name_span, ty.span()), self.current_file);
                     let member = TypeMember {
                         decorators: mem::take(&mut member_decorators),
                         attrs: mem::take(&mut member_attrs),
                         name,
                         ty,
+                        loc,
                     };
                     let _end_span = self.eat(TokenType::Comma, [])?.span();
 
@@ -596,17 +598,21 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         let end_span = self.eat(TokenType::End, [TokenType::Newline])?.span();
 
         if !member_attrs.is_empty() || !member_decorators.is_empty() {
+            crunch_shared::error!(
+                "type had {} trailing attributes and {} trailing decorators",
+                member_attrs.len(),
+                member_decorators.len(),
+            );
+
             return Err(Locatable::new(
                 Error::Syntax(SyntaxError::Generic("Attributes and functions must be before members or methods in type declarations".to_string())),
                 Location::new(&self.peek()?, self.current_file),
             ));
         }
-
         crunch_shared::trace!("type had {} members", members.len());
-        let kind = ItemKind::Type { generics, members };
 
         Ok(self.context.ast_item(Item {
-            kind,
+            kind: ItemKind::Type(TypeDecl { generics, members }),
             decorators,
             attrs,
             name: Some(name),
@@ -759,9 +765,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             )
         });
 
-        while self.peek()?.ty() == TokenType::Newline {
-            self.eat(TokenType::Newline, [])?;
-        }
+        self.eat_newlines()?;
 
         let body = self.block(&[TokenType::End], 20)?;
         let end_span = body.location().span();
@@ -1059,6 +1063,11 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             TokenType::Const => {
                 crunch_shared::trace!("parsed a 'const' attribute");
                 Attribute::Const
+            }
+
+            TokenType::Unsafe => {
+                crunch_shared::trace!("parsed an 'unsafe' attribute");
+                Attribute::Unsafe
             }
 
             _ => {

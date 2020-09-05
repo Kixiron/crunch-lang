@@ -4,7 +4,7 @@ use crate::{
         ast::BinaryOp,
         hir::{
             Block, Break, Cast, CompOp, Expr, ExprKind, ExternFunc, FuncCall, Function, Item,
-            Literal, Match, Reference, Return, Stmt, TypeId, Var, VarDecl,
+            Literal, Match, Reference, Return, Stmt, TypeDecl, TypeId, Var, VarDecl,
         },
         Sided,
     },
@@ -17,11 +17,15 @@ pub trait ItemVisitor<'ctx> {
         match item {
             Item::Function(func) => self.visit_func(func),
             Item::ExternFunc(func) => self.visit_extern_func(func),
+            Item::Type(ty) => self.visit_type_decl(ty),
         }
     }
 
     fn visit_func(&mut self, func: &Function<'ctx>) -> Self::Output;
     fn visit_extern_func(&mut self, func: &ExternFunc) -> Self::Output;
+    fn visit_type_decl(&mut self, _ty: &TypeDecl) -> Self::Output {
+        todo!()
+    }
 }
 
 pub trait StmtVisitor<'ctx>: ItemVisitor<'ctx> + ExprVisitor<'ctx> {

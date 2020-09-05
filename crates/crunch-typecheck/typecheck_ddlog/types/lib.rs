@@ -117,6 +117,15 @@ macro_rules! deserialize_map_from_array {
     };
 }
 
+pub use __top::*;
+mod __top {
+    use super::*;
+    use core::fmt::Debug;
+
+    pub fn dbg<T: Debug>(thing: T) -> T {
+        dbg!(thing)
+    }
+}
 pub use __std::*;
 mod __std {
     use super::*;
@@ -2371,6 +2380,66 @@ impl fmt::Debug for Types {
     }
 }
 #[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
+pub struct UnifiedTypes {
+    pub expr_id: hir_ExprId,
+    pub type_id: hir_TypeId,
+}
+impl abomonation::Abomonation for UnifiedTypes {}
+impl record::FromRecord for UnifiedTypes {
+    fn from_record(val: &record::Record) -> result::Result<Self, String> {
+        match val {
+            record::Record::PosStruct(constr, _args) => match constr.as_ref() {
+                "UnifiedTypes" if _args.len() == 2 => Ok(UnifiedTypes {
+                    expr_id: <hir_ExprId>::from_record(&_args[0])?,
+                    type_id: <hir_TypeId>::from_record(&_args[1])?,
+                }),
+                c => result::Result::Err(format!(
+                    "unknown constructor {} of type UnifiedTypes in {:?}",
+                    c, *val
+                )),
+            },
+            record::Record::NamedStruct(constr, _args) => match constr.as_ref() {
+                "UnifiedTypes" => Ok(UnifiedTypes {
+                    expr_id: record::arg_extract::<hir_ExprId>(_args, "expr_id")?,
+                    type_id: record::arg_extract::<hir_TypeId>(_args, "type_id")?,
+                }),
+                c => result::Result::Err(format!(
+                    "unknown constructor {} of type UnifiedTypes in {:?}",
+                    c, *val
+                )),
+            },
+            record::Record::Serialized(format, s) => {
+                if format == "json" {
+                    serde_json::from_str(&*s).map_err(|e| format!("{}", e))
+                } else {
+                    result::Result::Err(format!("unsupported serialization format '{}'", format))
+                }
+            }
+            v => result::Result::Err(format!("not a struct {:?}", *v)),
+        }
+    }
+}
+decl_struct_into_record!(UnifiedTypes["UnifiedTypes"]<>, expr_id, type_id);
+decl_record_mutator_struct!(UnifiedTypes, <>, expr_id: hir_ExprId, type_id: hir_TypeId);
+impl fmt::Display for UnifiedTypes {
+    fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            UnifiedTypes { expr_id, type_id } => {
+                __formatter.write_str("UnifiedTypes{")?;
+                fmt::Debug::fmt(expr_id, __formatter)?;
+                __formatter.write_str(",")?;
+                fmt::Debug::fmt(type_id, __formatter)?;
+                __formatter.write_str("}")
+            }
+        }
+    }
+}
+impl fmt::Debug for UnifiedTypes {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self, f)
+    }
+}
+#[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
 pub struct VariableScopes {
     pub parent: hir_ScopeId,
     pub child: hir_ScopeId,
@@ -2433,7 +2502,7 @@ impl fmt::Debug for VariableScopes {
 #[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
 pub struct Variables {
     pub var_id: hir_VarId,
-    pub variable: hir_Variable,
+    pub decl: hir_VariableDecl,
 }
 impl abomonation::Abomonation for Variables {}
 impl record::FromRecord for Variables {
@@ -2442,7 +2511,7 @@ impl record::FromRecord for Variables {
             record::Record::PosStruct(constr, _args) => match constr.as_ref() {
                 "Variables" if _args.len() == 2 => Ok(Variables {
                     var_id: <hir_VarId>::from_record(&_args[0])?,
-                    variable: <hir_Variable>::from_record(&_args[1])?,
+                    decl: <hir_VariableDecl>::from_record(&_args[1])?,
                 }),
                 c => result::Result::Err(format!(
                     "unknown constructor {} of type Variables in {:?}",
@@ -2452,7 +2521,7 @@ impl record::FromRecord for Variables {
             record::Record::NamedStruct(constr, _args) => match constr.as_ref() {
                 "Variables" => Ok(Variables {
                     var_id: record::arg_extract::<hir_VarId>(_args, "var_id")?,
-                    variable: record::arg_extract::<hir_Variable>(_args, "variable")?,
+                    decl: record::arg_extract::<hir_VariableDecl>(_args, "decl")?,
                 }),
                 c => result::Result::Err(format!(
                     "unknown constructor {} of type Variables in {:?}",
@@ -2470,16 +2539,16 @@ impl record::FromRecord for Variables {
         }
     }
 }
-decl_struct_into_record!(Variables["Variables"]<>, var_id, variable);
-decl_record_mutator_struct!(Variables, <>, var_id: hir_VarId, variable: hir_Variable);
+decl_struct_into_record!(Variables["Variables"]<>, var_id, decl);
+decl_record_mutator_struct!(Variables, <>, var_id: hir_VarId, decl: hir_VariableDecl);
 impl fmt::Display for Variables {
     fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Variables { var_id, variable } => {
+            Variables { var_id, decl } => {
                 __formatter.write_str("Variables{")?;
                 fmt::Debug::fmt(var_id, __formatter)?;
                 __formatter.write_str(",")?;
-                fmt::Debug::fmt(variable, __formatter)?;
+                fmt::Debug::fmt(decl, __formatter)?;
                 __formatter.write_str("}")
             }
         }
@@ -3778,7 +3847,7 @@ impl fmt::Debug for hir_Span {
 pub enum hir_Stmt {
     hir_StmtExpr { expr: hir_ExprId },
     hir_StmtItem { item: hir_ItemId },
-    hir_StmtVarDecl { decl: hir_VarDecl },
+    hir_StmtVarDecl { decl: hir_VariableDecl },
     hir_StmtScope { scope: std_Vec<hir_StmtId> },
 }
 impl abomonation::Abomonation for hir_Stmt {}
@@ -3793,7 +3862,7 @@ impl record::FromRecord for hir_Stmt {
                     item: <hir_ItemId>::from_record(&_args[0])?,
                 }),
                 "hir::StmtVarDecl" if _args.len() == 1 => Ok(hir_Stmt::hir_StmtVarDecl {
-                    decl: <hir_VarDecl>::from_record(&_args[0])?,
+                    decl: <hir_VariableDecl>::from_record(&_args[0])?,
                 }),
                 "hir::StmtScope" if _args.len() == 1 => Ok(hir_Stmt::hir_StmtScope {
                     scope: <std_Vec<hir_StmtId>>::from_record(&_args[0])?,
@@ -3811,7 +3880,7 @@ impl record::FromRecord for hir_Stmt {
                     item: record::arg_extract::<hir_ItemId>(_args, "item")?,
                 }),
                 "hir::StmtVarDecl" => Ok(hir_Stmt::hir_StmtVarDecl {
-                    decl: record::arg_extract::<hir_VarDecl>(_args, "decl")?,
+                    decl: record::arg_extract::<hir_VariableDecl>(_args, "decl")?,
                 }),
                 "hir::StmtScope" => Ok(hir_Stmt::hir_StmtScope {
                     scope: record::arg_extract::<std_Vec<hir_StmtId>>(_args, "scope")?,
@@ -3833,7 +3902,7 @@ impl record::FromRecord for hir_Stmt {
     }
 }
 decl_enum_into_record!(hir_Stmt, <>, hir_StmtExpr["hir::StmtExpr"]{expr}, hir_StmtItem["hir::StmtItem"]{item}, hir_StmtVarDecl["hir::StmtVarDecl"]{decl}, hir_StmtScope["hir::StmtScope"]{scope});
-decl_record_mutator_enum!(hir_Stmt, <>, hir_StmtExpr{expr: hir_ExprId}, hir_StmtItem{item: hir_ItemId}, hir_StmtVarDecl{decl: hir_VarDecl}, hir_StmtScope{scope: std_Vec<hir_StmtId>});
+decl_record_mutator_enum!(hir_Stmt, <>, hir_StmtExpr{expr: hir_ExprId}, hir_StmtItem{item: hir_ItemId}, hir_StmtVarDecl{decl: hir_VariableDecl}, hir_StmtScope{scope: std_Vec<hir_StmtId>});
 impl fmt::Display for hir_Stmt {
     fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -4039,114 +4108,39 @@ impl Default for hir_TypeKind {
         hir_TypeKind::hir_Unknown {}
     }
 }
-#[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
-pub struct hir_VarDecl {
-    pub name: hir_VarId,
-    pub value: hir_ExprId,
-    pub mutable: bool,
-    pub ty: hir_TypeId,
-}
-impl abomonation::Abomonation for hir_VarDecl {}
-impl record::FromRecord for hir_VarDecl {
-    fn from_record(val: &record::Record) -> result::Result<Self, String> {
-        match val {
-            record::Record::PosStruct(constr, _args) => match constr.as_ref() {
-                "hir::VarDecl" if _args.len() == 4 => Ok(hir_VarDecl {
-                    name: <hir_VarId>::from_record(&_args[0])?,
-                    value: <hir_ExprId>::from_record(&_args[1])?,
-                    mutable: <bool>::from_record(&_args[2])?,
-                    ty: <hir_TypeId>::from_record(&_args[3])?,
-                }),
-                c => result::Result::Err(format!(
-                    "unknown constructor {} of type hir_VarDecl in {:?}",
-                    c, *val
-                )),
-            },
-            record::Record::NamedStruct(constr, _args) => match constr.as_ref() {
-                "hir::VarDecl" => Ok(hir_VarDecl {
-                    name: record::arg_extract::<hir_VarId>(_args, "name")?,
-                    value: record::arg_extract::<hir_ExprId>(_args, "value")?,
-                    mutable: record::arg_extract::<bool>(_args, "mutable")?,
-                    ty: record::arg_extract::<hir_TypeId>(_args, "ty")?,
-                }),
-                c => result::Result::Err(format!(
-                    "unknown constructor {} of type hir_VarDecl in {:?}",
-                    c, *val
-                )),
-            },
-            record::Record::Serialized(format, s) => {
-                if format == "json" {
-                    serde_json::from_str(&*s).map_err(|e| format!("{}", e))
-                } else {
-                    result::Result::Err(format!("unsupported serialization format '{}'", format))
-                }
-            }
-            v => result::Result::Err(format!("not a struct {:?}", *v)),
-        }
-    }
-}
-decl_struct_into_record!(hir_VarDecl["hir::VarDecl"]<>, name, value, mutable, ty);
-decl_record_mutator_struct!(hir_VarDecl, <>, name: hir_VarId, value: hir_ExprId, mutable: bool, ty: hir_TypeId);
-impl fmt::Display for hir_VarDecl {
-    fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            hir_VarDecl {
-                name,
-                value,
-                mutable,
-                ty,
-            } => {
-                __formatter.write_str("hir::VarDecl{")?;
-                fmt::Debug::fmt(name, __formatter)?;
-                __formatter.write_str(",")?;
-                fmt::Debug::fmt(value, __formatter)?;
-                __formatter.write_str(",")?;
-                fmt::Debug::fmt(mutable, __formatter)?;
-                __formatter.write_str(",")?;
-                fmt::Debug::fmt(ty, __formatter)?;
-                __formatter.write_str("}")
-            }
-        }
-    }
-}
-impl fmt::Debug for hir_VarDecl {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Display::fmt(&self, f)
-    }
-}
 pub type hir_VarId = std_u64;
 #[derive(Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Default, Serialize, Deserialize)]
-pub struct hir_Variable {
+pub struct hir_VariableDecl {
     pub var_name: hir_StrT,
     pub var_type: hir_TypeId,
     pub value: hir_ExprId,
     pub scope: hir_ScopeId,
 }
-impl abomonation::Abomonation for hir_Variable {}
-impl record::FromRecord for hir_Variable {
+impl abomonation::Abomonation for hir_VariableDecl {}
+impl record::FromRecord for hir_VariableDecl {
     fn from_record(val: &record::Record) -> result::Result<Self, String> {
         match val {
             record::Record::PosStruct(constr, _args) => match constr.as_ref() {
-                "hir::Variable" if _args.len() == 4 => Ok(hir_Variable {
+                "hir::VariableDecl" if _args.len() == 4 => Ok(hir_VariableDecl {
                     var_name: <hir_StrT>::from_record(&_args[0])?,
                     var_type: <hir_TypeId>::from_record(&_args[1])?,
                     value: <hir_ExprId>::from_record(&_args[2])?,
                     scope: <hir_ScopeId>::from_record(&_args[3])?,
                 }),
                 c => result::Result::Err(format!(
-                    "unknown constructor {} of type hir_Variable in {:?}",
+                    "unknown constructor {} of type hir_VariableDecl in {:?}",
                     c, *val
                 )),
             },
             record::Record::NamedStruct(constr, _args) => match constr.as_ref() {
-                "hir::Variable" => Ok(hir_Variable {
+                "hir::VariableDecl" => Ok(hir_VariableDecl {
                     var_name: record::arg_extract::<hir_StrT>(_args, "var_name")?,
                     var_type: record::arg_extract::<hir_TypeId>(_args, "var_type")?,
                     value: record::arg_extract::<hir_ExprId>(_args, "value")?,
                     scope: record::arg_extract::<hir_ScopeId>(_args, "scope")?,
                 }),
                 c => result::Result::Err(format!(
-                    "unknown constructor {} of type hir_Variable in {:?}",
+                    "unknown constructor {} of type hir_VariableDecl in {:?}",
                     c, *val
                 )),
             },
@@ -4161,18 +4155,18 @@ impl record::FromRecord for hir_Variable {
         }
     }
 }
-decl_struct_into_record!(hir_Variable["hir::Variable"]<>, var_name, var_type, value, scope);
-decl_record_mutator_struct!(hir_Variable, <>, var_name: hir_StrT, var_type: hir_TypeId, value: hir_ExprId, scope: hir_ScopeId);
-impl fmt::Display for hir_Variable {
+decl_struct_into_record!(hir_VariableDecl["hir::VariableDecl"]<>, var_name, var_type, value, scope);
+decl_record_mutator_struct!(hir_VariableDecl, <>, var_name: hir_StrT, var_type: hir_TypeId, value: hir_ExprId, scope: hir_ScopeId);
+impl fmt::Display for hir_VariableDecl {
     fn fmt(&self, __formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            hir_Variable {
+            hir_VariableDecl {
                 var_name,
                 var_type,
                 value,
                 scope,
             } => {
-                __formatter.write_str("hir::Variable{")?;
+                __formatter.write_str("hir::VariableDecl{")?;
                 fmt::Debug::fmt(var_name, __formatter)?;
                 __formatter.write_str(",")?;
                 fmt::Debug::fmt(var_type, __formatter)?;
@@ -4185,7 +4179,7 @@ impl fmt::Display for hir_Variable {
         }
     }
 }
-impl fmt::Debug for hir_Variable {
+impl fmt::Debug for hir_VariableDecl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Display::fmt(&self, f)
     }
@@ -4530,6 +4524,7 @@ pub type std_u32 = u32;
 pub type std_u64 = u64;
 pub type std_u8 = u8;
 pub type std_usize = std_u64;
+/* fn dbg<T: Val>(thing: & T) -> T */
 /* fn debug_debug_event<T1: Val,A1: Val,A2: Val>(operator_id: & debug_DDlogOpId, w: & std_DDWeight, ts: & T1, operator_type: & String, input1: & A1, out: & A2) -> () */
 /* fn debug_debug_event_join<T1: Val,A1: Val,A2: Val,A3: Val>(operator_id: & debug_DDlogOpId, w: & std_DDWeight, ts: & T1, input1: & A1, input2: & A2, out: & A3) -> () */
 /* fn debug_debug_split_group<K: Val,I: Val,V: Val>(g: & std_Group<K, (I, V)>) -> (std_Vec<I>, std_Group<K, V>) */
@@ -5074,4 +5069,25 @@ pub fn std_unwrap_or_default_std_Option__A_1<A: Val>(opt: &std_Option<A>) -> A {
 }
 pub fn std_unwrap_or_default_std_Result__V_E_1<V: Val, E: Val>(res: &std_Result<V, E>) -> V {
     std_result_unwrap_or_default(res)
+}
+pub fn unify_types<K: Val>(types: &std_Group<K, (hir_TypeId, hir_Type)>) -> hir_TypeId {
+    let ref mut min_type_id: std_u64 = (18446744073709551615 as u64);
+    let ref mut min_type: hir_Type = (hir_Type {
+        kind: (hir_TypeKind::hir_Unknown {}),
+    });
+    for ref ty in types.iter() {
+        {
+            dbg(ty);
+            if ((&*(&(ty.0))) < (&*min_type_id)) {
+                {
+                    (*min_type_id) = (ty.0).clone();
+                    (*min_type) = (ty.1).clone()
+                }
+            } else {
+                ()
+            }
+        }
+    }
+    dbg(min_type);
+    (*min_type_id).clone()
 }

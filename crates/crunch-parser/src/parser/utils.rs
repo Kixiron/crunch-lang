@@ -475,4 +475,18 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
         Ok(op)
     }
+
+    // Eats all newlines, returning the number of newlines eaten
+    pub(crate) fn eat_newlines(&mut self) -> ParseResult<usize> {
+        let mut eaten = 0;
+        while self.peek()?.ty() == TokenType::Newline {
+            self.eat(TokenType::Newline, [])
+                .expect("a newline was just peeked");
+
+            eaten += 1;
+        }
+
+        crunch_shared::trace!("ate {} newline{}", eaten, if eaten == 1 { "s" } else { "" });
+        Ok(eaten)
+    }
 }

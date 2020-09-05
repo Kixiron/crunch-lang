@@ -68,7 +68,7 @@ extra_args=""
 for arg in "$@"; do
     if [ "$arg" = "--debug" ]; then
         check_undeclared "$debug_flag" "--debug"
-        extra_args="$extra_args --output-internal-relations"
+        extra_args="$extra_args --output-internal-relations --output-input-relations=INPUT_"
         debug_flag="true"
 
     elif [ "$arg" = "--no-color" ]; then

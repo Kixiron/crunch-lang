@@ -1,0 +1,44 @@
+extern
+    @callconv("C")
+    fn malloc(size: usize) -> *const unit;
+
+    @callconv("C")
+    fn free(ptr: *const unit);
+end
+
+type String
+    len: uptr,
+    ptr: *mut u8,
+end
+
+extend String
+    unsafe fn new(len: uptr) -> String
+        String is
+            len := len,
+            :: TODO: size_of[u8]() * len
+            ptr := malloc(len),
+        end
+    end
+
+    unsafe fn destroy(string: String)
+        free(string.ptr)
+    end
+
+    fn len(string: &String) -> uptr
+        string.len
+    end
+
+    fn as_ptr(string: &String) -> *const u8
+        string.ptr
+    end
+end
+
+fn main() -> uptr
+    unsafe
+        let string := String.new(100)
+        let length := string.len()
+        string.destroy()
+
+        length
+    end
+end

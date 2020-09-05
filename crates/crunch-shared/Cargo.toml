@@ -71,6 +71,9 @@ version = "2.0.1"
 [dependencies.stats_alloc]
 version = "0.1.8"
 
+[dependencies.inventory]
+version = "0.1.9"
+
 [dependencies.crunch-proc]
 path = "../crunch-proc"
 

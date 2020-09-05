@@ -124,28 +124,78 @@ pub mod Value {
     #[derive(
         Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
     )]
-    pub struct __Tuple4____Bitval64___Bitval64___Bitval64___Bitval64(pub (u64, u64, u64, u64));
-    impl abomonation::Abomonation for __Tuple4____Bitval64___Bitval64___Bitval64___Bitval64 {}
-    impl fmt::Display for __Tuple4____Bitval64___Bitval64___Bitval64___Bitval64 {
+    pub struct __Tuple2____Bitval64___Bitval64(pub (u64, u64));
+    impl abomonation::Abomonation for __Tuple2____Bitval64___Bitval64 {}
+    impl fmt::Display for __Tuple2____Bitval64___Bitval64 {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             self.clone().into_record().fmt(f)
         }
     }
-    impl record::IntoRecord for __Tuple4____Bitval64___Bitval64___Bitval64___Bitval64 {
+    impl record::IntoRecord for __Tuple2____Bitval64___Bitval64 {
         fn into_record(self) -> record::Record {
             self.0.into_record()
         }
     }
-    impl record::Mutator<__Tuple4____Bitval64___Bitval64___Bitval64___Bitval64> for record::Record {
+    impl record::Mutator<__Tuple2____Bitval64___Bitval64> for record::Record {
         fn mutate(
             &self,
-            v: &mut __Tuple4____Bitval64___Bitval64___Bitval64___Bitval64,
+            v: &mut __Tuple2____Bitval64___Bitval64,
         ) -> result::Result<(), std::string::String> {
             self.mutate(&mut v.0)
         }
     }
     //#[typetag::serde]
-    decl_ddval_convert! {__Tuple4____Bitval64___Bitval64___Bitval64___Bitval64}
+    decl_ddval_convert! {__Tuple2____Bitval64___Bitval64}
+    #[derive(
+        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
+    )]
+    pub struct __Tuple3____Bitval64___Bitval64___Bitval64(pub (u64, u64, u64));
+    impl abomonation::Abomonation for __Tuple3____Bitval64___Bitval64___Bitval64 {}
+    impl fmt::Display for __Tuple3____Bitval64___Bitval64___Bitval64 {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.clone().into_record().fmt(f)
+        }
+    }
+    impl record::IntoRecord for __Tuple3____Bitval64___Bitval64___Bitval64 {
+        fn into_record(self) -> record::Record {
+            self.0.into_record()
+        }
+    }
+    impl record::Mutator<__Tuple3____Bitval64___Bitval64___Bitval64> for record::Record {
+        fn mutate(
+            &self,
+            v: &mut __Tuple3____Bitval64___Bitval64___Bitval64,
+        ) -> result::Result<(), std::string::String> {
+            self.mutate(&mut v.0)
+        }
+    }
+    //#[typetag::serde]
+    decl_ddval_convert! {__Tuple3____Bitval64___Bitval64___Bitval64}
+    #[derive(
+        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
+    )]
+    pub struct __Tuple3____Bitval64___Bitval64_hir_Type(pub (u64, u64, super::hir_Type));
+    impl abomonation::Abomonation for __Tuple3____Bitval64___Bitval64_hir_Type {}
+    impl fmt::Display for __Tuple3____Bitval64___Bitval64_hir_Type {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.clone().into_record().fmt(f)
+        }
+    }
+    impl record::IntoRecord for __Tuple3____Bitval64___Bitval64_hir_Type {
+        fn into_record(self) -> record::Record {
+            self.0.into_record()
+        }
+    }
+    impl record::Mutator<__Tuple3____Bitval64___Bitval64_hir_Type> for record::Record {
+        fn mutate(
+            &self,
+            v: &mut __Tuple3____Bitval64___Bitval64_hir_Type,
+        ) -> result::Result<(), std::string::String> {
+            self.mutate(&mut v.0)
+        }
+    }
+    //#[typetag::serde]
+    decl_ddval_convert! {__Tuple3____Bitval64___Bitval64_hir_Type}
     #[derive(
         Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
     )]
@@ -325,6 +375,28 @@ pub mod Value {
     #[derive(
         Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
     )]
+    pub struct UnifiedTypes(pub super::UnifiedTypes);
+    impl abomonation::Abomonation for UnifiedTypes {}
+    impl fmt::Display for UnifiedTypes {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.clone().into_record().fmt(f)
+        }
+    }
+    impl record::IntoRecord for UnifiedTypes {
+        fn into_record(self) -> record::Record {
+            self.0.into_record()
+        }
+    }
+    impl record::Mutator<UnifiedTypes> for record::Record {
+        fn mutate(&self, v: &mut UnifiedTypes) -> result::Result<(), std::string::String> {
+            self.mutate(&mut v.0)
+        }
+    }
+    //#[typetag::serde]
+    decl_ddval_convert! {UnifiedTypes}
+    #[derive(
+        Default, Eq, Ord, Clone, Hash, PartialEq, PartialOrd, Serialize, Deserialize, Debug,
+    )]
     pub struct VariableScopes(pub super::VariableScopes);
     impl abomonation::Abomonation for VariableScopes {}
     impl fmt::Display for VariableScopes {
@@ -443,16 +515,24 @@ impl TryFrom<&str> for Relations {
             "Errors" => Ok(Relations::Errors),
             "Expressions" => Ok(Relations::Expressions),
             "Functions" => Ok(Relations::Functions),
+            "INPUT_Expressions" => Ok(Relations::INPUT_Expressions),
+            "INPUT_Functions" => Ok(Relations::INPUT_Functions),
+            "INPUT_Items" => Ok(Relations::INPUT_Items),
+            "INPUT_Statements" => Ok(Relations::INPUT_Statements),
+            "INPUT_Types" => Ok(Relations::INPUT_Types),
+            "INPUT_VariableScopes" => Ok(Relations::INPUT_VariableScopes),
+            "INPUT_Variables" => Ok(Relations::INPUT_Variables),
             "Items" => Ok(Relations::Items),
             "Literals" => Ok(Relations::Literals),
             "Statements" => Ok(Relations::Statements),
             "TypedExpressions" => Ok(Relations::TypedExpressions),
             "Types" => Ok(Relations::Types),
+            "UnifiedTypes" => Ok(Relations::UnifiedTypes),
             "VariableScopes" => Ok(Relations::VariableScopes),
             "Variables" => Ok(Relations::Variables),
             "VariablesInScope" => Ok(Relations::VariablesInScope),
+            "__MultiHead_5" => Ok(Relations::__MultiHead_5),
             "__Null" => Ok(Relations::__Null),
-            "__Prefix_0" => Ok(Relations::__Prefix_0),
             _ => Err(()),
         }
     }
@@ -461,8 +541,16 @@ impl Relations {
     pub fn is_output(&self) -> bool {
         match self {
             Relations::Errors => true,
+            Relations::INPUT_Expressions => true,
+            Relations::INPUT_Functions => true,
+            Relations::INPUT_Items => true,
+            Relations::INPUT_Statements => true,
+            Relations::INPUT_Types => true,
+            Relations::INPUT_VariableScopes => true,
+            Relations::INPUT_Variables => true,
             Relations::Literals => true,
             Relations::TypedExpressions => true,
+            Relations::UnifiedTypes => true,
             Relations::VariablesInScope => true,
             _ => false,
         }
@@ -489,16 +577,24 @@ impl TryFrom<RelId> for Relations {
             0 => Ok(Relations::Errors),
             1 => Ok(Relations::Expressions),
             2 => Ok(Relations::Functions),
-            3 => Ok(Relations::Items),
-            4 => Ok(Relations::Literals),
-            5 => Ok(Relations::Statements),
-            6 => Ok(Relations::TypedExpressions),
-            7 => Ok(Relations::Types),
-            8 => Ok(Relations::VariableScopes),
-            9 => Ok(Relations::Variables),
-            10 => Ok(Relations::VariablesInScope),
-            11 => Ok(Relations::__Null),
-            12 => Ok(Relations::__Prefix_0),
+            3 => Ok(Relations::INPUT_Expressions),
+            4 => Ok(Relations::INPUT_Functions),
+            5 => Ok(Relations::INPUT_Items),
+            6 => Ok(Relations::INPUT_Statements),
+            7 => Ok(Relations::INPUT_Types),
+            8 => Ok(Relations::INPUT_VariableScopes),
+            9 => Ok(Relations::INPUT_Variables),
+            10 => Ok(Relations::Items),
+            11 => Ok(Relations::Literals),
+            12 => Ok(Relations::Statements),
+            13 => Ok(Relations::TypedExpressions),
+            14 => Ok(Relations::Types),
+            15 => Ok(Relations::UnifiedTypes),
+            16 => Ok(Relations::VariableScopes),
+            17 => Ok(Relations::Variables),
+            18 => Ok(Relations::VariablesInScope),
+            19 => Ok(Relations::__MultiHead_5),
+            20 => Ok(Relations::__Null),
             _ => Err(()),
         }
     }
@@ -508,16 +604,24 @@ pub fn relid2name(rid: RelId) -> Option<&'static str> {
         0 => Some(&"Errors"),
         1 => Some(&"Expressions"),
         2 => Some(&"Functions"),
-        3 => Some(&"Items"),
-        4 => Some(&"Literals"),
-        5 => Some(&"Statements"),
-        6 => Some(&"TypedExpressions"),
-        7 => Some(&"Types"),
-        8 => Some(&"VariableScopes"),
-        9 => Some(&"Variables"),
-        10 => Some(&"VariablesInScope"),
-        11 => Some(&"__Null"),
-        12 => Some(&"__Prefix_0"),
+        3 => Some(&"INPUT_Expressions"),
+        4 => Some(&"INPUT_Functions"),
+        5 => Some(&"INPUT_Items"),
+        6 => Some(&"INPUT_Statements"),
+        7 => Some(&"INPUT_Types"),
+        8 => Some(&"INPUT_VariableScopes"),
+        9 => Some(&"INPUT_Variables"),
+        10 => Some(&"Items"),
+        11 => Some(&"Literals"),
+        12 => Some(&"Statements"),
+        13 => Some(&"TypedExpressions"),
+        14 => Some(&"Types"),
+        15 => Some(&"UnifiedTypes"),
+        16 => Some(&"VariableScopes"),
+        17 => Some(&"Variables"),
+        18 => Some(&"VariablesInScope"),
+        19 => Some(&"__MultiHead_5"),
+        20 => Some(&"__Null"),
         _ => None,
     }
 }
@@ -528,27 +632,35 @@ pub fn relid2cname(rid: RelId) -> Option<&'static ::std::ffi::CStr> {
 pub static RELIDMAP: ::once_cell::sync::Lazy<::fnv::FnvHashMap<Relations, &'static str>> =
     ::once_cell::sync::Lazy::new(|| {
         let mut map =
-            ::fnv::FnvHashMap::with_capacity_and_hasher(13, ::fnv::FnvBuildHasher::default());
+            ::fnv::FnvHashMap::with_capacity_and_hasher(21, ::fnv::FnvBuildHasher::default());
         map.insert(Relations::Errors, "Errors");
         map.insert(Relations::Expressions, "Expressions");
         map.insert(Relations::Functions, "Functions");
+        map.insert(Relations::INPUT_Expressions, "INPUT_Expressions");
+        map.insert(Relations::INPUT_Functions, "INPUT_Functions");
+        map.insert(Relations::INPUT_Items, "INPUT_Items");
+        map.insert(Relations::INPUT_Statements, "INPUT_Statements");
+        map.insert(Relations::INPUT_Types, "INPUT_Types");
+        map.insert(Relations::INPUT_VariableScopes, "INPUT_VariableScopes");
+        map.insert(Relations::INPUT_Variables, "INPUT_Variables");
         map.insert(Relations::Items, "Items");
         map.insert(Relations::Literals, "Literals");
         map.insert(Relations::Statements, "Statements");
         map.insert(Relations::TypedExpressions, "TypedExpressions");
         map.insert(Relations::Types, "Types");
+        map.insert(Relations::UnifiedTypes, "UnifiedTypes");
         map.insert(Relations::VariableScopes, "VariableScopes");
         map.insert(Relations::Variables, "Variables");
         map.insert(Relations::VariablesInScope, "VariablesInScope");
+        map.insert(Relations::__MultiHead_5, "__MultiHead_5");
         map.insert(Relations::__Null, "__Null");
-        map.insert(Relations::__Prefix_0, "__Prefix_0");
         map
     });
 /// A map of `RelId`s to their name as an `&'static CStr`
 pub static RELIDMAPC: ::once_cell::sync::Lazy<::fnv::FnvHashMap<RelId, &'static ::std::ffi::CStr>> =
     ::once_cell::sync::Lazy::new(|| {
         let mut map =
-            ::fnv::FnvHashMap::with_capacity_and_hasher(13, ::fnv::FnvBuildHasher::default());
+            ::fnv::FnvHashMap::with_capacity_and_hasher(21, ::fnv::FnvBuildHasher::default());
         map.insert(
             0,
             ::std::ffi::CStr::from_bytes_with_nul(b"Errors\0")
@@ -566,52 +678,92 @@ pub static RELIDMAPC: ::once_cell::sync::Lazy<::fnv::FnvHashMap<RelId, &'static 
         );
         map.insert(
             3,
-            ::std::ffi::CStr::from_bytes_with_nul(b"Items\0")
+            ::std::ffi::CStr::from_bytes_with_nul(b"INPUT_Expressions\0")
                 .expect("Unreachable: A null byte was specifically inserted"),
         );
         map.insert(
             4,
-            ::std::ffi::CStr::from_bytes_with_nul(b"Literals\0")
+            ::std::ffi::CStr::from_bytes_with_nul(b"INPUT_Functions\0")
                 .expect("Unreachable: A null byte was specifically inserted"),
         );
         map.insert(
             5,
-            ::std::ffi::CStr::from_bytes_with_nul(b"Statements\0")
+            ::std::ffi::CStr::from_bytes_with_nul(b"INPUT_Items\0")
                 .expect("Unreachable: A null byte was specifically inserted"),
         );
         map.insert(
             6,
-            ::std::ffi::CStr::from_bytes_with_nul(b"TypedExpressions\0")
+            ::std::ffi::CStr::from_bytes_with_nul(b"INPUT_Statements\0")
                 .expect("Unreachable: A null byte was specifically inserted"),
         );
         map.insert(
             7,
-            ::std::ffi::CStr::from_bytes_with_nul(b"Types\0")
+            ::std::ffi::CStr::from_bytes_with_nul(b"INPUT_Types\0")
                 .expect("Unreachable: A null byte was specifically inserted"),
         );
         map.insert(
             8,
-            ::std::ffi::CStr::from_bytes_with_nul(b"VariableScopes\0")
+            ::std::ffi::CStr::from_bytes_with_nul(b"INPUT_VariableScopes\0")
                 .expect("Unreachable: A null byte was specifically inserted"),
         );
         map.insert(
             9,
-            ::std::ffi::CStr::from_bytes_with_nul(b"Variables\0")
+            ::std::ffi::CStr::from_bytes_with_nul(b"INPUT_Variables\0")
                 .expect("Unreachable: A null byte was specifically inserted"),
         );
         map.insert(
             10,
-            ::std::ffi::CStr::from_bytes_with_nul(b"VariablesInScope\0")
+            ::std::ffi::CStr::from_bytes_with_nul(b"Items\0")
                 .expect("Unreachable: A null byte was specifically inserted"),
         );
         map.insert(
             11,
-            ::std::ffi::CStr::from_bytes_with_nul(b"__Null\0")
+            ::std::ffi::CStr::from_bytes_with_nul(b"Literals\0")
                 .expect("Unreachable: A null byte was specifically inserted"),
         );
         map.insert(
             12,
-            ::std::ffi::CStr::from_bytes_with_nul(b"__Prefix_0\0")
+            ::std::ffi::CStr::from_bytes_with_nul(b"Statements\0")
+                .expect("Unreachable: A null byte was specifically inserted"),
+        );
+        map.insert(
+            13,
+            ::std::ffi::CStr::from_bytes_with_nul(b"TypedExpressions\0")
+                .expect("Unreachable: A null byte was specifically inserted"),
+        );
+        map.insert(
+            14,
+            ::std::ffi::CStr::from_bytes_with_nul(b"Types\0")
+                .expect("Unreachable: A null byte was specifically inserted"),
+        );
+        map.insert(
+            15,
+            ::std::ffi::CStr::from_bytes_with_nul(b"UnifiedTypes\0")
+                .expect("Unreachable: A null byte was specifically inserted"),
+        );
+        map.insert(
+            16,
+            ::std::ffi::CStr::from_bytes_with_nul(b"VariableScopes\0")
+                .expect("Unreachable: A null byte was specifically inserted"),
+        );
+        map.insert(
+            17,
+            ::std::ffi::CStr::from_bytes_with_nul(b"Variables\0")
+                .expect("Unreachable: A null byte was specifically inserted"),
+        );
+        map.insert(
+            18,
+            ::std::ffi::CStr::from_bytes_with_nul(b"VariablesInScope\0")
+                .expect("Unreachable: A null byte was specifically inserted"),
+        );
+        map.insert(
+            19,
+            ::std::ffi::CStr::from_bytes_with_nul(b"__MultiHead_5\0")
+                .expect("Unreachable: A null byte was specifically inserted"),
+        );
+        map.insert(
+            20,
+            ::std::ffi::CStr::from_bytes_with_nul(b"__Null\0")
                 .expect("Unreachable: A null byte was specifically inserted"),
         );
         map
@@ -634,10 +786,18 @@ pub static INPUT_RELIDMAP: ::once_cell::sync::Lazy<::fnv::FnvHashMap<Relations, 
 pub static OUTPUT_RELIDMAP: ::once_cell::sync::Lazy<::fnv::FnvHashMap<Relations, &'static str>> =
     ::once_cell::sync::Lazy::new(|| {
         let mut map =
-            ::fnv::FnvHashMap::with_capacity_and_hasher(4, ::fnv::FnvBuildHasher::default());
+            ::fnv::FnvHashMap::with_capacity_and_hasher(12, ::fnv::FnvBuildHasher::default());
         map.insert(Relations::Errors, "Errors");
+        map.insert(Relations::INPUT_Expressions, "INPUT_Expressions");
+        map.insert(Relations::INPUT_Functions, "INPUT_Functions");
+        map.insert(Relations::INPUT_Items, "INPUT_Items");
+        map.insert(Relations::INPUT_Statements, "INPUT_Statements");
+        map.insert(Relations::INPUT_Types, "INPUT_Types");
+        map.insert(Relations::INPUT_VariableScopes, "INPUT_VariableScopes");
+        map.insert(Relations::INPUT_Variables, "INPUT_Variables");
         map.insert(Relations::Literals, "Literals");
         map.insert(Relations::TypedExpressions, "TypedExpressions");
+        map.insert(Relations::UnifiedTypes, "UnifiedTypes");
         map.insert(Relations::VariablesInScope, "VariablesInScope");
         map
     });
@@ -700,6 +860,23 @@ pub fn relval_from_record(
         Relations::Functions => {
             Ok(Value::Functions(<Functions>::from_record(_rec)?).into_ddvalue())
         }
+        Relations::INPUT_Expressions => {
+            Ok(Value::Expressions(<Expressions>::from_record(_rec)?).into_ddvalue())
+        }
+        Relations::INPUT_Functions => {
+            Ok(Value::Functions(<Functions>::from_record(_rec)?).into_ddvalue())
+        }
+        Relations::INPUT_Items => Ok(Value::Items(<Items>::from_record(_rec)?).into_ddvalue()),
+        Relations::INPUT_Statements => {
+            Ok(Value::Statements(<Statements>::from_record(_rec)?).into_ddvalue())
+        }
+        Relations::INPUT_Types => Ok(Value::Types(<Types>::from_record(_rec)?).into_ddvalue()),
+        Relations::INPUT_VariableScopes => {
+            Ok(Value::VariableScopes(<VariableScopes>::from_record(_rec)?).into_ddvalue())
+        }
+        Relations::INPUT_Variables => {
+            Ok(Value::Variables(<Variables>::from_record(_rec)?).into_ddvalue())
+        }
         Relations::Items => Ok(Value::Items(<Items>::from_record(_rec)?).into_ddvalue()),
         Relations::Literals => Ok(Value::Literals(<Literals>::from_record(_rec)?).into_ddvalue()),
         Relations::Statements => {
@@ -709,6 +886,9 @@ pub fn relval_from_record(
             Ok(Value::TypedExpressions(<TypedExpressions>::from_record(_rec)?).into_ddvalue())
         }
         Relations::Types => Ok(Value::Types(<Types>::from_record(_rec)?).into_ddvalue()),
+        Relations::UnifiedTypes => {
+            Ok(Value::UnifiedTypes(<UnifiedTypes>::from_record(_rec)?).into_ddvalue())
+        }
         Relations::VariableScopes => {
             Ok(Value::VariableScopes(<VariableScopes>::from_record(_rec)?).into_ddvalue())
         }
@@ -718,13 +898,11 @@ pub fn relval_from_record(
         Relations::VariablesInScope => {
             Ok(Value::VariablesInScope(<VariablesInScope>::from_record(_rec)?).into_ddvalue())
         }
+        Relations::__MultiHead_5 => Ok(Value::__Tuple3____Bitval64___Bitval64___Bitval64(
+            <(u64, u64, u64)>::from_record(_rec)?,
+        )
+        .into_ddvalue()),
         Relations::__Null => Ok(Value::__Tuple0__(<()>::from_record(_rec)?).into_ddvalue()),
-        Relations::__Prefix_0 => Ok(
-            Value::__Tuple4____Bitval64___Bitval64___Bitval64___Bitval64(
-                <(u64, u64, u64, u64)>::from_record(_rec)?,
-            )
-            .into_ddvalue(),
-        ),
     }
 }
 pub fn relkey_from_record(
@@ -742,7 +920,7 @@ pub fn idxkey_from_record(idx: Indexes, _rec: &record::Record) -> result::Result
 }
 pub fn indexes2arrid(idx: Indexes) -> ArrId {
     match idx {
-        Indexes::__Null_by_none => (11, 0),
+        Indexes::__Null_by_none => (20, 0),
     }
 }
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -750,16 +928,24 @@ pub enum Relations {
     Errors = 0,
     Expressions = 1,
     Functions = 2,
-    Items = 3,
-    Literals = 4,
-    Statements = 5,
-    TypedExpressions = 6,
-    Types = 7,
-    VariableScopes = 8,
-    Variables = 9,
-    VariablesInScope = 10,
-    __Null = 11,
-    __Prefix_0 = 12,
+    INPUT_Expressions = 3,
+    INPUT_Functions = 4,
+    INPUT_Items = 5,
+    INPUT_Statements = 6,
+    INPUT_Types = 7,
+    INPUT_VariableScopes = 8,
+    INPUT_Variables = 9,
+    Items = 10,
+    Literals = 11,
+    Statements = 12,
+    TypedExpressions = 13,
+    Types = 14,
+    UnifiedTypes = 15,
+    VariableScopes = 16,
+    Variables = 17,
+    VariablesInScope = 18,
+    __MultiHead_5 = 19,
+    __Null = 20,
 }
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Indexes {

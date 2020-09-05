@@ -70,6 +70,17 @@ impl DDlogConvert for DDlogConverter {
 }
 
 pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
+    let Errors = Relation {
+        name: "Errors".to_string(),
+        input: false,
+        distinct: true,
+        caching_mode: CachingMode::Set,
+        key_func: None,
+        id: Relations::Errors as RelId,
+        rules: vec![],
+        arrangements: vec![],
+        change_cb: Some(sync::Arc::new(sync::Mutex::new(__update_cb.clone()))),
+    };
     let Expressions = Relation {
                           name:         "Expressions".to_string(),
                           input:        true,
@@ -80,19 +91,6 @@ pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
                           rules:        vec![
                               ],
                           arrangements: vec![
-                              Arrangement::Map{
-                                 name: r###"(Expressions{.expr_id=(_: bit<64>), .expr=(hir::Expr{.kind=(hir::ExprLit{.lit=(_0: internment::Intern<hir::Literal>)}: hir::ExprKind)}: hir::Expr)}: Expressions) /*join*/"###.to_string(),
-                                  afun: &{fn __f(__v: DDValue) -> Option<(DDValue,DDValue)>
-                                  {
-                                      let __cloned = __v.clone();
-                                      match unsafe { Value::Expressions::from_ddvalue(__v) }.0 {
-                                          Expressions{expr_id: _, expr: hir_Expr{kind: hir_ExprKind::hir_ExprLit{lit: ref _0}}} => Some(Value::internment_Intern__hir_Literal((*_0).clone()).into_ddvalue()),
-                                          _ => None
-                                      }.map(|x|(x,__cloned))
-                                  }
-                                  __f},
-                                  queryable: false
-                              },
                               Arrangement::Map{
                                  name: r###"(Expressions{.expr_id=(_: bit<64>), .expr=(hir::Expr{.kind=(hir::ExprVar{.variable=(_0: bit<64>)}: hir::ExprKind)}: hir::Expr)}: Expressions) /*join*/"###.to_string(),
                                   afun: &{fn __f(__v: DDValue) -> Option<(DDValue,DDValue)>
@@ -121,6 +119,39 @@ pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
                               }],
                           change_cb:    None
                       };
+    let INPUT_Expressions = Relation {
+        name: "INPUT_Expressions".to_string(),
+        input: false,
+        distinct: false,
+        caching_mode: CachingMode::Set,
+        key_func: None,
+        id: Relations::INPUT_Expressions as RelId,
+        rules: vec![
+            /* INPUT_Expressions[x] :- Expressions[(x: Expressions)]. */
+            Rule::CollectionRule {
+                description: "INPUT_Expressions[x] :- Expressions[(x: Expressions)].".to_string(),
+                rel: Relations::Expressions as RelId,
+                xform: Some(XFormCollection::FilterMap {
+                    description: "head of INPUT_Expressions[x] :- Expressions[(x: Expressions)]."
+                        .to_string(),
+                    fmfun: &{
+                        fn __f(__v: DDValue) -> Option<DDValue> {
+                            let ref x =
+                                match unsafe { Value::Expressions::from_ddvalue_ref(&__v) }.0 {
+                                    ref x => (*x).clone(),
+                                    _ => return None,
+                                };
+                            Some(Value::Expressions((*x).clone()).into_ddvalue())
+                        }
+                        __f
+                    },
+                    next: Box::new(None),
+                }),
+            },
+        ],
+        arrangements: vec![],
+        change_cb: Some(sync::Arc::new(sync::Mutex::new(__update_cb.clone()))),
+    };
     let Functions = Relation {
         name: "Functions".to_string(),
         input: true,
@@ -131,6 +162,39 @@ pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
         rules: vec![],
         arrangements: vec![],
         change_cb: None,
+    };
+    let INPUT_Functions = Relation {
+        name: "INPUT_Functions".to_string(),
+        input: false,
+        distinct: false,
+        caching_mode: CachingMode::Set,
+        key_func: None,
+        id: Relations::INPUT_Functions as RelId,
+        rules: vec![
+            /* INPUT_Functions[x] :- Functions[(x: Functions)]. */
+            Rule::CollectionRule {
+                description: "INPUT_Functions[x] :- Functions[(x: Functions)].".to_string(),
+                rel: Relations::Functions as RelId,
+                xform: Some(XFormCollection::FilterMap {
+                    description: "head of INPUT_Functions[x] :- Functions[(x: Functions)]."
+                        .to_string(),
+                    fmfun: &{
+                        fn __f(__v: DDValue) -> Option<DDValue> {
+                            let ref x = match unsafe { Value::Functions::from_ddvalue_ref(&__v) }.0
+                            {
+                                ref x => (*x).clone(),
+                                _ => return None,
+                            };
+                            Some(Value::Functions((*x).clone()).into_ddvalue())
+                        }
+                        __f
+                    },
+                    next: Box::new(None),
+                }),
+            },
+        ],
+        arrangements: vec![],
+        change_cb: Some(sync::Arc::new(sync::Mutex::new(__update_cb.clone()))),
     };
     let Items = Relation {
         name: "Items".to_string(),
@@ -143,6 +207,37 @@ pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
         arrangements: vec![],
         change_cb: None,
     };
+    let INPUT_Items = Relation {
+        name: "INPUT_Items".to_string(),
+        input: false,
+        distinct: false,
+        caching_mode: CachingMode::Set,
+        key_func: None,
+        id: Relations::INPUT_Items as RelId,
+        rules: vec![
+            /* INPUT_Items[x] :- Items[(x: Items)]. */
+            Rule::CollectionRule {
+                description: "INPUT_Items[x] :- Items[(x: Items)].".to_string(),
+                rel: Relations::Items as RelId,
+                xform: Some(XFormCollection::FilterMap {
+                    description: "head of INPUT_Items[x] :- Items[(x: Items)].".to_string(),
+                    fmfun: &{
+                        fn __f(__v: DDValue) -> Option<DDValue> {
+                            let ref x = match unsafe { Value::Items::from_ddvalue_ref(&__v) }.0 {
+                                ref x => (*x).clone(),
+                                _ => return None,
+                            };
+                            Some(Value::Items((*x).clone()).into_ddvalue())
+                        }
+                        __f
+                    },
+                    next: Box::new(None),
+                }),
+            },
+        ],
+        arrangements: vec![],
+        change_cb: Some(sync::Arc::new(sync::Mutex::new(__update_cb.clone()))),
+    };
     let Statements = Relation {
         name: "Statements".to_string(),
         input: true,
@@ -154,6 +249,39 @@ pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
         arrangements: vec![],
         change_cb: None,
     };
+    let INPUT_Statements = Relation {
+        name: "INPUT_Statements".to_string(),
+        input: false,
+        distinct: false,
+        caching_mode: CachingMode::Set,
+        key_func: None,
+        id: Relations::INPUT_Statements as RelId,
+        rules: vec![
+            /* INPUT_Statements[x] :- Statements[(x: Statements)]. */
+            Rule::CollectionRule {
+                description: "INPUT_Statements[x] :- Statements[(x: Statements)].".to_string(),
+                rel: Relations::Statements as RelId,
+                xform: Some(XFormCollection::FilterMap {
+                    description: "head of INPUT_Statements[x] :- Statements[(x: Statements)]."
+                        .to_string(),
+                    fmfun: &{
+                        fn __f(__v: DDValue) -> Option<DDValue> {
+                            let ref x = match unsafe { Value::Statements::from_ddvalue_ref(&__v) }.0
+                            {
+                                ref x => (*x).clone(),
+                                _ => return None,
+                            };
+                            Some(Value::Statements((*x).clone()).into_ddvalue())
+                        }
+                        __f
+                    },
+                    next: Box::new(None),
+                }),
+            },
+        ],
+        arrangements: vec![],
+        change_cb: Some(sync::Arc::new(sync::Mutex::new(__update_cb.clone()))),
+    };
     let Types = Relation {
         name: "Types".to_string(),
         input: true,
@@ -162,25 +290,46 @@ pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
         key_func: None,
         id: Relations::Types as RelId,
         rules: vec![],
-        arrangements: vec![Arrangement::Map {
-            name: r###"(Types{.type_id=(_: bit<64>), .ty=(_0: hir::Type)}: Types) /*join*/"###
-                .to_string(),
-            afun: &{
-                fn __f(__v: DDValue) -> Option<(DDValue, DDValue)> {
-                    let __cloned = __v.clone();
-                    match unsafe { Value::Types::from_ddvalue(__v) }.0 {
-                        Types {
-                            type_id: _,
-                            ty: ref _0,
-                        } => Some(Value::hir_Type((*_0).clone()).into_ddvalue()),
-                        _ => None,
+        arrangements: vec![
+            Arrangement::Map {
+                name: r###"(Types{.type_id=(_: bit<64>), .ty=(_0: hir::Type)}: Types) /*join*/"###
+                    .to_string(),
+                afun: &{
+                    fn __f(__v: DDValue) -> Option<(DDValue, DDValue)> {
+                        let __cloned = __v.clone();
+                        match unsafe { Value::Types::from_ddvalue(__v) }.0 {
+                            Types {
+                                type_id: _,
+                                ty: ref _0,
+                            } => Some(Value::hir_Type((*_0).clone()).into_ddvalue()),
+                            _ => None,
+                        }
+                        .map(|x| (x, __cloned))
                     }
-                    .map(|x| (x, __cloned))
-                }
-                __f
+                    __f
+                },
+                queryable: false,
             },
-            queryable: false,
-        }],
+            Arrangement::Map {
+                name: r###"(Types{.type_id=(_0: bit<64>), .ty=(_: hir::Type)}: Types) /*join*/"###
+                    .to_string(),
+                afun: &{
+                    fn __f(__v: DDValue) -> Option<(DDValue, DDValue)> {
+                        let __cloned = __v.clone();
+                        match unsafe { Value::Types::from_ddvalue(__v) }.0 {
+                            Types {
+                                type_id: ref _0,
+                                ty: _,
+                            } => Some(Value::__Bitval64((*_0).clone()).into_ddvalue()),
+                            _ => None,
+                        }
+                        .map(|x| (x, __cloned))
+                    }
+                    __f
+                },
+                queryable: false,
+            },
+        ],
         change_cb: None,
     };
     let Literals = Relation {
@@ -229,21 +378,40 @@ pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
                                            })
                            }],
                        arrangements: vec![
-                           Arrangement::Map{
-                              name: r###"(Literals{.lit=(_0: internment::Intern<hir::Literal>), .lit_type=(_: bit<64>)}: Literals) /*join*/"###.to_string(),
-                               afun: &{fn __f(__v: DDValue) -> Option<(DDValue,DDValue)>
-                               {
-                                   let __cloned = __v.clone();
-                                   match unsafe { Value::Literals::from_ddvalue(__v) }.0 {
-                                       Literals{lit: ref _0, lit_type: _} => Some(Value::internment_Intern__hir_Literal((*_0).clone()).into_ddvalue()),
-                                       _ => None
-                                   }.map(|x|(x,__cloned))
-                               }
-                               __f},
-                               queryable: false
-                           }],
+                           ],
                        change_cb:    Some(sync::Arc::new(sync::Mutex::new(__update_cb.clone())))
                    };
+    let INPUT_Types = Relation {
+        name: "INPUT_Types".to_string(),
+        input: false,
+        distinct: false,
+        caching_mode: CachingMode::Set,
+        key_func: None,
+        id: Relations::INPUT_Types as RelId,
+        rules: vec![
+            /* INPUT_Types[x] :- Types[(x: Types)]. */
+            Rule::CollectionRule {
+                description: "INPUT_Types[x] :- Types[(x: Types)].".to_string(),
+                rel: Relations::Types as RelId,
+                xform: Some(XFormCollection::FilterMap {
+                    description: "head of INPUT_Types[x] :- Types[(x: Types)].".to_string(),
+                    fmfun: &{
+                        fn __f(__v: DDValue) -> Option<DDValue> {
+                            let ref x = match unsafe { Value::Types::from_ddvalue_ref(&__v) }.0 {
+                                ref x => (*x).clone(),
+                                _ => return None,
+                            };
+                            Some(Value::Types((*x).clone()).into_ddvalue())
+                        }
+                        __f
+                    },
+                    next: Box::new(None),
+                }),
+            },
+        ],
+        arrangements: vec![],
+        change_cb: Some(sync::Arc::new(sync::Mutex::new(__update_cb.clone()))),
+    };
     let VariableScopes = Relation {
                              name:         "VariableScopes".to_string(),
                              input:        true,
@@ -269,6 +437,41 @@ pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
                                  }],
                              change_cb:    None
                          };
+    let INPUT_VariableScopes = Relation {
+        name: "INPUT_VariableScopes".to_string(),
+        input: false,
+        distinct: false,
+        caching_mode: CachingMode::Set,
+        key_func: None,
+        id: Relations::INPUT_VariableScopes as RelId,
+        rules: vec![
+            /* INPUT_VariableScopes[x] :- VariableScopes[(x: VariableScopes)]. */
+            Rule::CollectionRule {
+                description: "INPUT_VariableScopes[x] :- VariableScopes[(x: VariableScopes)]."
+                    .to_string(),
+                rel: Relations::VariableScopes as RelId,
+                xform: Some(XFormCollection::FilterMap {
+                    description:
+                        "head of INPUT_VariableScopes[x] :- VariableScopes[(x: VariableScopes)]."
+                            .to_string(),
+                    fmfun: &{
+                        fn __f(__v: DDValue) -> Option<DDValue> {
+                            let ref x =
+                                match unsafe { Value::VariableScopes::from_ddvalue_ref(&__v) }.0 {
+                                    ref x => (*x).clone(),
+                                    _ => return None,
+                                };
+                            Some(Value::VariableScopes((*x).clone()).into_ddvalue())
+                        }
+                        __f
+                    },
+                    next: Box::new(None),
+                }),
+            },
+        ],
+        arrangements: vec![],
+        change_cb: Some(sync::Arc::new(sync::Mutex::new(__update_cb.clone()))),
+    };
     let Variables = Relation {
                         name:         "Variables".to_string(),
                         input:        true,
@@ -280,12 +483,12 @@ pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
                             ],
                         arrangements: vec![
                             Arrangement::Map{
-                               name: r###"(Variables{.var_id=(_0: bit<64>), .variable=(hir::Variable{.var_name=(_: bit<32>), .var_type=(_: bit<64>), .value=(_: bit<64>), .scope=(_: bit<32>)}: hir::Variable)}: Variables) /*join*/"###.to_string(),
+                               name: r###"(Variables{.var_id=(_0: bit<64>), .decl=(hir::VariableDecl{.var_name=(_: bit<32>), .var_type=(_: bit<64>), .value=(_: bit<64>), .scope=(_: bit<32>)}: hir::VariableDecl)}: Variables) /*join*/"###.to_string(),
                                 afun: &{fn __f(__v: DDValue) -> Option<(DDValue,DDValue)>
                                 {
                                     let __cloned = __v.clone();
                                     match unsafe { Value::Variables::from_ddvalue(__v) }.0 {
-                                        Variables{var_id: ref _0, variable: hir_Variable{var_name: _, var_type: _, value: _, scope: _}} => Some(Value::__Bitval64((*_0).clone()).into_ddvalue()),
+                                        Variables{var_id: ref _0, decl: hir_VariableDecl{var_name: _, var_type: _, value: _, scope: _}} => Some(Value::__Bitval64((*_0).clone()).into_ddvalue()),
                                         _ => None
                                     }.map(|x|(x,__cloned))
                                 }
@@ -294,54 +497,6 @@ pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
                             }],
                         change_cb:    None
                     };
-    let __Prefix_0 = Relation {
-                         name:         "__Prefix_0".to_string(),
-                         input:        false,
-                         distinct:     false,
-                         caching_mode: CachingMode::Set,
-                         key_func:     None,
-                         id:           Relations::__Prefix_0 as RelId,
-                         rules:        vec![
-                             /* __Prefix_0[((expr_id: bit<64>), (var_id: bit<64>), (rhs_id: bit<64>), (type_id: bit<64>))] :- Expressions[(Expressions{.expr_id=(expr_id: bit<64>), .expr=(hir::Expr{.kind=(hir::ExprAssign{.variable=(var_id: bit<64>), .expr_id=(rhs_id: bit<64>)}: hir::ExprKind)}: hir::Expr)}: Expressions)], Variables[(Variables{.var_id=(var_id: bit<64>), .variable=(hir::Variable{.var_name=(_: bit<32>), .var_type=(type_id: bit<64>), .value=(_: bit<64>), .scope=(_: bit<32>)}: hir::Variable)}: Variables)]. */
-                             Rule::ArrangementRule {
-                                 description: "__Prefix_0[((expr_id: bit<64>), (var_id: bit<64>), (rhs_id: bit<64>), (type_id: bit<64>))] :- Expressions[(Expressions{.expr_id=(expr_id: bit<64>), .expr=(hir::Expr{.kind=(hir::ExprAssign{.variable=(var_id: bit<64>), .expr_id=(rhs_id: bit<64>)}: hir::ExprKind)}: hir::Expr)}: Expressions)], Variables[(Variables{.var_id=(var_id: bit<64>), .variable=(hir::Variable{.var_name=(_: bit<32>), .var_type=(type_id: bit<64>), .value=(_: bit<64>), .scope=(_: bit<32>)}: hir::Variable)}: Variables)].".to_string(),
-                                 arr: ( Relations::Expressions as RelId, 2),
-                                 xform: XFormArrangement::Join{
-                                            description: "Expressions[(Expressions{.expr_id=(expr_id: bit<64>), .expr=(hir::Expr{.kind=(hir::ExprAssign{.variable=(var_id: bit<64>), .expr_id=(rhs_id: bit<64>)}: hir::ExprKind)}: hir::Expr)}: Expressions)], Variables[(Variables{.var_id=(var_id: bit<64>), .variable=(hir::Variable{.var_name=(_: bit<32>), .var_type=(type_id: bit<64>), .value=(_: bit<64>), .scope=(_: bit<32>)}: hir::Variable)}: Variables)]".to_string(),
-                                            ffun: None,
-                                            arrangement: (Relations::Variables as RelId,0),
-                                            jfun: &{fn __f(_: &DDValue ,__v1: &DDValue,__v2: &DDValue) -> Option<DDValue>
-                                            {
-                                                let (ref expr_id, ref var_id, ref rhs_id) = match unsafe {  Value::Expressions::from_ddvalue_ref(__v1) }.0 {
-                                                    Expressions{expr_id: ref expr_id, expr: hir_Expr{kind: hir_ExprKind::hir_ExprAssign{variable: ref var_id, expr_id: ref rhs_id}}} => ((*expr_id).clone(), (*var_id).clone(), (*rhs_id).clone()),
-                                                    _ => return None
-                                                };
-                                                let ref type_id = match unsafe {  Value::Variables::from_ddvalue_ref(__v2) }.0 {
-                                                    Variables{var_id: _, variable: hir_Variable{var_name: _, var_type: ref type_id, value: _, scope: _}} => (*type_id).clone(),
-                                                    _ => return None
-                                                };
-                                                Some(Value::__Tuple4____Bitval64___Bitval64___Bitval64___Bitval64(((*expr_id).clone(), (*var_id).clone(), (*rhs_id).clone(), (*type_id).clone())).into_ddvalue())
-                                            }
-                                            __f},
-                                            next: Box::new(None)
-                                        }
-                             }],
-                         arrangements: vec![
-                             Arrangement::Map{
-                                name: r###"((_: bit<64>), (_: bit<64>), (_0: bit<64>), (_: bit<64>)) /*join*/"###.to_string(),
-                                 afun: &{fn __f(__v: DDValue) -> Option<(DDValue,DDValue)>
-                                 {
-                                     let __cloned = __v.clone();
-                                     match unsafe { Value::__Tuple4____Bitval64___Bitval64___Bitval64___Bitval64::from_ddvalue(__v) }.0 {
-                                         (_, _, ref _0, _) => Some(Value::__Bitval64((*_0).clone()).into_ddvalue()),
-                                         _ => None
-                                     }.map(|x|(x,__cloned))
-                                 }
-                                 __f},
-                                 queryable: false
-                             }],
-                         change_cb:    None
-                     };
     let TypedExpressions = Relation {
                                name:         "TypedExpressions".to_string(),
                                input:        false,
@@ -350,36 +505,49 @@ pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
                                key_func:     None,
                                id:           Relations::TypedExpressions as RelId,
                                rules:        vec![
-                                   /* TypedExpressions[(TypedExpressions{.expr_id=expr_id, .type_id=type_id}: TypedExpressions)] :- Expressions[(Expressions{.expr_id=(expr_id: bit<64>), .expr=(hir::Expr{.kind=(hir::ExprLit{.lit=(lit: internment::Intern<hir::Literal>)}: hir::ExprKind)}: hir::Expr)}: Expressions)], Literals[(Literals{.lit=(lit: internment::Intern<hir::Literal>), .lit_type=(type_id: bit<64>)}: Literals)]. */
+                                   /* TypedExpressions[(TypedExpressions{.expr_id=expr_id, .type_id=type_id}: TypedExpressions)] :- Expressions[(Expressions{.expr_id=(expr_id: bit<64>), .expr=(hir::Expr{.kind=(hir::ExprLit{.lit=(lit: internment::Intern<hir::Literal>)}: hir::ExprKind)}: hir::Expr)}: Expressions)], (var ty: hir::Type) = hir::typeof(lit), Types[(Types{.type_id=(type_id: bit<64>), .ty=(ty: hir::Type)}: Types)]. */
+                                   Rule::CollectionRule {
+                                       description: "TypedExpressions[(TypedExpressions{.expr_id=expr_id, .type_id=type_id}: TypedExpressions)] :- Expressions[(Expressions{.expr_id=(expr_id: bit<64>), .expr=(hir::Expr{.kind=(hir::ExprLit{.lit=(lit: internment::Intern<hir::Literal>)}: hir::ExprKind)}: hir::Expr)}: Expressions)], (var ty: hir::Type) = hir::typeof(lit), Types[(Types{.type_id=(type_id: bit<64>), .ty=(ty: hir::Type)}: Types)].".to_string(),
+                                       rel: Relations::Expressions as RelId,
+                                       xform: Some(XFormCollection::Arrange {
+                                                       description: "arrange Expressions[(Expressions{.expr_id=(expr_id: bit<64>), .expr=(hir::Expr{.kind=(hir::ExprLit{.lit=(lit: internment::Intern<hir::Literal>)}: hir::ExprKind)}: hir::Expr)}: Expressions)] by (ty)" .to_string(),
+                                                       afun: &{fn __f(__v: DDValue) -> Option<(DDValue,DDValue)>
+                                                       {
+                                                           let (ref expr_id, ref lit) = match unsafe {  Value::Expressions::from_ddvalue_ref(&__v) }.0 {
+                                                               Expressions{expr_id: ref expr_id, expr: hir_Expr{kind: hir_ExprKind::hir_ExprLit{lit: ref lit}}} => ((*expr_id).clone(), (*lit).clone()),
+                                                               _ => return None
+                                                           };
+                                                           let ref ty: hir_Type = match hir_typeof(lit) {
+                                                               ty => ty,
+                                                               _ => return None
+                                                           };
+                                                           Some((Value::hir_Type((*ty).clone()).into_ddvalue(), Value::__Bitval64((*expr_id).clone()).into_ddvalue()))
+                                                       }
+                                                       __f},
+                                                       next: Box::new(XFormArrangement::Join{
+                                                                          description: "Expressions[(Expressions{.expr_id=(expr_id: bit<64>), .expr=(hir::Expr{.kind=(hir::ExprLit{.lit=(lit: internment::Intern<hir::Literal>)}: hir::ExprKind)}: hir::Expr)}: Expressions)], (var ty: hir::Type) = hir::typeof(lit), Types[(Types{.type_id=(type_id: bit<64>), .ty=(ty: hir::Type)}: Types)]".to_string(),
+                                                                          ffun: None,
+                                                                          arrangement: (Relations::Types as RelId,0),
+                                                                          jfun: &{fn __f(_: &DDValue ,__v1: &DDValue,__v2: &DDValue) -> Option<DDValue>
+                                                                          {
+                                                                              let ref expr_id = unsafe { Value::__Bitval64::from_ddvalue_ref( __v1 ) }.0;
+                                                                              let ref type_id = match unsafe {  Value::Types::from_ddvalue_ref(__v2) }.0 {
+                                                                                  Types{type_id: ref type_id, ty: _} => (*type_id).clone(),
+                                                                                  _ => return None
+                                                                              };
+                                                                              Some(Value::TypedExpressions((TypedExpressions{expr_id: (*expr_id).clone(), type_id: (*type_id).clone()})).into_ddvalue())
+                                                                          }
+                                                                          __f},
+                                                                          next: Box::new(None)
+                                                                      })
+                                                   })
+                                   },
+                                   /* TypedExpressions[(TypedExpressions{.expr_id=expr_id, .type_id=type_id}: TypedExpressions)] :- Expressions[(Expressions{.expr_id=(expr_id: bit<64>), .expr=(hir::Expr{.kind=(hir::ExprVar{.variable=(var_id: bit<64>)}: hir::ExprKind)}: hir::Expr)}: Expressions)], Variables[(Variables{.var_id=(var_id: bit<64>), .decl=(hir::VariableDecl{.var_name=(_: bit<32>), .var_type=(type_id: bit<64>), .value=(_: bit<64>), .scope=(_: bit<32>)}: hir::VariableDecl)}: Variables)]. */
                                    Rule::ArrangementRule {
-                                       description: "TypedExpressions[(TypedExpressions{.expr_id=expr_id, .type_id=type_id}: TypedExpressions)] :- Expressions[(Expressions{.expr_id=(expr_id: bit<64>), .expr=(hir::Expr{.kind=(hir::ExprLit{.lit=(lit: internment::Intern<hir::Literal>)}: hir::ExprKind)}: hir::Expr)}: Expressions)], Literals[(Literals{.lit=(lit: internment::Intern<hir::Literal>), .lit_type=(type_id: bit<64>)}: Literals)].".to_string(),
+                                       description: "TypedExpressions[(TypedExpressions{.expr_id=expr_id, .type_id=type_id}: TypedExpressions)] :- Expressions[(Expressions{.expr_id=(expr_id: bit<64>), .expr=(hir::Expr{.kind=(hir::ExprVar{.variable=(var_id: bit<64>)}: hir::ExprKind)}: hir::Expr)}: Expressions)], Variables[(Variables{.var_id=(var_id: bit<64>), .decl=(hir::VariableDecl{.var_name=(_: bit<32>), .var_type=(type_id: bit<64>), .value=(_: bit<64>), .scope=(_: bit<32>)}: hir::VariableDecl)}: Variables)].".to_string(),
                                        arr: ( Relations::Expressions as RelId, 0),
                                        xform: XFormArrangement::Join{
-                                                  description: "Expressions[(Expressions{.expr_id=(expr_id: bit<64>), .expr=(hir::Expr{.kind=(hir::ExprLit{.lit=(lit: internment::Intern<hir::Literal>)}: hir::ExprKind)}: hir::Expr)}: Expressions)], Literals[(Literals{.lit=(lit: internment::Intern<hir::Literal>), .lit_type=(type_id: bit<64>)}: Literals)]".to_string(),
-                                                  ffun: None,
-                                                  arrangement: (Relations::Literals as RelId,0),
-                                                  jfun: &{fn __f(_: &DDValue ,__v1: &DDValue,__v2: &DDValue) -> Option<DDValue>
-                                                  {
-                                                      let (ref expr_id, ref lit) = match unsafe {  Value::Expressions::from_ddvalue_ref(__v1) }.0 {
-                                                          Expressions{expr_id: ref expr_id, expr: hir_Expr{kind: hir_ExprKind::hir_ExprLit{lit: ref lit}}} => ((*expr_id).clone(), (*lit).clone()),
-                                                          _ => return None
-                                                      };
-                                                      let ref type_id = match unsafe {  Value::Literals::from_ddvalue_ref(__v2) }.0 {
-                                                          Literals{lit: _, lit_type: ref type_id} => (*type_id).clone(),
-                                                          _ => return None
-                                                      };
-                                                      Some(Value::TypedExpressions((TypedExpressions{expr_id: (*expr_id).clone(), type_id: (*type_id).clone()})).into_ddvalue())
-                                                  }
-                                                  __f},
-                                                  next: Box::new(None)
-                                              }
-                                   },
-                                   /* TypedExpressions[(TypedExpressions{.expr_id=expr_id, .type_id=type_id}: TypedExpressions)] :- Expressions[(Expressions{.expr_id=(expr_id: bit<64>), .expr=(hir::Expr{.kind=(hir::ExprVar{.variable=(var_id: bit<64>)}: hir::ExprKind)}: hir::Expr)}: Expressions)], Variables[(Variables{.var_id=(var_id: bit<64>), .variable=(hir::Variable{.var_name=(_: bit<32>), .var_type=(type_id: bit<64>), .value=(_: bit<64>), .scope=(_: bit<32>)}: hir::Variable)}: Variables)]. */
-                                   Rule::ArrangementRule {
-                                       description: "TypedExpressions[(TypedExpressions{.expr_id=expr_id, .type_id=type_id}: TypedExpressions)] :- Expressions[(Expressions{.expr_id=(expr_id: bit<64>), .expr=(hir::Expr{.kind=(hir::ExprVar{.variable=(var_id: bit<64>)}: hir::ExprKind)}: hir::Expr)}: Expressions)], Variables[(Variables{.var_id=(var_id: bit<64>), .variable=(hir::Variable{.var_name=(_: bit<32>), .var_type=(type_id: bit<64>), .value=(_: bit<64>), .scope=(_: bit<32>)}: hir::Variable)}: Variables)].".to_string(),
-                                       arr: ( Relations::Expressions as RelId, 1),
-                                       xform: XFormArrangement::Join{
-                                                  description: "Expressions[(Expressions{.expr_id=(expr_id: bit<64>), .expr=(hir::Expr{.kind=(hir::ExprVar{.variable=(var_id: bit<64>)}: hir::ExprKind)}: hir::Expr)}: Expressions)], Variables[(Variables{.var_id=(var_id: bit<64>), .variable=(hir::Variable{.var_name=(_: bit<32>), .var_type=(type_id: bit<64>), .value=(_: bit<64>), .scope=(_: bit<32>)}: hir::Variable)}: Variables)]".to_string(),
+                                                  description: "Expressions[(Expressions{.expr_id=(expr_id: bit<64>), .expr=(hir::Expr{.kind=(hir::ExprVar{.variable=(var_id: bit<64>)}: hir::ExprKind)}: hir::Expr)}: Expressions)], Variables[(Variables{.var_id=(var_id: bit<64>), .decl=(hir::VariableDecl{.var_name=(_: bit<32>), .var_type=(type_id: bit<64>), .value=(_: bit<64>), .scope=(_: bit<32>)}: hir::VariableDecl)}: Variables)]".to_string(),
                                                   ffun: None,
                                                   arrangement: (Relations::Variables as RelId,0),
                                                   jfun: &{fn __f(_: &DDValue ,__v1: &DDValue,__v2: &DDValue) -> Option<DDValue>
@@ -389,7 +557,7 @@ pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
                                                           _ => return None
                                                       };
                                                       let ref type_id = match unsafe {  Value::Variables::from_ddvalue_ref(__v2) }.0 {
-                                                          Variables{var_id: _, variable: hir_Variable{var_name: _, var_type: ref type_id, value: _, scope: _}} => (*type_id).clone(),
+                                                          Variables{var_id: _, decl: hir_VariableDecl{var_name: _, var_type: ref type_id, value: _, scope: _}} => (*type_id).clone(),
                                                           _ => return None
                                                       };
                                                       Some(Value::TypedExpressions((TypedExpressions{expr_id: (*expr_id).clone(), type_id: (*type_id).clone()})).into_ddvalue())
@@ -398,32 +566,56 @@ pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
                                                   next: Box::new(None)
                                               }
                                    },
-                                   /* TypedExpressions[(TypedExpressions{.expr_id=expr_id, .type_id=type_id}: TypedExpressions)] :- __Prefix_0[((expr_id: bit<64>), (var_id: bit<64>), (rhs_id: bit<64>), (type_id: bit<64>))], TypedExpressions[(TypedExpressions{.expr_id=(rhs_id: bit<64>), .type_id=(rhs_ty: bit<64>)}: TypedExpressions)], (rhs_ty == type_id). */
-                                   Rule::ArrangementRule {
-                                       description: "TypedExpressions[(TypedExpressions{.expr_id=expr_id, .type_id=type_id}: TypedExpressions)] :- __Prefix_0[((expr_id: bit<64>), (var_id: bit<64>), (rhs_id: bit<64>), (type_id: bit<64>))], TypedExpressions[(TypedExpressions{.expr_id=(rhs_id: bit<64>), .type_id=(rhs_ty: bit<64>)}: TypedExpressions)], (rhs_ty == type_id).".to_string(),
-                                       arr: ( Relations::__Prefix_0 as RelId, 0),
-                                       xform: XFormArrangement::Join{
-                                                  description: "__Prefix_0[((expr_id: bit<64>), (var_id: bit<64>), (rhs_id: bit<64>), (type_id: bit<64>))], TypedExpressions[(TypedExpressions{.expr_id=(rhs_id: bit<64>), .type_id=(rhs_ty: bit<64>)}: TypedExpressions)]".to_string(),
-                                                  ffun: None,
-                                                  arrangement: (Relations::TypedExpressions as RelId,0),
-                                                  jfun: &{fn __f(_: &DDValue ,__v1: &DDValue,__v2: &DDValue) -> Option<DDValue>
-                                                  {
-                                                      let (ref expr_id, ref var_id, ref rhs_id, ref type_id) = match unsafe {  Value::__Tuple4____Bitval64___Bitval64___Bitval64___Bitval64::from_ddvalue_ref(__v1) }.0 {
-                                                          (ref expr_id, ref var_id, ref rhs_id, ref type_id) => ((*expr_id).clone(), (*var_id).clone(), (*rhs_id).clone(), (*type_id).clone()),
-                                                          _ => return None
-                                                      };
-                                                      let ref rhs_ty = match unsafe {  Value::TypedExpressions::from_ddvalue_ref(__v2) }.0 {
-                                                          TypedExpressions{expr_id: _, type_id: ref rhs_ty} => (*rhs_ty).clone(),
-                                                          _ => return None
-                                                      };
-                                                      if !((&*rhs_ty) == (&*type_id)) {return None;};
-                                                      Some(Value::TypedExpressions((TypedExpressions{expr_id: (*expr_id).clone(), type_id: (*type_id).clone()})).into_ddvalue())
-                                                  }
-                                                  __f},
-                                                  next: Box::new(None)
-                                              }
+                                   /* TypedExpressions[(TypedExpressions{.expr_id=assign_id, .type_id=type_id}: TypedExpressions)] :- __MultiHead_5[((assign_id: bit<64>), (type_id: bit<64>), (rhs_id: bit<64>))]. */
+                                   Rule::CollectionRule {
+                                       description: "TypedExpressions[(TypedExpressions{.expr_id=assign_id, .type_id=type_id}: TypedExpressions)] :- __MultiHead_5[((assign_id: bit<64>), (type_id: bit<64>), (rhs_id: bit<64>))].".to_string(),
+                                       rel: Relations::__MultiHead_5 as RelId,
+                                       xform: Some(XFormCollection::FilterMap{
+                                                       description: "head of TypedExpressions[(TypedExpressions{.expr_id=assign_id, .type_id=type_id}: TypedExpressions)] :- __MultiHead_5[((assign_id: bit<64>), (type_id: bit<64>), (rhs_id: bit<64>))]." .to_string(),
+                                                       fmfun: &{fn __f(__v: DDValue) -> Option<DDValue>
+                                                       {
+                                                           let (ref assign_id, ref type_id, ref rhs_id) = match unsafe {  Value::__Tuple3____Bitval64___Bitval64___Bitval64::from_ddvalue_ref(&__v) }.0 {
+                                                               (ref assign_id, ref type_id, ref rhs_id) => ((*assign_id).clone(), (*type_id).clone(), (*rhs_id).clone()),
+                                                               _ => return None
+                                                           };
+                                                           Some(Value::TypedExpressions((TypedExpressions{expr_id: (*assign_id).clone(), type_id: (*type_id).clone()})).into_ddvalue())
+                                                       }
+                                                       __f},
+                                                       next: Box::new(None)
+                                                   })
+                                   },
+                                   /* TypedExpressions[(TypedExpressions{.expr_id=rhs_id, .type_id=type_id}: TypedExpressions)] :- __MultiHead_5[((assign_id: bit<64>), (type_id: bit<64>), (rhs_id: bit<64>))]. */
+                                   Rule::CollectionRule {
+                                       description: "TypedExpressions[(TypedExpressions{.expr_id=rhs_id, .type_id=type_id}: TypedExpressions)] :- __MultiHead_5[((assign_id: bit<64>), (type_id: bit<64>), (rhs_id: bit<64>))].".to_string(),
+                                       rel: Relations::__MultiHead_5 as RelId,
+                                       xform: Some(XFormCollection::FilterMap{
+                                                       description: "head of TypedExpressions[(TypedExpressions{.expr_id=rhs_id, .type_id=type_id}: TypedExpressions)] :- __MultiHead_5[((assign_id: bit<64>), (type_id: bit<64>), (rhs_id: bit<64>))]." .to_string(),
+                                                       fmfun: &{fn __f(__v: DDValue) -> Option<DDValue>
+                                                       {
+                                                           let (ref assign_id, ref type_id, ref rhs_id) = match unsafe {  Value::__Tuple3____Bitval64___Bitval64___Bitval64::from_ddvalue_ref(&__v) }.0 {
+                                                               (ref assign_id, ref type_id, ref rhs_id) => ((*assign_id).clone(), (*type_id).clone(), (*rhs_id).clone()),
+                                                               _ => return None
+                                                           };
+                                                           Some(Value::TypedExpressions((TypedExpressions{expr_id: (*rhs_id).clone(), type_id: (*type_id).clone()})).into_ddvalue())
+                                                       }
+                                                       __f},
+                                                       next: Box::new(None)
+                                                   })
                                    }],
                                arrangements: vec![
+                                   Arrangement::Map{
+                                      name: r###"(TypedExpressions{.expr_id=(_: bit<64>), .type_id=(_0: bit<64>)}: TypedExpressions) /*join*/"###.to_string(),
+                                       afun: &{fn __f(__v: DDValue) -> Option<(DDValue,DDValue)>
+                                       {
+                                           let __cloned = __v.clone();
+                                           match unsafe { Value::TypedExpressions::from_ddvalue(__v) }.0 {
+                                               TypedExpressions{expr_id: _, type_id: ref _0} => Some(Value::__Bitval64((*_0).clone()).into_ddvalue()),
+                                               _ => None
+                                           }.map(|x|(x,__cloned))
+                                       }
+                                       __f},
+                                       queryable: false
+                                   },
                                    Arrangement::Map{
                                       name: r###"(TypedExpressions{.expr_id=(_0: bit<64>), .type_id=(_: bit<64>)}: TypedExpressions) /*join*/"###.to_string(),
                                        afun: &{fn __f(__v: DDValue) -> Option<(DDValue,DDValue)>
@@ -439,47 +631,169 @@ pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
                                    }],
                                change_cb:    Some(sync::Arc::new(sync::Mutex::new(__update_cb.clone())))
                            };
-    let Errors = Relation {
-                     name:         "Errors".to_string(),
-                     input:        false,
-                     distinct:     true,
-                     caching_mode: CachingMode::Set,
-                     key_func:     None,
-                     id:           Relations::Errors as RelId,
-                     rules:        vec![
-                         /* Errors[(Errors{.message=message}: Errors)] :- __Prefix_0[((expr_id: bit<64>), (var_id: bit<64>), (rhs_id: bit<64>), (type_id: bit<64>))], TypedExpressions[(TypedExpressions{.expr_id=(rhs_id: bit<64>), .type_id=(rhs_ty: bit<64>)}: TypedExpressions)], (rhs_ty != type_id), (var message: string) = ((((((("The expressions " ++ (std::__builtin_2string(expr_id): string)) ++ " and ") ++ (std::__builtin_2string(rhs_id): string)) ++ " have unequal types: ") ++ (std::__builtin_2string(type_id): string)) ++ " != ") ++ (std::__builtin_2string(rhs_ty): string)). */
-                         Rule::ArrangementRule {
-                             description: "Errors[(Errors{.message=message}: Errors)] :- __Prefix_0[((expr_id: bit<64>), (var_id: bit<64>), (rhs_id: bit<64>), (type_id: bit<64>))], TypedExpressions[(TypedExpressions{.expr_id=(rhs_id: bit<64>), .type_id=(rhs_ty: bit<64>)}: TypedExpressions)], (rhs_ty != type_id), (var message: string) = (((((((\"The expressions \" ++ (std::__builtin_2string(expr_id): string)) ++ \" and \") ++ (std::__builtin_2string(rhs_id): string)) ++ \" have unequal types: \") ++ (std::__builtin_2string(type_id): string)) ++ \" != \") ++ (std::__builtin_2string(rhs_ty): string)).".to_string(),
-                             arr: ( Relations::__Prefix_0 as RelId, 0),
-                             xform: XFormArrangement::Join{
-                                        description: "__Prefix_0[((expr_id: bit<64>), (var_id: bit<64>), (rhs_id: bit<64>), (type_id: bit<64>))], TypedExpressions[(TypedExpressions{.expr_id=(rhs_id: bit<64>), .type_id=(rhs_ty: bit<64>)}: TypedExpressions)]".to_string(),
-                                        ffun: None,
-                                        arrangement: (Relations::TypedExpressions as RelId,0),
-                                        jfun: &{fn __f(_: &DDValue ,__v1: &DDValue,__v2: &DDValue) -> Option<DDValue>
-                                        {
-                                            let (ref expr_id, ref var_id, ref rhs_id, ref type_id) = match unsafe {  Value::__Tuple4____Bitval64___Bitval64___Bitval64___Bitval64::from_ddvalue_ref(__v1) }.0 {
-                                                (ref expr_id, ref var_id, ref rhs_id, ref type_id) => ((*expr_id).clone(), (*var_id).clone(), (*rhs_id).clone(), (*type_id).clone()),
-                                                _ => return None
-                                            };
-                                            let ref rhs_ty = match unsafe {  Value::TypedExpressions::from_ddvalue_ref(__v2) }.0 {
-                                                TypedExpressions{expr_id: _, type_id: ref rhs_ty} => (*rhs_ty).clone(),
-                                                _ => return None
-                                            };
-                                            if !((&*rhs_ty) != (&*type_id)) {return None;};
-                                            let ref message: String = match string_append(string_append_str(string_append(string_append_str(string_append(string_append_str(string_append(String::from(r###"The expressions "###), (&std___builtin_2string(expr_id))), r###" and "###), (&std___builtin_2string(rhs_id))), r###" have unequal types: "###), (&std___builtin_2string(type_id))), r###" != "###), (&std___builtin_2string(rhs_ty))) {
-                                                message => message,
-                                                _ => return None
-                                            };
-                                            Some(Value::Errors((Errors{message: (*message).clone()})).into_ddvalue())
-                                        }
-                                        __f},
-                                        next: Box::new(None)
-                                    }
-                         }],
-                     arrangements: vec![
-                         ],
-                     change_cb:    Some(sync::Arc::new(sync::Mutex::new(__update_cb.clone())))
-                 };
+    let __MultiHead_5 = Relation {
+                            name:         "__MultiHead_5".to_string(),
+                            input:        false,
+                            distinct:     false,
+                            caching_mode: CachingMode::Set,
+                            key_func:     None,
+                            id:           Relations::__MultiHead_5 as RelId,
+                            rules:        vec![
+                                /* __MultiHead_5[((assign_id: bit<64>), (type_id: bit<64>), (rhs_id: bit<64>))] :- Expressions[(Expressions{.expr_id=(assign_id: bit<64>), .expr=(hir::Expr{.kind=(hir::ExprAssign{.variable=(var_id: bit<64>), .expr_id=(rhs_id: bit<64>)}: hir::ExprKind)}: hir::Expr)}: Expressions)], Variables[(Variables{.var_id=(var_id: bit<64>), .decl=(hir::VariableDecl{.var_name=(_: bit<32>), .var_type=(_: bit<64>), .value=(_: bit<64>), .scope=(_: bit<32>)}: hir::VariableDecl)}: Variables)], TypedExpressions[(TypedExpressions{.expr_id=(rhs_id: bit<64>), .type_id=(type_id: bit<64>)}: TypedExpressions)]. */
+                                Rule::ArrangementRule {
+                                    description: "__MultiHead_5[((assign_id: bit<64>), (type_id: bit<64>), (rhs_id: bit<64>))] :- Expressions[(Expressions{.expr_id=(assign_id: bit<64>), .expr=(hir::Expr{.kind=(hir::ExprAssign{.variable=(var_id: bit<64>), .expr_id=(rhs_id: bit<64>)}: hir::ExprKind)}: hir::Expr)}: Expressions)], Variables[(Variables{.var_id=(var_id: bit<64>), .decl=(hir::VariableDecl{.var_name=(_: bit<32>), .var_type=(_: bit<64>), .value=(_: bit<64>), .scope=(_: bit<32>)}: hir::VariableDecl)}: Variables)], TypedExpressions[(TypedExpressions{.expr_id=(rhs_id: bit<64>), .type_id=(type_id: bit<64>)}: TypedExpressions)].".to_string(),
+                                    arr: ( Relations::Expressions as RelId, 1),
+                                    xform: XFormArrangement::Join{
+                                               description: "Expressions[(Expressions{.expr_id=(assign_id: bit<64>), .expr=(hir::Expr{.kind=(hir::ExprAssign{.variable=(var_id: bit<64>), .expr_id=(rhs_id: bit<64>)}: hir::ExprKind)}: hir::Expr)}: Expressions)], Variables[(Variables{.var_id=(var_id: bit<64>), .decl=(hir::VariableDecl{.var_name=(_: bit<32>), .var_type=(_: bit<64>), .value=(_: bit<64>), .scope=(_: bit<32>)}: hir::VariableDecl)}: Variables)]".to_string(),
+                                               ffun: None,
+                                               arrangement: (Relations::Variables as RelId,0),
+                                               jfun: &{fn __f(_: &DDValue ,__v1: &DDValue,__v2: &DDValue) -> Option<DDValue>
+                                               {
+                                                   let (ref assign_id, ref var_id, ref rhs_id) = match unsafe {  Value::Expressions::from_ddvalue_ref(__v1) }.0 {
+                                                       Expressions{expr_id: ref assign_id, expr: hir_Expr{kind: hir_ExprKind::hir_ExprAssign{variable: ref var_id, expr_id: ref rhs_id}}} => ((*assign_id).clone(), (*var_id).clone(), (*rhs_id).clone()),
+                                                       _ => return None
+                                                   };
+                                                   let () = match unsafe {  Value::Variables::from_ddvalue_ref(__v2) }.0 {
+                                                       Variables{var_id: _, decl: hir_VariableDecl{var_name: _, var_type: _, value: _, scope: _}} => (),
+                                                       _ => return None
+                                                   };
+                                                   Some(Value::__Tuple2____Bitval64___Bitval64(((*assign_id).clone(), (*rhs_id).clone())).into_ddvalue())
+                                               }
+                                               __f},
+                                               next: Box::new(Some(XFormCollection::Arrange {
+                                                                       description: "arrange Expressions[(Expressions{.expr_id=(assign_id: bit<64>), .expr=(hir::Expr{.kind=(hir::ExprAssign{.variable=(var_id: bit<64>), .expr_id=(rhs_id: bit<64>)}: hir::ExprKind)}: hir::Expr)}: Expressions)], Variables[(Variables{.var_id=(var_id: bit<64>), .decl=(hir::VariableDecl{.var_name=(_: bit<32>), .var_type=(_: bit<64>), .value=(_: bit<64>), .scope=(_: bit<32>)}: hir::VariableDecl)}: Variables)] by (rhs_id)" .to_string(),
+                                                                       afun: &{fn __f(__v: DDValue) -> Option<(DDValue,DDValue)>
+                                                                       {
+                                                                           let (ref assign_id, ref rhs_id) = unsafe { Value::__Tuple2____Bitval64___Bitval64::from_ddvalue_ref( &__v ) }.0;
+                                                                           Some((Value::__Bitval64((*rhs_id).clone()).into_ddvalue(), Value::__Tuple2____Bitval64___Bitval64(((*assign_id).clone(), (*rhs_id).clone())).into_ddvalue()))
+                                                                       }
+                                                                       __f},
+                                                                       next: Box::new(XFormArrangement::Join{
+                                                                                          description: "Expressions[(Expressions{.expr_id=(assign_id: bit<64>), .expr=(hir::Expr{.kind=(hir::ExprAssign{.variable=(var_id: bit<64>), .expr_id=(rhs_id: bit<64>)}: hir::ExprKind)}: hir::Expr)}: Expressions)], Variables[(Variables{.var_id=(var_id: bit<64>), .decl=(hir::VariableDecl{.var_name=(_: bit<32>), .var_type=(_: bit<64>), .value=(_: bit<64>), .scope=(_: bit<32>)}: hir::VariableDecl)}: Variables)], TypedExpressions[(TypedExpressions{.expr_id=(rhs_id: bit<64>), .type_id=(type_id: bit<64>)}: TypedExpressions)]".to_string(),
+                                                                                          ffun: None,
+                                                                                          arrangement: (Relations::TypedExpressions as RelId,1),
+                                                                                          jfun: &{fn __f(_: &DDValue ,__v1: &DDValue,__v2: &DDValue) -> Option<DDValue>
+                                                                                          {
+                                                                                              let (ref assign_id, ref rhs_id) = unsafe { Value::__Tuple2____Bitval64___Bitval64::from_ddvalue_ref( __v1 ) }.0;
+                                                                                              let ref type_id = match unsafe {  Value::TypedExpressions::from_ddvalue_ref(__v2) }.0 {
+                                                                                                  TypedExpressions{expr_id: _, type_id: ref type_id} => (*type_id).clone(),
+                                                                                                  _ => return None
+                                                                                              };
+                                                                                              Some(Value::__Tuple3____Bitval64___Bitval64___Bitval64(((*assign_id).clone(), (*type_id).clone(), (*rhs_id).clone())).into_ddvalue())
+                                                                                          }
+                                                                                          __f},
+                                                                                          next: Box::new(None)
+                                                                                      })
+                                                                   }))
+                                           }
+                                }],
+                            arrangements: vec![
+                                ],
+                            change_cb:    None
+                        };
+    let UnifiedTypes = Relation {
+                           name:         "UnifiedTypes".to_string(),
+                           input:        false,
+                           distinct:     false,
+                           caching_mode: CachingMode::Set,
+                           key_func:     None,
+                           id:           Relations::UnifiedTypes as RelId,
+                           rules:        vec![
+                               /* UnifiedTypes[(UnifiedTypes{.expr_id=expr_id, .type_id=unified_type}: UnifiedTypes)] :- TypedExpressions[(TypedExpressions{.expr_id=(expr_id: bit<64>), .type_id=(type_id: bit<64>)}: TypedExpressions)], Types[(Types{.type_id=(type_id: bit<64>), .ty=(ty: hir::Type)}: Types)], var unified_type = Aggregate(expr_id, unify_types((type_id, ty))). */
+                               Rule::ArrangementRule {
+                                   description: "UnifiedTypes[(UnifiedTypes{.expr_id=expr_id, .type_id=unified_type}: UnifiedTypes)] :- TypedExpressions[(TypedExpressions{.expr_id=(expr_id: bit<64>), .type_id=(type_id: bit<64>)}: TypedExpressions)], Types[(Types{.type_id=(type_id: bit<64>), .ty=(ty: hir::Type)}: Types)], var unified_type = Aggregate(expr_id, unify_types((type_id, ty))).".to_string(),
+                                   arr: ( Relations::TypedExpressions as RelId, 0),
+                                   xform: XFormArrangement::Join{
+                                              description: "TypedExpressions[(TypedExpressions{.expr_id=(expr_id: bit<64>), .type_id=(type_id: bit<64>)}: TypedExpressions)], Types[(Types{.type_id=(type_id: bit<64>), .ty=(ty: hir::Type)}: Types)]".to_string(),
+                                              ffun: None,
+                                              arrangement: (Relations::Types as RelId,1),
+                                              jfun: &{fn __f(_: &DDValue ,__v1: &DDValue,__v2: &DDValue) -> Option<DDValue>
+                                              {
+                                                  let (ref expr_id, ref type_id) = match unsafe {  Value::TypedExpressions::from_ddvalue_ref(__v1) }.0 {
+                                                      TypedExpressions{expr_id: ref expr_id, type_id: ref type_id} => ((*expr_id).clone(), (*type_id).clone()),
+                                                      _ => return None
+                                                  };
+                                                  let ref ty = match unsafe {  Value::Types::from_ddvalue_ref(__v2) }.0 {
+                                                      Types{type_id: _, ty: ref ty} => (*ty).clone(),
+                                                      _ => return None
+                                                  };
+                                                  Some(Value::__Tuple3____Bitval64___Bitval64_hir_Type(((*expr_id).clone(), (*type_id).clone(), (*ty).clone())).into_ddvalue())
+                                              }
+                                              __f},
+                                              next: Box::new(Some(XFormCollection::Arrange {
+                                                                      description: "arrange TypedExpressions[(TypedExpressions{.expr_id=(expr_id: bit<64>), .type_id=(type_id: bit<64>)}: TypedExpressions)], Types[(Types{.type_id=(type_id: bit<64>), .ty=(ty: hir::Type)}: Types)] by (expr_id)" .to_string(),
+                                                                      afun: &{fn __f(__v: DDValue) -> Option<(DDValue,DDValue)>
+                                                                      {
+                                                                          let (ref expr_id, ref type_id, ref ty) = unsafe { Value::__Tuple3____Bitval64___Bitval64_hir_Type::from_ddvalue_ref( &__v ) }.0;
+                                                                          Some((Value::__Bitval64((*expr_id).clone()).into_ddvalue(), Value::__Tuple3____Bitval64___Bitval64_hir_Type(((*expr_id).clone(), (*type_id).clone(), (*ty).clone())).into_ddvalue()))
+                                                                      }
+                                                                      __f},
+                                                                      next: Box::new(XFormArrangement::Aggregate{
+                                                                                         description: "TypedExpressions[(TypedExpressions{.expr_id=(expr_id: bit<64>), .type_id=(type_id: bit<64>)}: TypedExpressions)], Types[(Types{.type_id=(type_id: bit<64>), .ty=(ty: hir::Type)}: Types)], var unified_type = Aggregate(expr_id, unify_types((type_id, ty)))".to_string(),
+                                                                                         ffun: None,
+                                                                                         aggfun: &{fn __f(__key: &DDValue, __group__: &[(&DDValue, Weight)]) -> DDValue
+                                                                                     {
+                                                                                         let ref expr_id = unsafe { Value::__Bitval64::from_ddvalue_ref( __key ) }.0;
+                                                                                         let unified_type = unify_types::<u64>(&std_Group::new(&(*expr_id).clone(), __group__, {fn __f(__v: &DDValue) ->  (u64, hir_Type)
+                                                                                                                                                                               {
+                                                                                                                                                                                   let (ref expr_id, ref type_id, ref ty) = unsafe { Value::__Tuple3____Bitval64___Bitval64_hir_Type::from_ddvalue_ref( __v ) }.0;
+                                                                                                                                                                                   ((*type_id).clone(), (*ty).clone())
+                                                                                                                                                                               }
+                                                                                                                                                                               std::rc::Rc::new(__f)}));
+                                                                                         Value::__Tuple2____Bitval64___Bitval64((unified_type.clone(), (*expr_id).clone())).into_ddvalue()
+                                                                                     }
+                                                                                     __f},
+                                                                                         next: Box::new(Some(XFormCollection::FilterMap{
+                                                                                                                 description: "head of UnifiedTypes[(UnifiedTypes{.expr_id=expr_id, .type_id=unified_type}: UnifiedTypes)] :- TypedExpressions[(TypedExpressions{.expr_id=(expr_id: bit<64>), .type_id=(type_id: bit<64>)}: TypedExpressions)], Types[(Types{.type_id=(type_id: bit<64>), .ty=(ty: hir::Type)}: Types)], var unified_type = Aggregate(expr_id, unify_types((type_id, ty)))." .to_string(),
+                                                                                                                 fmfun: &{fn __f(__v: DDValue) -> Option<DDValue>
+                                                                                                                 {
+                                                                                                                     let (ref unified_type, ref expr_id) = unsafe { Value::__Tuple2____Bitval64___Bitval64::from_ddvalue_ref( &__v ) }.0;
+                                                                                                                     Some(Value::UnifiedTypes((UnifiedTypes{expr_id: (*expr_id).clone(), type_id: (*unified_type).clone()})).into_ddvalue())
+                                                                                                                 }
+                                                                                                                 __f},
+                                                                                                                 next: Box::new(None)
+                                                                                                             }))
+                                                                                     })
+                                                                  }))
+                                          }
+                               }],
+                           arrangements: vec![
+                               ],
+                           change_cb:    Some(sync::Arc::new(sync::Mutex::new(__update_cb.clone())))
+                       };
+    let INPUT_Variables = Relation {
+        name: "INPUT_Variables".to_string(),
+        input: false,
+        distinct: false,
+        caching_mode: CachingMode::Set,
+        key_func: None,
+        id: Relations::INPUT_Variables as RelId,
+        rules: vec![
+            /* INPUT_Variables[x] :- Variables[(x: Variables)]. */
+            Rule::CollectionRule {
+                description: "INPUT_Variables[x] :- Variables[(x: Variables)].".to_string(),
+                rel: Relations::Variables as RelId,
+                xform: Some(XFormCollection::FilterMap {
+                    description: "head of INPUT_Variables[x] :- Variables[(x: Variables)]."
+                        .to_string(),
+                    fmfun: &{
+                        fn __f(__v: DDValue) -> Option<DDValue> {
+                            let ref x = match unsafe { Value::Variables::from_ddvalue_ref(&__v) }.0
+                            {
+                                ref x => (*x).clone(),
+                                _ => return None,
+                            };
+                            Some(Value::Variables((*x).clone()).into_ddvalue())
+                        }
+                        __f
+                    },
+                    next: Box::new(None),
+                }),
+            },
+        ],
+        arrangements: vec![],
+        change_cb: Some(sync::Arc::new(sync::Mutex::new(__update_cb.clone()))),
+    };
     let VariablesInScope = Relation {
                                name:         "VariablesInScope".to_string(),
                                input:        false,
@@ -488,16 +802,16 @@ pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
                                key_func:     None,
                                id:           Relations::VariablesInScope as RelId,
                                rules:        vec![
-                                   /* VariablesInScope[(VariablesInScope{.scope=scope, .var_id=var_id, .decl_scope=scope}: VariablesInScope)] :- Variables[(Variables{.var_id=(var_id: bit<64>), .variable=(hir::Variable{.var_name=(_: bit<32>), .var_type=(_: bit<64>), .value=(_: bit<64>), .scope=(scope: bit<32>)}: hir::Variable)}: Variables)]. */
+                                   /* VariablesInScope[(VariablesInScope{.scope=scope, .var_id=var_id, .decl_scope=scope}: VariablesInScope)] :- Variables[(Variables{.var_id=(var_id: bit<64>), .decl=(hir::VariableDecl{.var_name=(_: bit<32>), .var_type=(_: bit<64>), .value=(_: bit<64>), .scope=(scope: bit<32>)}: hir::VariableDecl)}: Variables)]. */
                                    Rule::CollectionRule {
-                                       description: "VariablesInScope[(VariablesInScope{.scope=scope, .var_id=var_id, .decl_scope=scope}: VariablesInScope)] :- Variables[(Variables{.var_id=(var_id: bit<64>), .variable=(hir::Variable{.var_name=(_: bit<32>), .var_type=(_: bit<64>), .value=(_: bit<64>), .scope=(scope: bit<32>)}: hir::Variable)}: Variables)].".to_string(),
+                                       description: "VariablesInScope[(VariablesInScope{.scope=scope, .var_id=var_id, .decl_scope=scope}: VariablesInScope)] :- Variables[(Variables{.var_id=(var_id: bit<64>), .decl=(hir::VariableDecl{.var_name=(_: bit<32>), .var_type=(_: bit<64>), .value=(_: bit<64>), .scope=(scope: bit<32>)}: hir::VariableDecl)}: Variables)].".to_string(),
                                        rel: Relations::Variables as RelId,
                                        xform: Some(XFormCollection::FilterMap{
-                                                       description: "head of VariablesInScope[(VariablesInScope{.scope=scope, .var_id=var_id, .decl_scope=scope}: VariablesInScope)] :- Variables[(Variables{.var_id=(var_id: bit<64>), .variable=(hir::Variable{.var_name=(_: bit<32>), .var_type=(_: bit<64>), .value=(_: bit<64>), .scope=(scope: bit<32>)}: hir::Variable)}: Variables)]." .to_string(),
+                                                       description: "head of VariablesInScope[(VariablesInScope{.scope=scope, .var_id=var_id, .decl_scope=scope}: VariablesInScope)] :- Variables[(Variables{.var_id=(var_id: bit<64>), .decl=(hir::VariableDecl{.var_name=(_: bit<32>), .var_type=(_: bit<64>), .value=(_: bit<64>), .scope=(scope: bit<32>)}: hir::VariableDecl)}: Variables)]." .to_string(),
                                                        fmfun: &{fn __f(__v: DDValue) -> Option<DDValue>
                                                        {
                                                            let (ref var_id, ref scope) = match unsafe {  Value::Variables::from_ddvalue_ref(&__v) }.0 {
-                                                               Variables{var_id: ref var_id, variable: hir_Variable{var_name: _, var_type: _, value: _, scope: ref scope}} => ((*var_id).clone(), (*scope).clone()),
+                                                               Variables{var_id: ref var_id, decl: hir_VariableDecl{var_name: _, var_type: _, value: _, scope: ref scope}} => ((*var_id).clone(), (*scope).clone()),
                                                                _ => return None
                                                            };
                                                            Some(Value::VariablesInScope((VariablesInScope{scope: (*scope).clone(), var_id: (*var_id).clone(), decl_scope: (*scope).clone()})).into_ddvalue())
@@ -573,24 +887,47 @@ pub fn prog(__update_cb: Box<dyn CBFn>) -> Program {
     };
     Program {
         nodes: vec![
+            ProgNode::Rel { rel: Errors },
             ProgNode::Rel { rel: Expressions },
+            ProgNode::Rel {
+                rel: INPUT_Expressions,
+            },
             ProgNode::Rel { rel: Functions },
+            ProgNode::Rel {
+                rel: INPUT_Functions,
+            },
             ProgNode::Rel { rel: Items },
+            ProgNode::Rel { rel: INPUT_Items },
             ProgNode::Rel { rel: Statements },
+            ProgNode::Rel {
+                rel: INPUT_Statements,
+            },
             ProgNode::Rel { rel: Types },
             ProgNode::Rel { rel: Literals },
+            ProgNode::Rel { rel: INPUT_Types },
             ProgNode::Rel {
                 rel: VariableScopes,
             },
-            ProgNode::Rel { rel: Variables },
-            ProgNode::Rel { rel: __Prefix_0 },
-            ProgNode::SCC {
-                rels: vec![RecursiveRelation {
-                    rel: TypedExpressions,
-                    distinct: true,
-                }],
+            ProgNode::Rel {
+                rel: INPUT_VariableScopes,
             },
-            ProgNode::Rel { rel: Errors },
+            ProgNode::Rel { rel: Variables },
+            ProgNode::SCC {
+                rels: vec![
+                    RecursiveRelation {
+                        rel: TypedExpressions,
+                        distinct: true,
+                    },
+                    RecursiveRelation {
+                        rel: __MultiHead_5,
+                        distinct: true,
+                    },
+                ],
+            },
+            ProgNode::Rel { rel: UnifiedTypes },
+            ProgNode::Rel {
+                rel: INPUT_Variables,
+            },
             ProgNode::SCC {
                 rels: vec![RecursiveRelation {
                     rel: VariablesInScope,

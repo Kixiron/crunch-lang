@@ -143,97 +143,10 @@ function typeof(literal: Intern<Literal>): Type {
 
 typedef Vis = FileLocal | Package | Exposed
 
-// typedef FuncArg = FuncArg {
-//     name: VarId,
-//     kind: TypeId
-// }
-
-// typedef Function = Function {
-//     name : ItemPath,
-//     vis  : Vis,
-//     args : Vec<FuncArg>,
-//     body : StmtId,
-//     ret  : TypeId
-// }
-
-// function corrected_signature(func: Intern<Function>): Signature {
-//     // FIXME: Module scoping for the path
-//     Function { .args = var old_args, .ret = var ret } = func.ival();
-// 
-//     var ret = if (ret.is_unknown()) {
-//         intern(Error)
-//     } else {
-//         ret
-//     };
-// 
-//     var args = vec_with_capacity(old_args.len());
-//     for (arg in old_args) {
-//         var arg = if (arg.kind.is_unknown()) {
-//             FuncArg { arg.name, intern(Error) }
-//         } else {
-//             arg
-//         };
-// 
-//         args.push(arg)
-//     };
-// 
-//     FuncSig { args, ret }
-// }
-// 
-// function has_unknown_types(func: Intern<Function>): bool {
-//     Function { .args = var args, .ret = var ret } = func.ival();
-// 
-//     if (ret.is_unknown()) { return true };
-// 
-//     for (arg in args) {
-//         if (arg.kind.is_unknown()) {
-//             return true
-//         }
-//     };
-// 
-//     false
-// }
-// 
-// function path(func: Intern<Function>): ItemPath {
-//     // FIXME: Module scoping for the path
-//     Function { .name = var path } = func.ival();
-//     path
-// }
-// 
-// function signature(func: Intern<Function>): Signature {
-//     // FIXME: Module scoping for the path
-//     Function { .args = var args, .ret = var ret } = func.ival();
-//     FuncSig { args, ret }
-// }
-// 
-// function unknown_type_errors(func: Intern<Function>): Vec<string> {
-//     var func = func.ival();
-// 
-//     var errors = vec_empty();
-//     for (arg in func.args) {
-//         if (arg.kind.is_unknown()) {
-//             errors.push("Function arguments cannot be unknown")
-//         }
-//     };
-// 
-//     if (func.ret.is_unknown()) {
-//         errors.push("Function return types cannot be unknown")
-//     };
-// 
-//     errors
-// }
-
 typedef Stmt = StmtExpr { expr: ExprId }
                | StmtItem { item: ItemId }
-               | StmtVarDecl { decl: VarDecl }
+               | StmtVarDecl { decl: VariableDecl }
                | StmtScope { scope: Vec<StmtId> }
-
-typedef VarDecl = VarDecl {
-    name    : VarId,
-    value   : ExprId,
-    mutable : bool,
-    ty      : TypeId
-}
 
 typedef Item = ItemFunc { func: FuncId } | ItemStruct {}
 
@@ -245,7 +158,7 @@ typedef Scope = ScopeFunction { func: FuncId }
                 // FIXME: Don't really know how to generate scopes on the rust side
                 | ScopeToDo
 
-typedef Variable = Variable {
+typedef VariableDecl = VariableDecl {
     var_name: StrT,
     var_type: TypeId,
     value: ExprId,

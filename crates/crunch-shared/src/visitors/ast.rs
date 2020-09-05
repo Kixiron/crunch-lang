@@ -5,7 +5,7 @@ use crate::{
         ast::{
             AssignKind, BinaryOp, Binding, Block, CompOp, Dest, Exposure, Expr, ExtendBlock,
             ExternBlock, ExternFunc, For, FuncArg, If, Item, ItemKind, Literal, LiteralVal, Loop,
-            Match, Pattern, Stmt, Type, TypeMember, UnaryOp, VarDecl, Variant, While,
+            Match, Pattern, Stmt, Type, TypeDecl, UnaryOp, VarDecl, Variant, While,
         },
         CallConv, ItemPath,
     },
@@ -30,9 +30,7 @@ pub trait ItemVisitor<'ctx> {
                 *ret,
                 *sig,
             ),
-            ItemKind::Type { generics, members } => {
-                self.visit_type_decl(item, generics.as_ref().map(|g| g.as_deref()), members)
-            }
+            ItemKind::Type(ty) => self.visit_type_decl(item, ty),
             ItemKind::Enum { generics, variants } => {
                 self.visit_enum(item, generics.as_ref().map(|g| g.as_deref()), variants)
             }
@@ -75,12 +73,7 @@ pub trait ItemVisitor<'ctx> {
         ret: Locatable<&'ctx Type<'ctx>>,
         sig: Location,
     ) -> Self::Output;
-    fn visit_type_decl(
-        &mut self,
-        item: &'ctx Item<'ctx>,
-        generics: Option<Locatable<&[Locatable<&'ctx Type<'ctx>>]>>,
-        members: &[TypeMember<'ctx>],
-    ) -> Self::Output;
+    fn visit_type_decl(&mut self, item: &'ctx Item<'ctx>, ty: &TypeDecl<'ctx>) -> Self::Output;
     fn visit_enum(
         &mut self,
         item: &'ctx Item<'ctx>,

@@ -14,21 +14,27 @@ use crunch_shared::{
         ast::{
             Arm as AstMatchArm, AssignKind, BinaryOp, Binding as AstBinding, Block as AstBlock,
             CompOp, Dest as AstDest, Exposure as AstExposure, Expr as AstExpr,
-            ExprKind as AstExprKind, For as AstFor, FuncArg as AstFuncArg, If as AstIf,
-            IfCond as AstIfCond, Item as AstItem, Literal as AstLiteral,
-            LiteralVal as AstLiteralVal, Loop as AstLoop, Match as AstMatch, Pattern as AstPattern,
-            Stmt as AstStmt, StmtKind as AstStmtKind, Type as AstType, TypeMember as AstTypeMember,
-            UnaryOp, VarDecl as AstVarDecl, Variant as AstVariant, While as AstWhile,
+            ExprKind as AstExprKind, ExternFunc as AstExternFunc, For as AstFor,
+            FuncArg as AstFuncArg, If as AstIf, IfCond as AstIfCond, Item as AstItem,
+            ItemKind as AstItemKind, Literal as AstLiteral, LiteralVal as AstLiteralVal,
+            Loop as AstLoop, Match as AstMatch, Pattern as AstPattern, Stmt as AstStmt,
+            StmtKind as AstStmtKind, StructField as AstStructField,
+            StructLiteral as AstStructLiteral, Type as AstType, TypeDecl as AstTypeDecl,
+            TypeMember as AstTypeMember, UnaryOp, VarDecl as AstVarDecl, Variant as AstVariant,
+            While as AstWhile,
         },
         hir::{
             Binding, Block, Break, Cast, Expr, ExprKind, ExternFunc, FuncArg, FuncCall, Function,
-            Item, Literal, LiteralVal, Match, MatchArm, Pattern, Reference, Return, Stmt, Type,
-            TypeId, TypeKind, Var, VarDecl,
+            Item, Literal, LiteralVal, Match, MatchArm, Pattern, Reference, Return, Stmt,
+            StructField, StructLiteral, Type, TypeDecl, TypeId, TypeKind, TypeMember, Var, VarDecl,
         },
         CallConv, ItemPath, Sided,
     },
     utils::Upcast,
-    visitors::ast::{ExprVisitor, ItemVisitor, StmtVisitor, TypeVisitor},
+    visitors::{
+        ast::{ExprVisitor, ItemVisitor},
+        Visit,
+    },
 };
 
 #[salsa::query_group(HirDatabaseStorage)]
@@ -93,10 +99,7 @@ impl<'ctx> Ladder<'ctx> {
     }
 
     pub fn lower(&mut self, items: &[&AstItem<'_>]) -> Vec<&'ctx Item<'ctx>> {
-        items
-            .iter()
-            .filter_map(|item| self.visit_item(item))
-            .collect()
+        items.iter().filter_map(|item| self.visit(item)).collect()
     }
 
     fn next_var(&mut self) -> Var {
@@ -224,14 +227,10 @@ impl<'ctx> Ladder<'ctx> {
         // TODO: Handle these blocks for *any* breaks, not just condition ones
         match (then, else_) {
             (Some(then), Some(else_)) => {
-                let then_block = Block::from_iter(
-                    then.location(),
-                    then.iter().filter_map(|s| self.visit_stmt(s)),
-                );
-                let else_block = Block::from_iter(
-                    else_.location(),
-                    else_.iter().filter_map(|s| self.visit_stmt(s)),
-                );
+                let then_block =
+                    Block::from_iter(then.location(), then.iter().filter_map(|s| self.visit(s)));
+                let else_block =
+                    Block::from_iter(else_.location(), else_.iter().filter_map(|s| self.visit(s)));
 
                 scope.push(self.block_statement(
                     then.location(),
@@ -243,10 +242,8 @@ impl<'ctx> Ladder<'ctx> {
             }
 
             (Some(then), None) => {
-                let then_block = Block::from_iter(
-                    then.location(),
-                    then.iter().filter_map(|s| self.visit_stmt(s)),
-                );
+                let then_block =
+                    Block::from_iter(then.location(), then.iter().filter_map(|s| self.visit(s)));
 
                 scope.push(self.block_statement(
                     then.location(),
@@ -258,10 +255,8 @@ impl<'ctx> Ladder<'ctx> {
             }
 
             (None, Some(else_)) => {
-                let else_block = Block::from_iter(
-                    else_.location(),
-                    else_.iter().filter_map(|s| self.visit_stmt(s)),
-                );
+                let else_block =
+                    Block::from_iter(else_.location(), else_.iter().filter_map(|s| self.visit(s)));
 
                 scope.push(self.block_statement(
                     else_.location(),
@@ -273,6 +268,97 @@ impl<'ctx> Ladder<'ctx> {
             }
 
             (None, None) => {}
+        }
+    }
+}
+
+impl<'ctx> Visit<AstItem<'_>> for Ladder<'ctx> {
+    type Output = Option<&'ctx Item<'ctx>>;
+
+    #[crunch_shared::instrument(name = "item", skip(self, item))]
+    fn visit(&mut self, item: &AstItem<'_>) -> Self::Output {
+        match &item.kind {
+            AstItemKind::Func {
+                generics,
+                args,
+                body,
+                ret,
+                sig,
+            } => self.visit_func(
+                item,
+                generics.as_ref().map(|g| g.as_deref()),
+                args.as_deref(),
+                body,
+                *ret,
+                *sig,
+            ),
+            AstItemKind::Type(ty) => {
+                let ty = self.visit(ty);
+                Some(self.context().hir_item(Item::Type(ty)))
+            }
+            AstItemKind::Enum { generics, variants } => {
+                self.visit_enum(item, generics.as_ref().map(|g| g.as_deref()), variants)
+            }
+            AstItemKind::Trait { generics, methods } => {
+                self.visit_trait(item, generics.as_ref().map(|g| g.as_deref()), methods)
+            }
+            AstItemKind::Import {
+                file,
+                dest,
+                exposes,
+            } => self.visit_import(item, file, dest, exposes),
+            AstItemKind::ExtendBlock(_) => {
+                crunch_shared::error!("TODO: lower extend blocks to hir");
+                None
+            }
+            AstItemKind::Alias { alias, actual } => self.visit_alias(item, *alias, *actual),
+            AstItemKind::ExternBlock(_) => {
+                // TODO: Maybe un-nest here?
+                crunch_shared::error!(
+                    "The external block un-nester pass should be run before HIR lowering",
+                );
+                None
+            }
+            AstItemKind::ExternFunc(func) => {
+                let func = self.visit(&(item, func));
+                Some(self.context().hir_item(Item::ExternFunc(func)))
+            }
+        }
+    }
+}
+
+impl<'ctx> Visit<(&AstItem<'_>, &AstExternFunc<'_>)> for Ladder<'ctx> {
+    type Output = ExternFunc;
+
+    fn visit(&mut self, (item, func): &(&AstItem<'_>, &AstExternFunc<'_>)) -> Self::Output {
+        let name = ItemPath::from(item.name.unwrap());
+        let args = func.args.as_ref().map(|args| self.visit(&args));
+        let vis = item
+            .vis
+            .expect("External functions should have a visibility");
+
+        ExternFunc {
+            name,
+            vis,
+            args,
+            ret: self.visit(&func.ret),
+            callconv: func.callconv,
+            loc: item.location(),
+        }
+    }
+}
+
+impl<'ctx> Visit<AstFuncArg<'_>> for Ladder<'ctx> {
+    type Output = FuncArg;
+
+    #[crunch_shared::instrument(name = "function argument", skip(self, arg))]
+    fn visit(&mut self, arg: &AstFuncArg<'_>) -> Self::Output {
+        let kind = self.visit(&arg.ty);
+
+        FuncArg {
+            name: Var::User(arg.name),
+            kind,
+            loc: arg.location(),
         }
     }
 }
@@ -290,19 +376,11 @@ impl<'ctx> ItemVisitor<'_> for Ladder<'ctx> {
         sig: Location,
     ) -> Self::Output {
         let name = ItemPath::from(vec![item.name.unwrap()]);
-        let args = args.map(|args| {
-            args.iter()
-                .map(|&AstFuncArg { name, ty, loc }| FuncArg {
-                    name: Var::User(name),
-                    kind: self.visit_type(ty),
-                    loc,
-                })
-                .collect()
-        });
+        let args = args.map(|args| args.iter().map(|arg| self.visit(arg)).collect());
 
         let body = Block::from_iter(
             body.location(),
-            body.iter().filter_map(|stmt| self.visit_stmt(stmt)),
+            body.iter().filter_map(|stmt| self.visit(stmt)),
         );
 
         let func = Function {
@@ -310,7 +388,7 @@ impl<'ctx> ItemVisitor<'_> for Ladder<'ctx> {
             vis: item.vis.expect("Functions should have a visibility"),
             args,
             body,
-            ret: self.visit_type(ret),
+            ret: self.visit(&ret),
             loc: item.location(),
             sig,
         };
@@ -318,13 +396,8 @@ impl<'ctx> ItemVisitor<'_> for Ladder<'ctx> {
         Some(self.context().hir_item(Item::Function(func)))
     }
 
-    fn visit_type_decl(
-        &mut self,
-        _item: &AstItem<'_>,
-        _generics: Option<Locatable<&[Locatable<&AstType<'_>>]>>,
-        _members: &[AstTypeMember<'_>],
-    ) -> Self::Output {
-        todo!()
+    fn visit_type_decl(&mut self, _: &AstItem<'_>, _: &AstTypeDecl<'_>) -> Self::Output {
+        unreachable!()
     }
 
     fn visit_enum(
@@ -374,87 +447,108 @@ impl<'ctx> ItemVisitor<'_> for Ladder<'ctx> {
         todo!()
     }
 
-    fn visit_extern_block(&mut self, _item: &AstItem<'_>, _items: &[&AstItem<'_>]) -> Self::Output {
-        crunch_shared::error!("The external block unnester pass should be run before HIR lowering");
-
-        None
+    fn visit_extern_block(&mut self, _: &AstItem<'_>, _: &[&AstItem<'_>]) -> Self::Output {
+        unreachable!()
     }
 
     fn visit_extern_func(
         &mut self,
-        item: &AstItem<'_>,
-        _generics: Option<Locatable<&[Locatable<&AstType<'_>>]>>,
-        args: Locatable<&[AstFuncArg<'_>]>,
-        ret: Locatable<&AstType<'_>>,
-        callconv: CallConv,
+        _: &AstItem<'_>,
+        _: Option<Locatable<&[Locatable<&AstType<'_>>]>>,
+        _: Locatable<&[AstFuncArg<'_>]>,
+        _: Locatable<&AstType<'_>>,
+        _: CallConv,
     ) -> Self::Output {
-        let name = ItemPath::from(vec![item.name.unwrap()]);
-        let args = args.map(|args| {
-            args.iter()
-                .map(|&AstFuncArg { name, ty, loc }| {
-                    let kind = self.visit_type(ty);
-
-                    FuncArg {
-                        name: Var::User(name),
-                        kind,
-                        loc,
-                    }
-                })
-                .collect()
-        });
-
-        let func = ExternFunc {
-            name,
-            vis: item
-                .vis
-                .expect("External functions should have a visibility"),
-            args,
-            ret: self.visit_type(ret),
-            callconv,
-            loc: item.location(),
-        };
-
-        Some(self.context().hir_item(Item::ExternFunc(func)))
+        unreachable!()
     }
 }
 
-impl<'ctx> StmtVisitor<'_> for Ladder<'ctx> {
+impl<'ctx> Visit<AstTypeDecl<'_>> for Ladder<'ctx> {
+    type Output = TypeDecl;
+
+    #[crunch_shared::instrument(name = "type declaration", skip(self, ty))]
+    fn visit(&mut self, ty: &AstTypeDecl<'_>) -> Self::Output {
+        TypeDecl {
+            generics: self.visit(&ty.generics),
+            members: self.visit(&ty.members),
+        }
+    }
+}
+
+impl<'ctx> Visit<Locatable<Vec<Locatable<&AstType<'_>>>>> for Ladder<'ctx> {
+    type Output = Vec<TypeId>;
+
+    #[crunch_shared::instrument(name = "generics", skip(self, generics))]
+    fn visit(&mut self, generics: &Locatable<Vec<Locatable<&AstType<'_>>>>) -> Self::Output {
+        let mut gen = Vec::with_capacity(generics.len());
+        for generic in generics.iter() {
+            gen.push(self.visit(generic));
+        }
+
+        gen
+    }
+}
+
+impl<'ctx> Visit<AstTypeMember<'_>> for Ladder<'ctx> {
+    type Output = TypeMember;
+
+    #[crunch_shared::instrument(name = "type member", skip(self, member))]
+    fn visit(&mut self, member: &AstTypeMember<'_>) -> Self::Output {
+        TypeMember {
+            name: member.name,
+            ty: self.visit(&member.ty),
+            attrs: member.attrs.clone(),
+            loc: member.loc,
+        }
+    }
+}
+
+impl<'ctx> Visit<AstStmt<'_>> for Ladder<'ctx> {
     type Output = Option<&'ctx Stmt<'ctx>>;
 
-    fn visit_stmt(&mut self, stmt: &AstStmt<'_>) -> Self::Output {
+    #[crunch_shared::instrument(name = "statement", skip(self, stmt))]
+    fn visit(&mut self, stmt: &AstStmt<'_>) -> Self::Output {
         match &stmt.kind {
-            AstStmtKind::VarDecl(decl) => self.visit_var_decl(stmt, decl),
+            AstStmtKind::VarDecl(decl) => {
+                let var = self.visit(decl);
+                Some(self.context().hir_stmt(Stmt::VarDecl(var)))
+            }
 
-            AstStmtKind::Item(item) => self
-                .visit_item(item)
-                .map(|i| self.context().hir_stmt(Stmt::Item(i))),
+            &AstStmtKind::Item(item) => self
+                .visit(item)
+                .map(|item| self.context().hir_stmt(Stmt::Item(item))),
 
             AstStmtKind::Expr(expr) => {
-                let expr = self.visit_expr(expr);
-
+                let expr = self.visit(expr);
                 Some(self.context().hir_stmt(Stmt::Expr(expr)))
             }
         }
     }
+}
 
-    fn visit_var_decl(&mut self, stmt: &AstStmt<'_>, var: &AstVarDecl<'_>) -> Self::Output {
-        let value = self.visit_expr(&*var.val);
-        let ty = self.visit_type(var.ty);
+impl<'ctx> Visit<AstVarDecl<'_>> for Ladder<'ctx> {
+    type Output = VarDecl<'ctx>;
 
-        Some(self.context().hir_stmt(Stmt::VarDecl(VarDecl {
+    #[crunch_shared::instrument(name = "type member", skip(self, var))]
+    fn visit(&mut self, var: &AstVarDecl<'_>) -> Self::Output {
+        let value = self.visit(&*var.val);
+        let ty = self.visit(&var.ty);
+
+        VarDecl {
             name: Var::User(var.name),
             value,
             mutable: var.mutable,
             ty,
-            loc: stmt.location(),
-        })))
+            loc: var.loc,
+        }
     }
 }
 
-impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
+impl<'ctx> Visit<AstExpr<'_>> for Ladder<'ctx> {
     type Output = &'ctx Expr<'ctx>;
 
-    fn visit_expr(&mut self, expr: &AstExpr<'_>) -> Self::Output {
+    #[crunch_shared::instrument(name = "expression", skip(self, expr))]
+    fn visit(&mut self, expr: &AstExpr<'_>) -> Self::Output {
         match &expr.kind {
             AstExprKind::If(if_) => self.visit_if(expr, if_),
             AstExprKind::Return(value) => self.visit_return(expr, value.as_deref()),
@@ -466,7 +560,7 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
             AstExprKind::Match(match_) => self.visit_match(expr, match_),
             AstExprKind::Variable(var) => self.visit_variable(expr, *var),
             AstExprKind::Literal(literal) => {
-                let kind = ExprKind::Literal(self.visit_literal(literal));
+                let kind = ExprKind::Literal(self.visit(literal));
 
                 self.context().hir_expr(Expr {
                     kind,
@@ -495,7 +589,16 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
                 expr: reference,
             } => self.visit_reference(expr, mutable, reference),
             &AstExprKind::Cast { expr: cast, ty } => self.visit_cast(expr, cast, ty),
+            &AstExprKind::Block(_) => todo!(),
         }
+    }
+}
+
+impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
+    type Output = &'ctx Expr<'ctx>;
+
+    fn visit_expr(&mut self, _: &AstExpr<'_>) -> Self::Output {
+        unreachable!()
     }
 
     fn visit_if(
@@ -529,7 +632,7 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
                     guard: None,
                     body: Block::from_iter(
                         body.location(),
-                        body.iter().filter_map(|stmt| self.visit_stmt(stmt)),
+                        body.iter().filter_map(|stmt| self.visit(stmt)),
                     ),
                     ty: self.db.hir_type(Type {
                         kind: TypeKind::Unknown,
@@ -554,7 +657,7 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
                     body: if let Some(else_) = else_ {
                         Block::from_iter(
                             else_.location(),
-                            else_.iter().filter_map(|s| self.visit_stmt(s)),
+                            else_.iter().filter_map(|s| self.visit(s)),
                         )
                     } else {
                         Block::empty(cond.location())
@@ -566,7 +669,7 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
                 },
             ]);
 
-            let cond = self.visit_expr(&*cond);
+            let cond = self.visit(&*cond);
             self.context().hir_expr(Expr {
                 kind: ExprKind::Match(Match {
                     cond,
@@ -587,10 +690,10 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
                         pattern: Pattern::Wildcard,
                         ty: None,
                     },
-                    guard: Some(self.visit_expr(cond)),
+                    guard: Some(self.visit(cond)),
                     body: Block::from_iter(
                         body.location(),
-                        body.iter().filter_map(|stmt| self.visit_stmt(stmt)),
+                        body.iter().filter_map(|stmt| self.visit(stmt)),
                     ),
                     ty: self.db.hir_type(Type {
                         kind: TypeKind::Unknown,
@@ -610,7 +713,7 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
                     guard: None,
                     body: Block::from_iter(
                         body.location(),
-                        body.iter().filter_map(|s| self.visit_stmt(s)),
+                        body.iter().filter_map(|s| self.visit(s)),
                     ),
                     ty: self.db.hir_type(Type {
                         kind: TypeKind::Unknown,
@@ -645,7 +748,7 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
 
     fn visit_return(&mut self, expr: &AstExpr<'_>, value: Option<&AstExpr<'_>>) -> Self::Output {
         if let Some(value) = value {
-            let value = self.visit_expr(value);
+            let value = self.visit(value);
             let name = self.next_var();
             let ty = self
                 .db
@@ -689,7 +792,7 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
 
     fn visit_break(&mut self, expr: &AstExpr<'_>, value: Option<&AstExpr<'_>>) -> Self::Output {
         let kind = ExprKind::Break(Break {
-            val: value.map(|expr| self.visit_expr(expr)),
+            val: value.map(|expr| self.visit(expr)),
         });
 
         self.context().hir_expr(Expr {
@@ -745,7 +848,7 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
         let mut body: Block<&'ctx Stmt<'ctx>> =
             Block::with_capacity(ast_body.location(), ast_body.len() + 1);
 
-        let cond = self.visit_expr(cond);
+        let cond = self.visit(cond);
         body.push(
             self.context()
                 .hir_stmt(Stmt::Expr(self.context().hir_expr(Expr {
@@ -839,7 +942,7 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
                 }))),
         );
 
-        body.extend(ast_body.iter().filter_map(|s| self.visit_stmt(s)));
+        body.extend(ast_body.iter().filter_map(|s| self.visit(s)));
 
         scope.push(
             self.context()
@@ -864,7 +967,7 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
     ) -> Self::Output {
         let kind = ExprKind::Loop(Block::from_iter(
             body.location(),
-            body.iter().filter_map(|stmt| self.visit_stmt(stmt)),
+            body.iter().filter_map(|stmt| self.visit(stmt)),
         ));
 
         self.context().hir_expr(Expr {
@@ -874,7 +977,7 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
     }
 
     fn visit_for(&mut self, _expr: &AstExpr<'_>, _for: &AstFor<'_>) -> Self::Output {
-        todo!("Desugar `for` conditions to iterators")
+        todo!("Desugar `for` conditions to iterators + loops")
     }
 
     fn visit_match(
@@ -882,15 +985,15 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
         expr: &AstExpr<'_>,
         AstMatch { var, arms }: &AstMatch<'_>,
     ) -> Self::Output {
-        let cond = self.visit_expr(&*var);
+        let cond = self.visit(&*var);
         let arms = arms
             .iter()
             .map(|AstMatchArm { bind, guard, body }| MatchArm {
                 bind: self.visit_binding(bind),
-                guard: guard.as_ref().map(|guard| self.visit_expr(&**guard)),
+                guard: guard.as_ref().map(|guard| self.visit(&**guard)),
                 body: Block::from_iter(
                     body.location(),
-                    body.iter().filter_map(|stmt| self.visit_stmt(stmt)),
+                    body.iter().filter_map(|stmt| self.visit(stmt)),
                 ),
                 ty: self.db.hir_type(Type {
                     kind: TypeKind::Unknown,
@@ -925,32 +1028,14 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
         })
     }
 
-    type LiteralOutput = Literal;
-    fn visit_literal(&mut self, literal: &AstLiteral<'_>) -> Self::LiteralOutput {
-        Literal {
-            val: self.visit_literal_val(&literal.val),
-            ty: self.visit_type(Locatable::new(&literal.ty, literal.location())),
-            loc: literal.location(),
-        }
+    type LiteralOutput = Literal<'ctx>;
+    fn visit_literal(&mut self, _: &AstLiteral<'_>) -> Self::LiteralOutput {
+        unreachable!()
     }
 
-    type LiteralValOutput = LiteralVal;
-    fn visit_literal_val(&mut self, val: &AstLiteralVal<'_>) -> Self::LiteralValOutput {
-        match val {
-            &AstLiteralVal::Integer(int) => LiteralVal::Integer(int),
-            &AstLiteralVal::Bool(boolean) => LiteralVal::Bool(boolean),
-            AstLiteralVal::String(text) => LiteralVal::String(text.clone()),
-            &AstLiteralVal::Rune(rune) => LiteralVal::Rune(rune),
-            &AstLiteralVal::Float(float) => LiteralVal::Float(float),
-            AstLiteralVal::Array(array) => {
-                let elements = array
-                    .iter()
-                    .map(|literal| self.visit_literal(literal))
-                    .collect();
-
-                LiteralVal::Array { elements }
-            }
-        }
+    type LiteralValOutput = LiteralVal<'ctx>;
+    fn visit_literal_val(&mut self, _: &AstLiteralVal<'_>) -> Self::LiteralValOutput {
+        unreachable!()
     }
 
     fn visit_unary(
@@ -969,8 +1054,8 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
         op: BinaryOp,
         rhs: &AstExpr<'_>,
     ) -> Self::Output {
-        let lhs = self.visit_expr(lhs);
-        let rhs = self.visit_expr(rhs);
+        let lhs = self.visit(lhs);
+        let rhs = self.visit(rhs);
 
         self.context().hir_expr(Expr {
             kind: ExprKind::BinOp(Sided { lhs, op, rhs }),
@@ -985,8 +1070,8 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
         op: CompOp,
         rhs: &AstExpr<'_>,
     ) -> Self::Output {
-        let lhs = self.visit_expr(lhs);
-        let rhs = self.visit_expr(rhs);
+        let lhs = self.visit(lhs);
+        let rhs = self.visit(rhs);
 
         self.context().hir_expr(Expr {
             kind: ExprKind::Comparison(Sided { lhs, op, rhs }),
@@ -1012,8 +1097,8 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
         };
 
         if let AssignKind::BinaryOp(op) = op {
-            let lhs = self.visit_expr(lhs);
-            let rhs = self.visit_expr(rhs);
+            let lhs = self.visit(lhs);
+            let rhs = self.visit(rhs);
 
             self.context().hir_expr(Expr {
                 kind: ExprKind::Assign(
@@ -1027,7 +1112,7 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
             })
         } else {
             // FIXME: This is wrong lol
-            let kind = ExprKind::Assign(var, self.visit_expr(rhs));
+            let kind = ExprKind::Assign(var, self.visit(rhs));
 
             self.context().hir_expr(Expr {
                 kind,
@@ -1037,7 +1122,7 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
     }
 
     fn visit_paren(&mut self, _expr: &AstExpr<'_>, inner: &AstExpr<'_>) -> Self::Output {
-        self.visit_expr(inner)
+        self.visit(inner)
     }
 
     fn visit_array(&mut self, _expr: &AstExpr<'_>, _elements: &[&AstExpr<'_>]) -> Self::Output {
@@ -1071,7 +1156,7 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
         {
             Var::User(**var)
         } else {
-            let value = self.visit_expr(var);
+            let value = self.visit(var);
             let name = self.next_var();
             let ty = self
                 .db
@@ -1101,7 +1186,7 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
                     .hir_type(Type::new(TypeKind::Unknown, expr.location())),
             )
         } else {
-            let value = self.visit_expr(index);
+            let value = self.visit(index);
             let name = self.next_var();
             let ty = self
                 .db
@@ -1144,7 +1229,7 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
         caller: &AstExpr<'_>,
         args: &[&AstExpr<'_>],
     ) -> Self::Output {
-        let args = args.iter().map(|a| self.visit_expr(a)).collect();
+        let args = args.iter().map(|a| self.visit(a)).collect();
 
         self.context().hir_expr(Expr {
             kind: ExprKind::FnCall(FuncCall {
@@ -1174,7 +1259,7 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
         mutable: bool,
         reference: &AstExpr<'_>,
     ) -> Self::Output {
-        let reference = self.visit_expr(reference);
+        let reference = self.visit(reference);
 
         self.context().hir_expr(Expr {
             kind: ExprKind::Reference(Reference { mutable, reference }),
@@ -1188,8 +1273,8 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
         cast: &AstExpr<'_>,
         ty: Locatable<&AstType<'_>>,
     ) -> Self::Output {
-        let casted = self.visit_expr(cast);
-        let ty = self.visit_type(ty);
+        let casted = self.visit(cast);
+        let ty = self.visit(&ty);
 
         self.context().hir_expr(Expr {
             kind: ExprKind::Cast(Cast { casted, ty }),
@@ -1197,28 +1282,38 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
         })
     }
 
-    type BindingOutput = Binding;
-    fn visit_binding(
-        &mut self,
-        &AstBinding {
-            reference,
-            mutable,
-            ref pattern,
-            ty,
-        }: &AstBinding<'_>,
-    ) -> Self::BindingOutput {
-        Binding {
-            reference,
-            mutable,
-            pattern: self.visit_pattern(pattern),
-            ty: ty.map(|ty| self.visit_type(ty)),
-        }
+    type BindingOutput = Binding<'ctx>;
+    fn visit_binding(&mut self, binding: &AstBinding<'_>) -> Self::BindingOutput {
+        self.visit(binding)
     }
 
-    type PatternOutput = Pattern;
+    type PatternOutput = Pattern<'ctx>;
     fn visit_pattern(&mut self, pattern: &AstPattern<'_>) -> Self::PatternOutput {
+        self.visit(pattern)
+    }
+}
+
+impl<'ctx> Visit<AstBinding<'_>> for Ladder<'ctx> {
+    type Output = Binding<'ctx>;
+
+    #[crunch_shared::instrument(name = "binding", skip(self, binding))]
+    fn visit(&mut self, binding: &AstBinding<'_>) -> Self::Output {
+        Binding {
+            reference: binding.reference,
+            mutable: binding.mutable,
+            pattern: self.visit_pattern(&binding.pattern),
+            ty: self.visit(&binding.ty),
+        }
+    }
+}
+
+impl<'ctx> Visit<AstPattern<'_>> for Ladder<'ctx> {
+    type Output = Pattern<'ctx>;
+
+    #[crunch_shared::instrument(name = "pattern", skip(self, pattern))]
+    fn visit(&mut self, pattern: &AstPattern<'_>) -> Self::Output {
         match pattern {
-            AstPattern::Literal(lit) => Pattern::Literal(self.visit_literal(lit)),
+            AstPattern::Literal(literal) => Pattern::Literal(self.visit(literal)),
             &AstPattern::Ident(ident) => Pattern::Ident(ident),
             AstPattern::ItemPath(path) => Pattern::ItemPath(path.clone()),
             AstPattern::Wildcard => Pattern::Wildcard,
@@ -1226,51 +1321,137 @@ impl<'ctx> ExprVisitor<'_> for Ladder<'ctx> {
     }
 }
 
-impl<'ctx> TypeVisitor<'_> for Ladder<'ctx> {
+impl<'ctx> Visit<AstLiteral<'_>> for Ladder<'ctx> {
+    type Output = Literal<'ctx>;
+
+    #[crunch_shared::instrument(name = "literal", skip(self, literal))]
+    fn visit(&mut self, literal: &AstLiteral<'_>) -> Self::Output {
+        Literal {
+            val: self.visit(&literal.val),
+            ty: self.visit(&Locatable::new(literal.ty, literal.location())),
+            loc: literal.location(),
+        }
+    }
+}
+
+impl<'ctx> Visit<AstLiteralVal<'_>> for Ladder<'ctx> {
+    type Output = LiteralVal<'ctx>;
+
+    #[crunch_shared::instrument(name = "literal value", skip(self, val))]
+    fn visit(&mut self, val: &AstLiteralVal<'_>) -> Self::Output {
+        match val {
+            &AstLiteralVal::Integer(int) => LiteralVal::Integer(int),
+            &AstLiteralVal::Bool(boolean) => LiteralVal::Bool(boolean),
+            AstLiteralVal::String(text) => LiteralVal::String(text.clone()),
+            &AstLiteralVal::Rune(rune) => LiteralVal::Rune(rune),
+            &AstLiteralVal::Float(float) => LiteralVal::Float(float),
+            AstLiteralVal::Array(array) => {
+                let elements = array.iter().map(|literal| self.visit(literal)).collect();
+
+                LiteralVal::Array { elements }
+            }
+            AstLiteralVal::Struct(struct_val) => LiteralVal::Struct(self.visit(struct_val)),
+        }
+    }
+}
+
+impl<'ctx> Visit<AstStructLiteral<'_>> for Ladder<'ctx> {
+    type Output = StructLiteral<'ctx>;
+
+    #[crunch_shared::instrument(
+        name = "struct literal",
+        skip(self, struct_lit),
+        fields(struct_name = %self.db.context().strings().resolve(struct_lit.name)),
+    )]
+    fn visit(&mut self, struct_lit: &AstStructLiteral<'_>) -> Self::Output {
+        StructLiteral {
+            name: struct_lit.name,
+            fields: struct_lit
+                .fields
+                .iter()
+                .map(|field| self.visit(field))
+                .collect(),
+        }
+    }
+}
+
+impl<'ctx> Visit<AstStructField<'_>> for Ladder<'ctx> {
+    type Output = StructField<'ctx>;
+
+    #[crunch_shared::instrument(
+        name = "struct literal field",
+        skip(self, field),
+        fields(field_name = %self.db.context().strings().resolve(field.name)),
+    )]
+    fn visit(&mut self, field: &AstStructField<'_>) -> Self::Output {
+        StructField {
+            name: field.name,
+            value: self.visit(field.value),
+            loc: field.loc,
+        }
+    }
+}
+
+impl<'ctx> Visit<Locatable<&AstType<'_>>> for Ladder<'ctx> {
     type Output = TypeId;
 
-    fn visit_type(&mut self, r#type: Locatable<&AstType<'_>>) -> TypeId {
-        let kind = self.visit_type_kind(*r#type);
+    #[crunch_shared::instrument(name = "type", skip(self, ty))]
+    fn visit(&mut self, ty: &Locatable<&AstType<'_>>) -> Self::Output {
+        let kind = self.visit(**ty);
 
         self.db.hir_type(Type {
             kind,
-            loc: r#type.location(),
+            loc: ty.location(),
         })
     }
 }
 
-impl<'ctx> Ladder<'ctx> {
-    fn visit_type_kind(&mut self, r#type: &AstType<'_>) -> TypeKind {
-        match r#type {
+impl<'ctx> Visit<AstType<'_>> for Ladder<'ctx> {
+    type Output = TypeKind;
+
+    #[crunch_shared::instrument(name = "type inner", skip(self, ty))]
+    fn visit(&mut self, ty: &AstType<'_>) -> Self::Output {
+        match ty {
             AstType::Unknown => TypeKind::Unknown,
             AstType::Unit => TypeKind::Unit,
             AstType::Bool => TypeKind::Bool,
             AstType::String => TypeKind::String,
             &AstType::Integer { signed, width } => TypeKind::Integer { signed, width },
 
-            &AstType::Array { element, length } => {
-                let element = self.visit_type(element);
-
+            &AstType::Array {
+                ref element,
+                length,
+            } => {
+                let element = self.visit(element);
                 TypeKind::Array { element, length }
             }
 
-            &AstType::Slice { element } => {
-                let element = self.visit_type(element);
-
+            AstType::Slice { element } => {
+                let element = self.visit(element);
                 TypeKind::Slice { element }
             }
 
-            &AstType::Pointer { pointee, mutable } => {
-                let pointee = self.visit_type(pointee);
-
+            &AstType::Pointer {
+                ref pointee,
+                mutable,
+            } => {
+                let pointee = self.visit(pointee);
                 TypeKind::Pointer { pointee, mutable }
             }
 
-            &AstType::Reference { referee, mutable } => {
-                let referee = self.visit_type(referee);
-
+            &AstType::Reference {
+                ref referee,
+                mutable,
+            } => {
+                let referee = self.visit(referee);
                 TypeKind::Reference { referee, mutable }
             }
+
+            // FIXME: This
+            &AstType::IntPtr { signed } => TypeKind::Integer {
+                signed: Some(signed),
+                width: Some(64),
+            },
 
             ty => todo!("{:?}", ty),
         }

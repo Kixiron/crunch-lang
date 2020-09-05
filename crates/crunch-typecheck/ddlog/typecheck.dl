@@ -1,10 +1,12 @@
 import hir
 
+extern function dbg(thing: 'T): 'T
+
 input relation Items(id: ItemId, item: Item)
 input relation Functions(func_id: FuncId, func: Function)
 input relation Statements(stmt_id: StmtId, stmt: Stmt)
 input relation Expressions(expr_id: ExprId, expr: Expr)
-input relation Variables(var_id: VarId, variable: Variable)
+input relation Variables(var_id: VarId, decl: VariableDecl)
 // Variable scoping relations (includes function pointers)
 input relation VariableScopes(parent: ScopeId, child: ScopeId)
 input relation Types(type_id: TypeId, ty: Type)
@@ -19,30 +21,44 @@ Literals(lit, lit_type) :- Expressions(_, Expr { ExprLit { lit } }),
                            Types(lit_type, ty).
 
 relation VariablesInScope(scope: ScopeId, var_id: VarId, decl_scope: ScopeId)
-VariablesInScope(scope, var_id, scope) :- Variables(var_id, Variable { .scope = scope }).
+VariablesInScope(scope, var_id, scope) :- Variables(var_id, VariableDecl { .scope = scope }).
 VariablesInScope(child, var_id, decl_scope) :- VariablesInScope(parent, var_id, decl_scope),
                                                VariableScopes(parent, child).
 
 relation TypedExpressions(expr_id: ExprId, type_id: TypeId)
 // Literals
 TypedExpressions(expr_id, type_id) :- Expressions(expr_id, Expr { ExprLit { lit } }),
-                                      Literals(lit, type_id).
+                                      var ty = lit.typeof(),
+                                      Types(type_id, ty).
 // Variables
 TypedExpressions(expr_id, type_id) :- Expressions(expr_id, Expr { ExprVar { var_id } }),
-                                      Variables(var_id, Variable { .var_type = type_id }).
+                                      Variables(var_id, VariableDecl { .var_type = type_id }).
 
-// Assignments with equal types (valid)
-TypedExpressions(expr_id, type_id) :- Expressions(expr_id, Expr { ExprAssign { var_id, rhs_id } }),
-                                      Variables(var_id, Variable { .var_type = type_id }),
-                                      TypedExpressions(rhs_id, rhs_ty),
-                                      rhs_ty == type_id.
-// Assignments with unequal types (invalid)
-Errors(message) :- Expressions(expr_id, Expr { ExprAssign { var_id, rhs_id } }),
-                   Variables(var_id, Variable { .var_type = type_id }),
-                   TypedExpressions(rhs_id, rhs_ty),
-                   rhs_ty != type_id,
-                   var message = "The expressions ${expr_id} and ${rhs_id} \
-                   \have unequal types: ${type_id} != ${rhs_ty}".                                  
+// Assignments
+TypedExpressions(assign_id, type_id), TypedExpressions(rhs_id, type_id) :-
+    Expressions(assign_id, Expr { ExprAssign { var_id, rhs_id } }),
+    Variables(var_id, VariableDecl {}),
+    TypedExpressions(rhs_id, type_id).
+
+relation UnifiedTypes(expr_id: ExprId, type_id: TypeId)
+UnifiedTypes(expr_id, unified_type) :-
+    TypedExpressions(expr_id, type_id),
+    Types(type_id, ty),
+    var unified_type = Aggregate((expr_id), unify_types((type_id, ty))).
+
+function unify_types(types: Group<'K, (TypeId, Type)>): Result<TypeId, string> {
+    var uni_type_id = None {};
+    var uni_type = None {};
+
+    for (ty in types) {
+        if (ty.0 < min_type_id) {
+            min_type_id = ty.0;
+            min_type = ty.1
+        }
+    };
+
+    Ok { uni_type_id }
+}
 
 // // Get the types out of literals
 // PropagateExprType(id, kind, ty) :- InputExpressions(id, kind, _),

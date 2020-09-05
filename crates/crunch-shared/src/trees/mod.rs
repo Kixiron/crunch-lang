@@ -214,3 +214,35 @@ impl Display for Sign {
         )
     }
 }
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum Attribute {
+    Const,
+    Async,
+    Unsafe,
+}
+
+impl Display for Attribute {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let pretty = match self {
+            Self::Const => "const",
+            Self::Async => "async",
+            Self::Unsafe => "unsafe",
+        };
+
+        f.write_str(pretty)
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum Vis {
+    FileLocal,
+    Package,
+    Exposed,
+}
+
+impl Default for Vis {
+    fn default() -> Self {
+        Self::FileLocal
+    }
+}

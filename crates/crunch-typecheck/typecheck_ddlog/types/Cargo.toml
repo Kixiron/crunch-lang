@@ -7,14 +7,14 @@ autobins = false
 [features]
 default = []
 flatbuf = ["flatbuffers", "differential_datalog/flatbuf"]
-ovsdb = ["ddlog_ovsdb_adapter"]
+# ovsdb = ["ddlog_ovsdb_adapter"]
 
 [dependencies.differential_datalog]
 path = "../differential_datalog"
 
-[dependencies.ddlog_ovsdb_adapter]
-path = "../ovsdb"
-optional = true
+# [dependencies.ddlog_ovsdb_adapter]
+# path = "../ovsdb"
+# optional = true
 
 [dependencies]
 abomonation = "0.7"
@@ -40,6 +40,5 @@ name = "types"
 path = "lib.rs"
 
 
-
 [dependencies.arc-interner]
-version="0.1"
+version = "0.1"

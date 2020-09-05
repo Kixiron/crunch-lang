@@ -69,9 +69,13 @@ pub enum TokenType {
     Ref,
     #[token("extern")]
     Extern,
+    #[token("unsafe")]
+    Unsafe,
 
     #[token("in")]
     In,
+    #[token("is")]
+    Is,
     #[token("loop")]
     Loop,
     #[token("while")]
@@ -258,6 +262,7 @@ impl TokenType {
             Self::Library => "lib",
             Self::End => "end",
             Self::In => "in",
+            Self::Is => "is",
             Self::Match => "match",
             Self::Where => "where",
             Self::Const => "comptime",
@@ -267,6 +272,7 @@ impl TokenType {
             Self::Mut => "mut",
             Self::Ref => "ref",
             Self::Extern => "extern",
+            Self::Unsafe => "unsafe",
 
             Self::Equal => "=",
             Self::AddAssign => "+=",

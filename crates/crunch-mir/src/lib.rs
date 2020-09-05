@@ -122,6 +122,7 @@ impl<'db> MirBuilder<'db> {
                     name.clone(),
                     (builder.next_func_id(), builder.visit_type(ret)),
                 ),
+                Item::Type(_) => todo!(),
             }));
 
             for item in items {

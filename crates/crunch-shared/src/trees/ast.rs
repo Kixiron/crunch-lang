@@ -1,7 +1,7 @@
 use crate::{
     error::{Locatable, Location, Span},
     strings::{StrInterner, StrT},
-    trees::{CallConv, ItemPath, Sided, Sign},
+    trees::{Attribute, CallConv, ItemPath, Sided, Sign, Vis},
 };
 #[cfg(feature = "no-std")]
 use alloc::{
@@ -44,10 +44,7 @@ pub enum ItemKind<'ctx> {
         sig: Location,
     },
 
-    Type {
-        generics: Option<Locatable<Vec<Locatable<&'ctx Type<'ctx>>>>>,
-        members: Vec<TypeMember<'ctx>>,
-    },
+    Type(TypeDecl<'ctx>),
 
     Enum {
         generics: Option<Locatable<Vec<Locatable<&'ctx Type<'ctx>>>>>,
@@ -83,7 +80,7 @@ impl<'ctx> ItemKind<'ctx> {
     }
 
     pub fn is_type(&self) -> bool {
-        matches!(self, Self::Type { .. })
+        matches!(self, Self::Type(..))
     }
 
     pub fn is_enum(&self) -> bool {
@@ -105,6 +102,12 @@ impl<'ctx> ItemKind<'ctx> {
     pub fn is_alias(&self) -> bool {
         matches!(self, Self::Alias { .. })
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TypeDecl<'ctx> {
+    pub generics: Option<Locatable<Vec<Locatable<&'ctx Type<'ctx>>>>>,
+    pub members: Vec<TypeMember<'ctx>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -147,7 +150,7 @@ pub struct TypeMember<'ctx> {
     pub attrs: Vec<Attribute>,
     pub name: StrT,
     pub ty: Locatable<&'ctx Type<'ctx>>,
-    // pub loc: Location,
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -174,38 +177,6 @@ pub struct Decorator<'ctx> {
 impl<'ctx> Decorator<'ctx> {
     pub const fn location(&self) -> Location {
         self.loc
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum Attribute {
-    Const,
-    Async,
-    Unsafe,
-}
-
-impl Display for Attribute {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        let pretty = match self {
-            Self::Const => "const",
-            Self::Async => "async",
-            Self::Unsafe => "unsafe",
-        };
-
-        f.write_str(pretty)
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum Vis {
-    FileLocal,
-    Package,
-    Exposed,
-}
-
-impl Default for Vis {
-    fn default() -> Self {
-        Self::FileLocal
     }
 }
 
@@ -256,7 +227,7 @@ pub struct VarDecl<'ctx> {
     pub val: &'ctx Expr<'ctx>,
     pub constant: bool,
     pub mutable: bool,
-    // pub loc: Location,
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -275,7 +246,7 @@ impl<'ctx> Expr<'ctx> {
         self.loc.span()
     }
 
-    pub fn as_literal(&self) -> Option<&Locatable<Literal<'ctx>>> {
+    pub fn as_literal(&self) -> Option<&Literal<'ctx>> {
         if let ExprKind::Literal(ref literal) = self.kind {
             Some(literal)
         } else {
@@ -295,7 +266,7 @@ pub enum ExprKind<'ctx> {
     For(For<'ctx>),
     Match(Match<'ctx>),
     Variable(Locatable<StrT>),
-    Literal(Locatable<Literal<'ctx>>),
+    Literal(Literal<'ctx>),
     UnaryOp(UnaryOp, &'ctx Expr<'ctx>),
     BinaryOp(Sided<BinaryOp, &'ctx Expr<'ctx>>),
     Comparison(Sided<CompOp, &'ctx Expr<'ctx>>),
@@ -325,6 +296,21 @@ pub enum ExprKind<'ctx> {
         expr: &'ctx Expr<'ctx>,
         ty: Locatable<&'ctx Type<'ctx>>,
     },
+    Block(BlockExpr<'ctx>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct BlockExpr<'ctx> {
+    pub contents: Block<'ctx>,
+    pub colors: Vec<BlockColor>,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum BlockColor {
+    Unsafe,
+    Async,
+    Const,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -396,6 +382,7 @@ pub enum LiteralVal<'ctx> {
     Rune(Rune),
     Float(Float),
     Array(Vec<Literal<'ctx>>),
+    Struct(StructLiteral<'ctx>),
     // TODO: Tuples, slices, others?
 }
 
@@ -433,8 +420,22 @@ impl Display for LiteralVal<'_> {
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
+            Self::Struct(struct_lit) => write!(f, "{:?}", struct_lit),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct StructLiteral<'ctx> {
+    pub name: StrT,
+    pub fields: Vec<StructField<'ctx>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct StructField<'ctx> {
+    pub name: StrT,
+    pub value: &'ctx Expr<'ctx>,
+    pub loc: Location,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -542,6 +543,7 @@ impl Display for Float {
     }
 }
 
+// TODO: Make a type struct that holds its own location
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type<'ctx> {
     Operand(Sided<TypeOp, Locatable<&'ctx Type<'ctx>>>),

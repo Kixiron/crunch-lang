@@ -81,6 +81,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                     val,
                     constant,
                     mutable,
+                    loc,
                 });
 
                 Ok(Some(self.context.ast_stmt(Stmt { kind, loc })))

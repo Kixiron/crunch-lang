@@ -9,8 +9,11 @@ use crunch_shared::{
     error::{Error, Locatable, Location, ParseResult, Span, SyntaxError},
     tracing,
     trees::{
-        ast::{Arm, Block, Expr, ExprKind, For, If, IfCond, Loop, Match, While},
-        Sided,
+        ast::{
+            Arm, Block, BlockColor, BlockExpr, Expr, ExprKind, For, If, IfCond, Literal,
+            LiteralVal, Loop, Match, StructField, StructLiteral, Type, While,
+        },
+        ItemPath, Sided,
     },
 };
 
@@ -84,7 +87,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         let prefix: PrefixParselet<'_, '_> = match token.ty() {
             TokenType::Ident if token.source() == "arr" => Self::array_or_tuple,
             TokenType::Ident if token.source() == "tup" => Self::array_or_tuple,
-            TokenType::Ident     => Self::variable,
+            TokenType::Ident     => Self::ident_expr,
             TokenType::If        => Self::if_expr,
             TokenType::Match     => Self::match_expr,
             TokenType::While     => Self::while_expr,
@@ -103,6 +106,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             | TokenType::Float
             | TokenType::String
             | TokenType::Rune    => Self::literal_expr,
+            TokenType::Unsafe    => Self::unsafe_block,
             _                    => return None,
         };
 
@@ -285,9 +289,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         caller: &'ctx Expr<'ctx>,
     ) -> ParseResult<&'ctx Expr<'ctx>> {
         let mut args = Vec::with_capacity(5);
-        while self.peek()?.ty() == TokenType::Newline {
-            self.eat(TokenType::Newline, [])?;
-        }
+        self.eat_newlines()?;
 
         while self.peek()?.ty() != TokenType::RightParen {
             let arg = self.expr()?;
@@ -299,9 +301,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                 break;
             }
 
-            while self.peek()?.ty() == TokenType::Newline {
-                self.eat(TokenType::Newline, [])?;
-            }
+            self.eat_newlines()?;
         }
 
         let end = self
@@ -355,10 +355,7 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
 
     #[recursion_guard]
     fn literal_expr(&mut self, lit: Token<'src>) -> ParseResult<&'ctx Expr<'ctx>> {
-        let literal = ExprKind::Literal(Locatable::new(
-            self.literal(&lit, self.current_file)?,
-            Location::new(lit.span(), self.current_file),
-        ));
+        let literal = ExprKind::Literal(self.literal(&lit, self.current_file)?);
 
         Ok(self.context.ast_expr(Expr {
             kind: literal,
@@ -366,7 +363,16 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
         }))
     }
 
+    fn ident_expr(&mut self, ident_tok: Token<'src>) -> ParseResult<&'ctx Expr<'ctx>> {
+        if self.peek()?.ty() == TokenType::Is {
+            self.struct_literal(ident_tok)
+        } else {
+            self.variable(ident_tok)
+        }
+    }
+
     #[recursion_guard]
+    #[crunch_shared::instrument(name = "variable", skip(self))]
     fn variable(&mut self, ident_tok: Token<'src>) -> ParseResult<&'ctx Expr<'ctx>> {
         let ident = Locatable::new(
             self.intern_ident(ident_tok),
@@ -377,6 +383,68 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
             kind: ExprKind::Variable(ident),
             loc: Location::new(ident_tok.span(), self.current_file),
         }))
+    }
+
+    #[recursion_guard]
+    #[crunch_shared::instrument(name = "struct literal", skip(self))]
+    fn struct_literal(&mut self, ident: Token<'src>) -> ParseResult<&'ctx Expr<'ctx>> {
+        self.eat(TokenType::Is, [])?;
+        let name = self.intern_ident(ident);
+
+        let mut fields = Vec::with_capacity(5);
+        while self.peek().is_ok() {
+            self.eat_newlines()?;
+            if self.peek()?.ty() == TokenType::End {
+                break;
+            }
+
+            let field = self.eat(TokenType::Ident, [TokenType::Newline])?;
+            crunch_shared::trace!("got a struct field named {:?}", field.source());
+            let name = self.intern_ident(field);
+
+            let value = if self.peek()?.ty() == TokenType::Colon {
+                crunch_shared::trace!("struct field has an assigned value");
+
+                self.eat(TokenType::Colon, [])?;
+                self.eat(TokenType::Equal, [])?;
+
+                self.expr()?
+            } else {
+                crunch_shared::trace!("struct field name is the value");
+
+                let loc = Location::new(field.span(), self.current_file);
+                self.context.ast_expr(Expr {
+                    kind: ExprKind::Variable(Locatable::new(name, loc)),
+                    loc,
+                })
+            };
+
+            let loc = Location::new(Span::merge(field.span(), value.span()), self.current_file);
+            fields.push(StructField { name, value, loc });
+
+            self.eat_newlines()?;
+            if self.peek()?.ty() == TokenType::Comma {
+                self.eat(TokenType::Comma, [])?;
+            } else {
+                break;
+            }
+        }
+
+        crunch_shared::trace!("got {} fields for a struct literal", fields.len());
+        let end = self.eat(TokenType::End, [TokenType::Newline])?.span();
+
+        let loc = Location::new(Span::merge(ident.span(), end), self.current_file);
+        let structure = ExprKind::Literal(Literal {
+            val: LiteralVal::Struct(StructLiteral { name, fields }),
+            ty: self.context.ast_type(Type::ItemPath(ItemPath::new(name))),
+            loc,
+        });
+        let expr = Expr {
+            kind: structure,
+            loc,
+        };
+
+        Ok(self.context.ast_expr(expr))
     }
 
     #[recursion_guard]
@@ -663,6 +731,23 @@ impl<'src, 'ctx> Parser<'src, 'ctx> {
                 else_,
             }),
             loc,
+        };
+
+        Ok(self.context.ast_expr(expr))
+    }
+
+    #[recursion_guard]
+    fn unsafe_block(&mut self, unsafe_tok: Token<'src>) -> ParseResult<&'ctx Expr<'ctx>> {
+        let (block, end_tok) = self.block_returning(&[TokenType::End], 10)?;
+        let expr = Expr {
+            kind: ExprKind::Block(BlockExpr {
+                contents: block,
+                colors: vec![BlockColor::Unsafe],
+            }),
+            loc: Location::new(
+                Span::merge(unsafe_tok.span(), end_tok.span()),
+                self.current_file,
+            ),
         };
 
         Ok(self.context.ast_expr(expr))

@@ -29,3 +29,6 @@ path = "../crunch-codegen"
 
 [dev-dependencies.goldentests]
 version = "0.3.6"
+
+[dependencies.inventory]
+version = "0.1.8"

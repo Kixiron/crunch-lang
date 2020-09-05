@@ -42,22 +42,29 @@ pub trait TypecheckDatabase: salsa::Database + ContextDatabase + HirDatabase {
 fn typecheck(db: &dyn TypecheckDatabase, file: FileId) -> Result<(), ArcError> {
     let hir = db.lower_hir(file)?;
 
-    let ddlog_res: Result<(), String> =
-        crunch_shared::allocator::CRUNCHC_ALLOCATOR.record_region("ddlog typechecking", || {
-            use ddlog::{ddlog_callback, DDlogEngine, DDLOG_TRACK_SNAPSHOTS, DDLOG_WORKER_THREADS};
-            use differential_datalog::DDlog;
-            use typecheck_ddlog::api::HDDlog;
+    if db.config().experimental_flags.contains("ddlog-typecheck") {
+        crunch_shared::info!("starting ddlog type checking");
 
-            let (mut program, _init_state) =
-                HDDlog::run(DDLOG_WORKER_THREADS, DDLOG_TRACK_SNAPSHOTS, ddlog_callback)?;
+        let ddlog_res: Result<(), String> = crunch_shared::allocator::CRUNCHC_ALLOCATOR
+            .record_region("ddlog typechecking", || {
+                use ddlog::{
+                    ddlog_callback, DDlogEngine, DDLOG_TRACK_SNAPSHOTS, DDLOG_WORKER_THREADS,
+                };
+                use differential_datalog::DDlog;
+                use typecheck_ddlog::api::HDDlog;
 
-            let mut engine = DDlogEngine::new(db);
-            engine.walk(&mut program, &*hir)?;
+                let (mut program, _init_state) =
+                    HDDlog::run(DDLOG_WORKER_THREADS, DDLOG_TRACK_SNAPSHOTS, ddlog_callback)?;
 
-            Ok(())
-        });
-    if let Err(err) = ddlog_res {
-        crunch_shared::error!("error typechecking with ddlog: {}", err);
+                let mut engine = DDlogEngine::new(db);
+                engine.walk(&mut program, &*hir)?;
+
+                Ok(())
+            });
+
+        if let Err(err) = ddlog_res {
+            crunch_shared::error!("error typechecking with ddlog: {}", err);
+        }
     }
 
     crunch_shared::allocator::CRUNCHC_ALLOCATOR
@@ -480,6 +487,8 @@ impl<'ctx> Engine<'ctx> {
 
                         builder.functions.insert(name.clone(), func);
                     }
+
+                    Item::Type(_) => todo!(),
                 }
             }
 
@@ -622,6 +631,7 @@ impl<'ctx> ItemVisitor<'ctx> for Engine<'ctx> {
                 crunch_shared::trace!("item is an external function, visiting");
                 self.visit_extern_func(func)
             }
+            Item::Type(_) => todo!(),
         }
     }
 

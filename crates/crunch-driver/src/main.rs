@@ -3,7 +3,7 @@ use crunch_database::{CodegenDatabase, ConfigDatabase, CrunchDatabase, SourceDat
 use crunch_shared::{
     allocator::{CrunchcAllocator, CRUNCHC_ALLOCATOR},
     codespan_reporting::term::{termcolor::StandardStream, Config as TermConfig},
-    config::{BuildOptions, CrunchcOpts, EmissionKind, TermColor},
+    config::{BuildOptions, CrunchcOpts, EmissionKind, ExperimentalFlag, TermColor},
     context::{Arenas, Context, ContextDatabase, OwnedArenas},
     files::FileCache,
     utils::DbgWrap,
@@ -11,7 +11,7 @@ use crunch_shared::{
 use std::{
     borrow::Cow,
     fmt, fs,
-    io::{self, Write},
+    io::{self, BufWriter, Write},
     sync::Arc,
     time::Instant,
 };
@@ -19,11 +19,21 @@ use std::{
 #[global_allocator]
 static GLOBAL_ALLOCATOR: CrunchcAllocator = CRUNCHC_ALLOCATOR;
 
+const EXIT_SUCCESS: i32 = 0;
+const EXIT_ERROR: i32 = 101;
+
 fn main() {
-    let code = {
+    fn inner_main() -> i32 {
         let args = CrunchcOpts::from_args();
         let options = args.build_options();
         let mut stderr = Stderr::new(&options);
+
+        if options.experimental_flags.contains("show-options") {
+            show_experimental_options()
+                .unwrap_or_else(|err| eprintln!("failed to show experimental options: {:?}", err));
+
+            return EXIT_SUCCESS;
+        }
 
         // Users can't enable both the verbose and quiet flags
         if options.is_verbose() && options.quiet {
@@ -65,7 +75,7 @@ fn main() {
                         stderr.write(|| format!("{}\n", message));
                     }
 
-                    exit_code.unwrap_or(0)
+                    exit_code.unwrap_or(EXIT_SUCCESS)
                 }
 
                 Err(ExitStatus { message, exit_code }) => {
@@ -73,11 +83,12 @@ fn main() {
                         stderr.write(|| format!("crunchc failed to compile: {}\n", message));
                     }
 
-                    exit_code.unwrap_or(101)
+                    exit_code.unwrap_or(EXIT_ERROR)
                 }
             }
         })
-    };
+    }
+    let code = inner_main();
 
     // exit immediately terminates the program, so make sure everything is cleaned
     // up before that so that we don't leak anything
@@ -312,4 +323,41 @@ impl ExitStatus {
             exit_code: None,
         }
     }
+}
+
+fn show_experimental_options() -> Result<(), io::Error> {
+    let mut flags: Vec<_> = inventory::iter::<ExperimentalFlag>()
+        .filter(|flag| !flag.flag.is_empty())
+        .collect();
+    flags.sort_by_key(|flag| flag.flag);
+
+    let mut longest_flag = 0;
+    for ExperimentalFlag { flag, .. } in flags.iter() {
+        if flag.len() > longest_flag {
+            longest_flag = flag.len();
+        }
+    }
+
+    let stdout = io::stdout();
+    let mut buf = BufWriter::new(stdout.lock());
+
+    writeln!(&mut buf, "Experimental (unstable) flags to the compiler\n")?;
+    writeln!(&mut buf, "FLAGS:")?;
+    for ExperimentalFlag { flag, description } in flags {
+        writeln!(
+            &mut buf,
+            "    {:<width$}{}",
+            flag,
+            description.unwrap_or(""),
+            width = longest_flag + 4,
+        )?;
+    }
+    writeln!(&mut buf)?;
+    buf.flush()?;
+
+    Ok(())
+}
+
+inventory::submit! {
+    ExperimentalFlag::new("show-options", "Displays all experimental options")
 }
