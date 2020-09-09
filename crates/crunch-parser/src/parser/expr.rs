@@ -10,10 +10,10 @@ use crunch_shared::{
     tracing,
     trees::{
         ast::{
-            Arm, Block, BlockColor, BlockExpr, Expr, ExprKind, For, If, IfCond, Literal,
-            LiteralVal, Loop, Match, StructField, StructLiteral, Type, While,
+            Arm, Block, BlockExpr, Expr, ExprKind, For, If, IfCond, Literal, LiteralVal, Loop,
+            Match, StructField, StructLiteral, Type, While,
         },
-        ItemPath, Sided,
+        BlockColor, ItemPath, Sided,
     },
 };
 

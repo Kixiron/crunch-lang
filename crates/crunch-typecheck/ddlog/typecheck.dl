@@ -46,42 +46,10 @@ UnifiedTypes(expr_id, unified_type) :-
     Types(type_id, ty),
     var unified_type = Aggregate((expr_id), unify_types((type_id, ty))).
 
-function unify_types(types: Group<'K, (TypeId, Type)>): Result<TypeId, string> {
-    var uni_type_id = None {};
-    var uni_type = None {};
-
+function unify_types(types: Group<'K, (TypeId, Type)>): TypeId {
     for (ty in types) {
-        if (ty.0 < min_type_id) {
-            min_type_id = ty.0;
-            min_type = ty.1
-        }
+        dbg(ty);
     };
 
-    Ok { uni_type_id }
+    1
 }
-
-// // Get the types out of literals
-// PropagateExprType(id, kind, ty) :- InputExpressions(id, kind, _),
-//                                    ExprLit { .lit = var lit } = kind.ival(),
-//                                    var ty = lit.typeof().
-// // Get the types out of assignments
-// PropagateExprType(id, kind, ty) :- InputExpressions(id, kind, _),
-//                                    ExprAssign { .expr_id = var expr_id } = kind.ival(),
-//                                    PropagateExprType(expr_id, _, ty).
-// // Get the types of variables by looking at their assignment
-// PropagateExprType(id, kind, ty) :- InputExpressions(id, kind, _),
-//                                    ExprVar { .variable = var expr_var } = kind.ival(),
-//                                    PropagateExprType(_, prop_kind, ty),
-//                                    ExprAssign { .variable = var prop_var } = prop_kind.ival(),
-//                                    expr_var == prop_var.
-// 
-// output relation ClampUnknownInt(id: ExprId, kind: Intern<ExprKind>, ty: Intern<TypeKind>)
-// // Clamp totally unknown integers to i32
-// ClampUnknownInt(id, kind, ty) :- PropagateExprType(id, kind, ty),
-//                                  Int { None, None } = ty.ival(),
-//                                  var ty = intern(Int { Some{true}, Some{32} }).
-// 
-// // Allow other types to pass through unaffected
-// ClampUnknownInt(id, kind, ty) :- PropagateExprType(id, kind, ty),
-//                                  Int { Some{}, Some{} } = ty.ival().
-// ClampUnknownInt(id, kind, ty) :- PropagateExprType(id, kind, ty), not ty.is_int().

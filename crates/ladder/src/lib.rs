@@ -13,7 +13,7 @@ use crunch_shared::{
     trees::{
         ast::{
             Arm as AstMatchArm, AssignKind, BinaryOp, Binding as AstBinding, Block as AstBlock,
-            CompOp, Dest as AstDest, Exposure as AstExposure, Expr as AstExpr,
+            BlockExpr, CompOp, Dest as AstDest, Exposure as AstExposure, Expr as AstExpr,
             ExprKind as AstExprKind, ExternFunc as AstExternFunc, For as AstFor,
             FuncArg as AstFuncArg, If as AstIf, IfCond as AstIfCond, Item as AstItem,
             ItemKind as AstItemKind, Literal as AstLiteral, LiteralVal as AstLiteralVal,
@@ -589,8 +589,33 @@ impl<'ctx> Visit<AstExpr<'_>> for Ladder<'ctx> {
                 expr: reference,
             } => self.visit_reference(expr, mutable, reference),
             &AstExprKind::Cast { expr: cast, ty } => self.visit_cast(expr, cast, ty),
-            &AstExprKind::Block(_) => todo!(),
+            AstExprKind::Block(block) => {
+                let block = self.visit(block);
+                let loc = block.location();
+
+                self.context().hir_expr(Expr {
+                    kind: ExprKind::Scope(block),
+                    loc,
+                })
+            }
         }
+    }
+}
+
+impl<'ctx> Visit<BlockExpr<'_>> for Ladder<'ctx> {
+    type Output = Block<&'ctx Stmt<'ctx>>;
+
+    #[crunch_shared::instrument(name = "block", skip(self, block))]
+    fn visit(&mut self, block: &BlockExpr<'_>) -> Self::Output {
+        let mut new_block = Block::with_capacity_and_colors(
+            block.contents.location(),
+            block.contents.len(),
+            block.colors.len(),
+        );
+        new_block.extend_colors(block.colors.iter().copied());
+        new_block.extend(block.contents.iter().filter_map(|stmt| self.visit(stmt)));
+
+        new_block
     }
 }
 

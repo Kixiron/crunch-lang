@@ -6,11 +6,11 @@ autobins = false
 build = "src/build.rs"
 
 [features]
-default = []
+default = ["command-line"]
 flatbuf = ["differential_datalog/flatbuf", "types/flatbuf", "value/flatbuf"]
 profile = ["cpuprofiler"]
-# ovsdb = ["ddlog_ovsdb_adapter", "types/ovsdb", "value/ovsdb"]
-# command-line = ["cmd_parser", "rustop"]
+ovsdb = ["ddlog_ovsdb_adapter", "types/ovsdb", "value/ovsdb"]
+command-line = ["cmd_parser", "rustop"]
 
 [target.'cfg(not(windows))'.build-dependencies]
 libtool = "0.1"
@@ -18,13 +18,13 @@ libtool = "0.1"
 [dependencies.differential_datalog]
 path = "./differential_datalog"
 
-# [dependencies.cmd_parser]
-# path = "./cmd_parser"
-# optional = true
+[dependencies.cmd_parser]
+path = "./cmd_parser"
+optional = true
 
-# [dependencies.ddlog_ovsdb_adapter]
-# path = "./ovsdb"
-# optional = true
+[dependencies.ddlog_ovsdb_adapter]
+path = "./ovsdb"
+optional = true
 
 [dependencies.types]
 path = "./types"
@@ -43,7 +43,7 @@ once_cell = "1.4.1"
 libc = "0.2"
 num-traits = "0.2"
 num = { version = "0.2", features = ["serde"] }
-# rustop = { version = "1.0.2", optional = true }
+rustop = { version = "1.0.2", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 timely = "0.11"
 
@@ -61,3 +61,4 @@ name = "typecheck_ddlog"
 # crate-type = ["rlib", "staticlib"]
 
 crate-type = ["rlib", "staticlib"]
+

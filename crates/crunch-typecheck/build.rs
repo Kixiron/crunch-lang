@@ -43,24 +43,32 @@ fn traverse<P: AsRef<Path>, F: Fn(&DirEntry)>(dir: P, func: &F) -> io::Result<()
 }
 
 fn build_ddlog() -> Result<(), Box<dyn Error>> {
+    const DDLOG_ARGS: &[&str] = &[
+        #[cfg(windows)]
+        "ddlog",
+        "-i",
+        "ddlog/typecheck.dl",
+        "-L",
+        ".",
+        "--output-dir",
+        "typecheck_ddlog",
+        "--omit-profile",
+        "--omit-workspace",
+        "--run-rustfmt",
+    ];
+
     if env::var("DDLOG_HOME").is_err() {
         println!("cargo:warning=`DDLOG_HOME` is not set, building may not work properly");
     }
 
-    Command::new("ddlog")
-        .args(&[
-            "-i",
-            "ddlog/typecheck.dl",
-            "-L",
-            ".",
-            "--output-dir",
-            "typecheck_ddlog",
-            "--omit-profile",
-            "--omit-workspace",
-            "--run-rustfmt",
-        ])
-        .spawn()?
-        .wait()?;
+    if cfg!(windows) {
+        Command::new("wsl")
+    } else {
+        Command::new("ddlog")
+    }
+    .args(DDLOG_ARGS)
+    .spawn()?
+    .wait()?;
 
     Ok(())
 }

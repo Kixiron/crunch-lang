@@ -123,7 +123,8 @@ mod __top {
     use core::fmt::Debug;
 
     pub fn dbg<T: Debug>(thing: T) -> T {
-        dbg!(thing)
+        println!("[ddlog debug]: {:?}", thing);
+        thing
     }
 }
 pub use __std::*;
@@ -487,8 +488,8 @@ mod __std {
         pub fn extend_from_slice(&mut self, other: &[T]) {
             self.x.extend_from_slice(other);
         }
-        pub fn resize(&mut self, new_len: usize, value: T) {
-            self.x.resize(new_len, value);
+        pub fn resize(&mut self, new_len: usize, value: &T) {
+            self.x.resize_with(new_len, || value.clone());
         }
     }
 
@@ -602,7 +603,7 @@ mod __std {
 
     pub fn std_vec_with_length<X: Ord + Clone>(len: &std_usize, x: &X) -> std_Vec<X> {
         let mut res = std_Vec::with_capacity(*len as usize);
-        res.resize(*len as usize, x.clone());
+        res.resize(*len as usize, x);
         res
     }
 
@@ -654,6 +655,26 @@ mod __std {
         let mut res = (*v).clone();
         res.x.sort();
         res
+    }
+
+    pub fn std_vec_resize<X: Clone>(v: &mut std_Vec<X>, new_len: &std_usize, value: &X) {
+        v.resize(*new_len as usize, value)
+    }
+
+    pub fn std_vec_swap_nth<X: Clone>(v: &mut std_Vec<X>, idx: &std_usize, value: &mut X) -> bool {
+        if (*idx as usize) < v.x.len() {
+            std::mem::swap(&mut v.x[*idx as usize], value);
+            return true;
+        };
+        return false;
+    }
+
+    pub fn std_vec_update_nth<X: Clone>(v: &mut std_Vec<X>, idx: &std_usize, value: &X) -> bool {
+        if (*idx as usize) < v.x.len() {
+            v.x[*idx as usize] = value.clone();
+            return true;
+        };
+        return false;
     }
 
     // Set
@@ -1086,8 +1107,8 @@ mod __std {
         m.x.insert((*k).clone(), (*v).clone());
     }
 
-    pub fn std_map_remove<K: Ord + Clone, V: Clone>(m: &mut std_Map<K, V>, k: &K) {
-        m.x.remove(k);
+    pub fn std_map_remove<K: Ord + Clone, V: Clone>(m: &mut std_Map<K, V>, k: &K) -> std_Option<V> {
+        option2std(m.x.remove(k))
     }
 
     pub fn std_map_insert_imm<K: Ord + Clone, V: Clone>(
@@ -1119,6 +1140,12 @@ mod __std {
         let mut m = m1.clone();
         m.x.append(&mut m2.x.clone());
         m
+    }
+
+    pub fn std_map_keys<K: Ord + Clone, V>(m: &std_Map<K, V>) -> std_Vec<K> {
+        std_Vec {
+            x: m.x.keys().cloned().collect(),
+        }
     }
 
     // strings
@@ -4572,7 +4599,8 @@ pub type std_usize = std_u64;
 /* fn std_map_insert<K: Val,V: Val>(m: &mut std_Map<K, V>, k: & K, v: & V) -> () */
 /* fn std_map_insert_imm<K: Val,V: Val>(m: & std_Map<K, V>, k: & K, v: & V) -> std_Map<K, V> */
 /* fn std_map_is_empty<K: Val,V: Val>(m: & std_Map<K, V>) -> bool */
-/* fn std_map_remove<K: Val,V: Val>(m: &mut std_Map<K, V>, k: & K) -> () */
+/* fn std_map_keys<K: Val,V: Val>(m: & std_Map<K, V>) -> std_Vec<K> */
+/* fn std_map_remove<K: Val,V: Val>(m: &mut std_Map<K, V>, k: & K) -> std_Option<V> */
 /* fn std_map_singleton<K: Val,V: Val>(k: & K, v: & V) -> std_Map<K, V> */
 /* fn std_map_size<K: Val,V: Val>(m: & std_Map<K, V>) -> std_usize */
 /* fn std_map_union<K: Val,V: Val>(m1: & std_Map<K, V>, m2: & std_Map<K, V>) -> std_Map<K, V> */
@@ -4629,10 +4657,14 @@ pub type std_usize = std_u64;
 /* fn std_vec_nth<X: Val>(v: & std_Vec<X>, n: & std_usize) -> std_Option<X> */
 /* fn std_vec_push<X: Val>(v: &mut std_Vec<X>, x: & X) -> () */
 /* fn std_vec_push_imm<X: Val>(v: & std_Vec<X>, x: & X) -> std_Vec<X> */
+/* fn std_vec_resize<X: Val>(v: &mut std_Vec<X>, new_len: & std_usize, value: & X) -> () */
+/* fn std_vec_set_nth<X: Val>(v: & std_Vec<X>, n: & std_usize, value: & X) -> () */
 /* fn std_vec_singleton<X: Val>(x: & X) -> std_Vec<X> */
 /* fn std_vec_sort<X: Val>(v: &mut std_Vec<X>) -> () */
 /* fn std_vec_sort_imm<X: Val>(v: & std_Vec<X>) -> std_Vec<X> */
+/* fn std_vec_swap_nth<X: Val>(v: &mut std_Vec<X>, idx: & std_usize, value: &mut X) -> bool */
 /* fn std_vec_to_set<A: Val>(s: & std_Vec<A>) -> std_Set<A> */
+/* fn std_vec_update_nth<X: Val>(v: &mut std_Vec<X>, idx: & std_usize, value: & X) -> bool */
 /* fn std_vec_with_capacity<A: Val>(len: & std_usize) -> std_Vec<A> */
 /* fn std_vec_with_length<A: Val>(len: & std_usize, x: & A) -> std_Vec<A> */
 pub fn hir_is_bool(ty: &internment_Intern<hir_Literal>) -> bool {
@@ -4824,6 +4856,9 @@ pub fn std_join(strings: &std_Vec<String>, sep: &String) -> String {
 pub fn std_key<K: Val, V: Val>(g: &std_Group<K, V>) -> K {
     std_group_key(g)
 }
+pub fn std_keys<K: Val, V: Val>(m: &std_Map<K, V>) -> std_Vec<K> {
+    std_map_keys(m)
+}
 pub fn std_len___Stringval_1(s: &String) -> std_usize {
     std_string_len(s)
 }
@@ -4901,11 +4936,14 @@ pub fn std_push<X: Val>(v: &mut std_Vec<X>, x: &X) -> () {
 pub fn std_push_imm<X: Val>(v: &std_Vec<X>, x: &X) -> std_Vec<X> {
     std_vec_push_imm(v, x)
 }
-pub fn std_remove<K: Val, V: Val>(m: &mut std_Map<K, V>, k: &K) -> () {
+pub fn std_remove<K: Val, V: Val>(m: &mut std_Map<K, V>, k: &K) -> std_Option<V> {
     std_map_remove(m, k)
 }
 pub fn std_replace(s: &String, from: &String, to: &String) -> String {
     std_string_replace(s, from, to)
+}
+pub fn std_resize<X: Val>(v: &mut std_Vec<X>, new_len: &std_usize, value: &X) -> () {
+    std_vec_resize(v, new_len, value)
 }
 pub fn std_reverse(s: &String) -> String {
     std_string_reverse(s)
@@ -4935,6 +4973,9 @@ pub fn std_starts_with(s: &String, prefix: &String) -> bool {
 }
 pub fn std_substr(s: &String, start: &std_usize, end: &std_usize) -> String {
     std_string_substr(s, start, end)
+}
+pub fn std_swap_nth<X: Val>(v: &mut std_Vec<X>, idx: &std_usize, value: &mut X) -> bool {
+    std_vec_swap_nth(v, idx, value)
 }
 pub fn std_to_bytes(s: &String) -> std_Vec<std_u8> {
     std_string_to_bytes(s)
@@ -5070,24 +5111,15 @@ pub fn std_unwrap_or_default_std_Option__A_1<A: Val>(opt: &std_Option<A>) -> A {
 pub fn std_unwrap_or_default_std_Result__V_E_1<V: Val, E: Val>(res: &std_Result<V, E>) -> V {
     std_result_unwrap_or_default(res)
 }
+pub fn std_update_nth<X: Val>(v: &mut std_Vec<X>, idx: &std_usize, value: &X) -> bool {
+    std_vec_update_nth(v, idx, value)
+}
 pub fn unify_types<K: Val>(types: &std_Group<K, (hir_TypeId, hir_Type)>) -> hir_TypeId {
-    let ref mut min_type_id: std_u64 = (18446744073709551615 as u64);
-    let ref mut min_type: hir_Type = (hir_Type {
-        kind: (hir_TypeKind::hir_Unknown {}),
-    });
     for ref ty in types.iter() {
         {
             dbg(ty);
-            if ((&*(&(ty.0))) < (&*min_type_id)) {
-                {
-                    (*min_type_id) = (ty.0).clone();
-                    (*min_type) = (ty.1).clone()
-                }
-            } else {
-                ()
-            }
+            ()
         }
     }
-    dbg(min_type);
-    (*min_type_id).clone()
+    (1 as u64)
 }

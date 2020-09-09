@@ -3,7 +3,7 @@ pub use crate::trees::{
         BinaryOp, CompOp, Float, Integer, Literal as AstLiteral, LiteralVal as AstLiteralVal, Rune,
         Text, Type as AstType,
     },
-    Attribute, ItemPath, Signedness, Vis,
+    Attribute, BlockColor, ItemPath, Signedness, Vis,
 };
 use crate::{
     error::{Locatable, Location, Span},
@@ -215,17 +215,23 @@ pub struct Break<'ctx> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Block<T> {
     pub block: Vec<T>,
+    pub colors: Vec<BlockColor>,
     pub loc: Location,
 }
 
 impl<T> Block<T> {
     pub fn new(block: Vec<T>, loc: Location) -> Self {
-        Self { block, loc }
+        Self {
+            block,
+            colors: Vec::new(),
+            loc,
+        }
     }
 
     pub fn empty(loc: Location) -> Self {
         Self {
             block: Vec::new(),
+            colors: Vec::new(),
             loc,
         }
     }
@@ -233,12 +239,32 @@ impl<T> Block<T> {
     pub fn with_capacity(loc: Location, capacity: usize) -> Self {
         Self {
             block: Vec::with_capacity(capacity),
+            colors: Vec::new(),
+            loc,
+        }
+    }
+
+    pub fn with_capacity_and_colors(loc: Location, capacity: usize, colors: usize) -> Self {
+        Self {
+            block: Vec::with_capacity(capacity),
+            colors: Vec::with_capacity(colors),
             loc,
         }
     }
 
     pub fn push(&mut self, item: T) {
         self.block.push(item);
+    }
+
+    pub fn push_color(&mut self, color: BlockColor) {
+        self.colors.push(color);
+    }
+
+    pub fn extend_colors<I>(&mut self, colors: I)
+    where
+        I: Iterator<Item = BlockColor>,
+    {
+        self.colors.extend(colors);
     }
 
     pub fn insert(&mut self, idx: usize, item: T) {
@@ -279,7 +305,11 @@ impl<T> Block<T> {
             block.push(item);
         }
 
-        Self { block, loc }
+        Self {
+            block,
+            colors: Vec::new(),
+            loc,
+        }
     }
 }
 

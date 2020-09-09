@@ -1,7 +1,7 @@
 use crate::{
     error::{Locatable, Location, Span},
     strings::{StrInterner, StrT},
-    trees::{Attribute, CallConv, ItemPath, Sided, Sign, Vis},
+    trees::{Attribute, BlockColor, CallConv, ItemPath, Sided, Sign, Vis},
 };
 #[cfg(feature = "no-std")]
 use alloc::{
@@ -303,14 +303,6 @@ pub enum ExprKind<'ctx> {
 pub struct BlockExpr<'ctx> {
     pub contents: Block<'ctx>,
     pub colors: Vec<BlockColor>,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[repr(u8)]
-pub enum BlockColor {
-    Unsafe,
-    Async,
-    Const,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
