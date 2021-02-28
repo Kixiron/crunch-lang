@@ -139,6 +139,7 @@ ddlog -i ddlog/typecheck.dl \
       --output-dir=. \
       --omit-profile \
       --omit-workspace \
+      --run-rustfmt \
       $extra_args
 
 exit_code=$?
