@@ -48,13 +48,13 @@ fn typecheck(db: &dyn TypecheckDatabase, file: FileId) -> Result<(), ArcError> {
         let ddlog_res: Result<(), String> = crunch_shared::allocator::CRUNCHC_ALLOCATOR
             .record_region("ddlog typechecking", || {
                 use ddlog::{
-                    ddlog_callback, DDlogEngine, DDLOG_TRACK_SNAPSHOTS, DDLOG_WORKER_THREADS,
+                    DDlogEngine, DDLOG_TRACK_SNAPSHOTS, DDLOG_WORKER_THREADS,
                 };
                 use differential_datalog::DDlog;
                 use typecheck_ddlog::api::HDDlog;
 
                 let (mut program, _init_state) =
-                    HDDlog::run(DDLOG_WORKER_THREADS, DDLOG_TRACK_SNAPSHOTS, ddlog_callback)?;
+                    HDDlog::run(DDLOG_WORKER_THREADS, DDLOG_TRACK_SNAPSHOTS)?;
 
                 let mut engine = DDlogEngine::new(db);
                 engine.walk(&mut program, &*hir)?;

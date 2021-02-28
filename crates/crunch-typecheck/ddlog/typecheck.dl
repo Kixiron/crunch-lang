@@ -17,7 +17,7 @@ output relation Errors(message: string)
 // Get the type of all literals within the program
 relation Literals(lit: Intern<Literal>, lit_type: TypeId)
 Literals(lit, lit_type) :- Expressions(_, Expr { ExprLit { lit } }),
-                           var ty = lit.typeof(),
+                           var ty = lit.type_of(),
                            Types(lit_type, ty).
 
 relation VariablesInScope(scope: ScopeId, var_id: VarId, decl_scope: ScopeId)
@@ -28,7 +28,7 @@ VariablesInScope(child, var_id, decl_scope) :- VariablesInScope(parent, var_id, 
 relation TypedExpressions(expr_id: ExprId, type_id: TypeId)
 // Literals
 TypedExpressions(expr_id, type_id) :- Expressions(expr_id, Expr { ExprLit { lit } }),
-                                      var ty = lit.typeof(),
+                                      var ty = lit.type_of(),
                                       Types(type_id, ty).
 // Variables
 TypedExpressions(expr_id, type_id) :- Expressions(expr_id, Expr { ExprVar { var_id } }),

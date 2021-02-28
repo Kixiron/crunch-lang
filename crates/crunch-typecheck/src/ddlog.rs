@@ -18,21 +18,28 @@ use crunch_shared::{
     utils::HashMap,
     visitors::Visit,
 };
+use typecheck_ddlog::typedefs::{
+    hir::{
+        BinOp, BinaryOp, Binding, Expr,
+        ExprId, ExprKind, FuncArg, FuncId,
+        Function, Item, ItemId, ItemPath,
+        Literal, Match, MatchArm, Pattern,
+        Stmt, StmtId, Type, TypeId,
+        TypeKind, VariableDecl, Vis,
+    },
+    internment::{
+        Intern as Interned, intern as ddlog_intern,
+    },
+};
+//use ddlog_std::Vec as Vector;
 use ddlog_types::{
-    hir_BinOp as BinOp, hir_BinaryOp as BinaryOp, hir_Binding as Binding, hir_Expr as Expr,
-    hir_ExprId as ExprId, hir_ExprKind as ExprKind, hir_FuncArg as FuncArg, hir_FuncId as FuncId,
-    hir_Function as Function, hir_Item as Item, hir_ItemId as ItemId, hir_ItemPath as ItemPath,
-    hir_Literal as Literal, hir_Match as Match, hir_MatchArm as MatchArm, hir_Pattern as Pattern,
-    hir_Stmt as Stmt, hir_StmtId as StmtId, hir_Type as Type, hir_TypeId as TypeId,
-    hir_TypeKind as TypeKind, hir_VariableDecl as VariableDecl, hir_Vis as Vis,
-    internment_Intern as Interned, internment_intern as ddlog_intern, std_Vec as Vector,
     Expressions, Functions, Items, Statements, Types, VariableScopes, Variables,
 };
-use ddlog_values::{relid2name, Relations, Value};
+use typecheck_ddlog::{relid2name, Relations};
 use differential_datalog::{
     ddval::{DDValConvert, DDValue},
     program::{RelId, Update},
-    record::Record,
+    //record::Record,
     DDlog, DeltaMap,
 };
 use typecheck_ddlog::api::HDDlog;
@@ -123,43 +130,43 @@ impl<'ctx> DDlogEngine<'ctx> {
         crunch_shared::trace!("updating items");
         program.apply_valupdates(self.items.drain().map(|item| Update::Insert {
             relid: Relations::Items as RelId,
-            v: Value::Items(item).into_ddvalue(),
+            v: item.into_ddvalue(),
         }))?;
 
         crunch_shared::trace!("updating functions");
         program.apply_valupdates(self.functions.drain().map(|func| Update::Insert {
             relid: Relations::Functions as RelId,
-            v: Value::Functions(func).into_ddvalue(),
+            v: func.into_ddvalue(),
         }))?;
 
         crunch_shared::trace!("updating statements");
         program.apply_valupdates(self.statements.drain().map(|stmt| Update::Insert {
             relid: Relations::Statements as RelId,
-            v: Value::Statements(stmt).into_ddvalue(),
+            v: stmt.into_ddvalue(),
         }))?;
 
         crunch_shared::trace!("updating expressions");
         program.apply_valupdates(self.expressions.drain().map(|expr| Update::Insert {
             relid: Relations::Expressions as RelId,
-            v: Value::Expressions(expr).into_ddvalue(),
+            v: expr.into_ddvalue(),
         }))?;
 
         crunch_shared::trace!("updating variables");
         program.apply_valupdates(self.variable_table.drain().map(|var| Update::Insert {
             relid: Relations::Variables as RelId,
-            v: Value::Variables(var).into_ddvalue(),
+            v: var.into_ddvalue(),
         }))?;
 
         crunch_shared::trace!("updating variable scopes");
         program.apply_valupdates(self.variable_scopes.drain().map(|scope| Update::Insert {
             relid: Relations::VariableScopes as RelId,
-            v: Value::VariableScopes(scope).into_ddvalue(),
+            v: scope.into_ddvalue(),
         }))?;
 
         crunch_shared::trace!("updating types");
         program.apply_valupdates(self.types.drain().map(|ty| Update::Insert {
             relid: Relations::Types as RelId,
-            v: Value::Types(ty).into_ddvalue(),
+            v: ty.into_ddvalue(),
         }))?;
 
         crunch_shared::trace!("committing transaction");
@@ -206,7 +213,7 @@ impl<'ctx> Visit<HirItem<'_>> for DDlogEngine<'ctx> {
             HirItem::Function(function) => {
                 crunch_shared::trace!("item is a function, visiting");
 
-                Item::hir_ItemFunc {
+                Item::ItemFunc {
                     func: self.visit(function),
                 }
             }
@@ -244,7 +251,7 @@ impl<'ctx> Visit<HirFunction<'_>> for DDlogEngine<'ctx> {
         let func = Function {
             name: self.visit(&function.name),
             vis: self.visit(&function.vis),
-            args: Vector { x: args },
+            args: args,
             body: self.visit(&function.body),
             ret: self.visit(&function.ret),
             decl_scope: 0,
@@ -311,18 +318,18 @@ impl<'ctx> Visit<HirTypeKind> for DDlogEngine<'ctx> {
     #[crunch_shared::instrument(name = "type kind", skip(self, kind))]
     fn visit(&mut self, kind: &HirTypeKind) -> Self::Output {
         match kind {
-            HirTypeKind::Unknown => TypeKind::hir_Unknown,
-            &HirTypeKind::Integer { signed, width } => TypeKind::hir_Int {
+            HirTypeKind::Unknown => TypeKind::Unknown,
+            &HirTypeKind::Integer { signed, width } => TypeKind::Int {
                 is_signed: signed.into(),
                 width: width.into(),
             },
-            HirTypeKind::Bool => TypeKind::hir_Bool,
-            HirTypeKind::Unit => TypeKind::hir_Unit,
-            HirTypeKind::Absurd => TypeKind::hir_Absurd,
+            HirTypeKind::Bool => TypeKind::Bool,
+            HirTypeKind::Unit => TypeKind::Unit,
+            HirTypeKind::Absurd => TypeKind::Absurd,
 
             kind => {
                 crunch_shared::warn!("unhandled type in ddlog: {:?}", kind);
-                TypeKind::hir_Error
+                TypeKind::Error
             }
         }
     }
@@ -343,9 +350,9 @@ impl<'ctx> Visit<HirVis> for DDlogEngine<'ctx> {
     #[crunch_shared::instrument(name = "visibility", skip(self, vis))]
     fn visit(&mut self, vis: &HirVis) -> Self::Output {
         match vis {
-            HirVis::FileLocal => Vis::hir_FileLocal,
-            HirVis::Package => Vis::hir_Package,
-            HirVis::Exposed => Vis::hir_Exposed,
+            HirVis::FileLocal => Vis::FileLocal,
+            HirVis::Package => Vis::Package,
+            HirVis::Exposed => Vis::Exposed,
         }
     }
 }
@@ -359,15 +366,15 @@ impl<'ctx> Visit<HirStmt<'_>> for DDlogEngine<'ctx> {
         crunch_shared::trace!("created the id {} for a statement", id);
 
         let stmt = match stmt {
-            &HirStmt::Item(item) => Stmt::hir_StmtItem {
+            &HirStmt::Item(item) => Stmt::StmtItem {
                 item: self.visit(item),
             },
 
-            &HirStmt::Expr(expr) => Stmt::hir_StmtExpr {
+            &HirStmt::Expr(expr) => Stmt::StmtExpr {
                 expr: self.visit(expr),
             },
 
-            HirStmt::VarDecl(var_decl) => Stmt::hir_StmtVarDecl {
+            HirStmt::VarDecl(var_decl) => Stmt::StmtVarDecl {
                 decl: self.visit(var_decl),
             },
         };
@@ -428,7 +435,7 @@ impl<'ctx> Visit<HirExprKind<'_>> for DDlogEngine<'ctx> {
             HirExprKind::Literal(literal) => {
                 let (literal, ty) = self.visit(literal);
                 (
-                    ExprKind::hir_ExprLit {
+                    ExprKind::ExprLit {
                         lit: self.intern(literal),
                     },
                     Either::Right(ty),
@@ -436,7 +443,7 @@ impl<'ctx> Visit<HirExprKind<'_>> for DDlogEngine<'ctx> {
             }
 
             &HirExprKind::Variable(var, ty) => {
-                let expr = ExprKind::hir_ExprVar {
+                let expr = ExprKind::ExprVar {
                     variable: self.get_or_create_var(var),
                 };
                 let ty = self.visit(&ty);
@@ -452,37 +459,37 @@ impl<'ctx> Visit<HirExprKind<'_>> for DDlogEngine<'ctx> {
                     .copied()
                     .expect("got a variable that doesn't exist");
 
-                let expr = ExprKind::hir_ExprAssign {
+                let expr = ExprKind::ExprAssign {
                     variable,
                     expr_id: rhs,
                 };
 
-                (expr, Either::Left(Some(TypeKind::hir_Unit)))
+                (expr, Either::Left(Some(TypeKind::Unit)))
             }
 
             HirExprKind::Match(match_) => {
                 let match_ = self.visit(match_);
                 let ty = Either::Right(match_.ty);
 
-                (ExprKind::hir_ExprMatch { match_ }, ty)
+                (ExprKind::ExprMatch { match_ }, ty)
             }
 
             HirExprKind::Scope(block) => (
-                ExprKind::hir_ExprScope {
+                ExprKind::ExprScope {
                     block: self.visit(block),
                 },
                 Either::Left(None),
             ),
 
             HirExprKind::Return(ret) => (
-                ExprKind::hir_ExprReturn {
+                ExprKind::ExprReturn {
                     val: self.visit(&ret.val).into(),
                 },
-                Either::Left(Some(TypeKind::hir_Absurd)),
+                Either::Left(Some(TypeKind::Absurd)),
             ),
 
             HirExprKind::BinOp(binary_op) => (
-                ExprKind::hir_ExprBinOp {
+                ExprKind::ExprBinOp {
                     op: self.visit(binary_op),
                 },
                 Either::Left(None),
@@ -523,10 +530,10 @@ impl<'ctx> Visit<HirLiteralVal<'_>> for DDlogEngine<'ctx> {
     fn visit(&mut self, val: &HirLiteralVal) -> Self::Output {
         match val {
             &HirLiteralVal::Integer(Integer { bits: int, .. }) => {
-                Literal::hir_Integer { int: int as u64 }
+                Literal::Integer { int: int as u64 }
             }
-            &HirLiteralVal::Bool(boolean) => Literal::hir_Boolean { boolean },
-            HirLiteralVal::String(string) => Literal::hir_String {
+            &HirLiteralVal::Bool(boolean) => Literal::Boolean { boolean },
+            HirLiteralVal::String(string) => Literal::String {
                 r#str: string.to_string(),
             },
             HirLiteralVal::Rune(_) => todo!(),
@@ -587,7 +594,7 @@ impl<'ctx> Visit<HirBlock<&HirStmt<'_>>> for DDlogEngine<'ctx> {
             .collect::<Vec<_>>()
             .into();
 
-        let stmt = Stmt::hir_StmtScope { scope };
+        let stmt = Stmt::StmtScope { scope };
         self.statements.push(Statements { stmt_id: id, stmt });
 
         id
@@ -623,7 +630,7 @@ impl<'ctx> Visit<HirPattern<'_>> for DDlogEngine<'ctx> {
         match pattern {
             HirPattern::Literal(literal) => {
                 let (lit, ty) = self.visit(literal);
-                Pattern::hir_PatLit { lit, ty }
+                Pattern::PatLit { lit, ty }
             }
             HirPattern::Ident(_) | HirPattern::ItemPath(_) | HirPattern::Wildcard => todo!(),
         }
@@ -649,17 +656,17 @@ impl<'ctx> Visit<HirBinaryOp> for DDlogEngine<'ctx> {
     #[crunch_shared::instrument(name = "binary operand", skip(self, op))]
     fn visit(&mut self, op: &HirBinaryOp) -> Self::Output {
         match op {
-            HirBinaryOp::Mult => BinOp::hir_Mult,
-            HirBinaryOp::Div => BinOp::hir_Div,
-            HirBinaryOp::Add => BinOp::hir_Add,
-            HirBinaryOp::Sub => BinOp::hir_Sub,
-            HirBinaryOp::Mod => BinOp::hir_Mod,
-            HirBinaryOp::Pow => BinOp::hir_Pow,
-            HirBinaryOp::BitAnd => BinOp::hir_BitAnd,
-            HirBinaryOp::BitOr => BinOp::hir_BitOr,
-            HirBinaryOp::BitXor => BinOp::hir_BitXor,
-            HirBinaryOp::Shl => BinOp::hir_Shl,
-            HirBinaryOp::Shr => BinOp::hir_Shr,
+            HirBinaryOp::Mult => BinOp::Mult,
+            HirBinaryOp::Div => BinOp::Div,
+            HirBinaryOp::Add => BinOp::Add,
+            HirBinaryOp::Sub => BinOp::Sub,
+            HirBinaryOp::Mod => BinOp::Mod,
+            HirBinaryOp::Pow => BinOp::Pow,
+            HirBinaryOp::BitAnd => BinOp::BitAnd,
+            HirBinaryOp::BitOr => BinOp::BitOr,
+            HirBinaryOp::BitXor => BinOp::BitXor,
+            HirBinaryOp::Shl => BinOp::Shl,
+            HirBinaryOp::Shr => BinOp::Shr,
         }
     }
 }
@@ -670,9 +677,6 @@ pub enum Either<L, R> {
     Right(R),
 }
 
-pub fn ddlog_callback(_rel: usize, _rec: &Record, _w: isize) {
-    /* Obsolete, will be removed in later ddlog releases */
-}
 pub const DDLOG_WORKER_THREADS: usize = 12;
 // Used for `HDDlog::dump_table()`
 pub const DDLOG_TRACK_SNAPSHOTS: bool = false;
@@ -695,53 +699,53 @@ fn run_ddlog() -> Result<(), String> {
     let updates = vec![
         Update::Insert {
             relid: Relations::InputExpressions as RelId,
-            v: Value::InputExpressions(InputExpressions {
+            v: InputExpressions(InputExpressions {
                 id: 0,
-                kind: ddlog_intern(&ExprKind::hir_ExprLit {
-                    lit: ddlog_intern(&Literal::hir_Integer { int: 10 }),
+                kind: ddlog_intern(&ExprKind::ExprLit {
+                    lit: ddlog_intern(&Literal::Integer { int: 10 }),
                 }),
-                ty: ddlog_intern(&TypeKind::hir_Unknown),
+                ty: ddlog_intern(&TypeKind::Unknown),
             })
             .into_ddvalue(),
         },
         Update::Insert {
             relid: Relations::InputExpressions as RelId,
-            v: Value::InputExpressions(InputExpressions {
+            v: InputExpressions(InputExpressions {
                 id: 1,
-                kind: ddlog_intern(&ExprKind::hir_ExprLit {
-                    lit: ddlog_intern(&Literal::hir_Integer { int: 10 }),
+                kind: ddlog_intern(&ExprKind::ExprLit {
+                    lit: ddlog_intern(&Literal::Integer { int: 10 }),
                 }),
-                ty: ddlog_intern(&TypeKind::hir_Unknown),
+                ty: ddlog_intern(&TypeKind::Unknown),
             })
             .into_ddvalue(),
         },
         Update::Insert {
             relid: Relations::InputExpressions as RelId,
-            v: Value::InputExpressions(InputExpressions {
+            v: InputExpressions(InputExpressions {
                 id: 2,
-                kind: ddlog_intern(&ExprKind::hir_ExprVar { variable: 0 }),
-                ty: ddlog_intern(&TypeKind::hir_Unknown),
+                kind: ddlog_intern(&ExprKind::ExprVar { variable: 0 }),
+                ty: ddlog_intern(&TypeKind::Unknown),
             })
             .into_ddvalue(),
         },
         Update::Insert {
             relid: Relations::InputItems as RelId,
-            v: Value::InputItems(InputItems {
-                item: Item::hir_ItemFunc {
+            v: InputItems(InputItems {
+                item: Item::ItemFunc {
                     func: Function {
                         name: ddlog_intern(&Vector { x: vec![0u32] }),
-                        vis: Vis::hir_FileLocal,
+                        vis: Vis::FileLocal,
                         args: Vector {
                             x: vec![FuncArg {
                                 name: 0,
-                                kind: ddlog_intern(&TypeKind::hir_Unknown),
+                                kind: ddlog_intern(&TypeKind::Unknown),
                             }],
                         },
-                        body: ddlog_intern(&Stmt::hir_StmtSeq {
-                            first: ddlog_intern(&Stmt::hir_StmtExpr { expr: 0 }),
-                            second: ddlog_intern(&Stmt::hir_StmtExpr { expr: 2 }),
+                        body: ddlog_intern(&Stmt::StmtSeq {
+                            first: ddlog_intern(&Stmt::StmtExpr { expr: 0 }),
+                            second: ddlog_intern(&Stmt::StmtExpr { expr: 2 }),
                         }),
-                        ret: ddlog_intern(&TypeKind::hir_Unknown),
+                        ret: ddlog_intern(&TypeKind::Unknown),
                     },
                 },
             })

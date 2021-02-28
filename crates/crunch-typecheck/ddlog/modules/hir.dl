@@ -131,7 +131,7 @@ function is_int(ty: Intern<Literal>): bool {
     }
 }
 
-function typeof(literal: Intern<Literal>): Type {
+function type_of(literal: Intern<Literal>): Type {
     var ty = match (literal.ival()) {
         String  { } -> Str,
         Boolean { } -> Bool,

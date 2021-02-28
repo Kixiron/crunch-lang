@@ -1,0 +1,31 @@
+digraph {
+    0 [label=Errors];
+    1 [label=Expressions];
+    2 [label=Functions];
+    3 [label=Items];
+    4 [label=Literals];
+    5 [label=Statements];
+    6 [label=TypedExpressions];
+    7 [label=Types];
+    8 [label=UnifiedTypes];
+    9 [label=VariableScopes];
+    10 [label=Variables];
+    11 [label=VariablesInScope];
+    1 -> 4;
+    1 -> 6;
+    1 -> 6;
+    1 -> 6;
+    1 -> 6;
+    6 -> 6;
+    6 -> 6;
+    6 -> 8;
+    7 -> 4;
+    7 -> 6;
+    7 -> 8;
+    9 -> 11;
+    10 -> 6;
+    10 -> 6;
+    10 -> 6;
+    10 -> 11;
+    11 -> 11;
+}

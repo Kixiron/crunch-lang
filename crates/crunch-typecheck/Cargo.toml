@@ -26,7 +26,3 @@ path = "typecheck_ddlog/types"
 package = "types"
 default-features = false
 
-[dependencies.ddlog_values]
-path = "typecheck_ddlog/value"
-package = "value"
-default-features = false
