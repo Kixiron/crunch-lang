@@ -203,6 +203,7 @@ jobs:
     env:
       RUST_BACKTRACE: 1
       CARGO_INCREMENTAL: 0
+      MIRIFLAGS: "-Zmiri-disable-isolation"
 
     steps:
       - uses: actions/checkout@v2
@@ -252,7 +253,7 @@ jobs:
           for crate in crates/*; do
               if [ "$crate" != "crates/crunch-fuzzing" ]; then
                   cd $crate
-                  cargo +nightly miri test -- -Zmiri-disable-isolation
+                  cargo +nightly miri test
                   cd ../..
               fi
           done
